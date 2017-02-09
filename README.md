@@ -80,4 +80,3 @@ $ cd honeytrap/honeytrap
 Code and documentation copyright 2017 Honeytrap.
 
 Code released under [Affero General Public License](LICENSE).
-
