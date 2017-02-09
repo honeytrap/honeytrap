@@ -84,7 +84,7 @@ func (d *Director) GetContainer(c net.Conn) (providers.Container, error) {
 		return nil, err
 	}
 
-	log.Info("Using container %s for addr: %s", name, c.RemoteAddr().String())
+	log.Infof("Using container %s for addr: %s", name, c.RemoteAddr().String())
 
 	if container, ok := d.containers[name]; ok {
 		return container, nil
