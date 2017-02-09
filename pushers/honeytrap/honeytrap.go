@@ -16,7 +16,7 @@ import (
 var log = logging.MustGetLogger("honeytrap:channels:honeytrap")
 
 var (
-	_ = pushers.RegisterChannel("honeytrap", NewHoneytrapChannel())
+	_ = pushers.Register("honeytrap", NewHoneytrapChannel())
 )
 
 type HoneytrapChannel struct {

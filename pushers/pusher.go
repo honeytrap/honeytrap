@@ -20,7 +20,7 @@ type Channel interface {
 	Send([]*PushMessage)
 }
 
-func RegisterChannel(name string, chanFn ChannelFunc) ChannelFunc {
+func Register(name string, chanFn ChannelFunc) ChannelFunc {
 	availableChannels[name] = chanFn
 	return chanFn
 }

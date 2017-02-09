@@ -20,7 +20,7 @@ import (
 var log = logging.MustGetLogger("honeytrap:channels:elasticsearch")
 
 var (
-	_ = pushers.RegisterChannel("elasticsearch", NewElasticSearchChannel())
+	_ = pushers.Register("elasticsearch", NewElasticSearchChannel())
 )
 
 type ElasticSearchChannel struct {
