@@ -488,6 +488,7 @@ func (c *LxcContainer) Dial(port string) (net.Conn, error) {
 
 	retries := 0
 	for {
+		// TODO(nl5887): remove
 		port = "22"
 
 		conn, err = net.Dial("tcp", net.JoinHostPort(c.ip, port))
