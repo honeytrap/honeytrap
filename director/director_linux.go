@@ -28,6 +28,7 @@ type Director struct {
 
 func New(conf *config.Config) *Director {
 	pusher := pushers.NewRecordPusher(conf)
+
 	d := &Director{
 		containers: map[string]providers.Container{},
 		config:     conf,
@@ -38,6 +39,7 @@ func New(conf *config.Config) *Director {
 
 	// TODO: do we need this pusher?, use default pushers, PushData or something
 	go pusher.Run()
+
 	return d
 }
 
@@ -48,13 +50,15 @@ func (d *Director) registerContainers() {
 			continue
 		}
 
-		container, err := d.NewContainer(c.Name())
+		name := c.Name()
+
+		container, err := d.NewContainer(name)
 		if err != nil {
 			log.Error("Error during container registration: %s", err.Error())
 			continue
 		}
 
-		d.containers[c.Name()] = container
+		d.containers[name] = container
 	}
 }
 

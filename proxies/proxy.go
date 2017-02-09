@@ -30,6 +30,7 @@ func Get(service string) (ProxyFn, bool) {
 
 type ProxyConfig struct {
 	pusher *pushers.Pusher
+
 	Config *config.Config
 }
 
