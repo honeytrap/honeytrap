@@ -19,6 +19,12 @@
 			"revisionTime": "2016-11-19T21:37:11Z"
 		},
 		{
+			"checksumSHA1": "7DxViusFRJ7UPH0jZqYatwDrOkY=",
+			"path": "github.com/elazarl/go-bindata-assetfs",
+			"revision": "30f82fa23fd844bd5bb1e5f216db87fd77b5eb43",
+			"revisionTime": "2017-02-27T21:27:28Z"
+		},
+		{
 			"checksumSHA1": "XEBl9iQQvfXNlwCSzyAOCqAlYEA=",
 			"path": "github.com/fatih/color",
 			"revision": "42c364ba490082e4815b5222728711b3440603eb",
@@ -53,6 +59,12 @@
 			"path": "github.com/google/gopacket/pcapgo",
 			"revision": "705830d9f1fe29ce9c730f09f270c4647b13d9a2",
 			"revisionTime": "2017-01-13T17:38:08Z"
+		},
+		{
+			"checksumSHA1": "zXtaaxk/Ns4dxUllbR+NwB7WT0c=",
+			"path": "github.com/honeytrap/honeytrap-web",
+			"revision": "40a3ac1628261e59b1dcb1fddd650e3040e87165",
+			"revisionTime": "2017-03-01T15:28:59Z"
 		},
 		{
 			"checksumSHA1": "hwGdeQbcfc2RvIQS5wAaYRKJDd4=",
@@ -109,6 +121,10 @@
 			"revisionTime": "2016-09-27T10:08:44Z"
 		},
 		{
+			"path": "go",
+			"revision": ""
+		},
+		{
 			"checksumSHA1": "dwOedwBJ1EIK9+S3t108Bx054Y8=",
 			"path": "golang.org/x/crypto/curve25519",
 			"revision": "b8a2a83acfe6e6770b75de42d5ff4c67596675c0",
@@ -143,6 +159,18 @@
 			"path": "gopkg.in/yaml.v2",
 			"revision": "a5b47d31c556af34a302ce5d659e6fea44d90de0",
 			"revisionTime": "2016-09-28T15:37:09Z"
+		},
+		{
+			"path": "main.go",
+			"revision": ""
+		},
+		{
+			"path": "microsoft.com.",
+			"revision": ""
+		},
+		{
+			"path": "run",
+			"revision": ""
 		}
 	],
 	"rootPath": "github.com/honeytrap/honeytrap"
