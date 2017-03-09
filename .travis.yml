@@ -1,0 +1,13 @@
+language: go
+
+env:
+  - GIMME_OS=linux GIMME_ARCH=amd64
+
+go:
+  - master
+
+install:
+  - go get -d -v ./...
+
+script:
+  - go build -v ./...
