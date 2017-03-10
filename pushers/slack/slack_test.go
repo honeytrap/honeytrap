@@ -1,6 +1,8 @@
 package slack_test
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/honeytrap/honeytrap/pushers"
@@ -11,6 +13,17 @@ const (
 	passed = "\u2713"
 	failed = "\u2717"
 )
+
+type slackService struct{}
+
+func (slackService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/services/343HJUYFHGT/B4545IO/VOOepdacxW9HG60eDfoFBiMF" {
+		w.WriteHeader(404)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+}
 
 // TestSlackPusher validates the operational correctness of the
 // slack message channel which allows us delivery messages to slack channels
@@ -25,8 +38,8 @@ func TestSlackPusher(t *testing.T) {
 		t.Logf("\tWhen provided the invalid Slack Webhook credentials")
 		{
 			_, err := newSlackChannel(map[string]interface{}{
-				"hosts":  "https://hooks.slack.com/services/",
-				"tokens": "T06M39MCM/B4GHZCCFP/VOOepdacxW9HG60eDfoFBiMF",
+				"hosts":  "slack.com/services/",
+				"tokens": "343HJUYFHGT/B4545IO/VOOepdacxW9HG60eDfoFBiMF",
 			})
 
 			if err == nil {
@@ -37,9 +50,14 @@ func TestSlackPusher(t *testing.T) {
 
 		t.Logf("\tWhen provided the correct Slack Webhook credentials")
 		{
+
+			// Setup test server for mocking
+			server := httptest.NewServer(slackService{})
+			host := server.URL + "/services"
+
 			channel, err := newSlackChannel(map[string]interface{}{
-				"host":  "https://hooks.slack.com/services/",
-				"token": "T06M39MCM/B4GHZCCFP/VOOepdacxW9HG60eDfoFBiMF",
+				"host":  host,
+				"token": "343HJUYFHGT/B4545IO/VOOepdacxW9HG60eDfoFBiMF",
 			})
 
 			if err != nil {

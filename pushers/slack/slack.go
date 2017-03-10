@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/honeytrap/honeytrap/pushers"
@@ -23,6 +24,7 @@ type MessageChannel struct {
 	client *http.Client
 	host   string
 	token  string
+	fields map[string]*regexp.Regexp
 }
 
 // NewMessageChannel returns a new instance of a slack MessageChannel.
