@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/honeytrap/honeytrap/pushers"
@@ -54,6 +55,27 @@ func (s *slackService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	io.Copy(&s.Body, r.Body)
+	r.Body.Close()
+
+	w.WriteHeader(http.StatusCreated)
+}
+
+type anySlackService struct {
+	Body  bytes.Buffer
+	Token string
+}
+
+func (s *anySlackService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !strings.Contains(r.URL.Path, "/services") {
+		w.WriteHeader(404)
+		return
+	}
+
+	s.Token = strings.TrimPrefix(r.URL.Path, "/services/")
+
+	io.Copy(&s.Body, r.Body)
+	r.Body.Close()
+
 	w.WriteHeader(http.StatusCreated)
 }
 
@@ -136,7 +158,7 @@ func TestSlackPusher(t *testing.T) {
 			t.Logf("\t%s\t Should have successfully retrieved 4 fields.", passed)
 		}
 
-		t.Logf("\tWhen provided Slack Webhook credentials with method filters")
+		t.Logf("\tWhen provided Slack Webhook credentials with field filters")
 		{
 			// Setup test service and server for mocking.
 			var service slackService
@@ -175,5 +197,77 @@ func TestSlackPusher(t *testing.T) {
 			t.Logf("\t%s\t Should have successfully failed to unmarshalled empty body.", passed)
 		}
 
+		t.Logf("\tWhen provided Slack Webhook credentials with field filters and channel selector")
+		{
+			// Setup test service and server for mocking.
+			var service anySlackService
+
+			server := httptest.NewServer(&service)
+			host := server.URL + "/services"
+
+			channel, err := newSlackChannel(map[string]interface{}{
+				"host":  host,
+				"token": "343HJUYFHGT/B4545IO/VOOepdacxW9HG60eDfoFBiMF",
+				"fields": map[string]interface{}{
+					"sensor": "[ping|crum]",
+				},
+				"channels": []map[string]interface{}{
+					{
+						"field":   "sensor",
+						"value":   "Ping",
+						"channel": "ping-channel",
+						"token":   "545JUHB89B/B4545IO/VOOepdacxW9HG60eDfoFBiMF",
+					},
+					{
+						"field":   "sensor",
+						"value":   "Crum",
+						"channel": "crum-channel",
+						"token":   "JUC9OP90/B4545IO/VOOepdacxW9HG60eDfoFBiMF",
+					},
+				},
+			})
+
+			if err != nil {
+				t.Fatalf("\t%s\t Should have successfully created new MessageChannel: %q.", failed, err.Error())
+			}
+			t.Logf("\t%s\t Should have successfully created new MessageChannel.", passed)
+
+			channel.Send([]*pushers.PushMessage{ping})
+
+			pingResponse := make(map[string]interface{})
+			if err := json.NewDecoder(&service.Body).Decode(&pingResponse); err != nil {
+				t.Fatalf("\t%s\t Should have successfully unmarshalled request body: %q.", failed, err.Error())
+			}
+			t.Logf("\t%s\t Should have successfully unmarshalled requested body.", passed)
+
+			if val, ok := pingResponse["channel"]; !ok || val != "ping-channel" {
+				t.Fatalf("\t%s\t Should have successfully matched target channel for ping response but got %q.", failed, val)
+			}
+			t.Logf("\t%s\t Should have successfully matched target channel for ping response.", passed)
+
+			if service.Token != "545JUHB89B/B4545IO/VOOepdacxW9HG60eDfoFBiMF" {
+				t.Fatalf("\t%s\t Should have successfully matched request toekn for ping response.", failed)
+			}
+			t.Logf("\t%s\t Should have successfully matched request toekn for ping response.", passed)
+
+			channel.Send([]*pushers.PushMessage{crum})
+
+			crumResponse := make(map[string]interface{})
+			if err := json.NewDecoder(&service.Body).Decode(&crumResponse); err != nil {
+				t.Fatalf("\t%s\t Should have successfully unmarshalled empty body: %q.", failed, err.Error())
+			}
+			t.Logf("\t%s\t Should have successfully unmarshalled empty body.", passed)
+
+			if val, ok := crumResponse["channel"]; !ok || val != "crum-channel" {
+				t.Fatalf("\t%s\t Should have successfully matched target channel for crum response but got %q.", failed, val)
+			}
+			t.Logf("\t%s\t Should have successfully matched target channel for ping response.", passed)
+
+			if service.Token != "JUC9OP90/B4545IO/VOOepdacxW9HG60eDfoFBiMF" {
+				t.Fatalf("\t%s\t Should have successfully matched request toekn for ping response.", failed)
+			}
+			t.Logf("\t%s\t Should have successfully matched request toekn for ping response.", passed)
+
+		}
 	}
 }

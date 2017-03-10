@@ -17,6 +17,29 @@ token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
 
 [channels.fields]
 sensors = "^ping"
+container_id = "bob"
+sensors_id = "^TUH43-"
+category_id = "^21223-"
+
+[[channels.channels]]
+field = "sensors"
+value = "^ping"
+channel = "ping-channel"
+
+[[channels.channels]]
+field = "categories"
+value = "^WebRTC"
+channel = "webrtc-channel"
+
+[[channels.channels]]
+field = "session_id"
+value = "32121-"
+channel = "sessions-channel"
+
+[[channels.channels]]
+field = "container_id"
+value = "32121-"
+channel = "containers-channel"
 
 [housekeeper]
 every = "10s"

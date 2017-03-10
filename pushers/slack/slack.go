@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/honeytrap/honeytrap/pushers"
@@ -21,10 +22,11 @@ var _ = pushers.Register("slack", NewMessageChannel())
 // MessageChannel provides a struct which holds the configured means by which
 // slack notifications are sent into giving slack groups and channels.
 type MessageChannel struct {
-	client *http.Client
-	host   string
-	token  string
-	fields map[string]*regexp.Regexp
+	client   *http.Client
+	host     string
+	token    string
+	fields   map[string]*regexp.Regexp
+	channels []channelSelector
 }
 
 // NewMessageChannel returns a new instance of a slack MessageChannel.
@@ -61,17 +63,65 @@ func NewMessageChannel() pushers.ChannelFunc {
 			}
 		}
 
+		channelSelectors := make([]channelSelector, 0)
+		if selections, ok := conf["channels"].([]map[string]interface{}); ok {
+			for _, selection := range selections {
+				var matcher *regexp.Regexp
+
+				switch rx := selection["value"].(type) {
+				case *regexp.Regexp:
+					matcher = rx
+				case string:
+					matcher = regexp.MustCompile(rx)
+				default:
+					// TODO: Do we want to continue or return error here?
+					continue
+				}
+
+				field := selection["field"].(string)
+				if !ok {
+					continue
+				}
+
+				channel, ok := selection["channel"].(string)
+				if !ok {
+					continue
+				}
+
+				channelToken, ok := selection["token"].(string)
+				if !ok {
+					continue
+				}
+
+				channelSelectors = append(channelSelectors, channelSelector{
+					Channel: channel,
+					Field:   field,
+					Matcher: matcher,
+					Token:   channelToken,
+				})
+			}
+		}
+
 		return &MessageChannel{
-			client: &client,
-			host:   host,
-			token:  token,
-			fields: fieldMatchers,
+			client:   &client,
+			host:     host,
+			token:    token,
+			fields:   fieldMatchers,
+			channels: channelSelectors,
 		}, nil
 	}
 }
 
+type channelSelector struct {
+	Field   string
+	Token   string
+	Channel string
+	Matcher *regexp.Regexp
+}
+
 type newSlackMessage struct {
 	Text        string               `json:"text"`
+	Channel     string               `json:"channel"`
 	Attachments []newSlackAttachment `json:"attachments"`
 }
 
@@ -117,8 +167,42 @@ func (mc MessageChannel) Send(messages []*pushers.PushMessage) {
 			continue
 		}
 
-		// TODO: Implementing filtering with channel selector to define channel for
-		// message.
+		// Attempt to match the first possible filter which provides true and select that
+		// items Channel as the target channel. Its a first match first serve type of logic.
+		var selectedChannel string
+		var selectedToken string
+
+		{
+		chanSelect:
+			for _, channel := range mc.channels {
+				switch strings.ToLower(channel.Field) {
+				case "sensor":
+					if channel.Matcher.MatchString(message.Sensor) {
+						selectedToken = channel.Token
+						selectedChannel = channel.Channel
+						break chanSelect
+					}
+				case "category":
+					if channel.Matcher.MatchString(message.Category) {
+						selectedToken = channel.Token
+						selectedChannel = channel.Channel
+						break chanSelect
+					}
+				case "session_id":
+					if channel.Matcher.MatchString(message.SessionID) {
+						selectedToken = channel.Token
+						selectedChannel = channel.Channel
+						break chanSelect
+					}
+				case "container_id":
+					if channel.Matcher.MatchString(message.ContainerID) {
+						selectedToken = channel.Token
+						selectedChannel = channel.Channel
+						break chanSelect
+					}
+				}
+			}
+		}
 
 		//Attempt to encode message body first and if failed, log and continue.
 		messageBuffer := new(bytes.Buffer)
@@ -155,6 +239,7 @@ func (mc MessageChannel) Send(messages []*pushers.PushMessage) {
 		})
 
 		var slackMessage newSlackMessage
+		slackMessage.Channel = selectedChannel
 		slackMessage.Text = fmt.Sprintf("New Sensor Message from %q with Category %q", message.Sensor, message.Category)
 		slackMessage.Attachments = append(slackMessage.Attachments, newSlackAttachment{
 			Title:    "Sensor Data",
@@ -170,7 +255,15 @@ func (mc MessageChannel) Send(messages []*pushers.PushMessage) {
 			continue
 		}
 
-		reqURL := fmt.Sprintf("%s/%s", mc.host, mc.token)
+		var channelToken string
+
+		if selectedToken == "" {
+			channelToken = mc.token
+		} else {
+			channelToken = selectedToken
+		}
+
+		reqURL := fmt.Sprintf("%s/%s", mc.host, channelToken)
 		req, err := http.NewRequest("POST", reqURL, slackMessageBuffer)
 		if err != nil {
 			log.Errorf("SlackMessageChannel: Error while creating new request object: %+q", err)
