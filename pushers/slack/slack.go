@@ -46,10 +46,26 @@ func NewMessageChannel() pushers.ChannelFunc {
 			return nil, errors.New("Token not provided for slack Channel")
 		}
 
+		fieldMatchers := make(map[string]*regexp.Regexp)
+		if fields, ok := conf["fields"].(map[string]interface{}); ok {
+			for key, value := range fields {
+				switch realValue := value.(type) {
+				case *regexp.Regexp:
+					fieldMatchers[key] = realValue
+				case string:
+					fieldMatchers[key] = regexp.MustCompile(realValue)
+				default:
+					// TODO: Do we want to continue or return error here?
+					continue
+				}
+			}
+		}
+
 		return &MessageChannel{
 			client: &client,
 			host:   host,
 			token:  token,
+			fields: fieldMatchers,
 		}, nil
 	}
 }
@@ -79,7 +95,30 @@ type newSlackAttachment struct {
 func (mc MessageChannel) Send(messages []*pushers.PushMessage) {
 	for _, message := range messages {
 
-		// TODO: Implement message filtering through channel regexp.
+		// Run through all the available fields and their regexp,
+		// if the field regexp fails to match, then we skip the message.
+		if matcher, ok := mc.fields["sensor"]; ok && !matcher.MatchString(message.Sensor) {
+			log.Errorf("SlackMessageChannel: Failed to match sensor names match requirement")
+			continue
+		}
+
+		if matcher, ok := mc.fields["category"]; ok && !matcher.MatchString(message.Category) {
+			log.Errorf("SlackMessageChannel: Failed to match category with match requirement")
+			continue
+		}
+
+		if matcher, ok := mc.fields["container_id"]; ok && !matcher.MatchString(message.ContainerID) {
+			log.Errorf("SlackMessageChannel: Failed to match container_id with match requirement")
+			continue
+		}
+
+		if matcher, ok := mc.fields["session_id"]; ok && !matcher.MatchString(message.SessionID) {
+			log.Errorf("SlackMessageChannel: Failed to match session_id with match requirement")
+			continue
+		}
+
+		// TODO: Implementing filtering with channel selector to define channel for
+		// message.
 
 		//Attempt to encode message body first and if failed, log and continue.
 		messageBuffer := new(bytes.Buffer)
