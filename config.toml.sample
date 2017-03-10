@@ -25,21 +25,25 @@ category_id = "^21223-"
 field = "sensors"
 value = "^ping"
 channel = "ping-channel"
+token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
 
 [[channels.channels]]
 field = "categories"
 value = "^WebRTC"
 channel = "webrtc-channel"
+token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
 
 [[channels.channels]]
 field = "session_id"
 value = "32121-"
 channel = "sessions-channel"
+token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
 
 [[channels.channels]]
 field = "container_id"
 value = "32121-"
 channel = "containers-channel"
+token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
 
 [housekeeper]
 every = "10s"
