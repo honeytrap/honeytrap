@@ -40,6 +40,7 @@ type (
 	Folders struct {
 		Data string `toml:"data"`
 	}
+
 	Config struct {
 		Token       string      `toml:"token"`
 		Template    string      `toml:"template"`

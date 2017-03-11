@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/honeytrap/honeytrap/pushers"
+	"github.com/honeytrap/honeytrap/pushers/message"
 	"github.com/honeytrap/honeytrap/pushers/slack"
 )
 
@@ -19,7 +19,7 @@ const (
 )
 
 var (
-	blueChip = &pushers.PushMessage{
+	blueChip = &message.PushMessage{
 		Sensor:      "BlueChip",
 		Category:    "Chip Integrated",
 		SessionID:   "4334334-3433434-34343-FUD",
@@ -27,7 +27,7 @@ var (
 		Data:        "Hello World!",
 	}
 
-	ping = &pushers.PushMessage{
+	ping = &message.PushMessage{
 		Sensor:      "Ping",
 		Category:    "Ping Notificiation",
 		SessionID:   "4334334-3433434-34343-FUD",
@@ -35,7 +35,7 @@ var (
 		Data:        "Hello World!",
 	}
 
-	crum = &pushers.PushMessage{
+	crum = &message.PushMessage{
 		Sensor:      "Crum Stream",
 		Category:    "WebRTC Crum Stream",
 		SessionID:   "4334334-3433434-34343-FUD",
@@ -87,11 +87,11 @@ func TestSlackPusher(t *testing.T) {
 	t.Logf("Given the need to post messages to Slack Channels ")
 	{
 
-		newSlackChannel := slack.NewMessageChannel()
+		var channel slack.MessageChannel
 
 		t.Logf("\tWhen provided the invalid Slack Webhook credentials")
 		{
-			_, err := newSlackChannel(map[string]interface{}{
+			err := channel.UnmarshalConfig(map[string]interface{}{
 				"hosts":  "slack.com/services/",
 				"tokens": "343HJUYFHGT/B4545IO/VOOepdacxW9HG60eDfoFBiMF",
 			})
@@ -111,7 +111,7 @@ func TestSlackPusher(t *testing.T) {
 			server := httptest.NewServer(&service)
 			host := server.URL + "/services"
 
-			channel, err := newSlackChannel(map[string]interface{}{
+			err := channel.UnmarshalConfig(map[string]interface{}{
 				"host":  host,
 				"token": "343HJUYFHGT/B4545IO/VOOepdacxW9HG60eDfoFBiMF",
 			})
@@ -121,7 +121,7 @@ func TestSlackPusher(t *testing.T) {
 			}
 			t.Logf("\t%s\t Should have successfully created new MessageChannel.", passed)
 
-			channel.Send([]*pushers.PushMessage{blueChip})
+			channel.Send([]*message.PushMessage{blueChip})
 
 			response := make(map[string]interface{})
 			if err := json.NewDecoder(&service.Body).Decode(&response); err != nil {
@@ -166,7 +166,7 @@ func TestSlackPusher(t *testing.T) {
 			server := httptest.NewServer(&service)
 			host := server.URL + "/services"
 
-			channel, err := newSlackChannel(map[string]interface{}{
+			err := channel.UnmarshalConfig(map[string]interface{}{
 				"host":  host,
 				"token": "343HJUYFHGT/B4545IO/VOOepdacxW9HG60eDfoFBiMF",
 				"fields": map[string]interface{}{
@@ -182,7 +182,7 @@ func TestSlackPusher(t *testing.T) {
 
 			response := make(map[string]interface{})
 
-			channel.Send([]*pushers.PushMessage{ping, crum})
+			channel.Send([]*message.PushMessage{ping, crum})
 			if err := json.NewDecoder(&service.Body).Decode(&response); err != nil {
 				t.Fatalf("\t%s\t Should have successfully failed to unmarshalled empty body: %q.", failed, err.Error())
 			}
@@ -190,7 +190,7 @@ func TestSlackPusher(t *testing.T) {
 
 			response = make(map[string]interface{})
 
-			channel.Send([]*pushers.PushMessage{crum})
+			channel.Send([]*message.PushMessage{crum})
 			if err := json.NewDecoder(&service.Body).Decode(&response); err != nil {
 				t.Fatalf("\t%s\t Should have successfully failed to unmarshalled empty body: %q.", failed, err.Error())
 			}
@@ -205,7 +205,7 @@ func TestSlackPusher(t *testing.T) {
 			server := httptest.NewServer(&service)
 			host := server.URL + "/services"
 
-			channel, err := newSlackChannel(map[string]interface{}{
+			err := channel.UnmarshalConfig(map[string]interface{}{
 				"host":  host,
 				"token": "343HJUYFHGT/B4545IO/VOOepdacxW9HG60eDfoFBiMF",
 				"fields": map[string]interface{}{
@@ -232,7 +232,7 @@ func TestSlackPusher(t *testing.T) {
 			}
 			t.Logf("\t%s\t Should have successfully created new MessageChannel.", passed)
 
-			channel.Send([]*pushers.PushMessage{ping})
+			channel.Send([]*message.PushMessage{ping})
 
 			pingResponse := make(map[string]interface{})
 			if err := json.NewDecoder(&service.Body).Decode(&pingResponse); err != nil {
@@ -250,7 +250,7 @@ func TestSlackPusher(t *testing.T) {
 			}
 			t.Logf("\t%s\t Should have successfully matched request toekn for ping response.", passed)
 
-			channel.Send([]*pushers.PushMessage{crum})
+			channel.Send([]*message.PushMessage{crum})
 
 			crumResponse := make(map[string]interface{})
 			if err := json.NewDecoder(&service.Body).Decode(&crumResponse); err != nil {

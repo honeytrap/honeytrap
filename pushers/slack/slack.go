@@ -12,12 +12,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/honeytrap/honeytrap/pushers"
+	"github.com/honeytrap/honeytrap/pushers/message"
 	"github.com/op/go-logging"
 )
 
 var log = logging.MustGetLogger("honeytrap:channels:slack")
-var _ = pushers.Register("slack", NewMessageChannel())
 
 // MessageChannel provides a struct which holds the configured means by which
 // slack notifications are sent into giving slack groups and channels.
@@ -29,87 +28,91 @@ type MessageChannel struct {
 	channels []channelSelector
 }
 
-// NewMessageChannel returns a new instance of a slack MessageChannel.
-func NewMessageChannel() pushers.ChannelFunc {
-	return func(conf map[string]interface{}) (pushers.Channel, error) {
-		var client http.Client
-		client.Transport = &http.Transport{MaxIdleConnsPerHost: 5}
-		client.Timeout = 20 * time.Second
-
-		var host string
-		var token string
-
-		var ok bool
-		if host, ok = conf["host"].(string); !ok {
-			return nil, errors.New("Host not provided for Slack Channel")
-		}
-
-		if token, ok = conf["token"].(string); !ok {
-			return nil, errors.New("Token not provided for slack Channel")
-		}
-
-		fieldMatchers := make(map[string]*regexp.Regexp)
-		if fields, ok := conf["fields"].(map[string]interface{}); ok {
-			for key, value := range fields {
-				switch realValue := value.(type) {
-				case *regexp.Regexp:
-					fieldMatchers[key] = realValue
-				case string:
-					fieldMatchers[key] = regexp.MustCompile(realValue)
-				default:
-					// TODO: Do we want to continue or return error here?
-					continue
-				}
-			}
-		}
-
-		channelSelectors := make([]channelSelector, 0)
-		if selections, ok := conf["channels"].([]map[string]interface{}); ok {
-			for _, selection := range selections {
-				var matcher *regexp.Regexp
-
-				switch rx := selection["value"].(type) {
-				case *regexp.Regexp:
-					matcher = rx
-				case string:
-					matcher = regexp.MustCompile(rx)
-				default:
-					// TODO: Do we want to continue or return error here?
-					continue
-				}
-
-				field := selection["field"].(string)
-				if !ok {
-					continue
-				}
-
-				channel, ok := selection["channel"].(string)
-				if !ok {
-					continue
-				}
-
-				channelToken, ok := selection["token"].(string)
-				if !ok {
-					continue
-				}
-
-				channelSelectors = append(channelSelectors, channelSelector{
-					Channel: channel,
-					Field:   field,
-					Matcher: matcher,
-					Token:   channelToken,
-				})
-			}
-		}
-
-		return &MessageChannel{
-			client:   &client,
-			host:     host,
-			token:    token,
-			fields:   fieldMatchers,
-			channels: channelSelectors,
-		}, nil
+// Unmarshal attempts to unmarshal the provided value into the giving
+// MessageChannel.
+func (mc *MessageChannel) UnmarshalConfig(m interface{}) error {
+	conf, ok := m.(map[string]interface{})
+	if !ok {
+		return errors.New("Expected to receive a map")
 	}
+
+	var host string
+	var token string
+
+	if host, ok = conf["host"].(string); !ok {
+		return errors.New("Host not provided for Slack Channel")
+	}
+
+	if token, ok = conf["token"].(string); !ok {
+		return errors.New("Token not provided for slack Channel")
+	}
+
+	fieldMatchers := make(map[string]*regexp.Regexp)
+	if fields, ok := conf["fields"].(map[string]interface{}); ok {
+		for key, value := range fields {
+			switch realValue := value.(type) {
+			case *regexp.Regexp:
+				fieldMatchers[key] = realValue
+			case string:
+				fieldMatchers[key] = regexp.MustCompile(realValue)
+			default:
+				// TODO: Do we want to continue or return error here?
+				continue
+			}
+		}
+	}
+
+	channelSelectors := make([]channelSelector, 0)
+	if selections, ok := conf["channels"].([]map[string]interface{}); ok {
+		for _, selection := range selections {
+			var matcher *regexp.Regexp
+
+			switch rx := selection["value"].(type) {
+			case *regexp.Regexp:
+				matcher = rx
+			case string:
+				matcher = regexp.MustCompile(rx)
+			default:
+				// TODO: Do we want to continue or return error here?
+				continue
+			}
+
+			field := selection["field"].(string)
+			if !ok {
+				continue
+			}
+
+			channel, ok := selection["channel"].(string)
+			if !ok {
+				continue
+			}
+
+			channelToken, ok := selection["token"].(string)
+			if !ok {
+				continue
+			}
+
+			channelSelectors = append(channelSelectors, channelSelector{
+				Channel: channel,
+				Field:   field,
+				Matcher: matcher,
+				Token:   channelToken,
+			})
+		}
+	}
+
+	mc.host = host
+	mc.token = token
+	mc.fields = fieldMatchers
+	mc.channels = channelSelectors
+	mc.client = &http.Client{
+		Transport: &http.Transport{
+			MaxIdleConnsPerHost: 5,
+		},
+		Timeout: time.Duration(20) * time.Second,
+	}
+
+	return nil
 }
 
 type channelSelector struct {
@@ -119,30 +122,9 @@ type channelSelector struct {
 	Matcher *regexp.Regexp
 }
 
-type newSlackMessage struct {
-	Text        string               `json:"text"`
-	Channel     string               `json:"channel"`
-	Attachments []newSlackAttachment `json:"attachments"`
-}
-
-type newSlackField struct {
-	Title string `json:"title"`
-	Value string `json:"value"`
-	Short bool   `json:"short"`
-}
-
-type newSlackAttachment struct {
-	Title     string          `json:"title"`
-	Author    string          `json:"author_name,omitempty"`
-	Fallback  string          `json:"fallback,omitempty"`
-	Fields    []newSlackField `json:"fields"`
-	Text      string          `json:"text"`
-	Timestamp int64           `json:"ts"`
-}
-
 // Send delivers the giving push messages to the required slack channel.
 // TODO: Ask if Send shouldnt return an error to allow proper delivery validation.
-func (mc MessageChannel) Send(messages []*pushers.PushMessage) {
+func (mc MessageChannel) Send(messages []*message.PushMessage) {
 	for _, message := range messages {
 
 		// Run through all the available fields and their regexp,
@@ -288,4 +270,25 @@ func (mc MessageChannel) Send(messages []*pushers.PushMessage) {
 			continue
 		}
 	}
+}
+
+type newSlackMessage struct {
+	Text        string               `json:"text"`
+	Channel     string               `json:"channel"`
+	Attachments []newSlackAttachment `json:"attachments"`
+}
+
+type newSlackField struct {
+	Title string `json:"title"`
+	Value string `json:"value"`
+	Short bool   `json:"short"`
+}
+
+type newSlackAttachment struct {
+	Title     string          `json:"title"`
+	Author    string          `json:"author_name,omitempty"`
+	Fallback  string          `json:"fallback,omitempty"`
+	Fields    []newSlackField `json:"fields"`
+	Text      string          `json:"text"`
+	Timestamp int64           `json:"ts"`
 }
