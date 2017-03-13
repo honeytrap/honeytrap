@@ -65,28 +65,6 @@ func TestFileChannel(t *testing.T) {
 			t.Logf("\t%s\t Should have successfully failed to parse configuration", passed)
 		}
 
-		t.Logf("When giving a file[%q] and a good configuration", tmpFile)
-		{
-
-			err := fc.UnmarshalConfig(map[string]interface{}{
-				"ms":   "20s",
-				"size": "5",
-				"file": tmpFile,
-				"filters": map[string]interface{}{
-					"sensor": "[^ping]",
-				},
-			})
-
-			if err != nil {
-				t.Fatalf("\t%s\t Should have successfully parsed configuration", failed)
-			}
-			t.Logf("\t%s\t Should have successfully parsed configuration", passed)
-
-			fc.Send([]*pushers.PushMessage{blueChip, crum, ping})
-
-			fc.Wait()
-		}
-
 		t.Logf("When giving a file[%q] and a good configuration with no filters", tmpFile)
 		{
 
