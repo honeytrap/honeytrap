@@ -1,0 +1,10 @@
+{
+    "dependencies": {
+        "github.com/satori/go.uuid": {
+            "branch": "master"
+        },
+        "golang.org/x/crypto": {
+            "branch": "master"
+        }
+    }
+}

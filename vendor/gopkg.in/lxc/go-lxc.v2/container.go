@@ -452,6 +452,20 @@ func (c *Container) Start() error {
 	return nil
 }
 
+func (c *Container) StartWithArgs(args []string) error {
+	if err := c.makeSure(isNotRunning); err != nil {
+		return err
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if !bool(C.go_lxc_start(c.container, 0, makeNullTerminatedArgs(args))) {
+		return ErrStartFailed
+	}
+	return nil
+}
+
 // Execute executes the given command in a temporary container.
 func (c *Container) Execute(args ...string) ([]byte, error) {
 	if err := c.makeSure(isNotDefined); err != nil {

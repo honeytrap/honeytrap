@@ -2,213 +2,137 @@ package cli
 
 import (
 	"fmt"
-	"io"
 	"os"
-	"strings"
 	"text/tabwriter"
 	"text/template"
 )
 
-// AppHelpTemplate is the text template for the Default help topic.
+// The text template for the Default help topic.
 // cli.go uses text/template to render templates. You can
 // render custom help text by setting this variable.
 var AppHelpTemplate = `NAME:
-   {{.Name}}{{if .Usage}} - {{.Usage}}{{end}}
+   {{.Name}} - {{.Usage}}
 
 USAGE:
-   {{if .UsageText}}{{.UsageText}}{{else}}{{.HelpName}} {{if .VisibleFlags}}[global options]{{end}}{{if .Commands}} command [command options]{{end}} {{if .ArgsUsage}}{{.ArgsUsage}}{{else}}[arguments...]{{end}}{{end}}{{if .Version}}{{if not .HideVersion}}
+   {{.Name}} {{ if .Flags }}[global options] {{ end }}command{{ if .Flags }} [command options]{{ end }} [arguments...]
 
 VERSION:
-   {{.Version}}{{end}}{{end}}{{if .Description}}
+   {{.Version}}
 
-DESCRIPTION:
-   {{.Description}}{{end}}{{if len .Authors}}
-
-AUTHOR{{with $length := len .Authors}}{{if ne 1 $length}}S{{end}}{{end}}:
-   {{range $index, $author := .Authors}}{{if $index}}
-   {{end}}{{$author}}{{end}}{{end}}{{if .VisibleCommands}}
-
-COMMANDS:{{range .VisibleCategories}}{{if .Name}}
-   {{.Name}}:{{end}}{{range .VisibleCommands}}
-     {{join .Names ", "}}{{"\t"}}{{.Usage}}{{end}}{{end}}{{end}}{{if .VisibleFlags}}
-
+COMMANDS:
+   {{range .Commands}}{{.Name}}{{with .ShortName}}, {{.}}{{end}}{{ "\t" }}{{.Usage}}
+   {{end}}{{ if .Flags }}
 GLOBAL OPTIONS:
-   {{range $index, $option := .VisibleFlags}}{{if $index}}
-   {{end}}{{$option}}{{end}}{{end}}{{if .Copyright}}
-
-COPYRIGHT:
-   {{.Copyright}}{{end}}
+   {{range .Flags}}{{.}}
+   {{end}}{{ end }}
 `
 
-// CommandHelpTemplate is the text template for the command help topic.
+// The text template for the command help topic.
 // cli.go uses text/template to render templates. You can
 // render custom help text by setting this variable.
 var CommandHelpTemplate = `NAME:
-   {{.HelpName}} - {{.Usage}}
+   {{.Name}} - {{.Usage}}
 
 USAGE:
-   {{.HelpName}}{{if .VisibleFlags}} [command options]{{end}} {{if .ArgsUsage}}{{.ArgsUsage}}{{else}}[arguments...]{{end}}{{if .Category}}
-
-CATEGORY:
-   {{.Category}}{{end}}{{if .Description}}
+   command {{.Name}}{{ if .Flags }} [command options]{{ end }} [arguments...]
 
 DESCRIPTION:
-   {{.Description}}{{end}}{{if .VisibleFlags}}
+   {{.Description}}{{ if .Flags }}
 
 OPTIONS:
-   {{range .VisibleFlags}}{{.}}
-   {{end}}{{end}}
+   {{range .Flags}}{{.}}
+   {{end}}{{ end }}
 `
 
-// SubcommandHelpTemplate is the text template for the subcommand help topic.
+// The text template for the subcommand help topic.
 // cli.go uses text/template to render templates. You can
 // render custom help text by setting this variable.
 var SubcommandHelpTemplate = `NAME:
-   {{.HelpName}} - {{.Usage}}
+   {{.Name}} - {{.Usage}}
 
 USAGE:
-   {{.HelpName}} command{{if .VisibleFlags}} [command options]{{end}} {{if .ArgsUsage}}{{.ArgsUsage}}{{else}}[arguments...]{{end}}
+   {{.Name}} command{{ if .Flags }} [command options]{{ end }} [arguments...]
 
-COMMANDS:{{range .VisibleCategories}}{{if .Name}}
-   {{.Name}}:{{end}}{{range .VisibleCommands}}
-     {{join .Names ", "}}{{"\t"}}{{.Usage}}{{end}}
-{{end}}{{if .VisibleFlags}}
+COMMANDS:
+   {{range .Commands}}{{.Name}}{{with .ShortName}}, {{.}}{{end}}{{ "\t" }}{{.Usage}}
+   {{end}}{{ if .Flags }}
 OPTIONS:
-   {{range .VisibleFlags}}{{.}}
-   {{end}}{{end}}
+   {{range .Flags}}{{.}}
+   {{end}}{{ end }}
 `
 
 var helpCommand = Command{
 	Name:      "help",
-	Aliases:   []string{"h"},
+	ShortName: "h",
 	Usage:     "Shows a list of commands or help for one command",
-	ArgsUsage: "[command]",
-	Action: func(c *Context) error {
+	Action: func(c *Context) {
 		args := c.Args()
 		if args.Present() {
-			return ShowCommandHelp(c, args.First())
+			ShowCommandHelp(c, args.First())
+		} else {
+			ShowAppHelp(c)
 		}
-
-		ShowAppHelp(c)
-		return nil
 	},
 }
 
 var helpSubcommand = Command{
 	Name:      "help",
-	Aliases:   []string{"h"},
+	ShortName: "h",
 	Usage:     "Shows a list of commands or help for one command",
-	ArgsUsage: "[command]",
-	Action: func(c *Context) error {
+	Action: func(c *Context) {
 		args := c.Args()
 		if args.Present() {
-			return ShowCommandHelp(c, args.First())
+			ShowCommandHelp(c, args.First())
+		} else {
+			ShowSubcommandHelp(c)
 		}
-
-		return ShowSubcommandHelp(c)
 	},
 }
 
-// Prints help for the App or Command
-type helpPrinter func(w io.Writer, templ string, data interface{})
+// Prints help for the App
+var HelpPrinter = printHelp
 
-// Prints help for the App or Command with custom template function.
-type helpPrinterCustom func(w io.Writer, templ string, data interface{}, customFunc map[string]interface{})
-
-// HelpPrinter is a function that writes the help output. If not set a default
-// is used. The function signature is:
-// func(w io.Writer, templ string, data interface{})
-var HelpPrinter helpPrinter = printHelp
-
-// HelPrinterCustom is same as HelpPrinter but
-// takes a custom function for template function map.
-var HelpPrinterCustom helpPrinterCustom = printHelpCustom
-
-// VersionPrinter prints the version for the App
-var VersionPrinter = printVersion
-
-// ShowAppHelpAndExit - Prints the list of subcommands for the app and exits with exit code.
-func ShowAppHelpAndExit(c *Context, exitCode int) {
-	ShowAppHelp(c)
-	os.Exit(exitCode)
+func ShowAppHelp(c *Context) {
+	HelpPrinter(AppHelpTemplate, c.App)
 }
 
-// ShowAppHelp is an action that displays the help.
-func ShowAppHelp(c *Context) error {
-	if c.App.CustomAppHelpTemplate != "" {
-		if c.App.ExtraInfo != nil {
-			HelpPrinterCustom(c.App.Writer, c.App.CustomAppHelpTemplate, c.App, map[string]interface{}{
-				"ExtraInfo": c.App.ExtraInfo,
-			})
-		} else {
-			HelpPrinter(c.App.Writer, c.App.CustomAppHelpTemplate, c.App)
-		}
-	} else {
-		HelpPrinter(c.App.Writer, AppHelpTemplate, c.App)
-	}
-	return nil
-}
-
-// DefaultAppComplete prints the list of subcommands as the default app completion method
+// Prints the list of subcommands as the default app completion method
 func DefaultAppComplete(c *Context) {
 	for _, command := range c.App.Commands {
-		if command.Hidden {
-			continue
-		}
-		for _, name := range command.Names() {
-			fmt.Fprintln(c.App.Writer, name)
+		fmt.Println(command.Name)
+		if command.ShortName != "" {
+			fmt.Println(command.ShortName)
 		}
 	}
 }
 
-// ShowCommandHelpAndExit - exits with code after showing help
-func ShowCommandHelpAndExit(c *Context, command string, code int) {
-	ShowCommandHelp(c, command)
-	os.Exit(code)
-}
-
-// ShowCommandHelp prints help for the given command
-func ShowCommandHelp(ctx *Context, command string) error {
-	// show the subcommand help for a command with subcommands
-	if command == "" {
-		HelpPrinter(ctx.App.Writer, SubcommandHelpTemplate, ctx.App)
-		return nil
-	}
-
-	for _, c := range ctx.App.Commands {
+// Prints help for the given command
+func ShowCommandHelp(c *Context, command string) {
+	for _, c := range c.App.Commands {
 		if c.HasName(command) {
-			if c.CustomHelpTemplate != "" {
-				HelpPrinter(ctx.App.Writer, c.CustomHelpTemplate, c)
-			} else {
-				HelpPrinter(ctx.App.Writer, CommandHelpTemplate, c)
-			}
-			return nil
+			HelpPrinter(CommandHelpTemplate, c)
+			return
 		}
 	}
 
-	if ctx.App.CommandNotFound == nil {
-		return NewExitError(fmt.Sprintf("No help topic for '%v'", command), 3)
+	if c.App.CommandNotFound != nil {
+		c.App.CommandNotFound(c, command)
+	} else {
+		fmt.Printf("No help topic for '%v'\n", command)
 	}
-
-	ctx.App.CommandNotFound(ctx, command)
-	return nil
 }
 
-// ShowSubcommandHelp prints help for the given subcommand
-func ShowSubcommandHelp(c *Context) error {
-	return ShowCommandHelp(c, c.Command.Name)
+// Prints help for the given subcommand
+func ShowSubcommandHelp(c *Context) {
+	HelpPrinter(SubcommandHelpTemplate, c.App)
 }
 
-// ShowVersion prints the version number of the App
+// Prints the version number of the App
 func ShowVersion(c *Context) {
-	VersionPrinter(c)
+	fmt.Printf("%v version %v\n", c.App.Name, c.App.Version)
 }
 
-func printVersion(c *Context) {
-	fmt.Fprintf(c.App.Writer, "%v version %v\n", c.App.Name, c.App.Version)
-}
-
-// ShowCompletions prints the lists of commands within a given context
+// Prints the lists of commands within a given context
 func ShowCompletions(c *Context) {
 	a := c.App
 	if a != nil && a.BashComplete != nil {
@@ -216,7 +140,7 @@ func ShowCompletions(c *Context) {
 	}
 }
 
-// ShowCommandCompletions prints the custom completions for a given command
+// Prints the custom completions for a given command
 func ShowCommandCompletions(ctx *Context, command string) {
 	c := ctx.App.Command(command)
 	if c != nil && c.BashComplete != nil {
@@ -224,56 +148,32 @@ func ShowCommandCompletions(ctx *Context, command string) {
 	}
 }
 
-func printHelpCustom(out io.Writer, templ string, data interface{}, customFunc map[string]interface{}) {
-	funcMap := template.FuncMap{
-		"join": strings.Join,
-	}
-	if customFunc != nil {
-		for key, value := range customFunc {
-			funcMap[key] = value
-		}
-	}
-
-	w := tabwriter.NewWriter(out, 1, 8, 2, ' ', 0)
-	t := template.Must(template.New("help").Funcs(funcMap).Parse(templ))
+func printHelp(templ string, data interface{}) {
+	w := tabwriter.NewWriter(os.Stdout, 0, 8, 1, '\t', 0)
+	t := template.Must(template.New("help").Parse(templ))
 	err := t.Execute(w, data)
 	if err != nil {
-		// If the writer is closed, t.Execute will fail, and there's nothing
-		// we can do to recover.
-		if os.Getenv("CLI_TEMPLATE_ERROR_DEBUG") != "" {
-			fmt.Fprintf(ErrWriter, "CLI TEMPLATE ERROR: %#v\n", err)
-		}
-		return
+		panic(err)
 	}
 	w.Flush()
 }
 
-func printHelp(out io.Writer, templ string, data interface{}) {
-	printHelpCustom(out, templ, data, nil)
-}
-
 func checkVersion(c *Context) bool {
-	found := false
-	if VersionFlag.Name != "" {
-		eachName(VersionFlag.Name, func(name string) {
-			if c.GlobalBool(name) || c.Bool(name) {
-				found = true
-			}
-		})
+	if c.GlobalBool("version") {
+		ShowVersion(c)
+		return true
 	}
-	return found
+
+	return false
 }
 
 func checkHelp(c *Context) bool {
-	found := false
-	if HelpFlag.Name != "" {
-		eachName(HelpFlag.Name, func(name string) {
-			if c.GlobalBool(name) || c.Bool(name) {
-				found = true
-			}
-		})
+	if c.GlobalBool("h") || c.GlobalBool("help") {
+		ShowAppHelp(c)
+		return true
 	}
-	return found
+
+	return false
 }
 
 func checkCommandHelp(c *Context, name string) bool {
@@ -286,7 +186,7 @@ func checkCommandHelp(c *Context, name string) bool {
 }
 
 func checkSubcommandHelp(c *Context) bool {
-	if c.Bool("h") || c.Bool("help") {
+	if c.GlobalBool("h") || c.GlobalBool("help") {
 		ShowSubcommandHelp(c)
 		return true
 	}
@@ -294,43 +194,20 @@ func checkSubcommandHelp(c *Context) bool {
 	return false
 }
 
-func checkShellCompleteFlag(a *App, arguments []string) (bool, []string) {
-	if !a.EnableBashCompletion {
-		return false, arguments
-	}
-
-	pos := len(arguments) - 1
-	lastArg := arguments[pos]
-
-	if lastArg != "--"+BashCompletionFlag.Name {
-		return false, arguments
-	}
-
-	return true, arguments[:pos]
-}
-
 func checkCompletions(c *Context) bool {
-	if !c.shellComplete {
-		return false
+	if c.GlobalBool(BashCompletionFlag.Name) && c.App.EnableBashCompletion {
+		ShowCompletions(c)
+		return true
 	}
 
-	if args := c.Args(); args.Present() {
-		name := args.First()
-		if cmd := c.App.Command(name); cmd != nil {
-			// let the command handle the completion
-			return false
-		}
-	}
-
-	ShowCompletions(c)
-	return true
+	return false
 }
 
 func checkCommandCompletions(c *Context, name string) bool {
-	if !c.shellComplete {
-		return false
+	if c.Bool(BashCompletionFlag.Name) && c.App.EnableBashCompletion {
+		ShowCommandCompletions(c, name)
+		return true
 	}
 
-	ShowCommandCompletions(c, name)
-	return true
+	return false
 }
