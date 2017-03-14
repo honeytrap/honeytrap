@@ -2,7 +2,16 @@ language: go
 
 before_install:
   - sudo apt-get -qq update
-  - sudo apt-get install -yq libpcap-dev 
+
+addons:
+  apt:
+    sources:
+    - sourceline: 'ppa:ubuntu-lxc/stable'
+    packages:
+    - lxc
+    - lxc-templates
+    - lxc-dev
+    - libpcap-dev
 
 env:
   - GIMME_OS=linux GIMME_ARCH=amd64
