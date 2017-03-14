@@ -2,7 +2,7 @@ language: go
 
 before_install:
   - sudo apt-get -qq update
-  - sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq libpcap-dev lxc-dev 
+  - sudo apt-get install --nodeps -yq libpcap-dev lxc-dev 
 
 env:
   - GIMME_OS=linux GIMME_ARCH=amd64
