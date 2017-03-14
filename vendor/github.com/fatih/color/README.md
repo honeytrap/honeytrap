@@ -8,6 +8,7 @@ has support for Windows too! The API can be used in several ways, pick one that
 suits you.
 
 
+
 ![Color](http://i.imgur.com/c1JI0lA.png)
 
 
@@ -16,9 +17,6 @@ suits you.
 ```bash
 go get github.com/fatih/color
 ```
-
-Note that the `vendor` folder is here for stability. Remove the folder if you
-already have the dependencies in your GOPATH.
 
 ## Examples
 

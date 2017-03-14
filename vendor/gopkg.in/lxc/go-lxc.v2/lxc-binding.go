@@ -17,7 +17,6 @@ package lxc
 import "C"
 
 import (
-	"fmt"
 	"runtime"
 	"unsafe"
 )
@@ -63,11 +62,7 @@ func Release(c *Container) bool {
 
 // Version returns the LXC version.
 func Version() string {
-	version := C.GoString(C.lxc_get_version())
-	if C.LXC_DEVEL == 1 {
-		fmt.Sprintf("%s (devel)", version)
-	}
-	return version
+	return C.GoString(C.lxc_get_version())
 }
 
 // GlobalConfigItem returns the value of the given global config key.
