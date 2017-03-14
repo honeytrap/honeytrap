@@ -8,27 +8,20 @@ import (
 	"time"
 
 	"github.com/honeytrap/honeytrap/config"
-)
-
-type ChannelFunc func(conf map[string]interface{}) (Channel, error)
-
-var (
-	availableChannels = map[string]ChannelFunc{}
+	"github.com/honeytrap/honeytrap/pushers/elasticsearch"
+	"github.com/honeytrap/honeytrap/pushers/honeytrap"
+	"github.com/honeytrap/honeytrap/pushers/message"
+	"github.com/honeytrap/honeytrap/pushers/slack"
 )
 
 type Channel interface {
-	Send([]*PushMessage)
-}
-
-func Register(name string, chanFn ChannelFunc) ChannelFunc {
-	availableChannels[name] = chanFn
-	return chanFn
+	Send([]*message.PushMessage)
 }
 
 type Pusher struct {
 	config   *config.Config
-	q        chan *PushMessage
-	queue    []*PushMessage
+	q        chan *message.PushMessage
+	queue    []*message.PushMessage
 	age      time.Duration
 	channels []Channel
 }
@@ -39,30 +32,45 @@ func New(conf *config.Config) *Pusher {
 	for _, c := range conf.Channels {
 		var ok bool
 		var name string
+
 		if name, ok = c["name"].(string); !ok {
 			// TODO: add available channel names
-			log.Errorf("Channel name not provided. Available channels are: %s")
+			log.Errorf("Channel name not provided. Available channels are: %s", "")
 			continue
 		}
 
-		var ac ChannelFunc
-		if ac, ok = availableChannels[name]; !ok {
-			log.Errorf("Unknown channel: %s", name)
-		}
+		switch name {
+		case "elasticsearch":
+			var elastic elasticsearch.ElasticSearchChannel
+			if err := elastic.UnmarshalConfig(c); err != nil {
+				log.Errorf("Error initializing channel: %s", err.Error())
+				continue
+			}
 
-		channel, err := ac(c)
-		if err != nil {
-			log.Error("Error initializing channel: %s", err.Error())
-			continue
-		}
+			channels = append(channels, &elastic)
+		case "honeytrap":
+			var htrap honeytrap.HoneytrapChannel
+			if err := htrap.UnmarshalConfig(c); err != nil {
+				log.Errorf("Error initializing channel: %s", err.Error())
+				continue
+			}
 
-		channels = append(channels, channel)
+			channels = append(channels, &htrap)
+		case "slack":
+			var slackChannel slack.MessageChannel
+			if err := slackChannel.UnmarshalConfig(c); err != nil {
+				log.Errorf("Error initializing channel: %s", err.Error())
+				continue
+			}
+
+			channels = append(channels, &slackChannel)
+		}
 	}
 
 	return &Pusher{
-		q:        make(chan *PushMessage),
+		q:        make(chan *message.PushMessage),
 		config:   conf,
-		queue:    []*PushMessage{},
+		queue:    []*message.PushMessage{},
 		channels: channels,
 		age:      conf.Delays.PushDelay.Duration(),
 	}
@@ -82,10 +90,14 @@ func (p *Pusher) run() {
 			p.add(a)
 		}
 	}
+
+	// TODO: We need to figure out where the call to Run stops,
+	// 1. Does it stop after the call to time.After?
+	// 2. Does it not stop at all, hence this code becomes unreachable.
 	log.Info("Pusher exited")
 }
 
-func (p *Pusher) send(messages []*PushMessage) {
+func (p *Pusher) send(messages []*message.PushMessage) {
 	for _, channel := range p.channels {
 		channel.Send(messages)
 	}
@@ -98,7 +110,7 @@ func (p *Pusher) flush() {
 
 	go p.send(p.queue)
 
-	p.queue = []*PushMessage{}
+	p.queue = []*message.PushMessage{}
 }
 
 // TODO: Cannot we do the following
@@ -109,36 +121,28 @@ func (p *Pusher) flush() {
 // url = "/blabla"
 //}
 
-type PushMessage struct {
-	Sensor      string
-	Category    string
-	SessionID   string
-	ContainerID string
-	Data        interface{}
-}
-
 func (p *Pusher) Push(sensor, category, containerID, sessionID string, data interface{}) {
-	p.q <- &PushMessage{
-		sensor,
-		category,
-		sessionID,
-		containerID,
-		data,
+	p.q <- &message.PushMessage{
+		Sensor:      sensor,
+		Category:    category,
+		SessionID:   sessionID,
+		ContainerID: containerID,
+		Data:        data,
 	}
 }
 
 // TODO: implement PushFile instead of RecordPush
 func (p *Pusher) PushFile(sensor, category, containerID, sessionID string, filename string, data []byte) {
-	p.q <- &PushMessage{
-		sensor,
-		category,
-		sessionID,
-		containerID,
-		data,
+	p.q <- &message.PushMessage{
+		Sensor:      sensor,
+		Category:    category,
+		SessionID:   sessionID,
+		ContainerID: containerID,
+		Data:        data,
 	}
 }
 
-func (p *Pusher) add(a *PushMessage) {
+func (p *Pusher) add(a *message.PushMessage) {
 	p.queue = append(p.queue, a)
 
 	if len(p.queue) > 20 {
@@ -225,6 +229,9 @@ func (p *RecordPush) Run() error {
 		}
 	}
 
+	// TODO: We need to figure out where the call to Run stops,
+	// 1. Does it stop after the call to time.After?
+	// 2. Does it not stop at all, hence this code becomes unreachable.
 	log.Info("RecordPusher stopped")
 
 	return nil
