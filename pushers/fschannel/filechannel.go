@@ -13,13 +13,13 @@ import (
 	"time"
 
 	"github.com/honeytrap/honeytrap/config"
-	"github.com/honeytrap/honeytrap/pushers"
+	"github.com/honeytrap/honeytrap/pushers/message"
 	"github.com/op/go-logging"
 )
 
 var crtlline = []byte("\r\n")
 var defaultMaxSize = 1024 * 1024 * 1024
-var defaultWaitTime = 5 * time.Minute
+var defaultWaitTime = 5 * time.Second
 var log = logging.MustGetLogger("honeytrap:channels:elasticsearch")
 
 // FileChannel defines a struct which implements the pushers.Pusher interface
@@ -35,20 +35,19 @@ type FileChannel struct {
 	dest     *os.File
 	ms       time.Duration
 	filters  map[string]*regexp.Regexp
-	request  chan *pushers.PushMessage
+	request  chan *message.PushMessage
 	wg       sync.WaitGroup
 }
 
 // New returns a new instance of a FileChannel.
 func New() *FileChannel {
-	var wg sync.WaitGroup
-	return &FileChannel{
-		wg:      wg,
-		ms:      defaultWaitTime,
-		maxSize: defaultMaxSize,
-		request: make(chan *pushers.PushMessage),
-		filters: make(map[string]*regexp.Regexp, 0),
-	}
+	var fc FileChannel
+	fc.ms = defaultWaitTime
+	fc.maxSize = defaultMaxSize
+	fc.request = make(chan *message.PushMessage)
+	fc.filters = make(map[string]*regexp.Regexp, 0)
+
+	return &fc
 }
 
 // Wait calls the internal waiter.
@@ -58,7 +57,7 @@ func (f *FileChannel) Wait() {
 
 // Send delivers the giving if it passes all filtering criteria into the
 // FileChannel write queue.
-func (f *FileChannel) Send(messages []*pushers.PushMessage) {
+func (f *FileChannel) Send(messages []*message.PushMessage) {
 	log.Info("FileChannel.Send : Started")
 
 	if err := f.syncWrites(); err != nil {
@@ -85,6 +84,9 @@ func (f *FileChannel) Send(messages []*pushers.PushMessage) {
 
 		f.request <- message
 	}
+
+	// Close channel
+	close(f.request)
 }
 
 // UnmarshalConfig takes a provide configuration map type and sets the
@@ -120,7 +122,7 @@ func (f *FileChannel) UnmarshalConfig(c interface{}) error {
 		f.ms = config.MakeDuration(waitMS, int(defaultWaitTime))
 	}
 
-	if mxSize, ok := conf["size"].(string); ok {
+	if mxSize, ok := conf["max_size"].(string); ok {
 		f.maxSize = config.ConvertToInt(mxSize, defaultMaxSize)
 	}
 
@@ -136,6 +138,10 @@ func (f *FileChannel) syncWrites() error {
 	if f.dest != nil {
 		log.Info("FileChannel.syncWrites : Completed : Already Running")
 		return nil
+	}
+
+	if f.request == nil {
+		f.request = make(chan *message.PushMessage)
 	}
 
 	var err error
@@ -167,11 +173,18 @@ func (f *FileChannel) syncLoop() {
 			case <-ticker.C:
 				f.dest.Close()
 				f.dest = nil
+
+				// Close request channel and nil it.
+				close(f.request)
+				f.request = nil
+
 				break writeSync
 
 			case req, ok := <-f.request:
 				if !ok {
 					f.dest.Close()
+					f.request = nil
+					f.dest = nil
 					break writeSync
 				}
 

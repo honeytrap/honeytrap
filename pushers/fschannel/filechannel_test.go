@@ -5,8 +5,8 @@ import (
 	"io/ioutil"
 	"testing"
 
-	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/pushers/fschannel"
+	"github.com/honeytrap/honeytrap/pushers/message"
 )
 
 const (
@@ -18,7 +18,7 @@ const (
 var (
 	splitter = []byte("\r\n")
 
-	blueChip = &pushers.PushMessage{
+	blueChip = &message.PushMessage{
 		Sensor:      "BlueChip",
 		Category:    "Chip Integrated",
 		SessionID:   "4334334-3433434-34343-FUD",
@@ -26,7 +26,7 @@ var (
 		Data:        "Hello World!",
 	}
 
-	ping = &pushers.PushMessage{
+	ping = &message.PushMessage{
 		Sensor:      "Ping",
 		Category:    "Ping Notificiation",
 		SessionID:   "4334334-3433434-34343-FUD",
@@ -34,7 +34,7 @@ var (
 		Data:        "Hello World!",
 	}
 
-	crum = &pushers.PushMessage{
+	crum = &message.PushMessage{
 		Sensor:      "Crum Stream",
 		Category:    "WebRTC Crum Stream",
 		SessionID:   "4334334-3433434-34343-FUD",
@@ -69,9 +69,9 @@ func TestFileChannel(t *testing.T) {
 		{
 
 			err := fc.UnmarshalConfig(map[string]interface{}{
-				"ms":   "20s",
-				"size": "5",
-				"file": tmpFile,
+				"ms":       "4s",
+				"max_size": "5",
+				"file":     tmpFile,
 			})
 
 			if err != nil {
@@ -79,7 +79,7 @@ func TestFileChannel(t *testing.T) {
 			}
 			t.Logf("\t%s\t Should have successfully parsed configuration", passed)
 
-			fc.Send([]*pushers.PushMessage{blueChip, crum, ping})
+			fc.Send([]*message.PushMessage{blueChip, crum, ping})
 
 			fc.Wait()
 
@@ -99,9 +99,9 @@ func TestFileChannel(t *testing.T) {
 		{
 
 			err := fc.UnmarshalConfig(map[string]interface{}{
-				"ms":   "20s",
-				"size": "5",
-				"file": tmpFile,
+				"ms":       "4s",
+				"max_size": "5",
+				"file":     tmpFile,
 				"filters": map[string]interface{}{
 					"sensor": "[^Ping]",
 				},
@@ -112,7 +112,7 @@ func TestFileChannel(t *testing.T) {
 			}
 			t.Logf("\t%s\t Should have successfully parsed configuration", passed)
 
-			fc.Send([]*pushers.PushMessage{blueChip, crum, ping})
+			fc.Send([]*message.PushMessage{blueChip, crum, ping})
 
 			fc.Wait()
 

@@ -9,10 +9,17 @@ import (
 
 	"github.com/honeytrap/honeytrap/config"
 	"github.com/honeytrap/honeytrap/pushers/elasticsearch"
+	"github.com/honeytrap/honeytrap/pushers/fschannel"
 	"github.com/honeytrap/honeytrap/pushers/honeytrap"
 	"github.com/honeytrap/honeytrap/pushers/message"
 	"github.com/honeytrap/honeytrap/pushers/slack"
 )
+
+// Wait exposes a method to call a wait method to allow a channel finish it's
+// operation.
+type Waiter interface {
+	Wait()
+}
 
 type Channel interface {
 	Send([]*message.PushMessage)
@@ -48,6 +55,14 @@ func New(conf *config.Config) *Pusher {
 			}
 
 			channels = append(channels, &elastic)
+		case "file":
+			fchan := fschannel.New()
+			if err := fchan.UnmarshalConfig(c); err != nil {
+				log.Errorf("Error initializing channel: %s", err.Error())
+				continue
+			}
+
+			channels = append(channels, fchan)
 		case "honeytrap":
 			var htrap honeytrap.HoneytrapChannel
 			if err := htrap.UnmarshalConfig(c); err != nil {
@@ -98,6 +113,8 @@ func (p *Pusher) run() {
 }
 
 func (p *Pusher) send(messages []*message.PushMessage) {
+	// TODO: Should we do some waitgroup here to ensure all channels
+	// properly finish?
 	for _, channel := range p.channels {
 		channel.Send(messages)
 	}
