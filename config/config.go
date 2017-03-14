@@ -71,6 +71,7 @@ type (
 
 type WebConfig struct {
 	Port string `toml:"port"`
+	Path string `toml:"path"`
 }
 
 type AgentConfig struct {
@@ -132,6 +133,7 @@ var DefaultConfig = Config{
 	},
 	Web: WebConfig{
 		Port: ":3000",
+		Path: "",
 	},
 	Agent: AgentConfig{
 		Port: ":6887",

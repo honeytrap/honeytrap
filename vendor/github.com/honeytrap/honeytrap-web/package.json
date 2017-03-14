@@ -1,0 +1,25 @@
+{
+    "devDependencies": {
+        "neutrino": "^4.3.0",
+        "neutrino-preset-airbnb-base": "^4.3.1",
+        "neutrino-preset-react": "^4.2.3"
+    },
+    "config": {
+        "neutrino": {
+            "entry": {
+                "vendor": [
+                    "react",
+                    "react-dom"
+                ]
+            }
+        }
+    },
+    "dependencies": {
+        "react": "^15.4.2",
+        "react-dom": "^15.4.2"
+    },
+    "scripts": {
+        "start": "neutrino start --presets neutrino-preset-airbnb-base neutrino-preset-react",
+        "build": "neutrino build --presets neutrino-preset-airbnb-base neutrino-preset-react"
+    }
+}
