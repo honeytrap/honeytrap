@@ -1,0 +1,123 @@
+{
+    "memo": "0fb9eabf1dc2885fe34ff288a33bbaa50fbd8f7cc6599f729c9176b42d3d543b",
+    "projects": [
+        {
+            "name": "github.com/BurntSushi/toml",
+            "version": "v0.2.0",
+            "revision": "bbd5bb678321a0d6e58f1099321dfa73391c1b6f",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/fatih/color",
+            "version": "v1.4.1",
+            "revision": "9131ab34cf20d2f6d83fdc67168a5430d1c7dc23",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/golang/protobuf",
+            "branch": "master",
+            "revision": "c9c7427a2a70d2eb3bafa0ab2dc163e45f143317",
+            "packages": [
+                "proto"
+            ]
+        },
+        {
+            "name": "github.com/google/gopacket",
+            "version": "v1.1.12",
+            "revision": "b83f94714c36e30ce851be1d5a0a5226f9f1bca4",
+            "packages": [
+                ".",
+                "layers",
+                "pcap",
+                "pcapgo"
+            ]
+        },
+        {
+            "name": "github.com/imdario/mergo",
+            "version": "0.2.2",
+            "revision": "3e95a51e0639b4cf372f2ccf74c86749d747fbdc",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/mattn/go-colorable",
+            "version": "v0.0.7",
+            "revision": "d228849504861217f796da67fae4f6e347643f15",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/mattn/go-isatty",
+            "version": "v0.0.1",
+            "revision": "3a115632dcd687f9c8cd01679c83a06a0e21c1f3",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/minio/cli",
+            "version": "1.2.0",
+            "revision": "565493f259bf868adb54d45d5f4c68d405117adf",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/op/go-logging",
+            "version": "v1",
+            "revision": "b2cb9fa56473e98db8caba80237377e83fe44db5",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/pkg/profile",
+            "version": "v1.2.0",
+            "revision": "1c16f117a3ab788fdf0e334e623b8bccf5679866",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/satori/go.uuid",
+            "branch": "master",
+            "revision": "b061729afc07e77a8aa4fad0a2fd840958f1942a",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "golang.org/x/crypto",
+            "branch": "master",
+            "revision": "40541ccb1c6e64c947ed6f606b8a6cb4b67d7436",
+            "packages": [
+                "curve25519",
+                "ed25519",
+                "ed25519/internal/edwards25519",
+                "ssh"
+            ]
+        },
+        {
+            "name": "golang.org/x/sys",
+            "branch": "master",
+            "revision": "99f16d856c9836c42d24e7ab64ea72916925fa97",
+            "packages": [
+                "unix"
+            ]
+        },
+        {
+            "name": "gopkg.in/lxc/go-lxc.v2",
+            "branch": "v2",
+            "revision": "8304875cc3423823032ec93556beee076c6ba687",
+            "packages": [
+                "."
+            ]
+        }
+    ]
+}
