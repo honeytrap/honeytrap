@@ -1,17 +1,11 @@
 language: go
 
-before_install:
-  - sudo apt-get -qq update
+services:
+  - docker
 
-addons:
-  apt:
-    sources:
-    - sourceline: 'ppa:ubuntu-lxc/stable'
-    packages:
-    - lxc
-    - lxc-templates
-    - lxc-dev
-    - libpcap-dev
+before_install:
+  - docker build -f test.Dockerfile -t honeytrap/travis-build ./ 
+  - docker run -d -p 8022:8022 -p 3000:3000 honeytrap/travis-build /bin/sh -C "cd /honeytrap; honeytrap"
 
 env:
   - GIMME_OS=linux GIMME_ARCH=amd64
@@ -20,7 +14,9 @@ go:
   - master
 
 install:
-  - go get -d -v ./...
+  - docker ps -a
+
 
 script:
-  - go build -v ./...
+  - ls  
+  - echo "Done!"
