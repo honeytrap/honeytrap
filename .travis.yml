@@ -9,7 +9,6 @@ addons:
     - sourceline: 'ppa:ubuntu-lxc/stable'
     packages:
     - lxc
-    - lxc-templates
     - lxc-dev
     - libpcap-dev
 
