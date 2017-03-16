@@ -14,5 +14,8 @@ env:
 go:
   - master
 
+install:
+  
+
 script:
   - go build -v 
