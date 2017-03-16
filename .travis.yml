@@ -14,9 +14,5 @@ env:
 go:
   - master
 
-install:
-  - go get -d -v ./...
-
 script:
-  - go test -v ./...
-  - go build -v ./...
+  - go build -v 
