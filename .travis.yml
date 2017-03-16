@@ -7,7 +7,6 @@ before_install:
   - docker build -f test.Dockerfile -t honeytrap/travis-build ./ 
   - docker run -d -p 8022:8022 -p 3000:3000 honeytrap/travis-build /bin/sh -C "cd /honeytrap; honeytrap"
   - docker ps -a
-  - docker run honeytrap/travis-build /bin/sh -C "go test -v ./..."
 
 env:
   - GIMME_OS=linux GIMME_ARCH=amd64

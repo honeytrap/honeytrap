@@ -6,6 +6,8 @@ WORKDIR /go/src/github.com/honeytrap/honeytrap
 
 RUN go get -v
 
+RUN go test -v ./...
+
 RUN go install
 
 RUN bash -c "mkdir -p /honeytrap"
