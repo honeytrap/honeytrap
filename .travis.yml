@@ -1,5 +1,8 @@
 language: go
 
+notifications:
+  slack: honeycast:P9gQukyVSKgFEyoGh2efeK1H
+
 services:
   - docker
 
