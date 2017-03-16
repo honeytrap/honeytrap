@@ -4,8 +4,6 @@ ADD . /go/src/github.com/honeytrap/honeytrap
 
 WORKDIR /go/src/github.com/honeytrap/honeytrap
 
-RUN go get -v
-
 RUN go install
 
 RUN bash -c "mkdir -p /honeytrap"
