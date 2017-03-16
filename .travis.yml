@@ -1,5 +1,8 @@
 language: go
 
+notifications:
+  slack: honeycast:P9gQukyVSKgFEyoGh2efeK1H
+
 services:
   - docker
 
@@ -18,5 +21,4 @@ install:
 
 
 script:
-  - ls  
   - echo "Done!"
