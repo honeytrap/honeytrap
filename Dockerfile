@@ -2,10 +2,6 @@ FROM influx6/lxcontains-ubuntu
 
 ADD . /go/src/github.com/honeytrap/honeytrap
 
-WORKDIR /go/src/github.com/honeytrap/honeytrap
-
-RUN go install
-
 RUN bash -c "mkdir -p /honeytrap"
 RUN cp config.toml.sample /honeytrap/config.toml
 
@@ -15,5 +11,3 @@ EXPOSE 8022
 EXPOSE 3000
 
 ENTRYPOINT honeytrap
-
-
