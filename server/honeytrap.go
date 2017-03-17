@@ -97,16 +97,6 @@ func (hc *honeytrap) startProxies() {
 			*/
 
 			go func(listener net.Listener) {
-				defer func() {
-					if err := recover(); err != nil {
-						trace := make([]byte, 1024)
-						count := runtime.Stack(trace, true)
-						log.Errorf("Error: %s", err)
-						log.Debugf("Stack of %d bytes: %s\n", count, string(trace))
-						return
-					}
-				}()
-
 				/*
 					l, err := net.Listen("tcp", address)
 					if err != nil {
