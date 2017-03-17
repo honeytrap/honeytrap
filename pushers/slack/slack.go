@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/honeytrap/honeytrap/pushers/message"
-	"github.com/op/go-logging"
 )
 
 var log = logging.MustGetLogger("honeytrap:channels:slack")
