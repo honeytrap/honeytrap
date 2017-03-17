@@ -8,13 +8,12 @@ import (
 	"net"
 	"sync"
 
-	"github.com/op/go-logging"
-
 	config "github.com/honeytrap/honeytrap/config"
 	providers "github.com/honeytrap/honeytrap/providers"
 	pushers "github.com/honeytrap/honeytrap/pushers"
 
-	lxc "gopkg.in/lxc/go-lxc.v2"
+	lxc "github.com/honeytrap/golxc"
+	logging "github.com/op/go-logging"
 )
 
 var log = logging.MustGetLogger("honeytrap:director")
