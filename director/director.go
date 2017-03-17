@@ -8,8 +8,6 @@ import (
 	"net"
 	"sync"
 
-	"github.com/op/go-logging"
-
 	config "github.com/honeytrap/honeytrap/config"
 	providers "github.com/honeytrap/honeytrap/providers"
 	pushers "github.com/honeytrap/honeytrap/pushers"
@@ -17,6 +15,7 @@ import (
 
 var log = logging.MustGetLogger("honeytrap:director")
 
+// Director defines a struct which handles the management of registered containers.
 type Director struct {
 	containers map[string]providers.Container
 	m          sync.Mutex
@@ -24,6 +23,7 @@ type Director struct {
 	provider   providers.Provider
 }
 
+// New returns a new instance of a Director.
 func New(conf *config.Config) *Director {
 	pusher := pushers.NewRecordPusher(conf)
 	d := &Director{
@@ -65,16 +65,21 @@ func (d *Director) getName(c net.Conn) (string, error) {
 	}
 
 	hasher := md5.New()
-	hasher.Write([]byte(fmt.Sprintf("%s%s", rhost, d.config.Token)))
+	if _, err := hasher.Write([]byte(fmt.Sprintf("%s%s", rhost, d.config.Token))); err != nil {
+		log.Errorf("Error during hasher.Write call: %s", err.Error())
+	}
+
 	return fmt.Sprintf("%x", hasher.Sum(nil)), nil
 }
 
+// NewContainer returns a new providers.Container instance from the provided internal providers.
 func (d *Director) NewContainer(name string) (providers.Container, error) {
 	return d.provider.NewContainer(
 		name,
 	)
 }
 
+// GetContainer returns a provider.Container instance from those already created on the director.
 func (d *Director) GetContainer(c net.Conn) (providers.Container, error) {
 	d.m.Lock()
 	defer d.m.Unlock()
