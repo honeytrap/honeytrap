@@ -2,7 +2,6 @@ package server
 
 import (
 	"net"
-	"runtime"
 
 	_ "net/http/pprof"
 
@@ -33,25 +32,6 @@ type honeytrap struct {
 
 type ServeFunc func() error
 
-func RecoverHandler(serveFn ServeFunc) error {
-	defer func() {
-		if err := recover(); err != nil {
-			trace := make([]byte, 1024)
-			count := runtime.Stack(trace, true)
-			log.Errorf("Error: %s", err)
-			log.Debugf("Stack of %d bytes: %s\n", count, string(trace))
-			return
-		}
-	}()
-
-	if err := serveFn(); err != nil {
-		log.Error("Error: ", err)
-		return err
-	}
-
-	return nil
-}
-
 func New(conf *config.Config) *honeytrap {
 	director := director.New(conf)
 	pusher := pushers.New(conf)
@@ -76,7 +56,6 @@ func (hc *honeytrap) startPusher() {
 
 func (hc *honeytrap) startProxies() {
 	for _, primitive := range hc.config.Services {
-
 		st := struct {
 			Service string `toml:"service"`
 			Port    string `toml:"port"`
