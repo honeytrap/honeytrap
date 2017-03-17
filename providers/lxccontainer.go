@@ -16,7 +16,7 @@ import (
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/sniffer"
 
-	lxc "gopkg.in/lxc/go-lxc.v2"
+	lxc "github.com/honeytrap/golxc"
 )
 
 /*
