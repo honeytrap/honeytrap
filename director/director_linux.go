@@ -11,13 +11,9 @@ import (
 	config "github.com/honeytrap/honeytrap/config"
 	providers "github.com/honeytrap/honeytrap/providers"
 	pushers "github.com/honeytrap/honeytrap/pushers"
-	logging "github.com/op/go-logging"
 
 	lxc "github.com/honeytrap/golxc"
-	logging "github.com/op/go-logging"
 )
-
-var log = logging.MustGetLogger("honeytrap:director")
 
 // Director defines a struct which handles the management of registered containers.
 type Director struct {
