@@ -3,7 +3,7 @@
 package director
 
 import (
-	"crypto/md5"
+	"crypto/md5" // #nosec
 	"fmt"
 	"net"
 	"sync"
@@ -70,6 +70,7 @@ func (d *Director) getName(c net.Conn) (string, error) {
 		return "", err
 	}
 
+	/* #nosec */
 	hasher := md5.New()
 	if _, err := hasher.Write([]byte(fmt.Sprintf("%s%s", rhost, d.config.Token))); err != nil {
 		log.Errorf("Error during hasher.Write call: %s", err.Error())
