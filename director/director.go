@@ -11,6 +11,7 @@ import (
 	config "github.com/honeytrap/honeytrap/config"
 	providers "github.com/honeytrap/honeytrap/providers"
 	pushers "github.com/honeytrap/honeytrap/pushers"
+	logging "github.com/op/go-logging"
 )
 
 var log = logging.MustGetLogger("honeytrap:director")
