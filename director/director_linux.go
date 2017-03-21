@@ -10,7 +10,6 @@ import (
 
 	config "github.com/honeytrap/honeytrap/config"
 	providers "github.com/honeytrap/honeytrap/providers"
-	pushers "github.com/honeytrap/honeytrap/pushers"
 
 	lxc "github.com/honeytrap/golxc"
 )
@@ -25,22 +24,23 @@ type Director struct {
 
 // New returns a new instance of a Director.
 func New(conf *config.Config) *Director {
-	pusher := pushers.NewRecordPusher(conf)
+	// TODO: Need to replace this with Event API.
+	// pusher := pushers.NewRecordPusher(conf)
 
 	d := &Director{
 		containers: map[string]providers.Container{},
 		config:     conf,
-		provider:   providers.NewLxcProvider(pusher, conf),
+		provider:   providers.NewLxcProvider(conf),
 	}
 
 	d.registerContainers()
 
 	// TODO: do we need this pusher?, use default pushers, PushData or something
-	go func() {
-		if err := pusher.Run(); err != nil {
-			log.Errorf("Error during Run call for pusher: %s", err.Error())
-		}
-	}()
+	// go func() {
+	// 	if err := pusher.Run(); err != nil {
+	// 		log.Errorf("Error during Run call for pusher: %s", err.Error())
+	// 	}
+	// }()
 
 	return d
 }

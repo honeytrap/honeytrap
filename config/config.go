@@ -5,11 +5,12 @@ import (
 	"time"
 
 	"github.com/imdario/mergo"
-	"github.com/op/go-logging"
 
-	"github.com/BurntSushi/toml"
 	"io"
 	"os"
+
+	"github.com/BurntSushi/toml"
+	logging "github.com/op/go-logging"
 )
 
 var log = logging.MustGetLogger("honeytrap:config")
@@ -50,6 +51,7 @@ type (
 		Folders     Folders     `toml:"folders"`
 		HouseKeeper HouseKeeper `toml:"housekeeper"`
 
+		Backends map[string]interface{}   `toml:"backends"`
 		Channels []map[string]interface{} `toml:"channels"`
 
 		Services []toml.Primitive `toml:"services"`

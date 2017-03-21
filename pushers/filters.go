@@ -1,7 +1,10 @@
 package pushers
 
-import "regexp"
-import "github.com/honeytrap/honeytrap/pushers/message"
+import (
+	"regexp"
+
+	"github.com/honeytrap/honeytrap/pushers/message"
+)
 
 //==========================================================================================
 
@@ -29,6 +32,12 @@ func CategoryFilterFunc(rx *regexp.Regexp, message *message.PushMessage) bool {
 	return rx.MatchString(message.Category)
 }
 
+// EventFilterFunc defines a function to validate a PushMessage.Category value
+// based on a provided regular expression.
+func EventFilterFunc(rx *regexp.Regexp, message *message.PushMessage) bool {
+	return rx.MatchString("")
+}
+
 //==========================================================================================
 
 // RegExpFilter defines a struct which implements the Filters interface and
@@ -50,7 +59,7 @@ func NewRegExpFilter(fn RegExpFilterFunction, rx ...*regexp.Regexp) *RegExpFilte
 
 // Filter returns a slice of messages passed in which passes the internal regular
 // expressions criterias.
-func (r *RegExpFilters) Filter(messages ...*message.PushMessage) []*message.PushMessage {
+func (r *RegExpFilter) Filter(messages ...*message.PushMessage) []*message.PushMessage {
 	var filtered []*message.PushMessage
 
 	{

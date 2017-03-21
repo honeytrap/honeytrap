@@ -10,7 +10,6 @@ import (
 
 	config "github.com/honeytrap/honeytrap/config"
 	providers "github.com/honeytrap/honeytrap/providers"
-	pushers "github.com/honeytrap/honeytrap/pushers"
 )
 
 // Director defines a struct which handles the management of registered containers.
@@ -23,7 +22,9 @@ type Director struct {
 
 // New returns a new instance of a Director.
 func New(conf *config.Config) *Director {
-	pusher := pushers.NewRecordPusher(conf)
+	// TODO: Need to replace this with Event API.
+	// pusher := pushers.NewRecordPusher(conf)
+
 	d := &Director{
 		containers: map[string]providers.Container{},
 		config:     conf,
@@ -33,7 +34,8 @@ func New(conf *config.Config) *Director {
 	d.registerContainers()
 
 	// TODO: do we need this pusher?, use default pushers, PushData or something
-	go pusher.Run()
+	// go pusher.Run()
+
 	return d
 }
 

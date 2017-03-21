@@ -5,56 +5,38 @@ push_every = "10s"
 freeze_every = "10s"
 stop_every = "30s"
 
-[[channels]]
-name = "honeytrap"
+[[backend.honeytrap]]
 host = "http://api.honeytrap.io/"
 token = "b0b6e462-ef0b-11e6-abc7-0fb6247f5820"
 
-[[channels]]
-name = "file"
+[[backend.file]]
 file = "/store/files/pushers.pub"
 ms = "50s"
 max_size = 3000
 
-[channels.filters]
-sensors = "^ping"
-container_id = "bob"
-sensors_id = "^TUH43-"
-category_id = "^21223-"
-
-[[channels]]
-name = "slack"
+[[backend.slack]]
+key = "slack.1"
 host = "https://hooks.slack.com/services/"
 token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
 
-[channels.fields]
-sensors = "^ping"
-container_id = "bob"
-sensors_id = "^TUH43-"
-category_id = "^21223-"
-
-[[channels.channels]]
-field = "sensors"
-value = "^ping"
-channel = "ping-channel"
+[[backend.slack]]
+key = "slack.1"
+host = "https://hooks.slack.com/services/"
 token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
 
-[[channels.channels]]
-field = "categories"
-value = "^WebRTC"
-channel = "webrtc-channel"
+[[backend.slack]]
+key = "slack.2"
+host = "https://hooks.slack.com/services/"
 token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
 
-[[channels.channels]]
-field = "session_id"
-value = "32121-"
-channel = "sessions-channel"
+[[backend.slack]]
+key = "slack.3"
+host = "https://hooks.slack.com/services/"
 token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
 
-[[channels.channels]]
-field = "container_id"
-value = "32121-"
-channel = "containers-channel"
+[[backend.slack]]
+key = "slack.4"
+host = "https://hooks.slack.com/services/"
 token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
 
 [housekeeper]

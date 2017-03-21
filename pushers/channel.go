@@ -3,6 +3,7 @@ package pushers
 import (
 	"errors"
 
+	"github.com/honeytrap/honeytrap/pushers/message"
 	logging "github.com/op/go-logging"
 )
 
@@ -15,7 +16,7 @@ var log = logging.MustGetLogger("honeytrap:channels")
 // BackendRegistry defines an interface which prvides a registery of backend Channel
 // retrievable through a string key.
 type BackendRegistry interface {
-	Get(string) (Channel, error)
+	GetBackend(string) (Channel, error)
 }
 
 // MasterChannel defines a struct which handles the delivery of giving
@@ -23,14 +24,13 @@ type BackendRegistry interface {
 type MasterChannel struct {
 	backends []Channel
 	filters  []Filters
-	registry Backends
+	registry BackendRegistry
 }
 
 // NewMasterChannel returns a new instance of the MasterChannel.
 func NewMasterChannel(br BackendRegistry, filters ...Filters) *MasterChannel {
 	var mc MasterChannel
 	mc.registry = br
-	mc.config = config
 	mc.filters = filters
 
 	return &mc
@@ -51,7 +51,7 @@ func (mc *MasterChannel) UnmarshalConfig(m interface{}) error {
 
 	// Generate all filters for the channel's backends
 	for _, backend := range backends {
-		bl, err := mc.registry.Get(backend)
+		bl, err := mc.registry.GetBackend(backend)
 		if err != nil {
 			return err
 		}
@@ -71,16 +71,14 @@ func (mc *MasterChannel) UnmarshalConfig(m interface{}) error {
 		return errors.New("Expected to have 'sensors' key in map")
 	}
 
-	mc.filters = append(mc.filters, NewRegExpFilter(SensorFilterFunc, MakeMatchers(categories...)...))
+	mc.filters = append(mc.filters, NewRegExpFilter(SensorFilterFunc, MakeMatchers(sensors...)...))
 
 	events, ok := conf["events"].([]string)
 	if !ok {
 		return errors.New("Expected to have 'events' key in map")
 	}
 
-	_ = events
-
-	mc.filters = append(mc.filters)
+	mc.filters = append(mc.filters, NewRegExpFilter(EventFilterFunc, MakeMatchers(events...)...))
 
 	return nil
 }
@@ -91,7 +89,7 @@ func (mc *MasterChannel) Send(msgs []*message.PushMessage) {
 
 	// filter messages with all filters.
 	for _, filter := range mc.filters {
-		msgs = filter(msgs...)
+		msgs = filter.Filter(msgs...)
 	}
 
 	// If no message passes our filtering conditions then we have

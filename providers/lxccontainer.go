@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/honeytrap/honeytrap/config"
-	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/sniffer"
 
 	lxc "github.com/honeytrap/golxc"
@@ -31,11 +30,10 @@ type LxcConfig struct {
 
 type LxcProvider struct {
 	config *config.Config
-	pusher *pushers.RecordPush
 }
 
-func NewLxcProvider(pusher *pushers.RecordPush, config *config.Config) Provider {
-	return &LxcProvider{config, pusher}
+func NewLxcProvider(config *config.Config) Provider {
+	return &LxcProvider{config}
 }
 
 type LxcContainer struct {
@@ -388,7 +386,11 @@ func (c *LxcContainer) freeze() error {
 		}
 
 		endpoint := fmt.Sprintf("http://api.honeytrap.io/v1/container/%s/checkpoint", c.name)
-		c.provider.pusher.Push(endpoint, buff)
+
+		// TODO: Replace with Event API.
+		// c.provider.pusher.Push(endpoint, buff)
+		_ = endpoint
+		_ = buff
 		break
 	}
 
@@ -414,7 +416,11 @@ func (c *LxcContainer) freeze() error {
 		}
 
 		log.Debugf("Pushing packets")
-		c.provider.pusher.Push(endpoint, buff)
+		// TODO: Replace with Event API.
+		// c.provider.pusher.Push(endpoint, buff)
+		_ = endpoint
+		_ = buff
+
 		break
 	}
 
@@ -445,7 +451,11 @@ func (c *LxcContainer) freeze() error {
 		}
 
 		endpoint := fmt.Sprintf("http://api.honeytrap.io/v1/container/%s/data", c.name)
-		c.provider.pusher.Push(endpoint, buff)
+
+		// TODO: Replace with Event API.
+		// c.provider.pusher.Push(endpoint, buff)
+		_ = endpoint
+		_ = buff
 		break
 	}
 

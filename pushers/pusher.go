@@ -1,10 +1,7 @@
 package pushers
 
 import (
-	"bytes"
-	"fmt"
-	"io/ioutil"
-	"net/http"
+	"errors"
 	"time"
 
 	"github.com/honeytrap/honeytrap/config"
@@ -34,67 +31,102 @@ type Pusher struct {
 	q        chan *message.PushMessage
 	queue    []*message.PushMessage
 	age      time.Duration
+	backends map[string]Channel
 	channels []Channel
 }
 
 // New returns a new instance of Pusher.
 func New(conf *config.Config) *Pusher {
-	channels := []Channel{}
+	backends := make(map[string]Channel)
 
-	for _, c := range conf.Channels {
-		var ok bool
-		var name string
+	for name, c := range conf.Backends {
+		backend, ok := c.(map[string]interface{})
+		if !ok {
+			log.Errorf("Found key %q with non-map config value: %#v", name, c)
+			continue
+		}
 
-		if name, ok = c["name"].(string); !ok {
-			// TODO: add available channel names
-			log.Errorf("Channel name not provided. Available channels are: %s", "")
+		key, ok := backend["key"].(string)
+		if !ok {
+			key = name
+		}
+
+		// Check if key already exists and panic.
+		if _, ok := backends[key]; ok {
+			// TODO: should log instead of panic here?
+			log.Errorf("Found key %q already used for previous backend", key)
 			continue
 		}
 
 		switch name {
 		case "elasticsearch":
 			var elastic elasticsearch.ElasticSearchChannel
-			if err := elastic.UnmarshalConfig(c); err != nil {
+			if err := elastic.UnmarshalConfig(backend); err != nil {
 				log.Errorf("Error initializing channel: %s", err.Error())
 				continue
 			}
 
-			channels = append(channels, &elastic)
+			backends[key] = &elastic
 		case "file":
 			fchan := fschannel.New()
-			if err := fchan.UnmarshalConfig(c); err != nil {
+			if err := fchan.UnmarshalConfig(backend); err != nil {
 				log.Errorf("Error initializing channel: %s", err.Error())
 
 				continue
 			}
 
-			channels = append(channels, fchan)
+			backends[key] = fchan
 		case "honeytrap":
 			var htrap honeytrap.HoneytrapChannel
-			if err := htrap.UnmarshalConfig(c); err != nil {
+			if err := htrap.UnmarshalConfig(backend); err != nil {
 				log.Errorf("Error initializing channel: %s", err.Error())
 				continue
 			}
 
-			channels = append(channels, &htrap)
+			backends[key] = &htrap
 		case "slack":
 			var slackChannel slack.MessageChannel
-			if err := slackChannel.UnmarshalConfig(c); err != nil {
+			if err := slackChannel.UnmarshalConfig(backend); err != nil {
 				log.Errorf("Error initializing channel: %s", err.Error())
 				continue
 			}
 
-			channels = append(channels, &slackChannel)
+			backends[key] = &slackChannel
 		}
 	}
 
-	return &Pusher{
-		q:        make(chan *message.PushMessage),
+	p := &Pusher{
 		config:   conf,
+		backends: backends,
 		queue:    []*message.PushMessage{},
-		channels: channels,
+		q:        make(chan *message.PushMessage),
 		age:      conf.Delays.PushDelay.Duration(),
 	}
+
+	for _, cb := range conf.Channels {
+		master := NewMasterChannel(p)
+		if err := master.UnmarshalConfig(cb); err != nil {
+			log.Errorf("Failed to create channel for config [%#q]: %+q", cb, err)
+			continue
+		}
+
+		p.channels = append(p.channels, master)
+	}
+
+	return p
+}
+
+// ErrBackendNotFound defines an error returned when a backend key
+// does not match the registered keys.
+var ErrBackendNotFound = errors.New("Backend not found")
+
+// GetBackend returns a giving backend registered with the pusher.
+func (p *Pusher) GetBackend(key string) (Channel, error) {
+	if channel, ok := p.backends[key]; ok {
+		return channel, nil
+	}
+
+	return nil, ErrBackendNotFound
 }
 
 // Start defines a function which kickstarts the internal pusher call loop.
@@ -176,94 +208,4 @@ func (p *Pusher) add(a *message.PushMessage) {
 	if len(p.queue) > 20 {
 		p.flush()
 	}
-}
-
-// RecordPush implements a struct which hands record push functionality.
-type RecordPush struct {
-	config *config.Config
-	queue  []*Record
-	q      chan *Record
-	age    time.Duration
-}
-
-// NewRecordPusher returns a new instance of a RecordPush.
-func NewRecordPusher(conf *config.Config) *RecordPush {
-	return &RecordPush{
-		config: conf,
-		queue:  []*Record{},
-		q:      make(chan *Record),
-		age:    conf.Delays.PushDelay.Duration(),
-	}
-
-}
-
-// Push adds the giving data as Record notifications.
-func (p *RecordPush) Push(to string, data []byte) {
-	p.q <- &Record{to, data}
-}
-
-func (p *RecordPush) add(a *Record) {
-	p.queue = append(p.queue, a)
-
-	if len(p.queue) > 20 {
-		p.flush()
-	}
-}
-
-// Run begins the run loop for the RecordPush structure.
-func (p *RecordPush) Run() {
-	log.Info("RecordPusher started")
-	defer log.Info("RecordPusher stopped")
-
-	for {
-		select {
-		case <-time.After(p.age):
-			p.flush()
-		case a := <-p.q:
-			p.add(a)
-		}
-	}
-
-	// TODO: We need to figure out where the call to Run stops,
-	// 1. Does it stop after the call to time.After?
-	// 2. Does it not stop at all, hence this code becomes unreachable.
-}
-
-func (p *RecordPush) flush() {
-	if len(p.queue) == 0 {
-		return
-	}
-
-	go func(recs []*Record) {
-		client := http.DefaultClient
-
-		for _, rec := range recs {
-			log.Info("Creating Http Req to %s", rec.Path)
-			req, err := http.NewRequest("POST", rec.Path, bytes.NewBuffer(rec.Data))
-			if err != nil {
-				log.Error(err.Error())
-				return
-			}
-
-			req.Header.Add("Authorization", fmt.Sprintf("%s %s", "Token", p.config.Token))
-
-			resp, err := client.Do(req)
-			if err != nil {
-				log.Error(err.Error())
-				return
-			}
-
-			defer resp.Body.Close()
-
-			b2, err := ioutil.ReadAll(resp.Body)
-			if err != nil {
-				log.Error(err.Error())
-				return
-			}
-
-			log.Info("Submission to (%s): %s with status %d", rec.Path, string(b2), resp.StatusCode)
-		}
-	}(p.queue)
-
-	p.queue = []*Record{}
 }
