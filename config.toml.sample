@@ -10,6 +10,14 @@ name = "honeytrap"
 host = "http://api.honeytrap.io/"
 token = "b0b6e462-ef0b-11e6-abc7-0fb6247f5820"
 
+[[channels]]
+name = "slack"
+host = "https://hooks.slack.com/services/"
+token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
+
+[channels.fields]
+sensors = "^ping"
+
 [housekeeper]
 every = "10s"
 

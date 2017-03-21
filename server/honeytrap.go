@@ -16,6 +16,7 @@ import (
 	pushers "github.com/honeytrap/honeytrap/pushers"
 	_ "github.com/honeytrap/honeytrap/pushers/elasticsearch"
 	_ "github.com/honeytrap/honeytrap/pushers/honeytrap"
+	_ "github.com/honeytrap/honeytrap/pushers/slack"
 
 	utils "github.com/honeytrap/honeytrap/utils"
 
