@@ -130,7 +130,7 @@ func (c *LxcContainer) start() error {
 	}
 
 	if err := c.sf.Start(c.idevice); err != nil {
-		log.Errorf("Error occured while attaching sniffer for %s to %s ", c.name, c.idevice, err)
+		log.Errorf("Error occured while attaching sniffer for %s to %s: %s", c.name, c.idevice, err.Error())
 	}
 
 	return nil
@@ -139,6 +139,7 @@ func (c *LxcContainer) start() error {
 func (c *LxcContainer) housekeeper() {
 	// container lifetime function
 	log.Infof("Housekeeper (%s) started.", c.name)
+	defer log.Infof("Housekeeper (%s) stopped.", c.name)
 
 	for {
 		time.Sleep(time.Duration(c.config.Delays.HousekeeperDelay))
@@ -157,8 +158,6 @@ func (c *LxcContainer) housekeeper() {
 			c.freeze()
 		}
 	}
-
-	log.Infof("Housekeeper (%s) stopped.", c.name)
 }
 
 func (c *LxcContainer) isRunning() bool {
@@ -185,7 +184,7 @@ func (c *LxcContainer) unfreeze() error {
 	}
 
 	if err := c.sf.Start(c.idevice); err != nil {
-		log.Errorf("Error occured while attaching sniffer for %s to %s ", c.name, c.idevice, err)
+		log.Errorf("Error occured while attaching sniffer for %s to %s: %s", c.name, c.idevice, err.Error())
 	}
 
 	return nil
@@ -362,31 +361,29 @@ func (c *LxcContainer) freeze() error {
 	}
 
 	// should actually first checkpoint, stop sniffer and freeze, then tar
-
 	for {
-		log.Debug("Checkpointing container: %s", c.name)
-
+		log.Debugf("Checkpointing container: %s", c.name)
 		chpnt, err := c.checkpoint()
 		if err != nil {
-			log.Error("Checkpoint failed: %s", err.Error())
+			log.Errorf("Checkpoint failed: %s", err.Error())
 			break
 		}
 
 		chp, err := NewFileCloser(chpnt)
 		if err != nil {
-			log.Error("Unable to find checkpoint file closer: %s", err)
+			log.Errorf("Unable to find checkpoint file closer: %s", err)
 			break
 		}
 
 		defer func() {
 			if err := os.Remove(chp.Name()); err != nil {
-				log.Error("Error deleting file (%s):", chp.Name(), err.Error())
+				log.Errorf("Error deleting file (%s): %s", chp.Name(), err.Error())
 			}
 		}()
 
 		buff, err := ioutil.ReadAll(chp)
 		if err != nil {
-			log.Error("Could not read checkpoint: %s", err)
+			log.Errorf("Could not read checkpoint: %s", err)
 			break
 		}
 
@@ -406,13 +403,13 @@ func (c *LxcContainer) freeze() error {
 
 		r, err := c.sf.Stop()
 		if err != nil {
-			log.Errorf("Could not read packets", err)
+			log.Errorf("Could not read packets: %s", err)
 			break
 		}
 
 		buff, err := ioutil.ReadAll(r)
 		if err != nil {
-			log.Errorf("Could not read packets", err)
+			log.Errorf("Could not read packets: %s", err)
 			break
 		}
 
@@ -425,7 +422,7 @@ func (c *LxcContainer) freeze() error {
 		log.Debugf("Tarring container: %s", c.name)
 		delta, err := c.deltaUp()
 		if err != nil {
-			log.Error("Could not tar: %s", err)
+			log.Errorf("Could not tar: %s", err)
 			break
 		}
 
@@ -437,13 +434,13 @@ func (c *LxcContainer) freeze() error {
 
 		defer func() {
 			if err := os.Remove(r.Name()); err != nil {
-				log.Error("Error deleting file (%s):", r.Name(), err.Error())
+				log.Errorf("Error deleting file (%s): %s", r.Name(), err.Error())
 			}
 		}()
 
 		buff, err := ioutil.ReadAll(r)
 		if err != nil {
-			log.Error(err.Error())
+			log.Errorf("Error reading file: %s", err.Error())
 			break
 		}
 

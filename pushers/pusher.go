@@ -59,6 +59,7 @@ func New(conf *config.Config) *Pusher {
 			fchan := fschannel.New()
 			if err := fchan.UnmarshalConfig(c); err != nil {
 				log.Errorf("Error initializing channel: %s", err.Error())
+
 				continue
 			}
 
@@ -97,6 +98,8 @@ func (p *Pusher) Start() {
 
 func (p *Pusher) run() {
 	log.Info("Pusher started")
+	defer log.Info("Pusher exited")
+
 	for {
 		select {
 		case <-time.After(p.age):
@@ -109,7 +112,6 @@ func (p *Pusher) run() {
 	// TODO: We need to figure out where the call to Run stops,
 	// 1. Does it stop after the call to time.After?
 	// 2. Does it not stop at all, hence this code becomes unreachable.
-	log.Info("Pusher exited")
 }
 
 func (p *Pusher) send(messages []*message.PushMessage) {
@@ -235,8 +237,10 @@ func (p *RecordPush) add(a *Record) {
 	}
 }
 
-func (p *RecordPush) Run() error {
+func (p *RecordPush) Run() {
 	log.Info("RecordPusher started")
+	defer log.Info("RecordPusher stopped")
+
 	for {
 		select {
 		case <-time.After(p.age):
@@ -249,7 +253,4 @@ func (p *RecordPush) Run() error {
 	// TODO: We need to figure out where the call to Run stops,
 	// 1. Does it stop after the call to time.After?
 	// 2. Does it not stop at all, hence this code becomes unreachable.
-	log.Info("RecordPusher stopped")
-
-	return nil
 }

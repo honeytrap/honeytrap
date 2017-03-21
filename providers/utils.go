@@ -79,7 +79,7 @@ func TarWalker(rootpath string, w io.Writer) error {
 
 	walkFn := func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			log.Error("Error while walking path %s: ", path, err.Error())
+			log.Errorf("Error while walking path %s: %s", path, err.Error())
 			return err
 		}
 
@@ -120,7 +120,7 @@ func TarWalker(rootpath string, w io.Writer) error {
 
 	err := filepath.Walk(rootpath, walkFn)
 	if err != nil {
-		log.Error("Error occured walking dir %s with Error: (%+s)", rootpath, err.Error())
+		log.Errorf("Error occured walking dir %s with Error: (%+s)", rootpath, err.Error())
 		return err
 	}
 
