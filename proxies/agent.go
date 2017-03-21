@@ -67,10 +67,18 @@ func (c *AgentConn) RemoteAddr() net.Addr {
 	addr, port, _ := net.SplitHostPort(c.remoteAddr)
 
 	if value, err := strconv.Atoi(port); err != nil {
-		return &net.TCPAddr{net.ParseIP(addr), value, ""}
+		return &net.TCPAddr{
+			IP:   net.ParseIP(addr),
+			Port: value,
+			Zone: "",
+		}
 	}
 
-	return &net.TCPAddr{net.ParseIP(addr), 0, ""}
+	return &net.TCPAddr{
+		IP:   net.ParseIP(addr),
+		Port: 0,
+		Zone: "",
+	}
 }
 
 func (ac *AgentConn) Ping() error {
@@ -133,7 +141,7 @@ func (ac *AgentConn) Forward() error {
 		Token:      ac.token,
 	})
 
-	log.Debug("Received Agent connection from: %s with token: %s", ac.remoteAddr, ac.token)
+	log.Debugf("Received Agent connection from: %s with token: %s", ac.remoteAddr, ac.token)
 
 	// TODO: make configurable
 	var dport string
@@ -145,11 +153,11 @@ func (ac *AgentConn) Forward() error {
 	case *payload.Protocol == "smtp":
 		dport = "25"
 	default:
-		log.Error("Unsupported agent protocol: %s", *payload.Protocol)
+		log.Errorf("Unsupported agent protocol: %s", *payload.Protocol)
 		return ErrAgentUnsupportedProtocol
 	}
 
-	log.Debug("Agent forwarding protocol: %s(%s) %s", *payload.RemoteAddress, dport, *payload.Protocol)
+	log.Debugf("Agent forwarding protocol: %s(%s) %s", *payload.RemoteAddress, dport, *payload.Protocol)
 
 	var c2 net.Conn
 	c2, err = container.Dial(dport)
@@ -175,7 +183,7 @@ func (ac *AgentConn) Forward() error {
 
 		sp = forwarder.Forward(&pc)
 	default:
-		log.Error("Unsupported agent protocol: %s", *payload.Protocol)
+		log.Errorf("Unsupported agent protocol: %s", *payload.Protocol)
 		return ErrAgentUnsupportedProtocol
 	}
 

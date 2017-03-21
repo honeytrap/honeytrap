@@ -1,4 +1,4 @@
-// +build linux
+// +build !linux
 
 package director
 
@@ -11,8 +11,6 @@ import (
 	config "github.com/honeytrap/honeytrap/config"
 	providers "github.com/honeytrap/honeytrap/providers"
 	pushers "github.com/honeytrap/honeytrap/pushers"
-
-	lxc "github.com/honeytrap/golxc"
 )
 
 // Director defines a struct which handles the management of registered containers.
@@ -26,42 +24,36 @@ type Director struct {
 // New returns a new instance of a Director.
 func New(conf *config.Config) *Director {
 	pusher := pushers.NewRecordPusher(conf)
-
 	d := &Director{
 		containers: map[string]providers.Container{},
 		config:     conf,
-		provider:   providers.NewLxcProvider(pusher, conf),
+		provider:   nil,
 	}
 
 	d.registerContainers()
 
 	// TODO: do we need this pusher?, use default pushers, PushData or something
-	go func() {
-		if err := pusher.Run(); err != nil {
-			log.Errorf("Error during Run call for pusher: %s", err.Error())
-		}
-	}()
-
+	go pusher.Run()
 	return d
 }
 
 func (d *Director) registerContainers() {
 	// TODO: make this lxc independent
-	for _, c := range lxc.Containers() {
-		if c.State() == lxc.STOPPED {
-			continue
+	/*
+		for _, c := range lxc.Containers() {
+			if c.State() == lxc.STOPPED {
+				continue
+			}
+
+			container, err := d.NewContainer(c.Name())
+			if err != nil {
+				log.Error("Error during container registration: %s", err.Error())
+				continue
+			}
+
+			d.containers[c.Name()] = container
 		}
-
-		name := c.Name()
-
-		container, err := d.NewContainer(name)
-		if err != nil {
-			log.Errorf("Error during container registration: %s", err.Error())
-			continue
-		}
-
-		d.containers[name] = container
-	}
+	*/
 }
 
 func (d *Director) getName(c net.Conn) (string, error) {
@@ -74,7 +66,6 @@ func (d *Director) getName(c net.Conn) (string, error) {
 	hasher := md5.New()
 	if _, err := hasher.Write([]byte(fmt.Sprintf("%s%s", rhost, d.config.Token))); err != nil {
 		log.Errorf("Error during hasher.Write call: %s", err.Error())
-		return "", err
 	}
 
 	return fmt.Sprintf("%x", hasher.Sum(nil)), nil

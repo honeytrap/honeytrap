@@ -109,7 +109,7 @@ func (t *Delay) UnmarshalText(text []byte) error {
 
 	d, err := time.ParseDuration(s)
 	if err != nil {
-		log.Error("Error parsing duration (%s): %s", s, err.Error())
+		log.Errorf("Error parsing duration (%s): %s", s, err.Error())
 		return err
 	}
 
