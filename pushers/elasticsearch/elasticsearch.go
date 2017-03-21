@@ -1,11 +1,10 @@
-package pushers
+package elasticsearch
 
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
-
-	pushers "github.com/honeytrap/honeytrap/pushers"
 
 	"io"
 	"io/ioutil"
@@ -14,43 +13,42 @@ import (
 
 	"github.com/satori/go.uuid"
 
+	"github.com/honeytrap/honeytrap/pushers/message"
 	"github.com/op/go-logging"
 )
 
 var log = logging.MustGetLogger("honeytrap:channels:elasticsearch")
-
-var (
-	_ = pushers.Register("elasticsearch", NewElasticSearchChannel())
-)
 
 type ElasticSearchChannel struct {
 	client *http.Client
 	host   string
 }
 
-func NewElasticSearchChannel() pushers.ChannelFunc {
-	return func(conf map[string]interface{}) (pushers.Channel, error) {
-		hc := &http.Client{
+// Unmarshal attempts to unmarshal the provided value into the giving
+// ElasticSearchChannel.
+func (e *ElasticSearchChannel) UnmarshalConfig(m interface{}) error {
+	conf, ok := m.(map[string]interface{})
+	if !ok {
+		return errors.New("Expected to receive a map")
+	}
+
+	if e.client == nil {
+		e.client = &http.Client{
 			Transport: &http.Transport{
 				MaxIdleConnsPerHost: 5,
 			},
 			Timeout: time.Duration(20) * time.Second,
 		}
-
-		esc := ElasticSearchChannel{
-			client: hc,
-		}
-
-		var ok bool
-		if esc.host, ok = conf["host"].(string); !ok {
-			return nil, fmt.Errorf("Host not set for channel elasticsearch")
-		}
-
-		return &esc, nil
 	}
+
+	if e.host, ok = conf["host"].(string); !ok {
+		return fmt.Errorf("Host not set for channel elasticsearch")
+	}
+
+	return nil
 }
 
-func (hc ElasticSearchChannel) Send(messages []*pushers.PushMessage) {
+func (hc ElasticSearchChannel) Send(messages []*message.PushMessage) {
 	for _, message := range messages {
 		buf := new(bytes.Buffer)
 
@@ -60,14 +58,14 @@ func (hc ElasticSearchChannel) Send(messages []*pushers.PushMessage) {
 		}
 
 		if err := json.NewEncoder(buf).Encode(message.Data); err != nil {
-			log.Error("ElasticSearchChannel: Error encoding data: %s", err.Error())
+			log.Errorf("ElasticSearchChannel: Error encoding data: %s", err.Error())
 			continue
 		}
 
 		messageID := uuid.NewV4()
 		req, err := http.NewRequest("PUT", fmt.Sprintf("%s/%s/%s/%s", hc.host, message.Sensor, message.Category, messageID.String()), buf)
 		if err != nil {
-			log.Error("ElasticSearchChannel: Error while preparing request: %s", err.Error())
+			log.Errorf("ElasticSearchChannel: Error while preparing request: %s", err.Error())
 			continue
 		}
 
@@ -75,7 +73,7 @@ func (hc ElasticSearchChannel) Send(messages []*pushers.PushMessage) {
 
 		var resp *http.Response
 		if resp, err = hc.client.Do(req); err != nil {
-			log.Error("ElasticSearchChannel: Error while sending messages: %s", err.Error())
+			log.Errorf("ElasticSearchChannel: Error while sending messages: %s", err.Error())
 			continue
 		}
 
@@ -84,7 +82,7 @@ func (hc ElasticSearchChannel) Send(messages []*pushers.PushMessage) {
 		resp.Body.Close()
 
 		if resp.StatusCode != http.StatusCreated {
-			log.Error("ElasticSearchChannel: Unexpected status code: %d", resp.StatusCode)
+			log.Errorf("ElasticSearchChannel: Unexpected status code: %d", resp.StatusCode)
 			continue
 		}
 
