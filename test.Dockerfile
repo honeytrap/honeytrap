@@ -5,7 +5,7 @@ ADD . /go/src/github.com/honeytrap/honeytrap
 WORKDIR /go/src/github.com/honeytrap/honeytrap
 
 # Get all dependencies to fix issue with linter on ./director
-RUN go get -v
+# RUN go get -v
 
 # Install gometalinter
 RUN go get -u -v github.com/alecthomas/gometalinter
