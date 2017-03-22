@@ -12,17 +12,41 @@ import (
 	"github.com/honeytrap/honeytrap/pushers/slack"
 )
 
+//=======================================================================================================
+
 // Waiter exposes a method to call a wait method to allow a channel finish it's
 // operation.
 type Waiter interface {
 	Wait()
 }
 
+//=======================================================================================================
+
 // Channel defines a interface which exposes a single method for delivering
 // PushMessages to a giving underline service.
 type Channel interface {
 	Send([]*message.PushMessage)
 }
+
+//=======================================================================================================
+
+// ProxyPusher defines a decorator for the Pusher object which decorates it as a
+// Channel.
+type ProxyPusher struct {
+	pusher *Pusher
+}
+
+// NewProxyPusher returns a new instance of a ProxyPusher
+func NewProxyPusher(p *Pusher) *ProxyPusher {
+	return &ProxyPusher{pusher: p}
+}
+
+// Send delivers the messages to the underline Pusher instance.
+func (p ProxyPusher) Send(messages []*message.PushMessage) {
+	p.pusher.send(messages)
+}
+
+//=======================================================================================================
 
 // Pusher defines a struct which implements a pusher to manage the loading and
 // delivery of message.PushMessage.
@@ -209,3 +233,5 @@ func (p *Pusher) add(a *message.PushMessage) {
 		p.flush()
 	}
 }
+
+//=======================================================================================================

@@ -13,10 +13,15 @@ import (
 	"time"
 
 	"github.com/honeytrap/honeytrap/config"
+	"github.com/honeytrap/honeytrap/pushers"
+	"github.com/honeytrap/honeytrap/pushers/message"
 	"github.com/honeytrap/honeytrap/sniffer"
+	logging "github.com/op/go-logging"
 
 	lxc "github.com/honeytrap/golxc"
 )
+
+var log = logging.MustGetLogger("honeytrap:providers")
 
 /*
 TODO: enable providers registration
@@ -24,18 +29,24 @@ var (
 	_ = director.RegisterProvider("lxc", NewLxcContainer)
 )*/
 
+// LxcConfig defines a struct to provide configuration fields for a LxcProvider.
 type LxcConfig struct {
 	Template string
 }
 
+// LxcProvider defines a struct which loads the needed configuration for handling
+// lxc based containers.
 type LxcProvider struct {
 	config *config.Config
+	events *pushers.EventDelivery
 }
 
-func NewLxcProvider(config *config.Config) Provider {
-	return &LxcProvider{config}
+// NewLxcProvider returns a new instance of a LxcProvider as a Provider.
+func NewLxcProvider(config *config.Config, events *pushers.EventDelivery) Provider {
+	return &LxcProvider{config, events}
 }
 
+// LxcContainer defines a struct to encapsulated a lxc.Container.
 type LxcContainer struct {
 	ip       string
 	name     string
@@ -49,11 +60,12 @@ type LxcContainer struct {
 	provider *LxcProvider
 }
 
+// NewContainer returns a new LxcContainer from the provider.
 func (lp *LxcProvider) NewContainer(name string) (Container, error) {
 	c := LxcContainer{
-		config:   lp.config,
-		name:     name,
 		provider: lp,
+		name:     name,
+		config:   lp.config,
 		idle:     time.Now(),
 		sf:       sniffer.New(lp.config.NetFilter),
 	}
@@ -68,6 +80,7 @@ func (lp *LxcProvider) NewContainer(name string) (Container, error) {
 	return &c, nil
 }
 
+// clone attempts to clone the underline lxc.Container.
 func (c *LxcContainer) clone() error {
 	log.Debugf("Creating new container %s from template %s", c.name, c.config.Template)
 
@@ -78,6 +91,17 @@ func (c *LxcContainer) clone() error {
 	}
 
 	defer lxc.Release(c1)
+
+	c.provider.events.Deliver(message.Event{
+		Sensor:   c.name,
+		Category: "Containers",
+		Type:     message.ContainerClone,
+		Details: map[string]interface{}{
+			"name":     c.name,
+			"template": c.template,
+			"ip":       c.ip,
+		},
+	})
 
 	// http://developerblog.redhat.com/2014/09/30/overview-storage-scalability-docker/
 	// TODO: use overlayfs / make it configurable
@@ -104,6 +128,7 @@ func (c *LxcContainer) clone() error {
 	return nil
 }
 
+// start begins the call to the lxc.Container.
 func (c *LxcContainer) start() error {
 	log.Infof("Starting container")
 
@@ -112,9 +137,33 @@ func (c *LxcContainer) start() error {
 	if !c.c.Defined() {
 		if err := c.clone(); err != nil {
 			log.Error(err.Error())
+
+			c.provider.events.Deliver(message.Event{
+				Sensor:   c.name,
+				Category: "Containers",
+				Type:     message.ContainerStarted,
+				Details: map[string]interface{}{
+					"error":    err.Error(),
+					"name":     c.name,
+					"template": c.template,
+					"ip":       c.ip,
+				},
+			})
+
 			return err
 		}
 	}
+
+	c.provider.events.Deliver(message.Event{
+		Sensor:   c.name,
+		Category: "Containers",
+		Type:     message.ContainerStarted,
+		Details: map[string]interface{}{
+			"name":     c.name,
+			"template": c.template,
+			"ip":       c.ip,
+		},
+	})
 
 	// run independent of our process
 	c.c.WantDaemonize(true)
@@ -134,6 +183,8 @@ func (c *LxcContainer) start() error {
 	return nil
 }
 
+// housekeeper handls the needed process of handling internal logic
+// in maintaining the provided lxc.Container.
 func (c *LxcContainer) housekeeper() {
 	// container lifetime function
 	log.Infof("Housekeeper (%s) started.", c.name)
@@ -158,24 +209,51 @@ func (c *LxcContainer) housekeeper() {
 	}
 }
 
+// isRunning returns true/false if the container is in running state.
 func (c *LxcContainer) isRunning() bool {
 	return c.c.State() == lxc.RUNNING
 }
 
+// isStopped returns true/false if the container is in stopped state.
 func (c *LxcContainer) isStopped() bool {
 	return c.c.State() == lxc.STOPPED
 }
 
+// isFrozen returns true/false if the container is in frozen state.
 func (c *LxcContainer) isFrozen() bool {
 	return c.c.State() == lxc.FROZEN
 }
 
+// unfreeze sets the internal container into an unfrozen state.
 func (c *LxcContainer) unfreeze() error {
 	log.Infof("Unfreezing container: %s", c.name)
 
 	if err := c.c.Unfreeze(); err != nil {
+		c.provider.events.Deliver(message.Event{
+			Sensor:   c.name,
+			Category: "Containers",
+			Type:     message.ContainerFrozen,
+			Details: map[string]interface{}{
+				"error":    err.Error(),
+				"name":     c.name,
+				"template": c.template,
+				"ip":       c.ip,
+			},
+		})
+
 		return err
 	}
+
+	c.provider.events.Deliver(message.Event{
+		Sensor:   c.name,
+		Category: "Containers",
+		Type:     message.ContainerUnfrozen,
+		Details: map[string]interface{}{
+			"name":     c.name,
+			"template": c.template,
+			"ip":       c.ip,
+		},
+	})
 
 	if err := c.settle(); err != nil {
 		return err
@@ -188,14 +266,16 @@ func (c *LxcContainer) unfreeze() error {
 	return nil
 }
 
+// settle runs the process to take the container into a proper running state.
 func (c *LxcContainer) settle() error {
-	log.Infof("Waiting for container to settle %s\n", c.name)
+	log.Infof("Waiting for container to settle %s", c.name)
 
 	if !c.c.Wait(lxc.RUNNING, 30) {
-		return fmt.Errorf("LxcContainer still not running %s\n", c.name)
+		return fmt.Errorf("lxccontainer still not running %s", c.name)
 	}
 
-	var retries int = 0
+	retries := 0
+
 	for {
 		ip, err := c.c.IPAddress("eth0")
 		if err == nil {
@@ -205,13 +285,13 @@ func (c *LxcContainer) settle() error {
 		}
 
 		if retries < 50 {
-			log.Debugf("Waiting for ip to settle %s (%s)\n", c.name, err.Error())
+			log.Debugf("Waiting for ip to settle %s (%s)", c.name, err.Error())
 			time.Sleep(time.Millisecond * 200)
 			retries++
 			continue
 		}
 
-		return fmt.Errorf("Could not get an IP address.")
+		return fmt.Errorf("Could not get an IP address")
 	}
 
 	var isets []string
@@ -232,7 +312,7 @@ func (c *LxcContainer) settle() error {
 	}
 
 	if len(isets) == 0 {
-		return fmt.Errorf("Could not get an network device.")
+		return fmt.Errorf("could not get an network device")
 	}
 
 	c.idevice = isets[0]
@@ -242,6 +322,7 @@ func (c *LxcContainer) settle() error {
 	return nil
 }
 
+// ensureStated validates that the internal container has started.
 func (c *LxcContainer) ensureStarted() error {
 	if c.isFrozen() {
 		return c.unfreeze()
@@ -254,6 +335,7 @@ func (c *LxcContainer) ensureStarted() error {
 	return nil
 }
 
+// Device returns the network device connected to the container.
 func (c *LxcContainer) Device() (string, error) {
 	if c.idevice == "" {
 		return "", fmt.Errorf("Unable to get device")
@@ -261,25 +343,32 @@ func (c *LxcContainer) Device() (string, error) {
 	return c.idevice, nil
 }
 
+// Name returns the underling Name of the container.
 func (c *LxcContainer) Name() string {
 	return (c.name)
 }
 
+// lxcContainerConn defines a custom connection type which proxies the data
+// for the container.
 type lxcContainerConn struct {
 	net.Conn
 	container *LxcContainer
 }
 
+// Read reads the giving set of data from the container connection to the
+// byte slice.
 func (c lxcContainerConn) Read(b []byte) (n int, err error) {
 	c.container.stillActive()
 	return c.Conn.Read(b)
 }
 
+// Write writes the data into byte slice from the container.
 func (c lxcContainerConn) Write(b []byte) (n int, err error) {
 	c.container.stillActive()
 	return c.Conn.Write(b)
 }
 
+// stillActive returns an error if the containerr is not still active
 func (c *LxcContainer) stillActive() error {
 	if err := c.ensureStarted(); err != nil {
 		return err
@@ -292,6 +381,8 @@ func (c *LxcContainer) stillActive() error {
 	return nil
 }
 
+// deltaUp retrieves the underline delta changes for the containers
+// filesystem and writes it up to the underline host system.
 func (c *LxcContainer) deltaUp() (string, error) {
 	fo, err := ioutil.TempFile("", c.name)
 	if err != nil {
@@ -314,6 +405,8 @@ func (c *LxcContainer) deltaUp() (string, error) {
 	return fo.Name(), nil
 }
 
+// checkpoint retrieves the current state of the container and
+// compresses it through the checkpoint API exposed by the lxc.Container.
 func (c *LxcContainer) checkpoint() (string, error) {
 	tmpdir, err := ioutil.TempDir("", c.name)
 	if err != nil {
@@ -352,11 +445,23 @@ func (c *LxcContainer) checkpoint() (string, error) {
 	return fo.Name(), nil
 }
 
+// freeze sets the container into a freeze state.
 func (c *LxcContainer) freeze() error {
 	if !c.isRunning() {
 		// not running
 		return nil
 	}
+
+	c.provider.events.Deliver(message.Event{
+		Sensor:   c.name,
+		Category: "Containers",
+		Type:     message.ContainerFrozen,
+		Details: map[string]interface{}{
+			"name":     c.name,
+			"template": c.template,
+			"ip":       c.ip,
+		},
+	})
 
 	// should actually first checkpoint, stop sniffer and freeze, then tar
 	for {
@@ -374,8 +479,8 @@ func (c *LxcContainer) freeze() error {
 		}
 
 		defer func() {
-			if err := os.Remove(chp.Name()); err != nil {
-				log.Errorf("Error deleting file (%s): %s", chp.Name(), err.Error())
+			if cerr := os.Remove(chp.Name()); err != nil {
+				log.Errorf("Error deleting file (%s): %s", chp.Name(), cerr.Error())
 			}
 		}()
 
@@ -387,10 +492,18 @@ func (c *LxcContainer) freeze() error {
 
 		endpoint := fmt.Sprintf("http://api.honeytrap.io/v1/container/%s/checkpoint", c.name)
 
-		// TODO: Replace with Event API.
-		// c.provider.pusher.Push(endpoint, buff)
-		_ = endpoint
-		_ = buff
+		c.provider.events.Deliver(message.Event{
+			Data:     buff,
+			Sensor:   c.name,
+			Category: "Containers",
+			Type:     message.ContainerDataCheckpoint,
+			Details: map[string]interface{}{
+				"endpoint": endpoint,
+				"name":     c.name,
+				"template": c.template,
+				"ip":       c.ip,
+			},
+		})
 		break
 	}
 
@@ -416,11 +529,19 @@ func (c *LxcContainer) freeze() error {
 		}
 
 		log.Debugf("Pushing packets")
-		// TODO: Replace with Event API.
-		// c.provider.pusher.Push(endpoint, buff)
-		_ = endpoint
-		_ = buff
 
+		c.provider.events.Deliver(message.Event{
+			Data:     buff,
+			Sensor:   c.name,
+			Category: "Containers",
+			Type:     message.ContainerDataPacket,
+			Details: map[string]interface{}{
+				"endpoint": endpoint,
+				"name":     c.name,
+				"template": c.template,
+				"ip":       c.ip,
+			},
+		})
 		break
 	}
 
@@ -439,8 +560,8 @@ func (c *LxcContainer) freeze() error {
 		}
 
 		defer func() {
-			if err := os.Remove(r.Name()); err != nil {
-				log.Errorf("Error deleting file (%s): %s", r.Name(), err.Error())
+			if cerr := os.Remove(r.Name()); cerr != nil {
+				log.Errorf("Error deleting file (%s): %s", r.Name(), cerr.Error())
 			}
 		}()
 
@@ -452,16 +573,25 @@ func (c *LxcContainer) freeze() error {
 
 		endpoint := fmt.Sprintf("http://api.honeytrap.io/v1/container/%s/data", c.name)
 
-		// TODO: Replace with Event API.
-		// c.provider.pusher.Push(endpoint, buff)
-		_ = endpoint
-		_ = buff
+		c.provider.events.Deliver(message.Event{
+			Data:     buff,
+			Sensor:   c.name,
+			Category: "Containers",
+			Type:     message.ContainerTarBackup,
+			Details: map[string]interface{}{
+				"endpoint": endpoint,
+				"name":     c.name,
+				"template": c.template,
+				"ip":       c.ip,
+			},
+		})
 		break
 	}
 
 	return nil
 }
 
+// stop stops the container and shuts it down.
 func (c *LxcContainer) stop() error {
 	if c.isStopped() {
 		// already stopped
@@ -471,16 +601,42 @@ func (c *LxcContainer) stop() error {
 	log.Infof("LxcContainer (%s) stopping (ip: %s)", c.name, c.ip)
 
 	if err := c.c.Stop(); err != nil {
+		c.provider.events.Deliver(message.Event{
+			Sensor:   c.name,
+			Category: "Containers",
+			Type:     message.ContainerStopped,
+			Details: map[string]interface{}{
+				"error":    err.Error(),
+				"name":     c.name,
+				"template": c.template,
+				"ip":       c.ip,
+			},
+		})
 		return err
 	}
+
+	c.provider.events.Deliver(message.Event{
+		Sensor:   c.name,
+		Category: "Containers",
+		Type:     message.ContainerStopped,
+		Details: map[string]interface{}{
+			"name":     c.name,
+			"template": c.template,
+			"ip":       c.ip,
+		},
+	})
 
 	return nil
 }
 
+// CleanUp attempts to run certain process to cleanup
+// the state of the uinternal container.
 func (c *LxcContainer) CleanUp() error {
 	return nil
 }
 
+// Dial attempts to connect to the internal network of the
+// internal container.
 func (c *LxcContainer) Dial(port string) (net.Conn, error) {
 	if err := c.ensureStarted(); err != nil {
 		return nil, err
@@ -510,7 +666,7 @@ func (c *LxcContainer) Dial(port string) (net.Conn, error) {
 			continue
 		}
 
-		return nil, fmt.Errorf("Could not connect to container.")
+		return nil, fmt.Errorf("could not connect to container")
 	}
 
 	return lxcContainerConn{Conn: conn, container: c}, err

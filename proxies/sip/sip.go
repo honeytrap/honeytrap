@@ -16,22 +16,26 @@ import (
 
 var log = logging.MustGetLogger("honeytrap:proxy:sip")
 
+// ListenSIP returns a new net.Listener for listening for sip connections.
 // TODO: Change amount of params.
-func ListenSIP(address string, d *director.Director, p *pushers.Pusher, c *config.Config) (net.Listener, error) {
+func ListenSIP(address string, d *director.Director, p *pushers.Pusher, e *pushers.EventDelivery, c *config.Config) (net.Listener, error) {
 	l, err := net.Listen("tcp", address)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	return &SIPProxyListener{
-		proxies.NewProxyListener(l, d, p),
+		proxies.NewProxyListener(l, d, p, e),
 	}, nil
 }
 
+// SIPProxyListener defines a struct which embedds and handle the underline connection
+// details for the provided ProxyListener.
 type SIPProxyListener struct {
 	*proxies.ProxyListener
 }
 
+// Accept returns a new connection from the underlined listener.
 func (l *SIPProxyListener) Accept() (net.Conn, error) {
 	conn, err := l.ProxyListener.Accept()
 	if err != nil {
@@ -42,10 +46,13 @@ func (l *SIPProxyListener) Accept() (net.Conn, error) {
 	return SIPProxyConn{conn.(*proxies.ProxyConn)}, err
 }
 
+// SIPProxyConn defines a SIPProxyConn to handle proxying details to a underline
+// proxy connection.
 type SIPProxyConn struct {
 	*proxies.ProxyConn
 }
 
+// SIPAction defines a data struct for holding a SIP action request/response.
 type SIPAction struct {
 	Date          time.Time `json:"timestamp"`
 	Host          string    `json:"host"`
@@ -56,6 +63,7 @@ type SIPAction struct {
 	ContentLength int64     `json:"content_length"`
 }
 
+// Proxy initiates and proxies the underline proxy connections.
 func (p SIPProxyConn) Proxy() error {
 	sessionID := uuid.NewV4()
 

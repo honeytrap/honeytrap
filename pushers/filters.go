@@ -34,8 +34,14 @@ func CategoryFilterFunc(rx *regexp.Regexp, message *message.PushMessage) bool {
 
 // EventFilterFunc defines a function to validate a PushMessage.Category value
 // based on a provided regular expression.
-func EventFilterFunc(rx *regexp.Regexp, message *message.PushMessage) bool {
-	return rx.MatchString("")
+func EventFilterFunc(rx *regexp.Regexp, m *message.PushMessage) bool {
+	if event, ok := m.Data.(message.Event); ok {
+		return rx.MatchString(event.Sensor)
+	}
+
+	// TODO: Decide if we should return false when this is called for messages
+	// not containing event objects.
+	return true
 }
 
 //==========================================================================================

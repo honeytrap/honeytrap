@@ -1,7 +1,11 @@
 package server
 
-import "runtime"
+import (
+	"runtime"
+)
 
+// RecoverHandler defines a function which calls the provided ServeFunc
+// within a protective recover() function.
 func RecoverHandler(serveFn ServeFunc) error {
 	defer func() {
 		if err := recover(); err != nil {

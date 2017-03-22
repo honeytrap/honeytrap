@@ -3,18 +3,20 @@ package cmd
 import (
 	"fmt"
 
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+
 	"github.com/fatih/color"
 	"github.com/honeytrap/honeytrap/config"
 	"github.com/honeytrap/honeytrap/server"
 	"github.com/minio/cli"
 	"github.com/op/go-logging"
 	"github.com/pkg/profile"
-	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
 )
 
+// Version defines the version number for the cli.
 var Version = "0.1"
 
 var helpTemplate = `NAME:
@@ -55,10 +57,12 @@ var globalFlags = []cli.Flag{
 	cli.BoolFlag{Name: "profiler", Usage: "Enable web profiler"},
 }
 
+// Cmd defines a struct for defining a command.
 type Cmd struct {
 	*cli.App
 }
 
+// VersionAction defines the action called when seeking the Version detail.
 func VersionAction(c *cli.Context) {
 	fmt.Println(color.YellowString(fmt.Sprintf("Honeytrap: The ultimate honeypot framework.")))
 }
@@ -78,7 +82,7 @@ func serve(c *cli.Context) {
 
 	var profiler interface {
 		Stop()
-	} = nil
+	}
 
 	if c.GlobalBool("cpu-profile") {
 		log.Info("CPU profiler started.")
@@ -114,6 +118,7 @@ func serve(c *cli.Context) {
 	os.Exit(0)
 }
 
+// New returns a new instance of the Cmd struct.
 func New() *Cmd {
 	app := cli.NewApp()
 	app.Name = "honeytrap"

@@ -10,6 +10,7 @@ import (
 
 	config "github.com/honeytrap/honeytrap/config"
 	providers "github.com/honeytrap/honeytrap/providers"
+	"github.com/honeytrap/honeytrap/pushers"
 
 	lxc "github.com/honeytrap/golxc"
 )
@@ -23,14 +24,14 @@ type Director struct {
 }
 
 // New returns a new instance of a Director.
-func New(conf *config.Config) *Director {
+func New(conf *config.Config, events *pushers.EventDelivery) *Director {
 	// TODO: Need to replace this with Event API.
 	// pusher := pushers.NewRecordPusher(conf)
 
 	d := &Director{
-		containers: map[string]providers.Container{},
 		config:     conf,
-		provider:   providers.NewLxcProvider(conf),
+		containers: map[string]providers.Container{},
+		provider:   providers.NewLxcProvider(conf, events),
 	}
 
 	d.registerContainers()
