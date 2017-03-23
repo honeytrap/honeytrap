@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/satori/go.uuid"
+	"github.com/upspin/upspin/log"
 
 	config "github.com/honeytrap/honeytrap/config"
 	director "github.com/honeytrap/honeytrap/director"

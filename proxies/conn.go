@@ -5,7 +5,6 @@ import (
 
 	providers "github.com/honeytrap/honeytrap/providers"
 	pushers "github.com/honeytrap/honeytrap/pushers"
-	"github.com/honeytrap/honeytrap/pushers/message"
 )
 
 // ProxyConn defines a base decorator over a net.Conn for proxy purposes.
@@ -31,29 +30,13 @@ func (cw *ProxyConn) RemoteHost() string {
 func (cw *ProxyConn) Close() error {
 	if cw.Server != nil {
 
-		cw.Event.Deliver(message.Event{
-			Sensor:   "ProxyConn.Server",
-			Category: "Connections",
-			Type:     message.ConnectionClosed,
-			Details: map[string]interface{}{
-				"remoteAddr": cw.Server.RemoteAddr().String(),
-				"localAddr":  cw.Server.LocalAddr().String(),
-			},
-		})
-
+		ev := EventConnectionClosed(cw.RemoteAddr(), "ProxyConn.Conn", nil)
+		cw.Event.Deliver(ev)
 		cw.Server.Close()
 	}
-	if cw.Conn != nil {
-		cw.Event.Deliver(message.Event{
-			Sensor:   "ProxyConn.Conn",
-			Category: "Connections",
-			Type:     message.ConnectionClosed,
-			Details: map[string]interface{}{
-				"remoteAddr": cw.Server.RemoteAddr().String(),
-				"localAddr":  cw.Server.LocalAddr().String(),
-			},
-		})
 
+	if cw.Conn != nil {
+		cw.Event.Deliver(EventConnectionClosed(cw.RemoteAddr(), "ProxyConn.Conn", nil))
 		return cw.Conn.Close()
 	}
 

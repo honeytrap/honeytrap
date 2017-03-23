@@ -11,12 +11,12 @@ import (
 	"time"
 
 	"github.com/satori/go.uuid"
+	"github.com/tidwall/tile38/controller/log"
 
 	config "github.com/honeytrap/honeytrap/config"
 	director "github.com/honeytrap/honeytrap/director"
 	protocol "github.com/honeytrap/honeytrap/protocol"
 	pushers "github.com/honeytrap/honeytrap/pushers"
-	"github.com/honeytrap/honeytrap/pushers/message"
 	utils "github.com/honeytrap/honeytrap/utils"
 
 	"github.com/golang/protobuf/proto"
@@ -108,22 +108,16 @@ func (ac *AgentConn) Ping() error {
 
 	log.Debug("Received ping from agent: %s with token: %s", *msg.LocalAddress, *msg.Token)
 
-	ac.as.events.Deliver(message.Event{
-		Sensor:   "AgentConn",
-		Category: "Connections",
-		Type:     message.Ping,
-		Details: map[string]interface{}{
-			"raw":   data,
-			"error": err.Error(),
-			"addr":  ac.Conn.RemoteAddr().String(),
-		},
-		Data: AgentPing{
-			Date:      time.Now(),
-			Token:     *msg.Token,
-			Host:      ac.Conn.RemoteAddr().String(),
-			LocalAddr: *msg.LocalAddress,
-		},
+	ev := Evet(ac.Conn.RemoteAddr(), "AgentConn", AgentPing{
+		Date:      time.Now(),
+		Token:     *msg.Token,
+		Host:      ac.Conn.RemoteAddr().String(),
+		LocalAddr: *msg.LocalAddress,
 	})
+
+	ev.Details["raw"] = data
+	ev.Details["error"] = err
+	ac.as.events.Deliver(ev)
 
 	return nil
 }
@@ -155,25 +149,18 @@ func (ac *AgentConn) Forward() error {
 
 	sessionID := uuid.NewV4()
 
-	ac.as.events.Deliver(message.Event{
-		Sensor:    "AgentConn",
-		Category:  "Connections",
-		Type:      message.ConnectionRequest,
-		SessionID: sessionID,
-		Details: map[string]interface{}{
-			"raw":   data,
-			"error": err.Error(),
-			"addr":  ac.Conn.RemoteAddr().String(),
-		},
-		Data: AgentRequest{
-			Date:       time.Now(),
-			LocalAddr:  ac.localAddr,
-			RemoteAddr: ac.remoteAddr,
-			Host:       ac.Conn.RemoteAddr().String(),
-			Protocol:   *payload.Protocol,
-			Token:      ac.token,
-		},
+	ev := EventConnectionRequest(ac.Conn.RemoteAddr(), "AgentConn", AgentRequest{
+		Date:       time.Now(),
+		LocalAddr:  ac.localAddr,
+		RemoteAddr: ac.remoteAddr,
+		Host:       ac.Conn.RemoteAddr().String(),
+		Protocol:   *payload.Protocol,
+		Token:      ac.token,
 	})
+
+	ev.Details["error"] = err
+	ev.SessionID = sessionID
+	ac.as.events.Deliver(ev)
 
 	log.Debugf("Received Agent connection from: %s with token: %s", ac.remoteAddr, ac.token)
 
@@ -196,29 +183,17 @@ func (ac *AgentConn) Forward() error {
 	var c2 net.Conn
 	c2, err = container.Dial(dport)
 	if err != nil {
-		ac.as.events.Deliver(message.Event{
-			Sensor:    "AgentConn",
-			Category:  "Connections",
-			SessionID: sessionID,
-			Type:      message.ConnectionError,
-			Details: map[string]interface{}{
-				"error": err.Error(),
-				"addr":  ac.Conn.RemoteAddr().String(),
-			},
-		})
+
+		evm := EventConnectionError(ac.Conn.RemoteAddr(), "AgentConn", err)
+		evm.SessionID = sessionID
+		evm.as.events.Deliver(evm)
+
 		return err
 	}
 
-	ac.as.events.Deliver(message.Event{
-		Sensor:    "AgentConn",
-		Category:  "Connections",
-		SessionID: sessionID,
-		Type:      message.ConnectionStarted,
-		Details: map[string]interface{}{
-			"remoteAddr": c2.RemoteAddr().String(),
-			"localAddr":  c2.LocalAddr().String(),
-		},
-	})
+	ev := EventConnectionOpened(ac.Conn.RemoteAddr(), "AgentConn", *payload.Protocol)
+	ev.SessionID = sessionID
+	ac.as.events.Deliver(ev)
 
 	defer c2.Close()
 
@@ -276,14 +251,8 @@ func (as *AgentServer) newConn(conn net.Conn) *AgentConn {
 
 // Serve initializes the AgentServer and it's operations.
 func (as AgentServer) Serve(l net.Listener) error {
-	ac.as.events.Deliver(message.Event{
-		Sensor:   "AgentServer.Serve",
-		Category: "Connections",
-		Type:     message.ConnectionStarted,
-		Details: map[string]interface{}{
-			"addr": l.Addr().String(),
-		},
-	})
+
+	ac.as.events.Deliver(EventConnectionOpened(l.Addr(), "AgentServer.Server", err))
 
 	for {
 		conn, err := l.Accept()
