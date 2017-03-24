@@ -33,7 +33,7 @@ type SSHAction struct {
 }
 
 // NewSSHRecorder returns a new instance of the SSHRecorder.
-func NewSSHRecorder(p *pushers.Pusher, e *pushers.EventDelivery) *SSHRecorder {
+func NewSSHRecorder(p *pushers.Pusher, e pushers.Events) *SSHRecorder {
 	// contains info about the container
 	return &SSHRecorder{p, e}
 }
@@ -41,7 +41,7 @@ func NewSSHRecorder(p *pushers.Pusher, e *pushers.EventDelivery) *SSHRecorder {
 // SSHRecorder defines a recorder for handling ssh connections.
 type SSHRecorder struct {
 	*pushers.Pusher
-	events *pushers.EventDelivery
+	events pushers.Events
 }
 
 // SSHRecorderSession defines a struct to use the underline SSHRecorder for a giving

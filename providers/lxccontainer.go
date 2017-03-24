@@ -38,11 +38,11 @@ type LxcConfig struct {
 // lxc based containers.
 type LxcProvider struct {
 	config *config.Config
-	events *pushers.EventDelivery
+	events pushers.Events
 }
 
 // NewLxcProvider returns a new instance of a LxcProvider as a Provider.
-func NewLxcProvider(config *config.Config, events *pushers.EventDelivery) Provider {
+func NewLxcProvider(config *config.Config, events pushers.Events) Provider {
 	return &LxcProvider{config, events}
 }
 

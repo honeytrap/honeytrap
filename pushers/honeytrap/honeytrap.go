@@ -15,13 +15,15 @@ import (
 
 var log = logging.MustGetLogger("honeytrap:channels:honeytrap")
 
-type HoneytrapChannel struct {
+// TrapChannel defines a struct which implmenets the pushers.Channel
+// interface for delivery honeytrap special messages.
+type TrapChannel struct {
 	client *api.Client
 }
 
-// Unmarshal attempts to unmarshal the provided value into the giving
+// UnmarshalConfig attempts to unmarshal the provided value into the giving
 // HoneytrapChannel.
-func (hc *HoneytrapChannel) UnmarshalConfig(m interface{}) error {
+func (hc *TrapChannel) UnmarshalConfig(m interface{}) error {
 	conf, ok := m.(map[string]interface{})
 	if !ok {
 		return errors.New("Expected to receive a map")
@@ -43,7 +45,8 @@ func (hc *HoneytrapChannel) UnmarshalConfig(m interface{}) error {
 	return nil
 }
 
-func (hc HoneytrapChannel) Send(messages []*message.PushMessage) {
+// Send delivers all messages to the underline connection.
+func (hc TrapChannel) Send(messages []*message.PushMessage) {
 	// TODO:
 	// req, err := hc.client.NewRequest("POST", "v1/action/{sensor}/{type}", actions)
 
@@ -66,7 +69,6 @@ func (hc HoneytrapChannel) Send(messages []*message.PushMessage) {
 			log.Errorf("HoneytrapChannel: Error while preparing request: %s", err.Error())
 			continue
 		}
-
 		var resp *http.Response
 		if resp, err = hc.client.Do(req, nil); err != nil {
 			log.Errorf("HoneytrapChannel: Error while sending message: %s", err.Error())

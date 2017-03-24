@@ -17,7 +17,7 @@ type ProxyConn struct {
 	Container providers.Container
 
 	Pusher *pushers.Pusher
-	Event  *pushers.EventDelivery
+	Event  pushers.Events
 }
 
 // RemoteHost returns the addr ip of the giving connection.
@@ -30,13 +30,12 @@ func (cw *ProxyConn) RemoteHost() string {
 func (cw *ProxyConn) Close() error {
 	if cw.Server != nil {
 
-		ev := EventConnectionClosed(cw.RemoteAddr(), "ProxyConn.Conn", nil)
-		cw.Event.Deliver(ev)
+		cw.Event.Deliver(EventConnectionClosed(cw.RemoteAddr(), cw.LocalAddr(), "ProxyConn.Conn", nil, nil))
 		cw.Server.Close()
 	}
 
 	if cw.Conn != nil {
-		cw.Event.Deliver(EventConnectionClosed(cw.RemoteAddr(), "ProxyConn.Conn", nil))
+		cw.Event.Deliver(EventConnectionClosed(cw.RemoteAddr(), cw.LocalAddr(), "ProxyConn.Conn", nil, nil))
 		return cw.Conn.Close()
 	}
 

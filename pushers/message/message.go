@@ -1,6 +1,9 @@
 package message
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 //====================================================================================
 
@@ -60,7 +63,11 @@ const (
 // a giving event.
 type Event struct {
 	Sensor      string                 `json:"sensor"`
+	Time        time.Time              `json:"time"`
+	Token       string                 `json:"token,omitempty"`
 	Category    string                 `json:"category"`
+	HostAddr    string                 `json:"host_addr"`
+	LocalAddr   string                 `json:"local_addr"`
 	Type        EventType              `json:"event_type"`
 	Data        interface{}            `json:"data"`
 	Details     map[string]interface{} `json:"details"`

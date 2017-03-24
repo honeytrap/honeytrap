@@ -22,10 +22,13 @@ var format = logging.MustStringFormatter(
 )
 
 type (
+
+	// HouseKeeper defines the settings for operation cleanup.
 	HouseKeeper struct {
 		Every Delay `toml:"every"`
 	}
 
+	// Delays sets the individual duration set for all ops.
 	// TODO: rename to Timers
 	Delays struct {
 		PushDelay        Delay `toml:"push_every"`
@@ -34,14 +37,17 @@ type (
 		HousekeeperDelay Delay `toml:"housekeeper_every"`
 	}
 
+	// Console defines the struct to contain the console logging level.
 	Console struct {
 		Level string `toml:"level"`
 	}
 
+	// Folders defines the data path for usage in container ops.
 	Folders struct {
 		Data string `toml:"data"`
 	}
 
+	// Config defines the central type where all configuration is umarhsalled to.
 	Config struct {
 		Token       string      `toml:"token"`
 		Template    string      `toml:"template"`
@@ -71,11 +77,13 @@ type (
 	}
 )
 
+// WebConfig defines the configuration for the web access point.
 type WebConfig struct {
 	Port string `toml:"port"`
 	Path string `toml:"path"`
 }
 
+// AgentConfig defines configuration for the agent server.
 type AgentConfig struct {
 	Port string `toml:"port"`
 	TLS  struct {
@@ -83,14 +91,17 @@ type AgentConfig struct {
 	} `toml:"tls"`
 }
 
+// HTTPProxyConfig defines the config type for the http proxy server.
 type HTTPProxyConfig struct {
 	Port string `toml:"port"`
 }
 
+// SIPProxyConfig defines the configuration struct for the sip server.
 type SIPProxyConfig struct {
 	Port string `toml:"port"`
 }
 
+// SMTPProxyConfig defines the configuration for the SMTPProxyConfig.
 type SMTPProxyConfig struct {
 	Port string `toml:"port"`
 	Host string `toml:"host"`
@@ -100,12 +111,15 @@ type SMTPProxyConfig struct {
 	} `toml:"tls"`
 }
 
+// Delay defines a duration type.
 type Delay time.Duration
 
+// Duration returns the type of the giving duration from the provided pointer.
 func (t *Delay) Duration() time.Duration {
 	return time.Duration(*t)
 }
 
+// UnmarshalText handles unmarshalling duration values from the provided slice.
 func (t *Delay) UnmarshalText(text []byte) error {
 	s := string(text)
 
@@ -119,6 +133,7 @@ func (t *Delay) UnmarshalText(text []byte) error {
 	return nil
 }
 
+// DefaultConfig defines the default Config to be used to set default values.
 var DefaultConfig = Config{
 	Token:     "",
 	Template:  "honeytrap",
@@ -142,11 +157,13 @@ var DefaultConfig = Config{
 	},
 }
 
+// New returns a new instance of the config struct.
 func New() (*Config, error) {
 	c := DefaultConfig
 	return &c, nil
 }
 
+// Load attempts to load the giving toml configuration file.
 func (c *Config) Load(file string) error {
 	conf := Config{}
 	if _, err := toml.DecodeFile(file, &conf); err != nil {
@@ -161,7 +178,7 @@ func (c *Config) Load(file string) error {
 	for _, log := range conf.Logging {
 		var err error
 
-		var output io.Writer = os.Stdout
+		var output io.Writer
 
 		switch log.Output {
 		case "stdout":

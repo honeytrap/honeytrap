@@ -101,7 +101,7 @@ func New(conf *config.Config) *Pusher {
 
 			backends[key] = fchan
 		case "honeytrap":
-			var htrap honeytrap.HoneytrapChannel
+			var htrap honeytrap.TrapChannel
 			if err := htrap.UnmarshalConfig(backend); err != nil {
 				log.Errorf("Error initializing channel: %s", err.Error())
 				continue

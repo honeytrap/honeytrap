@@ -30,7 +30,7 @@ type Honeytrap struct {
 	config   *config.Config
 	director *director.Director
 	pusher   *pushers.Pusher
-	events   *pushers.EventDelivery
+	events   pushers.Events
 }
 
 // ServeFunc defines the function called to handle internal server details.
@@ -39,7 +39,7 @@ type ServeFunc func() error
 // New returns a new instance of a Honeytrap struct.
 func New(conf *config.Config) *Honeytrap {
 	pusher := pushers.New(conf)
-	events := pushers.NewEventDelivery(pushers.NewProxyPusher(pusher))
+	events := pushers.NewTokenedEventDelivery(conf.Token, pushers.NewProxyPusher(pusher))
 	director := director.New(conf, events)
 
 	return &Honeytrap{conf, director, pusher, events}

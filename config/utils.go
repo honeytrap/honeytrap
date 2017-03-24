@@ -14,7 +14,7 @@ func ConvertToInt(target string, def int) int {
 	return fo
 }
 
-// should become internal functions , config should return time.Duration
+// MakeDuration should become internal functions , config should return time.Duration
 func MakeDuration(target string, def int) time.Duration {
 	if !elapso.MatchString(target) {
 		return time.Duration(def)

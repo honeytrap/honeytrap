@@ -24,7 +24,7 @@ type Director struct {
 }
 
 // New returns a new instance of a Director.
-func New(conf *config.Config, events *pushers.EventDelivery) *Director {
+func New(conf *config.Config, events pushers.Events) *Director {
 	// TODO: Need to replace this with Event API.
 	// pusher := pushers.NewRecordPusher(conf)
 
