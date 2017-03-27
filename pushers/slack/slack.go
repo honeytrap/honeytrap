@@ -124,7 +124,7 @@ type channelSelector struct {
 
 // Send delivers the giving push messages to the required slack channel.
 // TODO: Ask if Send shouldnt return an error to allow proper delivery validation.
-func (mc MessageChannel) Send(messages []*message.PushMessage) {
+func (mc MessageChannel) Send(messages []message.PushMessage) {
 	for _, message := range messages {
 
 		// Run through all the available fields and their regexp,

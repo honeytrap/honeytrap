@@ -46,7 +46,7 @@ func (hc *TrapChannel) UnmarshalConfig(m interface{}) error {
 }
 
 // Send delivers all messages to the underline connection.
-func (hc TrapChannel) Send(messages []*message.PushMessage) {
+func (hc TrapChannel) Send(messages []message.PushMessage) {
 	// TODO:
 	// req, err := hc.client.NewRequest("POST", "v1/action/{sensor}/{type}", actions)
 

@@ -79,7 +79,7 @@ func TestFileChannel(t *testing.T) {
 			}
 			t.Logf("\t%s\t Should have successfully parsed configuration", passed)
 
-			fc.Send([]*message.PushMessage{blueChip, crum, ping})
+			fc.Send([]message.PushMessage{blueChip, crum, ping})
 
 			fc.Wait()
 
@@ -112,7 +112,7 @@ func TestFileChannel(t *testing.T) {
 			}
 			t.Logf("\t%s\t Should have successfully parsed configuration", passed)
 
-			fc.Send([]*message.PushMessage{blueChip, crum, ping})
+			fc.Send([]message.PushMessage{blueChip, crum, ping})
 
 			fc.Wait()
 

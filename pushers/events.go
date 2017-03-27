@@ -51,7 +51,7 @@ func (d *EventDelivery) Deliver(ev message.Event) {
 	// Set the time for the event
 	ev.Time = time.Now()
 
-	d.sync.Send([]*message.PushMessage{
+	d.sync.Send([]message.PushMessage{
 		{
 			Sensor:      ev.Sensor,
 			Category:    ev.Category,

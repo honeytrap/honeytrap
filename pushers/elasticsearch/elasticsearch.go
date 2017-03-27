@@ -19,21 +19,23 @@ import (
 
 var log = logging.MustGetLogger("honeytrap:channels:elasticsearch")
 
-type ElasticSearchChannel struct {
+// SearchChannel defines a struct which provides a channel for delivery
+// push messages to an elasticsearch api.
+type SearchChannel struct {
 	client *http.Client
 	host   string
 }
 
-// Unmarshal attempts to unmarshal the provided value into the giving
+// UnmarshalConfig attempts to unmarshal the provided value into the giving
 // ElasticSearchChannel.
-func (e *ElasticSearchChannel) UnmarshalConfig(m interface{}) error {
+func (hc *SearchChannel) UnmarshalConfig(m interface{}) error {
 	conf, ok := m.(map[string]interface{})
 	if !ok {
 		return errors.New("Expected to receive a map")
 	}
 
-	if e.client == nil {
-		e.client = &http.Client{
+	if hc.client == nil {
+		hc.client = &http.Client{
 			Transport: &http.Transport{
 				MaxIdleConnsPerHost: 5,
 			},
@@ -41,14 +43,15 @@ func (e *ElasticSearchChannel) UnmarshalConfig(m interface{}) error {
 		}
 	}
 
-	if e.host, ok = conf["host"].(string); !ok {
+	if hc.host, ok = conf["host"].(string); !ok {
 		return fmt.Errorf("Host not set for channel elasticsearch")
 	}
 
 	return nil
 }
 
-func (hc ElasticSearchChannel) Send(messages []*message.PushMessage) {
+// Send delivers the giving push messages into the internal elastic search endpoint.
+func (hc SearchChannel) Send(messages []message.PushMessage) {
 	for _, message := range messages {
 		buf := new(bytes.Buffer)
 

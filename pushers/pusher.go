@@ -25,7 +25,7 @@ type Waiter interface {
 // Channel defines a interface which exposes a single method for delivering
 // PushMessages to a giving underline service.
 type Channel interface {
-	Send([]*message.PushMessage)
+	Send([]message.PushMessage)
 }
 
 //=======================================================================================================
@@ -42,7 +42,7 @@ func NewProxyPusher(p *Pusher) *ProxyPusher {
 }
 
 // Send delivers the messages to the underline Pusher instance.
-func (p ProxyPusher) Send(messages []*message.PushMessage) {
+func (p ProxyPusher) Send(messages []message.PushMessage) {
 	p.pusher.send(messages)
 }
 
@@ -52,8 +52,8 @@ func (p ProxyPusher) Send(messages []*message.PushMessage) {
 // delivery of message.PushMessage.
 type Pusher struct {
 	config   *config.Config
-	q        chan *message.PushMessage
-	queue    []*message.PushMessage
+	q        chan message.PushMessage
+	queue    []message.PushMessage
 	age      time.Duration
 	backends map[string]Channel
 	channels []Channel
@@ -84,7 +84,7 @@ func New(conf *config.Config) *Pusher {
 
 		switch name {
 		case "elasticsearch":
-			var elastic elasticsearch.ElasticSearchChannel
+			var elastic elasticsearch.SearchChannel
 			if err := elastic.UnmarshalConfig(backend); err != nil {
 				log.Errorf("Error initializing channel: %s", err.Error())
 				continue
@@ -122,7 +122,7 @@ func New(conf *config.Config) *Pusher {
 	p := &Pusher{
 		config:   conf,
 		backends: backends,
-		queue:    []*message.PushMessage{},
+		queue:    []message.PushMessage{},
 		q:        make(chan *message.PushMessage),
 		age:      conf.Delays.PushDelay.Duration(),
 	}
@@ -176,7 +176,7 @@ func (p *Pusher) run() {
 	// 2. Does it not stop at all, hence this code becomes unreachable.
 }
 
-func (p *Pusher) send(messages []*message.PushMessage) {
+func (p *Pusher) send(messages []message.PushMessage) {
 	// TODO: Should we do some waitgroup here to ensure all channels
 	// properly finish?
 	for _, channel := range p.channels {
@@ -191,7 +191,7 @@ func (p *Pusher) flush() {
 
 	go p.send(p.queue)
 
-	p.queue = []*message.PushMessage{}
+	p.queue = []message.PushMessage{}
 }
 
 // TODO: Cannot we do the following
@@ -205,7 +205,7 @@ func (p *Pusher) flush() {
 // Push adds the giving data as part of a single PushMessage to be published to
 // the pushers backends.
 func (p *Pusher) Push(sensor, category, containerID, sessionID string, data interface{}) {
-	p.q <- &message.PushMessage{
+	p.q <- message.PushMessage{
 		Sensor:      sensor,
 		Category:    category,
 		SessionID:   sessionID,
@@ -217,7 +217,7 @@ func (p *Pusher) Push(sensor, category, containerID, sessionID string, data inte
 // PushFile adds the giving data as push notifications for a file data.
 // TODO: implement PushFile instead of RecordPush
 func (p *Pusher) PushFile(sensor, category, containerID, sessionID string, filename string, data []byte) {
-	p.q <- &message.PushMessage{
+	p.q <- message.PushMessage{
 		Sensor:      sensor,
 		Category:    category,
 		SessionID:   sessionID,
@@ -226,7 +226,7 @@ func (p *Pusher) PushFile(sensor, category, containerID, sessionID string, filen
 	}
 }
 
-func (p *Pusher) add(a *message.PushMessage) {
+func (p *Pusher) add(a message.PushMessage) {
 	p.queue = append(p.queue, a)
 
 	if len(p.queue) > 20 {

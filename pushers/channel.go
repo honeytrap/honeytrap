@@ -85,7 +85,7 @@ func (mc *MasterChannel) UnmarshalConfig(m interface{}) error {
 
 // Send delivers the slice of PushMessages and using the internal filters
 // to filter out the desired messages allowed for all registered backends.
-func (mc *MasterChannel) Send(msgs []*message.PushMessage) {
+func (mc *MasterChannel) Send(msgs []message.PushMessage) {
 
 	// filter messages with all filters.
 	for _, filter := range mc.filters {

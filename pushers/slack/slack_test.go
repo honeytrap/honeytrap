@@ -121,7 +121,7 @@ func TestSlackPusher(t *testing.T) {
 			}
 			t.Logf("\t%s\t Should have successfully created new MessageChannel.", passed)
 
-			channel.Send([]*message.PushMessage{blueChip})
+			channel.Send([]message.PushMessage{blueChip})
 
 			response := make(map[string]interface{})
 			if err := json.NewDecoder(&service.Body).Decode(&response); err != nil {
@@ -182,7 +182,7 @@ func TestSlackPusher(t *testing.T) {
 
 			response := make(map[string]interface{})
 
-			channel.Send([]*message.PushMessage{ping, crum})
+			channel.Send([]message.PushMessage{ping, crum})
 			if err := json.NewDecoder(&service.Body).Decode(&response); err != nil {
 				t.Fatalf("\t%s\t Should have successfully failed to unmarshalled empty body: %q.", failed, err.Error())
 			}
@@ -190,7 +190,7 @@ func TestSlackPusher(t *testing.T) {
 
 			response = make(map[string]interface{})
 
-			channel.Send([]*message.PushMessage{crum})
+			channel.Send([]message.PushMessage{crum})
 			if err := json.NewDecoder(&service.Body).Decode(&response); err != nil {
 				t.Fatalf("\t%s\t Should have successfully failed to unmarshalled empty body: %q.", failed, err.Error())
 			}
@@ -232,7 +232,7 @@ func TestSlackPusher(t *testing.T) {
 			}
 			t.Logf("\t%s\t Should have successfully created new MessageChannel.", passed)
 
-			channel.Send([]*message.PushMessage{ping})
+			channel.Send([]message.PushMessage{ping})
 
 			pingResponse := make(map[string]interface{})
 			if err := json.NewDecoder(&service.Body).Decode(&pingResponse); err != nil {
@@ -250,7 +250,7 @@ func TestSlackPusher(t *testing.T) {
 			}
 			t.Logf("\t%s\t Should have successfully matched request toekn for ping response.", passed)
 
-			channel.Send([]*message.PushMessage{crum})
+			channel.Send([]message.PushMessage{crum})
 
 			crumResponse := make(map[string]interface{})
 			if err := json.NewDecoder(&service.Body).Decode(&crumResponse); err != nil {

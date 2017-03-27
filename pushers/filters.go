@@ -11,7 +11,7 @@ import (
 // Filters defines an interface which exposes a method for filtering specific
 // messages by specific boundaries.
 type Filters interface {
-	Filter(...*message.PushMessage) []*message.PushMessage
+	Filter(...*message.PushMessage) []message.PushMessage
 }
 
 //==========================================================================================
@@ -65,8 +65,8 @@ func NewRegExpFilter(fn RegExpFilterFunction, rx ...*regexp.Regexp) *RegExpFilte
 
 // Filter returns a slice of messages passed in which passes the internal regular
 // expressions criterias.
-func (r *RegExpFilter) Filter(messages ...*message.PushMessage) []*message.PushMessage {
-	var filtered []*message.PushMessage
+func (r *RegExpFilter) Filter(messages ...*message.PushMessage) []message.PushMessage {
+	var filtered []message.PushMessage
 
 	{
 	mloop:
