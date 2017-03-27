@@ -35,7 +35,7 @@ type FileChannel struct {
 	dest     *os.File
 	ms       time.Duration
 	filters  map[string]*regexp.Regexp
-	request  chan *message.PushMessage
+	request  chan message.PushMessage
 	wg       sync.WaitGroup
 }
 
@@ -44,7 +44,7 @@ func New() *FileChannel {
 	var fc FileChannel
 	fc.ms = defaultWaitTime
 	fc.maxSize = defaultMaxSize
-	fc.request = make(chan *message.PushMessage)
+	fc.request = make(chan message.PushMessage)
 	fc.filters = make(map[string]*regexp.Regexp, 0)
 
 	return &fc
@@ -85,7 +85,7 @@ func (f *FileChannel) Send(messages []message.PushMessage) {
 		f.request <- message
 	}
 
-	// Close channel
+	// Close channel.
 	close(f.request)
 }
 
@@ -141,7 +141,7 @@ func (f *FileChannel) syncWrites() error {
 	}
 
 	if f.request == nil {
-		f.request = make(chan *message.PushMessage)
+		f.request = make(chan message.PushMessage)
 	}
 
 	var err error

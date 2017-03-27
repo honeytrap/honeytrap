@@ -28,7 +28,7 @@ type MessageChannel struct {
 	channels []channelSelector
 }
 
-// Unmarshal attempts to unmarshal the provided value into the giving
+// UnmarshalConfig attempts to unmarshal the provided value into the giving
 // MessageChannel.
 func (mc *MessageChannel) UnmarshalConfig(m interface{}) error {
 	conf, ok := m.(map[string]interface{})

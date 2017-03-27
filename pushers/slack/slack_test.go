@@ -19,7 +19,7 @@ const (
 )
 
 var (
-	blueChip = &message.PushMessage{
+	blueChip = message.PushMessage{
 		Sensor:      "BlueChip",
 		Category:    "Chip Integrated",
 		SessionID:   "4334334-3433434-34343-FUD",
@@ -27,7 +27,7 @@ var (
 		Data:        "Hello World!",
 	}
 
-	ping = &message.PushMessage{
+	ping = message.PushMessage{
 		Sensor:      "Ping",
 		Category:    "Ping Notificiation",
 		SessionID:   "4334334-3433434-34343-FUD",
@@ -35,7 +35,7 @@ var (
 		Data:        "Hello World!",
 	}
 
-	crum = &message.PushMessage{
+	crum = message.PushMessage{
 		Sensor:      "Crum Stream",
 		Category:    "WebRTC Crum Stream",
 		SessionID:   "4334334-3433434-34343-FUD",
