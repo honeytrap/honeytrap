@@ -123,7 +123,7 @@ func New(conf *config.Config) *Pusher {
 		config:   conf,
 		backends: backends,
 		queue:    []message.PushMessage{},
-		q:        make(chan *message.PushMessage),
+		q:        make(chan message.PushMessage),
 		age:      conf.Delays.PushDelay.Duration(),
 	}
 
