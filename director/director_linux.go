@@ -3,8 +3,7 @@
 package director
 
 import (
-	"crypto/md5" // #nosec
-	"fmt"
+	// #nosec
 	"net"
 	"sync"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/honeytrap/honeytrap/pushers"
 
 	lxc "github.com/honeytrap/golxc"
+	"github.com/honeytrap/namecon"
 )
 
 // Director defines a struct which handles the management of registered containers.
@@ -21,6 +21,7 @@ type Director struct {
 	m          sync.Mutex
 	config     *config.Config
 	provider   providers.Provider
+	namer      namecon.Namer
 }
 
 // New returns a new instance of a Director.
@@ -32,6 +33,7 @@ func New(conf *config.Config, events pushers.Events) *Director {
 		config:     conf,
 		containers: map[string]providers.Container{},
 		provider:   providers.NewLxcProvider(conf, events),
+		namer:      namecon.NewNamerCon(conf.Template+"-%s", namecon.Basic{}),
 	}
 
 	d.registerContainers()
@@ -71,14 +73,7 @@ func (d *Director) getName(c net.Conn) (string, error) {
 		return "", err
 	}
 
-	/* #nosec */
-	hasher := md5.New()
-	if _, err := hasher.Write([]byte(fmt.Sprintf("%s%s", rhost, d.config.Token))); err != nil {
-		log.Errorf("Error during hasher.Write call: %s", err.Error())
-		return "", err
-	}
-
-	return fmt.Sprintf("%x", hasher.Sum(nil)), nil
+	return d.namer.New(rhost), nil
 }
 
 // NewContainer returns a new providers.Container instance from the provided internal providers.
