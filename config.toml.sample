@@ -5,10 +5,39 @@ push_every = "10s"
 freeze_every = "10s"
 stop_every = "30s"
 
-[[channels]]
-name = "honeytrap"
+[[backend.honeytrap]]
 host = "http://api.honeytrap.io/"
 token = "b0b6e462-ef0b-11e6-abc7-0fb6247f5820"
+
+[[backend.file]]
+file = "/store/files/pushers.pub"
+ms = "50s"
+max_size = 3000
+
+[[backend.slack]]
+key = "slack.1"
+host = "https://hooks.slack.com/services/"
+token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
+
+[[backend.slack]]
+key = "slack.1"
+host = "https://hooks.slack.com/services/"
+token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
+
+[[backend.slack]]
+key = "slack.2"
+host = "https://hooks.slack.com/services/"
+token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
+
+[[backend.slack]]
+key = "slack.3"
+host = "https://hooks.slack.com/services/"
+token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
+
+[[backend.slack]]
+key = "slack.4"
+host = "https://hooks.slack.com/services/"
+token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
 
 [housekeeper]
 every = "10s"

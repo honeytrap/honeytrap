@@ -2,80 +2,71 @@ package server
 
 import (
 	"net"
-	"runtime"
 
-	_ "net/http/pprof"
+	_ "net/http/pprof" // Add pprof tooling
 
 	"github.com/BurntSushi/toml"
 	config "github.com/honeytrap/honeytrap/config"
 	director "github.com/honeytrap/honeytrap/director"
 
 	proxies "github.com/honeytrap/honeytrap/proxies"
-	_ "github.com/honeytrap/honeytrap/proxies/ssh"
+	_ "github.com/honeytrap/honeytrap/proxies/ssh" // TODO: Add comment
 
 	pushers "github.com/honeytrap/honeytrap/pushers"
-	_ "github.com/honeytrap/honeytrap/pushers/elasticsearch"
-	_ "github.com/honeytrap/honeytrap/pushers/honeytrap"
+	// _ "github.com/Honeytrap/Honeytrap/pushers/elasticsearch"
+	// _ "github.com/Honeytrap/Honeytrap/pushers/Honeytrap"
+	"github.com/honeytrap/honeytrap/pushers/message"
 
 	utils "github.com/honeytrap/honeytrap/utils"
 
 	logging "github.com/op/go-logging"
 )
 
-var log = logging.MustGetLogger("honeytrap")
+var log = logging.MustGetLogger("Honeytrap")
 
-type honeytrap struct {
+// Honeytrap defines a struct which coordinates the internal logic for the honeytrap
+// container infrastructure.
+type Honeytrap struct {
 	config   *config.Config
 	director *director.Director
 	pusher   *pushers.Pusher
+	events   pushers.Events
 }
 
+// ServeFunc defines the function called to handle internal server details.
 type ServeFunc func() error
 
-func RecoverHandler(serveFn ServeFunc) error {
-	defer func() {
-		if err := recover(); err != nil {
-			trace := make([]byte, 1024)
-			count := runtime.Stack(trace, true)
-			log.Errorf("Error: %s", err)
-			log.Debugf("Stack of %d bytes: %s\n", count, string(trace))
-			return
-		}
-	}()
-
-	if err := serveFn(); err != nil {
-		log.Error("Error: ", err)
-		return err
-	}
-
-	return nil
-}
-
-func New(conf *config.Config) *honeytrap {
-	director := director.New(conf)
+// New returns a new instance of a Honeytrap struct.
+func New(conf *config.Config) *Honeytrap {
 	pusher := pushers.New(conf)
-	return &honeytrap{conf, director, pusher}
+	events := pushers.NewTokenedEventDelivery(conf.Token, pushers.NewProxyPusher(pusher))
+	director := director.New(conf, events)
+
+	return &Honeytrap{conf, director, pusher, events}
 }
 
-func (hc *honeytrap) startAgentServer() {
+func (hc *Honeytrap) startAgentServer() {
 	// as := proxies.NewAgentServer(hc.director, hc.pusher, hc.config)
 	// go as.ListenAndServe()
 }
 
-type ListenFunc func(string, *director.Director, *pushers.Pusher, *config.Config) (net.Listener, error)
+// ListenFunc defines a function type which returns a net.Listener specific for the
+// use of its argument and for the reception of net connections.
+type ListenFunc func(string, *director.Director, *pushers.Pusher, *pushers.EventDelivery, *config.Config) (net.Listener, error)
 
+// ListenerConfig defines a struct for holding configuration fields for a Listener
+// builder.
 type ListenerConfig struct {
 	fn      ListenFunc
 	address string
 }
 
-func (hc *honeytrap) startPusher() {
+func (hc *Honeytrap) startPusher() {
 	hc.pusher.Start()
 }
 
-func (hc *honeytrap) startProxies() {
+func (hc *Honeytrap) startProxies() {
 	for _, primitive := range hc.config.Services {
-
 		st := struct {
 			Service string `toml:"service"`
 			Port    string `toml:"port"`
@@ -89,11 +80,31 @@ func (hc *honeytrap) startProxies() {
 		if serviceFn, ok := proxies.Get(st.Service); ok {
 			log.Debugf("Listener starting: %s", st.Port)
 
-			service, err := serviceFn(st.Port, hc.director, hc.pusher, primitive)
+			service, err := serviceFn(st.Port, hc.director, hc.pusher, hc.events, primitive)
 			if err != nil {
 				log.Errorf("Error in service: %s: %s", st.Service, err.Error())
+
+				hc.events.Deliver(message.Event{
+					Sensor:   st.Service,
+					Category: "Services",
+					Type:     message.ServiceStarted,
+					Details: map[string]interface{}{
+						"primitive": primitive,
+						"error":     err.Error(),
+					},
+				})
+
 				continue
 			}
+
+			hc.events.Deliver(message.Event{
+				Sensor:   st.Service,
+				Category: "Services",
+				Type:     message.ServiceStarted,
+				Details: map[string]interface{}{
+					"primitive": primitive,
+				},
+			})
 
 			/*
 				if err := toml.PrimitiveDecode(primitive, &service); err != nil {
@@ -117,16 +128,6 @@ func (hc *honeytrap) startProxies() {
 			*/
 
 			go func(listener net.Listener) {
-				defer func() {
-					if err := recover(); err != nil {
-						trace := make([]byte, 1024)
-						count := runtime.Stack(trace, true)
-						log.Errorf("Error: %s", err)
-						log.Debugf("Stack of %d bytes: %s\n", count, string(trace))
-						return
-					}
-				}()
-
 				/*
 					l, err := net.Listen("tcp", address)
 					if err != nil {
@@ -184,7 +185,8 @@ func (hc *honeytrap) startProxies() {
 	*/
 }
 
-func (hc *honeytrap) Serve() {
+// Serve initializes and starts the internal logic for the Honeytrap instance.
+func (hc *Honeytrap) Serve() {
 
 	hc.startPusher()
 	hc.startProxies()

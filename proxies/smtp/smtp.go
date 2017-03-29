@@ -17,15 +17,17 @@ import (
 	"time"
 
 	"github.com/satori/go.uuid"
+	"github.com/upspin/upspin/log"
 
 	config "github.com/honeytrap/honeytrap/config"
 	director "github.com/honeytrap/honeytrap/director"
 	pushers "github.com/honeytrap/honeytrap/pushers"
 )
 
+// ListenSMTP returns a new proxy handler for the smtp provider.
 // TODO: Change amount of params.
 // combine listensmtp, smtpforwarder
-func ListenSMTP(address string, d *director.Director, p *pushers.Pusher, c *config.Config) (net.Listener, error) {
+func ListenSMTP(address string, d *director.Director, p *pushers.Pusher, e pushers.Events, c *config.Config) (net.Listener, error) {
 	l, err := net.Listen("tcp", address)
 	if err != nil {
 		log.Fatal(err)
@@ -50,16 +52,19 @@ func ListenSMTP(address string, d *director.Director, p *pushers.Pusher, c *conf
 			l,
 			d,
 			p,
+			e,
 		},
 		&tlsconfig,
 	}, nil
 }
 
+// SMTPProxyListener defines a listener for smtp connections.
 type SMTPProxyListener struct {
 	*ProxyListener
 	tlsconfig *tls.Config
 }
 
+// NewSMTPForwarder returns a new instance of the SMTPForwarder.
 func NewSMTPForwarder(c *config.Config) (Forwarder, error) {
 	cert, err := tls.LoadX509KeyPair(
 		c.Proxies.SMTP.TLS.Certificate,
@@ -80,10 +85,12 @@ func NewSMTPForwarder(c *config.Config) (Forwarder, error) {
 	}, nil
 }
 
+// SMTPForwarder defines a forwader for smtp connection.
 type SMTPForwarder struct {
 	tlsconfig *tls.Config
 }
 
+// Forwarder defines a function to fowarded to the provided ProxyConn.
 func (sf *SMTPForwarder) Forward(pc *ProxyConn) Proxyer {
 	return &SMTPProxyConn{
 		ProxyConn: pc,
@@ -93,10 +100,13 @@ func (sf *SMTPForwarder) Forward(pc *ProxyConn) Proxyer {
 	}
 }
 
+// Fowarder defines a struct which contains the underline forwarding logic for
+// a proxy connection.
 type Forwarder interface {
 	Forward(pc *ProxyConn) Proxyer
 }
 
+// Accept handles the accept calls for provided SMTPProxyListener.
 func (l *SMTPProxyListener) Accept() (net.Conn, error) {
 	// _ = smconf := l.config.Proxies.SMTP
 
@@ -171,6 +181,7 @@ func newMessage() *Message {
 	return &Message{To: []*mail.Address{}}
 }
 
+// Read reads the giving data from the provided Reader.
 func (m *Message) Read(r io.Reader) error {
 	msg, err := mail.ReadMessage(r)
 	if err != nil {
@@ -449,6 +460,7 @@ func (s *SMTPProxyConn) proxy(text1, text2 *textproto.Conn) (string, error) {
 	return string(line), text1.W.Flush()
 }
 
+// Proxy initializes and proxy the internal connection details for each connection.
 func (s *SMTPProxyConn) Proxy( /*c *ProxyConfig*/ ) error {
 	defer func() {
 		// defer so we can add meta data to the message
