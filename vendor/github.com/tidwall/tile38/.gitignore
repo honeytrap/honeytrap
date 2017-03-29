@@ -1,0 +1,10 @@
+.DS_Store
+tile38-*
+!cmd/tile38-*
+data*/
+coverage.out
+packages/
+
+# Ignore IDE folders
+.idea/
+.vscode/
