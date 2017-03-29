@@ -31,7 +31,7 @@ func NewTokenedEventDelivery(token string, channel Channel) *TokenedEventDeliver
 // object.
 func (a TokenedEventDelivery) Deliver(ev message.Event) {
 	ev.Token = a.Token
-	a.Deliver(ev)
+	a.EventDelivery.Deliver(ev)
 }
 
 // EventDelivery defines a struct which embodies a delivery system which allows
