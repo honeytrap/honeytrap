@@ -16,6 +16,7 @@ import (
 
 var log = logging.MustGetLogger("honeytrap:sniffer")
 
+// contains configuration fields.
 var (
 	timeout     = 10 * time.Millisecond
 	promisc     = false
@@ -23,12 +24,14 @@ var (
 	ErrNoSource = errors.New("No gopacket.Source")
 )
 
+// Sniffer defines a struct which handles network data capturing from containers.
 type Sniffer struct {
 	filter      string
 	stopChan    chan bool
 	stoppedChan chan bytes.Buffer
 }
 
+// New returns a new Sniffer instance.
 func New(filter string) *Sniffer {
 	return &Sniffer{
 		filter:      filter,
@@ -37,10 +40,12 @@ func New(filter string) *Sniffer {
 	}
 }
 
+// Start initializes and begins network data collection.
 func (c *Sniffer) Start(device string) error {
 	return c.serve(device)
 }
 
+// Stop returns a reader which provides access to captured data.
 func (c *Sniffer) Stop() (io.ReadCloser, error) {
 	log.Debug("Sniffer stopping")
 
@@ -106,7 +111,7 @@ func (c *Sniffer) serve(device string) error {
 			case packet := <-source.Packets():
 				// TODO: should be pushed to channel, then in channel it can be filterer
 				if err := gow.WritePacket(packet.Metadata().CaptureInfo, packet.Data()); err != nil {
-					log.Error("Error writing packet: %s", err.Error())
+					log.Errorf("error writing packet: %+q", err)
 				}
 			}
 		}

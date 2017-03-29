@@ -8,6 +8,7 @@ import (
 
 var log = logging.MustGetLogger("honeytrap:utils")
 
+// RecoverHandler defines a function which is called to handle panic recovery.
 func RecoverHandler() {
 	if err := recover(); err != nil {
 		trace := make([]byte, 1024)
