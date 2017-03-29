@@ -1,0 +1,22 @@
+{
+    "dependencies": {
+        "github.com/honeytrap/golxc": {
+            "revision": "365776ef525bf6740eb39531895cb95f7d3fb2b5"
+        },
+        "github.com/honeytrap/namecon": {
+            "branch": "master"
+        },
+        "github.com/satori/go.uuid": {
+            "branch": "master"
+        },
+        "github.com/tidwall/tile38": {
+            "branch": "master"
+        },
+        "github.com/upspin/upspin": {
+            "branch": "master"
+        },
+        "golang.org/x/crypto": {
+            "branch": "master"
+        }
+    }
+}

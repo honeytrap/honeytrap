@@ -14,7 +14,6 @@ import (
 	"github.com/google/gopacket"
 )
 
-// Potential values for ARP.Operation.
 const (
 	ARPRequest = 1
 	ARPReply   = 2

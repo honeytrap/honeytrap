@@ -1,5 +1,15 @@
 language: go
 
+notifications:
+  slack: honeycast:P9gQukyVSKgFEyoGh2efeK1H
+
+services:
+  - docker
+
+before_install:
+  - docker build -f test.Dockerfile -t honeytrap/travis-build ./ 
+  - docker run -d -p 8022:8022 -p 3000:3000 honeytrap/travis-build /bin/sh -C "cd /honeytrap; honeytrap"
+
 env:
   - GIMME_OS=linux GIMME_ARCH=amd64
 
@@ -7,7 +17,9 @@ go:
   - master
 
 install:
-  - go get -d -v ./...
+  - docker ps -a
+
 
 script:
-  - go build -v ./...
+  - ls  
+  - echo "Done!"

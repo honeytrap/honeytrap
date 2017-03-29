@@ -1,17 +1,20 @@
 package server
 
 import (
-	web "github.com/honeytrap/honeytrap-web"
 	"net/http"
 
+	web "github.com/honeytrap/honeytrap-web"
+
 	"fmt"
+
 	"github.com/elazarl/go-bindata-assetfs"
 	"github.com/fatih/color"
 	// logging "github.com/op/go-logging"
 	"os"
 )
 
-func (hc *honeytrap) startStatsServer() {
+// startStatsServer starts the http server for handling request.
+func (hc *Honeytrap) startStatsServer() {
 	log.Infof("Stats server Listening on port: %s", hc.config.Web.Port)
 
 	staticHandler := http.FileServer(
@@ -32,6 +35,7 @@ func (hc *honeytrap) startStatsServer() {
 		log.Debug("Using static file path: ", hc.config.Web.Path)
 
 		// check local css first
+		// TODO: What is this for and why are we assigning here.
 		staticHandler = http.FileServer(http.Dir(hc.config.Web.Path))
 	}
 

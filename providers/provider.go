@@ -1,9 +1,6 @@
 package providers
 
-import "github.com/op/go-logging"
-
-var log = logging.MustGetLogger("honeytrap:providers")
-
+// Provider defines a function which returns a NewContainer.
 type Provider interface {
 	NewContainer(string) (Container, error)
 }

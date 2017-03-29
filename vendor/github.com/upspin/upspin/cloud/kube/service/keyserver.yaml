@@ -1,0 +1,14 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: "PREFIXkeyserver"
+spec:
+  selector:
+    app: "PREFIXkeyserver"
+  ports:
+  - name: "https"
+    port: 443
+    targetPort: 443
+    protocol: "TCP"
+  type: LoadBalancer
+  loadBalancerIP: IPADDR

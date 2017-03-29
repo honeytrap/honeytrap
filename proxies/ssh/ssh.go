@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/op/go-logging"
+	logging "github.com/op/go-logging"
 	"github.com/satori/go.uuid"
 
 	"github.com/honeytrap/honeytrap/director"
@@ -23,19 +23,22 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"github.com/BurntSushi/toml"
 	"io/ioutil"
+
+	"github.com/BurntSushi/toml"
 )
 
 var _ = proxies.Register("ssh", Listen)
 
 var log = logging.MustGetLogger("honeytrap:proxy:ssh")
 
+// contains different message header strings for ssh sensors.
 var (
 	SSHSensorTypeOutgoing = "Session-Outgoing-packet"
 	SSHSensorTypeIncoming = "Session-Incoming-packet"
 )
 
+// Config defines the configuration passed in to create a ssh connection.
 type Config struct {
 	Key    *PrivateKey `toml:"key"`
 	Port   string      `toml:"port"`
@@ -50,20 +53,20 @@ func generateKey() (*PrivateKey, error) {
 		return nil, err
 	}
 
-	if err := priv.Validate(); err != nil {
-		log.Errorf("Validation failed: %s", err.Error())
-		return nil, err
+	if cerr := priv.Validate(); cerr != nil {
+		log.Errorf("Validation failed: %s", cerr.Error())
+		return nil, cerr
 	}
 
-	priv_der := x509.MarshalPKCS1PrivateKey(priv)
+	privder := x509.MarshalPKCS1PrivateKey(priv)
 
-	priv_blk := pem.Block{
+	privblk := pem.Block{
 		Type:    "RSA PRIVATE KEY",
 		Headers: nil,
-		Bytes:   priv_der,
+		Bytes:   privder,
 	}
 
-	privateBytes := pem.EncodeToMemory(&priv_blk)
+	privateBytes := pem.EncodeToMemory(&privblk)
 
 	private, err := ssh.ParsePrivateKey(privateBytes)
 	if err != nil {
@@ -73,10 +76,12 @@ func generateKey() (*PrivateKey, error) {
 	return &PrivateKey{private}, nil
 }
 
+// PrivateKey holds the ssh.Signer instance to unsign received data.
 type PrivateKey struct {
 	ssh.Signer
 }
 
+// UnmarshalText unmarshalls the giving text as the Signers data.
 func (t *PrivateKey) UnmarshalText(data []byte) (err error) {
 	keyFile := string(data)
 
@@ -97,24 +102,25 @@ func (t *PrivateKey) UnmarshalText(data []byte) (err error) {
 	return err
 }
 
+// Listen initializes the ssh connection processes.
 // can we do something with:
 // https://github.com/golang/crypto/blob/master/ssh/agent/forward.go
-
+//
 // we have toml with config
 // so we can use this func with toml configurattion
 // toml.PrimitiveDecode(primitive, &SSHConfig{})
 // we don't need address anymore
-
+//
 // how to pass the pusher and director
 // Maybe just have a Listener() function that will return the listener?
-
+//
 // and how will this fit in the newer solution?
-
+//
 // also we don't want the proxy listener to listen, but have a custom listener interface
 // that we can swap. So we can use for emxapl cowrie as well, but also our raw stack
-
+//
 // TODO: Change amount of params.
-func Listen(address string, d *director.Director, p *pushers.Pusher, primitive toml.Primitive) (net.Listener, error) {
+func Listen(address string, d *director.Director, p *pushers.Pusher, events pushers.Events, primitive toml.Primitive) (net.Listener, error) {
 	c := Config{
 		Key:    nil,
 		Port:   ":8022",
@@ -138,17 +144,19 @@ func Listen(address string, d *director.Director, p *pushers.Pusher, primitive t
 	}
 
 	return &Listener{
-		proxies.NewProxyListener(l, d, p),
+		proxies.NewProxyListener(l, d, p, events),
 		&c,
 	}, nil
 }
 
+// Listener defines a custom Listener for handling ssh connections.
 type Listener struct {
 	*proxies.ProxyListener
 
 	c *Config
 }
 
+// Accept calls the internal accept method for the underline ProxyListener.
 func (l *Listener) Accept() (net.Conn, error) {
 	conn, err := l.ProxyListener.Accept()
 	if err != nil {
@@ -159,14 +167,16 @@ func (l *Listener) Accept() (net.Conn, error) {
 	return &Conn{conn.(*proxies.ProxyConn), l.c}, err
 }
 
+// Conn defines a custom connection for handling ssh proxying.
 type Conn struct {
 	*proxies.ProxyConn
 
 	c *Config
 }
 
+// Proxy setsup the needed recorders to record ssh connection details.
 func (p *Conn) Proxy() error {
-	recorder := NewSSHRecorder(p.Pusher)
+	recorder := NewSSHRecorder(p.Pusher, p.Event)
 
 	rs := recorder.NewSession(p.ProxyConn)
 
@@ -180,7 +190,7 @@ func (p *Conn) Proxy() error {
 
 	err := c2Conn.Handshake2(p.Server.RemoteAddr().String(), &c2Config)
 	if err != nil {
-		log.Error("Client handshake failed: %s.", err.Error)
+		log.Errorf("Client handshake failed: %s.", err.Error())
 		return err
 	}
 
@@ -203,14 +213,14 @@ func (p *Conn) Proxy() error {
 			username = conn.User()
 			password = string(password2)
 
-			err := c2Conn.Authorize2(&c2Config)
-			if err == nil {
-				return nil, err
-			} else if err == io.EOF {
+			cerr := c2Conn.Authorize2(&c2Config)
+			if cerr == nil {
+				return nil, cerr
+			} else if cerr == io.EOF {
 				// TODO: How to handle client c2conn close? Server conn should be closed as well
 				// close server connection
 				// defer p.Close()
-			} else if _, ok := err.(syscall.Errno); ok {
+			} else if _, ok := cerr.(syscall.Errno); ok {
 				// TODO: How to handle client c2conn close? Server conn should be closed as well
 				// close server connection
 				// defer p.Close()
@@ -259,10 +269,10 @@ func (p *Conn) Proxy() error {
 			return err2
 		}
 
-		channel, requests, err := newChannel.Accept()
-		if err != nil {
-			log.Error("Could not accept server channel: ", err)
-			return err
+		channel, requests, cerr := newChannel.Accept()
+		if cerr != nil {
+			log.Error("Could not accept server channel: ", cerr)
+			return cerr
 		}
 
 		channelID := uuid.NewV4()
@@ -288,9 +298,9 @@ func (p *Conn) Proxy() error {
 					break
 				}
 
-				b, err := dst.SendRequest(req.Type, req.WantReply, req.Payload)
+				b, cerr := dst.SendRequest(req.Type, req.WantReply, req.Payload)
 				if err != nil {
-					log.Error("Reply Error", err)
+					log.Error("Reply Error", cerr)
 				}
 
 				if req.WantReply {
@@ -299,9 +309,9 @@ func (p *Conn) Proxy() error {
 
 				data := map[string]interface{}{"name": req.Type, "payload": req.Payload}
 
-				pack, err := json.Marshal(data)
-				if err != nil {
-					log.Error("Unable to Marshal Payload Channel Request Type", err)
+				pack, cerr := json.Marshal(data)
+				if cerr != nil {
+					log.Error("Unable to Marshal Payload Channel Request Type", cerr)
 				} else {
 					rs.Data("Session-RequestType-packet", channelID, pack)
 				}
@@ -337,10 +347,12 @@ func (p *Conn) Proxy() error {
 	return err
 }
 
+// NewSSHRecorderStream returns a new ssh recorder stream.
 func NewSSHRecorderStream(sensor string, rs *SSHRecorderSession /*meta, */, channelID uuid.UUID, username, password string, r io.ReadCloser) io.ReadCloser {
 	return &SSHPacketRecorder{sensor: sensor, rs: rs, channelID: channelID, ReadCloser: r, username: username, password: password, time: time.Now()}
 }
 
+// SSHPacketRecorder defines a custom packet recorder for ssh connections
 type SSHPacketRecorder struct {
 	rs *SSHRecorderSession
 	io.ReadCloser
@@ -353,16 +365,19 @@ type SSHPacketRecorder struct {
 	buffer    bytes.Buffer
 }
 
+// Read reads the internal data from the underline reader.
 func (lr *SSHPacketRecorder) Read(p []byte) (n int, err error) {
 	n, err = lr.ReadCloser.Read(p)
 	lr.rs.Data(lr.sensor, lr.channelID, p[:n])
 	return n, err
 }
 
+// String returns the string version of the internal recorder buffer.
 func (lr *SSHPacketRecorder) String() string {
 	return lr.buffer.String()
 }
 
+// Close closes the underline reader.
 func (lr *SSHPacketRecorder) Close() error {
 	return lr.ReadCloser.Close()
 }

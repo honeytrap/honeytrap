@@ -11,33 +11,42 @@ import (
 	"time"
 
 	"github.com/satori/go.uuid"
+	"github.com/tidwall/tile38/controller/log"
 
 	config "github.com/honeytrap/honeytrap/config"
 	director "github.com/honeytrap/honeytrap/director"
 	protocol "github.com/honeytrap/honeytrap/protocol"
 	pushers "github.com/honeytrap/honeytrap/pushers"
+	"github.com/honeytrap/honeytrap/pushers/message"
 	utils "github.com/honeytrap/honeytrap/utils"
 
 	"github.com/golang/protobuf/proto"
 )
 
+// contains message type constants for different messages.
 const (
 	MessageTypeForward = 0x1
 	MessageTypePing    = 0x2
 )
 
+// ErrAgentUnsupportedProtocol is returned when an Unsupported agent is seen.
 var ErrAgentUnsupportedProtocol = fmt.Errorf("Unsupported agent protocol")
 
-func NewAgentServer(director *director.Director, pusher *pushers.Pusher, cfg *config.Config) *AgentServer {
-	return &AgentServer{director, pusher, cfg}
+// NewAgentServer returns a new AgentServer instance.
+func NewAgentServer(director *director.Director, pusher *pushers.Pusher, events pushers.Events, cfg *config.Config) *AgentServer {
+	return &AgentServer{director, pusher, events, cfg}
 }
 
+// AgentServer defines an a struct which implements a server to handle agent based
+// connections.
 type AgentServer struct {
 	director *director.Director
 	pusher   *pushers.Pusher
+	events   pushers.Events
 	config   *config.Config
 }
 
+// AgentConn defines the a struct which holds the underline net.Conn.
 type AgentConn struct {
 	net.Conn
 	remoteAddr string
@@ -46,6 +55,13 @@ type AgentConn struct {
 	as         *AgentServer
 }
 
+// AgentSession defines a struct which holds the giving session value of the
+// provided current Agent.
+type AgentSession struct {
+	Session string `json:"session"`
+}
+
+// AgentPing defines a data struct to hold ping request/response data.
 type AgentPing struct {
 	Date      time.Time `json:"timestamp"`
 	Host      string    `json:"host"`
@@ -53,6 +69,7 @@ type AgentPing struct {
 	Token     string    `json:"token"`
 }
 
+// AgentRequest defines a data struct to hold a giving request.
 type AgentRequest struct {
 	Date       time.Time `json:"timestamp"`
 	Host       string    `json:"host"`
@@ -62,17 +79,27 @@ type AgentRequest struct {
 	Token      string    `json:"token"`
 }
 
-func (c *AgentConn) RemoteAddr() net.Addr {
+// RemoteAddr returns the RemoteAddr of the underline net.Conn.
+func (ac *AgentConn) RemoteAddr() net.Addr {
 	// ac.remoteAddr
-	addr, port, _ := net.SplitHostPort(c.remoteAddr)
+	addr, port, _ := net.SplitHostPort(ac.remoteAddr)
 
 	if value, err := strconv.Atoi(port); err != nil {
-		return &net.TCPAddr{net.ParseIP(addr), value, ""}
+		return &net.TCPAddr{
+			IP:   net.ParseIP(addr),
+			Port: value,
+			Zone: "",
+		}
 	}
 
-	return &net.TCPAddr{net.ParseIP(addr), 0, ""}
+	return &net.TCPAddr{
+		IP:   net.ParseIP(addr),
+		Port: 0,
+		Zone: "",
+	}
 }
 
+// Ping delivers a Ping message to the underline agent conn.
 func (ac *AgentConn) Ping() error {
 	length := int32(0)
 	binary.Read(ac, binary.LittleEndian, &length)
@@ -88,16 +115,17 @@ func (ac *AgentConn) Ping() error {
 
 	log.Debug("Received ping from agent: %s with token: %s", *msg.LocalAddress, *msg.Token)
 
-	ac.as.pusher.Push("agent", "ping", "", "", AgentPing{
+	ac.as.events.Deliver(AgentPingEvent(ac.Conn.RemoteAddr(), ac.Conn.LocalAddr(), "AgentConn", AgentPing{
 		Date:      time.Now(),
+		Token:     *msg.Token,
 		Host:      ac.Conn.RemoteAddr().String(),
 		LocalAddr: *msg.LocalAddress,
-		Token:     *msg.Token,
-	})
+	}, nil))
 
 	return nil
 }
 
+// Forward delivers a forward data request to the underline net.Conn.
 func (ac *AgentConn) Forward() error {
 	length := int32(0)
 	binary.Read(ac, binary.LittleEndian, &length)
@@ -124,16 +152,16 @@ func (ac *AgentConn) Forward() error {
 
 	sessionID := uuid.NewV4()
 
-	ac.as.pusher.Push("agent", "request", container.Name(), sessionID.String(), AgentRequest{
+	ac.as.events.Deliver(AgentRequestEvent(ac.Conn.RemoteAddr(), ac.Conn.LocalAddr(), "AgentConn", sessionID.String(), AgentRequest{
 		Date:       time.Now(),
 		LocalAddr:  ac.localAddr,
 		RemoteAddr: ac.remoteAddr,
 		Host:       ac.Conn.RemoteAddr().String(),
 		Protocol:   *payload.Protocol,
 		Token:      ac.token,
-	})
+	}, nil))
 
-	log.Debug("Received Agent connection from: %s with token: %s", ac.remoteAddr, ac.token)
+	log.Debugf("Received Agent connection from: %s with token: %s", ac.remoteAddr, ac.token)
 
 	// TODO: make configurable
 	var dport string
@@ -145,29 +173,36 @@ func (ac *AgentConn) Forward() error {
 	case *payload.Protocol == "smtp":
 		dport = "25"
 	default:
-		log.Error("Unsupported agent protocol: %s", *payload.Protocol)
+		log.Errorf("Unsupported agent protocol: %s", *payload.Protocol)
 		return ErrAgentUnsupportedProtocol
 	}
 
-	log.Debug("Agent forwarding protocol: %s(%s) %s", *payload.RemoteAddress, dport, *payload.Protocol)
+	log.Debugf("Agent forwarding protocol: %s(%s) %s", *payload.RemoteAddress, dport, *payload.Protocol)
 
 	var c2 net.Conn
 	c2, err = container.Dial(dport)
 	if err != nil {
+
+		ac.as.events.Deliver(EventConnectionError(ac.Conn.RemoteAddr(), ac.Conn.LocalAddr(), "ProxyConn.Conn", nil, map[string]interface{}{
+			"error": err,
+		}))
+
 		return err
 	}
 
+	ac.as.events.Deliver(EventConnectionOpened(ac.Conn.RemoteAddr(), ac.Conn.LocalAddr(), "ProxyConn.Conn", *payload.Protocol, nil))
+
 	defer c2.Close()
 
-	pc := ProxyConn{ac, c2, container, ac.as.pusher}
+	pc := ProxyConn{ac, c2, container, ac.as.pusher, ac.as.events}
 
 	var sp Proxyer
-	switch {
-	case *payload.Protocol == "ssh":
+	switch *payload.Protocol {
+	case "ssh":
 		sp = &SSHProxyConn{&pc, &ac.as.config.Proxies.SSH}
-	case *payload.Protocol == "http":
+	case "http":
 		sp = &HTTPProxyConn{&pc}
-	case *payload.Protocol == "smtp":
+	case "smtp":
 		forwarder, err := NewSMTPForwarder(ac.as.config)
 		if err != nil {
 			return err
@@ -175,13 +210,14 @@ func (ac *AgentConn) Forward() error {
 
 		sp = forwarder.Forward(&pc)
 	default:
-		log.Error("Unsupported agent protocol: %s", *payload.Protocol)
+		log.Errorf("Unsupported agent protocol: %s", *payload.Protocol)
 		return ErrAgentUnsupportedProtocol
 	}
 
 	return sp.Proxy()
 }
 
+// Serve initializes the AgentConn and it's operations.
 func (ac *AgentConn) Serve() error {
 	defer ac.Close()
 
@@ -200,19 +236,27 @@ func (ac *AgentConn) Serve() error {
 	case MessageTypeForward:
 		return ac.Forward()
 	default:
-		return fmt.Errorf("Unknown message type.")
+		return fmt.Errorf("unknown message type")
 	}
 }
 
+// newConn initializes the AgentServer with a new net.Conn returning a new
+// AgentConn.
 func (as *AgentServer) newConn(conn net.Conn) *AgentConn {
 	return &AgentConn{Conn: conn, as: as}
 }
 
+// Serve initializes the AgentServer and it's operations.
 func (as AgentServer) Serve(l net.Listener) error {
+	as.events.Deliver(EventConnectionOpened(l.Addr(), l.Addr(), "AgentServer.Server", nil, nil))
+
 	for {
 		conn, err := l.Accept()
 		if err != nil {
 			log.Error(err.Error())
+
+			// TODO: Shouldnt we check when this gets closed? We dont want
+			// endless loop running
 			continue
 		}
 
@@ -225,6 +269,7 @@ func (as AgentServer) Serve(l net.Listener) error {
 	}
 }
 
+// ListenAndServe initializes the AgentServer to begin serving requests and response.
 func (as *AgentServer) ListenAndServe() error {
 	log.Infof("Agent server Listening on port: %s", as.config.Agent.Port)
 
@@ -237,4 +282,20 @@ func (as *AgentServer) ListenAndServe() error {
 	defer l.Close()
 
 	return as.Serve(l)
+}
+
+//================================================================================
+
+// AgentPingEvent defines a function which returns a event object for a
+// ping request with a connection.
+func AgentPingEvent(host, local net.Addr, sensor string, data AgentPing, dt map[string]interface{}) message.Event {
+	return message.Event{
+		Data:      data,
+		Sensor:    sensor,
+		Category:  "agent-ping",
+		Type:      message.Ping,
+		HostAddr:  host.String(),
+		LocalAddr: local.String(),
+		Details:   dt,
+	}
 }

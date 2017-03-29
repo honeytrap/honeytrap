@@ -19,22 +19,28 @@ import (
 
 var log = logging.MustGetLogger("honeytrap:proxy:sip")
 
+// ListenHTTP returns a new listener to handle proxy connections through the
+// http protocol.
 // TODO: Change amount of params.
-func ListenHTTP(address string, d *director.Director, p *pushers.Pusher, c *config.Config) (net.Listener, error) {
+func ListenHTTP(address string, d *director.Director, p *pushers.Pusher, e pushers.Events, c *config.Config) (net.Listener, error) {
 	l, err := net.Listen("tcp", address)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	return &HTTPProxyListener{
-		proxies.NewProxyListener(l, d, p),
+		proxies.NewProxyListener(l, d, p, e),
 	}, nil
 }
 
+// HTTPProxyListener defines the struct which handles the underline operation for
+// proxying between two http request.
 type HTTPProxyListener struct {
 	*proxies.ProxyListener
 }
 
+// Accept returns a new http connection which handles the proxying operations
+// for that request.
 func (l *HTTPProxyListener) Accept() (net.Conn, error) {
 	conn, err := l.ProxyListener.Accept()
 	if err != nil {
@@ -45,10 +51,12 @@ func (l *HTTPProxyListener) Accept() (net.Conn, error) {
 	return &HTTPProxyConn{conn.(*proxies.ProxyConn)}, err
 }
 
+// HTTPProxyConn defines a connection struct for the http connection.
 type HTTPProxyConn struct {
 	*proxies.ProxyConn
 }
 
+// HTTPRequest defines a data struct for the recieved http request.
 type HTTPRequest struct {
 	Date          time.Time           `json:"timestamp"`
 	Host          string              `json:"host"`
@@ -62,6 +70,7 @@ type HTTPRequest struct {
 	Headers       map[string][]string `json:"headers"`
 }
 
+// Proxy initializes and proxies the underline connection operation.
 func (p *HTTPProxyConn) Proxy() error {
 	sessionID := uuid.NewV4()
 

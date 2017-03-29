@@ -9,14 +9,17 @@ import (
 	"path/filepath"
 )
 
+// FileCloser defines a struct which implements the io.Closer for a file object
+// which removes the path when closed.
 type FileCloser struct {
 	*os.File
 	path string
 }
 
+// Close calls the file.Close method and removes the file.
 func (f *FileCloser) Close() error {
 	ec := f.File.Close()
-	log.Info("Will Remove %s", f.path)
+	log.Infof("Will Remove %s", f.path)
 	ex := os.Remove(f.path)
 
 	if ex == nil {
@@ -26,6 +29,7 @@ func (f *FileCloser) Close() error {
 	return ex
 }
 
+// NewFileCloser returns a new instance of the FileCloser.
 func NewFileCloser(path string) (*FileCloser, error) {
 	ff, err := os.Open(path)
 
@@ -36,12 +40,12 @@ func NewFileCloser(path string) (*FileCloser, error) {
 	return &FileCloser{ff, path}, nil
 }
 
-//BufferCloser closes a byte.Buffer
+// BufferCloser closes a byte.Buffer
 type BufferCloser struct {
 	*bytes.Buffer
 }
 
-//NewBufferCloser returns a new closer for a bytes.Buffer
+// NewBufferCloser returns a new closer for a bytes.Buffer
 func NewBufferCloser(bu *bytes.Buffer) *BufferCloser {
 	return &BufferCloser{bu}
 }
@@ -52,7 +56,7 @@ func (b *BufferCloser) Close() error {
 	return nil
 }
 
-//GzipWalker walks a path and turns it into a tar written into a bytes.Buffer
+// GzipWalker walks a path and turns it into a tar written into a bytes.Buffer
 func GzipWalker(file string, tmp io.Writer) error {
 	f, err := os.Open(file)
 
@@ -72,14 +76,14 @@ func GzipWalker(file string, tmp io.Writer) error {
 	return err
 }
 
-//TarWalker walks a path and turns it into a tar written into a bytes.Buffer
+// TarWalker walks a path and turns it into a tar written into a bytes.Buffer
 func TarWalker(rootpath string, w io.Writer) error {
 	tz := tar.NewWriter(w)
 	defer tz.Close()
 
 	walkFn := func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			log.Error("Error while walking path %s: ", path, err.Error())
+			log.Errorf("Error while walking path %s: %s", path, err.Error())
 			return err
 		}
 
@@ -120,7 +124,7 @@ func TarWalker(rootpath string, w io.Writer) error {
 
 	err := filepath.Walk(rootpath, walkFn)
 	if err != nil {
-		log.Error("Error occured walking dir %s with Error: (%+s)", rootpath, err.Error())
+		log.Errorf("Error occured walking dir %s with Error: (%+s)", rootpath, err.Error())
 		return err
 	}
 

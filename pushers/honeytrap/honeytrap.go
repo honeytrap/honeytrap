@@ -1,47 +1,52 @@
-package pushers
+package honeytrap
 
 import (
+	"errors"
 	"fmt"
-
-	pushers "github.com/honeytrap/honeytrap/pushers"
-	api "github.com/honeytrap/honeytrap/pushers/api"
-
 	"io"
 	"io/ioutil"
 	"net/http"
 
+	api "github.com/honeytrap/honeytrap/pushers/api"
+
+	"github.com/honeytrap/honeytrap/pushers/message"
 	"github.com/op/go-logging"
 )
 
 var log = logging.MustGetLogger("honeytrap:channels:honeytrap")
 
-var (
-	_ = pushers.Register("honeytrap", NewHoneytrapChannel())
-)
-
-type HoneytrapChannel struct {
+// TrapChannel defines a struct which implmenets the pushers.Channel
+// interface for delivery honeytrap special messages.
+type TrapChannel struct {
 	client *api.Client
 }
 
-func NewHoneytrapChannel() pushers.ChannelFunc {
-	return func(conf map[string]interface{}) (pushers.Channel, error) {
-		if _, ok := conf["host"]; !ok {
-			return nil, fmt.Errorf("Host not set for channel honeytrap")
-		}
-
-		if _, ok := conf["token"]; !ok {
-			return nil, fmt.Errorf("Token not set for channel honeytrap")
-		}
-
-		cl := api.New(&api.Config{
-			Url:   conf["host"].(string),
-			Token: conf["token"].(string),
-		})
-		return &HoneytrapChannel{cl}, nil
+// UnmarshalConfig attempts to unmarshal the provided value into the giving
+// HoneytrapChannel.
+func (hc *TrapChannel) UnmarshalConfig(m interface{}) error {
+	conf, ok := m.(map[string]interface{})
+	if !ok {
+		return errors.New("Expected to receive a map")
 	}
+
+	if _, ok := conf["host"]; !ok {
+		return fmt.Errorf("Host not set for channel honeytrap")
+	}
+
+	if _, ok := conf["token"]; !ok {
+		return fmt.Errorf("Token not set for channel honeytrap")
+	}
+
+	hc.client = api.New(&api.Config{
+		Url:   conf["host"].(string),
+		Token: conf["token"].(string),
+	})
+
+	return nil
 }
 
-func (hc HoneytrapChannel) Send(messages []*pushers.PushMessage) {
+// Send delivers all messages to the underline connection.
+func (hc TrapChannel) Send(messages []*message.PushMessage) {
 	// TODO:
 	// req, err := hc.client.NewRequest("POST", "v1/action/{sensor}/{type}", actions)
 
@@ -61,13 +66,12 @@ func (hc HoneytrapChannel) Send(messages []*pushers.PushMessage) {
 		}
 
 		if err != nil {
-			log.Error("HoneytrapChannel: Error while preparing request: %s", err.Error())
+			log.Errorf("HoneytrapChannel: Error while preparing request: %s", err.Error())
 			continue
 		}
-
 		var resp *http.Response
 		if resp, err = hc.client.Do(req, nil); err != nil {
-			log.Error("HoneytrapChannel: Error while sending message: %s", err.Error())
+			log.Errorf("HoneytrapChannel: Error while sending message: %s", err.Error())
 			continue
 		}
 
@@ -76,7 +80,7 @@ func (hc HoneytrapChannel) Send(messages []*pushers.PushMessage) {
 		resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			log.Error("HoneytrapChannel: Unexpected status code: %d", resp.StatusCode)
+			log.Errorf("HoneytrapChannel: Unexpected status code: %d", resp.StatusCode)
 			continue
 		}
 	}
