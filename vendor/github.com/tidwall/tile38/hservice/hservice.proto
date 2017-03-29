@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "com.tile38.hservice";
+option java_outer_classname = "HookServiceProto";
+
+package hservice;
+
+// The greeting service definition.
+service HookService {
+  // Sends a greeting
+  rpc Send (MessageRequest) returns (MessageReply) {}
+}
+
+// The request message containing the message value
+message MessageRequest {
+  string value = 1;
+}
+
+// The response message containing an ok (true or false)
+message MessageReply {
+  bool ok = 1;
+}
