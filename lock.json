@@ -1,10 +1,18 @@
 {
-    "memo": "0fb9eabf1dc2885fe34ff288a33bbaa50fbd8f7cc6599f729c9176b42d3d543b",
+    "memo": "9d6edd49f025137798bcf74ec330dde1a8aa950788d1b3f2befa9f381edf7709",
     "projects": [
         {
             "name": "github.com/BurntSushi/toml",
-            "version": "v0.2.0",
-            "revision": "bbd5bb678321a0d6e58f1099321dfa73391c1b6f",
+            "version": "v0.3.0",
+            "revision": "b26d9c308763d68093482582cea63d69be07a0f0",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/elazarl/go-bindata-assetfs",
+            "branch": "master",
+            "revision": "30f82fa23fd844bd5bb1e5f216db87fd77b5eb43",
             "packages": [
                 "."
             ]
@@ -37,6 +45,29 @@
             ]
         },
         {
+            "name": "github.com/honeytrap/golxc",
+            "revision": "365776ef525bf6740eb39531895cb95f7d3fb2b5",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/honeytrap/honeytrap-web",
+            "branch": "master",
+            "revision": "40a3ac1628261e59b1dcb1fddd650e3040e87165",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/honeytrap/namecon",
+            "branch": "master",
+            "revision": "a0ff2ecde6914b6e6050422c1fe9a3275c7afd86",
+            "packages": [
+                "."
+            ]
+        },
+        {
             "name": "github.com/imdario/mergo",
             "version": "0.2.2",
             "revision": "3e95a51e0639b4cf372f2ccf74c86749d747fbdc",
@@ -54,16 +85,16 @@
         },
         {
             "name": "github.com/mattn/go-isatty",
-            "version": "v0.0.1",
-            "revision": "3a115632dcd687f9c8cd01679c83a06a0e21c1f3",
+            "branch": "master",
+            "revision": "fc9e8d8ef48496124e79ae0df75490096eccf6fe",
             "packages": [
                 "."
             ]
         },
         {
             "name": "github.com/minio/cli",
-            "version": "1.2.0",
-            "revision": "565493f259bf868adb54d45d5f4c68d405117adf",
+            "version": "v1.3.0",
+            "revision": "8683fa7fef37cc8cb092f47bdb6b403e0049f9ee",
             "packages": [
                 "."
             ]
@@ -93,6 +124,22 @@
             ]
         },
         {
+            "name": "github.com/tidwall/tile38",
+            "branch": "master",
+            "revision": "710ed9685047b96804b653931b782dc0a96ec8bc",
+            "packages": [
+                "controller/log"
+            ]
+        },
+        {
+            "name": "github.com/upspin/upspin",
+            "branch": "master",
+            "revision": "fa4c6f6e47d60823249c55a3a5196436e0237b3c",
+            "packages": [
+                "log"
+            ]
+        },
+        {
             "name": "golang.org/x/crypto",
             "branch": "master",
             "revision": "40541ccb1c6e64c947ed6f606b8a6cb4b67d7436",
@@ -106,17 +153,9 @@
         {
             "name": "golang.org/x/sys",
             "branch": "master",
-            "revision": "99f16d856c9836c42d24e7ab64ea72916925fa97",
+            "revision": "9a7256cb28ed514b4e1e5f68959914c4c28a92e0",
             "packages": [
                 "unix"
-            ]
-        },
-        {
-            "name": "gopkg.in/lxc/go-lxc.v2",
-            "branch": "v2",
-            "revision": "8304875cc3423823032ec93556beee076c6ba687",
-            "packages": [
-                "."
             ]
         }
     ]
