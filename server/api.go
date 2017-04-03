@@ -5,6 +5,7 @@ import (
 
 	"github.com/dimfeld/httptreemux"
 	assetfs "github.com/elazarl/go-bindata-assetfs"
+	"github.com/honeytrap/honeytrap/config"
 	"github.com/honeytrap/honeytrap/pushers/message"
 )
 
@@ -13,11 +14,13 @@ import (
 type Honeycast struct {
 	*httptreemux.TreeMux
 	assets http.Handler
+	config *config.Config
 }
 
 // NewHoneycast returns a new instance of a Honeycast struct.
-func NewHoneycast(assets *assetfs.AssetFS) *Honeycast {
+func NewHoneycast(config *config.Config, assets *assetfs.AssetFS) *Honeycast {
 	var hc Honeycast
+	hc.config = config
 	hc.TreeMux = httptreemux.New()
 
 	// Register endpoints for all handlers.
@@ -32,10 +35,24 @@ func NewHoneycast(assets *assetfs.AssetFS) *Honeycast {
 	return &hc
 }
 
-// Deliver implements the pusher.EventDelivery interface and stores received events
-// into the underline db.
-func (h *Honeycast) Deliver(ev message.Event) {
+// Send delivers the underline provided messages and stores them into the underline
+// Honeycast database for retrieval through the API.
+func (h *Honeycast) Send(msgs []message.PushMessage) {
+	for _, msg := range msgs {
+		if !msg.Event {
+			continue
+		}
 
+		event, ok := msg.Data.(message.Event)
+		if !ok {
+			continue
+		}
+
+		switch event.Type {
+		case message.ConnectionStarted:
+		case message.ConnectionClosed:
+		}
+	}
 }
 
 // Sessions handles response for all `/sessions` target endpoint and returns all giving push

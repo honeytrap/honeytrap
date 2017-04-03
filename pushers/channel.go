@@ -11,6 +11,19 @@ import (
 
 var log = logging.MustGetLogger("honeytrap:channels")
 
+//================================================================================
+
+// ChannelStream defines a type for a slice of Channels implementing objects.
+type ChannelStream []Channel
+
+// Send delivers the provided PushMessages to all underline set of Channel implementing
+// objects.
+func (channels ChannelStream) Send(msg []message.PushMessage) {
+	for _, channel := range channels {
+		channel.Send(msg)
+	}
+}
+
 //=================================================================================================
 
 // BackendRegistry defines an interface which prvides a registery of backend Channel

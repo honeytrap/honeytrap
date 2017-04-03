@@ -46,19 +46,20 @@ type ServeFunc func() error
 // New returns a new instance of a Honeytrap struct.
 func New(conf *config.Config) *Honeytrap {
 	pusher := pushers.New(conf)
-	events := pushers.NewTokenedEventDelivery(conf.Token, pushers.NewProxyPusher(pusher))
-	director := director.New(conf, events)
 
-	honeycast := NewHoneycast(&assetfs.AssetFS{
+	pushChannel := pushers.NewProxyPusher(pusher)
+	honeycast := NewHoneycast(conf, &assetfs.AssetFS{
 		Asset:     web.Asset,
 		AssetDir:  web.AssetDir,
 		AssetInfo: web.AssetInfo,
 		Prefix:    web.Prefix,
 	})
 
-	streams := pushers.EventStream{honeycast, events}
+	channels := pushers.ChannelStream{pushChannel, honeycast}
+	events := pushers.NewTokenedEventDelivery(conf.Token, channels)
+	director := director.New(conf, events)
 
-	return &Honeytrap{conf, director, pusher, streams, honeycast}
+	return &Honeytrap{conf, director, pusher, events, honeycast}
 }
 
 func (hc *Honeytrap) startAgentServer() {
