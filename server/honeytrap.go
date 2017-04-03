@@ -1,9 +1,15 @@
 package server
 
 import (
+	"fmt"
 	"net"
+	"net/http"
 
 	_ "net/http/pprof" // Add pprof tooling
+
+	"github.com/elazarl/go-bindata-assetfs"
+	"github.com/fatih/color"
+	web "github.com/honeytrap/honeytrap-web"
 
 	"github.com/BurntSushi/toml"
 	config "github.com/honeytrap/honeytrap/config"
@@ -27,10 +33,11 @@ var log = logging.MustGetLogger("Honeytrap")
 // Honeytrap defines a struct which coordinates the internal logic for the honeytrap
 // container infrastructure.
 type Honeytrap struct {
-	config   *config.Config
-	director *director.Director
-	pusher   *pushers.Pusher
-	events   pushers.Events
+	config    *config.Config
+	director  *director.Director
+	pusher    *pushers.Pusher
+	events    pushers.Events
+	honeycast *Honeycast
 }
 
 // ServeFunc defines the function called to handle internal server details.
@@ -42,7 +49,16 @@ func New(conf *config.Config) *Honeytrap {
 	events := pushers.NewTokenedEventDelivery(conf.Token, pushers.NewProxyPusher(pusher))
 	director := director.New(conf, events)
 
-	return &Honeytrap{conf, director, pusher, events}
+	honeycast := NewHoneycast(&assetfs.AssetFS{
+		Asset:     web.Asset,
+		AssetDir:  web.AssetDir,
+		AssetInfo: web.AssetInfo,
+		Prefix:    web.Prefix,
+	})
+
+	streams := pushers.EventStream{honeycast, events}
+
+	return &Honeytrap{conf, director, pusher, streams, honeycast}
 }
 
 func (hc *Honeytrap) startAgentServer() {
@@ -183,6 +199,29 @@ func (hc *Honeytrap) startProxies() {
 		for _, listener := range listeners {
 		}
 	*/
+}
+
+// startStatsServer starts the http server for handling request.
+func (hc *Honeytrap) startStatsServer() {
+	log.Infof("Stats server Listening on port: %s", hc.config.Web.Port)
+
+	// if hc.config.Web.Path != "" {
+	// 	log.Debug("Using static file path: ", hc.config.Web.Path)
+	//
+	// 	// check local css first
+	// 	// TODO: What is this for and why are we assigning here.
+	// 	// staticHandler = http.FileServer(http.Dir(hc.config.Web.Path))
+	// }
+
+	fmt.Println(color.YellowString(fmt.Sprintf("Honeytrap server started, listening on address %s.", hc.config.Web.Port)))
+
+	defer func() {
+		fmt.Println(color.YellowString(fmt.Sprintf("Honeytrap server stopped.")))
+	}()
+
+	if err := http.ListenAndServe(hc.config.Web.Port, hc.honeycast); err != nil {
+		log.Fatal("ListenAndServe: ", err)
+	}
 }
 
 // Serve initializes and starts the internal logic for the Honeytrap instance.

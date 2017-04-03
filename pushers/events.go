@@ -6,11 +6,26 @@ import (
 	"github.com/honeytrap/honeytrap/pushers/message"
 )
 
+//================================================================================
+
 // Events defines an interface which exposes a method for the delivery of message.Event
 // object.
 type Events interface {
 	Deliver(message.Event)
 }
+
+// EventStream defines a type for a slice of Events implementing objects.
+type EventStream []Events
+
+// Deliver delivers the provided events to all underline set of Events implementing
+// objects.
+func (eset EventStream) Deliver(ev message.Event) {
+	for _, es := range eset {
+		es.Deliver(ev)
+	}
+}
+
+//================================================================================
 
 // TokenedEventDelivery defines a custom event delivery type which wraps the
 // EventDelivery and sets the internal token value for the events passed in.
@@ -33,6 +48,8 @@ func (a TokenedEventDelivery) Deliver(ev message.Event) {
 	ev.Token = a.Token
 	a.EventDelivery.Deliver(ev)
 }
+
+//================================================================================
 
 // EventDelivery defines a struct which embodies a delivery system which allows
 // events to be piped down to a pusher library.
