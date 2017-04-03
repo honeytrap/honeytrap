@@ -10,6 +10,7 @@ import (
 // PushMessage defines a struct which contains specific data relating to
 // different messages to provide Push notifications for the pusher api.
 type PushMessage struct {
+	Event       bool
 	Sensor      string
 	Category    string
 	SessionID   string

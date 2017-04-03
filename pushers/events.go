@@ -53,6 +53,7 @@ func (d *EventDelivery) Deliver(ev message.Event) {
 
 	d.sync.Send([]message.PushMessage{
 		{
+			Event:       true,
 			Sensor:      ev.Sensor,
 			Category:    ev.Category,
 			SessionID:   ev.SessionID,
