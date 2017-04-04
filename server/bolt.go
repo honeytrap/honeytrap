@@ -47,15 +47,31 @@ func NewBolted(dbName string, buckets ...string) (*Bolted, error) {
 	return &b, nil
 }
 
+// GetSize returns the giving size of the total items in a given bucket.
+func (d *Bolted) GetSize(bucket []byte) (int, error) {
+	var total int
+
+	if terr := d.db.View(func(tx *bolt.Tx) error {
+		bu := tx.Bucket(bucket)
+		total = int(bu.Stats().KeyN)
+		return nil
+	}); terr != nil {
+		return -1, terr
+	}
+
+	return total, nil
+}
+
 // Get returns the giving buckets based on the provided cursor point and size.
 // If the `from` and `length` are -1 then all keys and values are returned, else
 // the provided range will be used.
-func (d *Bolted) Get(bucket []byte, from int, length int, fx func([]message.Event)) error {
-	return d.db.View(func(tx *bolt.Tx) error {
+func (d *Bolted) Get(bucket []byte, from int, length int) ([]message.Event, error) {
+	var list []message.Event
+	// var total int
+
+	if err := d.db.View(func(tx *bolt.Tx) error {
 		bu := tx.Bucket(bucket)
 		cu := bu.Cursor()
-
-		var list []message.Event
 
 		// Retrieve all values in bucket.
 		if from < 0 && length < 0 {
@@ -73,9 +89,6 @@ func (d *Bolted) Get(bucket []byte, from int, length int, fx func([]message.Even
 
 				list = append(list, item)
 			}
-
-			// Call the pending callback with event slice.
-			fx(list)
 
 			return nil
 		}
@@ -95,9 +108,6 @@ func (d *Bolted) Get(bucket []byte, from int, length int, fx func([]message.Even
 
 				list = append(list, item)
 			}
-
-			// Call the pending callback with event slice.
-			fx(list)
 
 			return nil
 		}
@@ -125,10 +135,13 @@ func (d *Bolted) Get(bucket []byte, from int, length int, fx func([]message.Even
 		}
 
 		// Call the pending callback with event slice.
-		fx(list)
 
 		return nil
-	})
+	}); err != nil {
+		return nil, err
+	}
+
+	return list, nil
 }
 
 // Save attempts to save the series of passed in events into the underline db.

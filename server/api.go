@@ -1,6 +1,8 @@
 package server
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -9,13 +11,16 @@ import (
 	assetfs "github.com/elazarl/go-bindata-assetfs"
 	"github.com/honeytrap/honeytrap/config"
 	"github.com/honeytrap/honeytrap/pushers/message"
+)
 
-	logging "github.com/op/go-logging"
+// Contains values for use.
+const (
+	ResponsePerPageHeader = "response_per_page"
+	PageHeader            = "page"
 )
 
 // Contains the different buckets used
 var (
-	log           = logging.MustGetLogger("Honeytrap")
 	sessionBucket = []byte("sessions")
 	eventsBucket  = []byte("events")
 )
@@ -52,6 +57,7 @@ func NewHoneycast(config *config.Config, assets *assetfs.AssetFS) *Honeycast {
 	}
 
 	hc.TreeMux.Handle("GET", "/", hc.Index)
+	hc.TreeMux.Handle("GET", "/ws", hc.Websocket)
 	hc.TreeMux.Handle("GET", "/events", hc.Events)
 	hc.TreeMux.Handle("GET", "/sessions", hc.Sessions)
 
@@ -92,66 +98,166 @@ func (h *Honeycast) Send(msgs []message.PushMessage) {
 	}
 }
 
+// Websocket handles response for all `/sessions` target endpoint and returns all giving push
+// messages returns the slice of data.
+func (h *Honeycast) Websocket(w http.ResponseWriter, r *http.Request, params map[string]string) {
+}
+
 // Sessions handles response for all `/sessions` target endpoint and returns all giving push
 // messages returns the slice of data.
 func (h *Honeycast) Sessions(w http.ResponseWriter, r *http.Request, params map[string]string) {
-	totalInt := -1
-	fromInt := -1
+	var responsePerPage int
+	var pageNumber int
 
-	if total, ok := params["total"]; ok {
-		var err error
-		totalInt, err = strconv.Atoi(total)
-		if err != nil {
-			log.Error("honeycast : Invalid Total Param: %+q", err)
-			http.Error(w, "Invalid 'Total' parameter: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
+	total, err := h.bolted.GetSize(sessionBucket)
+	if err != nil {
+		log.Error("honeycast : Operation Failed : %+q", err)
+		http.Error(w, "Operation Failed: "+err.Error(), http.StatusInternalServerError)
+		return
 	}
 
-	if from, ok := params["from"]; ok {
+	if perpage, ok := params[ResponsePerPageHeader]; ok {
 		var err error
-		fromInt, err = strconv.Atoi(from)
+
+		responsePerPage, err = strconv.Atoi(perpage)
 		if err != nil {
-			log.Error("honeycast : Invalid 'From' Param: %+q", err)
+			log.Error("honeycast : Invalid ResponsePerPage Param: %+q", err)
+			http.Error(w, "Invalid 'ResponsePerPage' parameter: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		responsePerPage = -1
+	}
+
+	if page, ok := params[PageHeader]; ok {
+		var err error
+
+		pageNumber, err = strconv.Atoi(page)
+		if err != nil {
+			log.Error("honeycast : Invalid 'Page' Param: %+q", err)
 			http.Error(w, "Invalid 'From' parameter: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
+	} else {
+		pageNumber = -1
 	}
 
-	h.bolted.Get(sessionBucket, fromInt, totalInt, func(result []message.Event) {
+	var items []message.Event
+	var terr error
 
-	})
+	if responsePerPage == -1 || pageNumber == -1 {
+		items, terr = h.bolted.Get(sessionBucket, -1, -1)
+		if terr != nil {
+			log.Error("honeycast : Invalid 'From' Param: %+q", terr)
+			http.Error(w, "Invalid 'From' parameter: "+terr.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		length := responsePerPage * pageNumber
+
+		if length >= total {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		items, terr = h.bolted.Get(sessionBucket, (length/2)+1, length)
+		if terr != nil {
+			log.Error("honeycast : Invalid 'From' Param: %+q", terr)
+			http.Error(w, "Invalid 'From' parameter: "+terr.Error(), http.StatusInternalServerError)
+			return
+		}
+
+	}
+
+	var bu bytes.Buffer
+	if jserr := json.NewEncoder(&bu).Encode(items); jserr != nil {
+		log.Error("honeycast : Invalid 'From' Param: %+q", jserr)
+		http.Error(w, "Invalid 'From' parameter: "+jserr.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write(bu.Bytes())
 }
 
 // Events handles response for all `/events` target endpoint and returns all giving events
 // and expects a giving filter paramter which will be used to filter out the needed events.
 func (h *Honeycast) Events(w http.ResponseWriter, r *http.Request, params map[string]string) {
-	totalInt := -1
-	fromInt := -1
+	var responsePerPage int
+	var pageNumber int
 
-	if total, ok := params["total"]; ok {
-		var err error
-		totalInt, err = strconv.Atoi(total)
-		if err != nil {
-			log.Error("honeycast : Invalid Total Param: %+q", err)
-			http.Error(w, "Invalid 'Total' parameter: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
+	total, err := h.bolted.GetSize(sessionBucket)
+	if err != nil {
+		log.Error("honeycast : Operation Failed : %+q", err)
+		http.Error(w, "Operation Failed: "+err.Error(), http.StatusInternalServerError)
+		return
 	}
 
-	if from, ok := params["from"]; ok {
+	if perpage, ok := params[ResponsePerPageHeader]; ok {
 		var err error
-		fromInt, err = strconv.Atoi(from)
+
+		responsePerPage, err = strconv.Atoi(perpage)
 		if err != nil {
-			log.Error("honeycast : Invalid 'From' Param: %+q", err)
+			log.Error("honeycast : Invalid ResponsePerPage Param: %+q", err)
+			http.Error(w, "Invalid 'ResponsePerPage' parameter: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		responsePerPage = -1
+	}
+
+	if page, ok := params[PageHeader]; ok {
+		var err error
+
+		pageNumber, err = strconv.Atoi(page)
+		if err != nil {
+			log.Error("honeycast : Invalid 'Page' Param: %+q", err)
 			http.Error(w, "Invalid 'From' parameter: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
+	} else {
+		pageNumber = -1
 	}
 
-	h.bolted.Get(sessionBucket, fromInt, totalInt, func(result []message.Event) {
+	var items []message.Event
+	var terr error
 
-	})
+	if responsePerPage == -1 || pageNumber == -1 {
+
+		items, terr = h.bolted.Get(eventsBucket, -1, -1)
+		if terr != nil {
+			log.Error("honeycast : Invalid 'From' Param: %+q", terr)
+			http.Error(w, "Invalid 'From' parameter: "+terr.Error(), http.StatusInternalServerError)
+			return
+		}
+
+	} else {
+
+		length := responsePerPage * pageNumber
+
+		if length >= total {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		items, terr = h.bolted.Get(eventsBucket, (length/2)+1, length)
+		if terr != nil {
+			log.Error("honeycast : Invalid 'From' Param: %+q", terr)
+			http.Error(w, "Invalid 'From' parameter: "+terr.Error(), http.StatusInternalServerError)
+			return
+		}
+
+	}
+
+	var bu bytes.Buffer
+	if jserr := json.NewEncoder(&bu).Encode(items); jserr != nil {
+		log.Error("honeycast : Invalid 'From' Param: %+q", jserr)
+		http.Error(w, "Invalid 'From' parameter: "+jserr.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write(bu.Bytes())
 }
 
 // Index handles the servicing of index based requests for the giving service.
