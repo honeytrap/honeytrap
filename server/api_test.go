@@ -1,6 +1,7 @@
 package server_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -73,7 +74,7 @@ func TestHoneycast(t *testing.T) {
 
 	defer os.Remove(dbName + "-bolted.db")
 
-	server := httptest.NewServer(cast)
+	sm := httptest.NewServer(cast)
 
 	cast.Send([]message.PushMessage{conso, conco, conlo})
 
@@ -82,7 +83,17 @@ func TestHoneycast(t *testing.T) {
 		t.Logf("\t When retrieving events from the /sessions endpoints")
 		{
 
-			req, err := http.NewRequest("GET", server.URL+"/sessions", nil)
+			var event server.EventRequest
+			event.Page = -1
+			event.ResponsePerPage = 24
+
+			var buf bytes.Buffer
+			if err := json.NewEncoder(&buf).Encode(event); err != nil {
+				t.Fatalf("\t%s\t Should have successfully created event body: %q.", failed, err.Error())
+			}
+			t.Logf("\t%s\t Should have successfully created event body.", passed)
+
+			req, err := http.NewRequest("GET", sm.URL+"/sessions", &buf)
 			if err != nil {
 				t.Fatalf("\t%s\t Should have successfully created request: %q.", failed, err.Error())
 			}
@@ -96,14 +107,14 @@ func TestHoneycast(t *testing.T) {
 
 			defer res.Body.Close()
 
-			var items []message.Event
+			var item server.EventResponse
 
-			if err := json.NewDecoder(res.Body).Decode(&items); err != nil {
+			if err := json.NewDecoder(res.Body).Decode(&item); err != nil {
 				t.Fatalf("\t%s\t Should have successfully decoded response: %q.", failed, err.Error())
 			}
 			t.Logf("\t%s\t Should have successfully decoded response.", passed)
 
-			if len(items) != 2 {
+			if len(item.Events) != 2 {
 				t.Fatalf("\t%s\t Should have retrieved 2 event for sessions: %q.", failed, err.Error())
 			}
 			t.Logf("\t%s\t Should have retrieved 2 event for sessions.", passed)
@@ -111,8 +122,17 @@ func TestHoneycast(t *testing.T) {
 
 		t.Logf("\t When retrieving events from the /events endpoints")
 		{
+			var event server.EventRequest
+			event.Page = -1
+			event.ResponsePerPage = 24
 
-			req, err := http.NewRequest("GET", server.URL+"/events", nil)
+			var buf bytes.Buffer
+			if err := json.NewEncoder(&buf).Encode(event); err != nil {
+				t.Fatalf("\t%s\t Should have successfully created event body: %q.", failed, err.Error())
+			}
+			t.Logf("\t%s\t Should have successfully created event body.", passed)
+
+			req, err := http.NewRequest("GET", sm.URL+"/events", &buf)
 			if err != nil {
 				t.Fatalf("\t%s\t Should have successfully created request: %q.", failed, err.Error())
 			}
@@ -126,14 +146,14 @@ func TestHoneycast(t *testing.T) {
 
 			defer res.Body.Close()
 
-			var items []message.Event
+			var item server.EventResponse
 
-			if err := json.NewDecoder(res.Body).Decode(&items); err != nil {
+			if err := json.NewDecoder(res.Body).Decode(&item); err != nil {
 				t.Fatalf("\t%s\t Should have successfully decoded response: %q.", failed, err.Error())
 			}
 			t.Logf("\t%s\t Should have successfully decoded response.", passed)
 
-			if len(items) != 1 {
+			if len(item.Events) != 1 {
 				t.Fatalf("\t%s\t Should have retrieved 1 event for sessions: %q.", failed, err.Error())
 			}
 			t.Logf("\t%s\t Should have retrieved 1 event for sessions.", passed)

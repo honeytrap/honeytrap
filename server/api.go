@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 
 	"github.com/dimfeld/httptreemux"
 	assetfs "github.com/elazarl/go-bindata-assetfs"
@@ -24,6 +23,24 @@ var (
 	sessionBucket = []byte("sessions")
 	eventsBucket  = []byte("events")
 )
+
+// EventResponse defines a struct which is sent a request type used to respond to
+// given requests.
+type EventResponse struct {
+	ResponsePerPage int             `json:"responser_per_page"`
+	Page            int             `json:"page"`
+	Total           int             `json:"total"`
+	Events          []message.Event `json:"events"`
+}
+
+// EventRequest defines a struct which receives a request type used to retrieve
+// given requests type.
+type EventRequest struct {
+	ResponsePerPage int             `json:"responser_per_page"`
+	Page            int             `json:"page"`
+	TypeFilters     map[string]bool `json:"types"`
+	SensorFilters   map[string]bool `json:"sensors"`
+}
 
 // Honeycast defines a struct which exposes methods to handle api related service
 // responses.
@@ -106,9 +123,6 @@ func (h *Honeycast) Websocket(w http.ResponseWriter, r *http.Request, params map
 // Sessions handles response for all `/sessions` target endpoint and returns all giving push
 // messages returns the slice of data.
 func (h *Honeycast) Sessions(w http.ResponseWriter, r *http.Request, params map[string]string) {
-	var responsePerPage int
-	var pageNumber int
-
 	total, err := h.bolted.GetSize(sessionBucket)
 	if err != nil {
 		log.Error("honeycast : Operation Failed : %+q", err)
@@ -116,53 +130,39 @@ func (h *Honeycast) Sessions(w http.ResponseWriter, r *http.Request, params map[
 		return
 	}
 
-	if perpage, ok := params[ResponsePerPageHeader]; ok {
-		var err error
+	var req EventRequest
 
-		responsePerPage, err = strconv.Atoi(perpage)
-		if err != nil {
-			log.Error("honeycast : Invalid ResponsePerPage Param: %+q", err)
-			http.Error(w, "Invalid 'ResponsePerPage' parameter: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-	} else {
-		responsePerPage = -1
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Error("honeycast : Invalid Request Object data: %+q", err)
+		http.Error(w, "Invalid Request Object data: "+err.Error(), http.StatusInternalServerError)
+		return
 	}
 
-	if page, ok := params[PageHeader]; ok {
-		var err error
+	var res EventResponse
+	res.Page = req.Page
+	res.ResponsePerPage = req.ResponsePerPage
 
-		pageNumber, err = strconv.Atoi(page)
-		if err != nil {
-			log.Error("honeycast : Invalid 'Page' Param: %+q", err)
-			http.Error(w, "Invalid 'From' parameter: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-	} else {
-		pageNumber = -1
-	}
-
-	var items []message.Event
 	var terr error
 
-	if responsePerPage == -1 || pageNumber == -1 {
-		items, terr = h.bolted.Get(sessionBucket, -1, -1)
+	if req.ResponsePerPage <= 0 && req.Page <= 0 {
+
+		res.Events, terr = h.bolted.Get(sessionBucket, -1, -1)
 		if terr != nil {
-			log.Error("honeycast : Invalid 'From' Param: %+q", terr)
+			log.Error("honeycast : Invalid Response received : %+q", err)
 			http.Error(w, "Invalid 'From' parameter: "+terr.Error(), http.StatusInternalServerError)
 			return
 		}
 	} else {
-		length := responsePerPage * pageNumber
+		length := req.ResponsePerPage * req.Page
 
 		if length >= total {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 
-		items, terr = h.bolted.Get(sessionBucket, (length/2)+1, length)
+		res.Events, terr = h.bolted.Get(sessionBucket, (length/2)+1, length)
 		if terr != nil {
-			log.Error("honeycast : Invalid 'From' Param: %+q", terr)
+			log.Error("honeycast : Invalid Response received : %+q", err)
 			http.Error(w, "Invalid 'From' parameter: "+terr.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -170,7 +170,7 @@ func (h *Honeycast) Sessions(w http.ResponseWriter, r *http.Request, params map[
 	}
 
 	var bu bytes.Buffer
-	if jserr := json.NewEncoder(&bu).Encode(items); jserr != nil {
+	if jserr := json.NewEncoder(&bu).Encode(res); jserr != nil {
 		log.Error("honeycast : Invalid 'From' Param: %+q", jserr)
 		http.Error(w, "Invalid 'From' parameter: "+jserr.Error(), http.StatusInternalServerError)
 		return
@@ -183,66 +183,46 @@ func (h *Honeycast) Sessions(w http.ResponseWriter, r *http.Request, params map[
 // Events handles response for all `/events` target endpoint and returns all giving events
 // and expects a giving filter paramter which will be used to filter out the needed events.
 func (h *Honeycast) Events(w http.ResponseWriter, r *http.Request, params map[string]string) {
-	var responsePerPage int
-	var pageNumber int
-
-	total, err := h.bolted.GetSize(sessionBucket)
+	total, err := h.bolted.GetSize(eventsBucket)
 	if err != nil {
 		log.Error("honeycast : Operation Failed : %+q", err)
 		http.Error(w, "Operation Failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	if perpage, ok := params[ResponsePerPageHeader]; ok {
-		var err error
+	var req EventRequest
 
-		responsePerPage, err = strconv.Atoi(perpage)
-		if err != nil {
-			log.Error("honeycast : Invalid ResponsePerPage Param: %+q", err)
-			http.Error(w, "Invalid 'ResponsePerPage' parameter: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-	} else {
-		responsePerPage = -1
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Error("honeycast : Invalid Request Object data: %+q", err)
+		http.Error(w, "Invalid Request Object data: "+err.Error(), http.StatusInternalServerError)
+		return
 	}
 
-	if page, ok := params[PageHeader]; ok {
-		var err error
+	var res EventResponse
+	res.Page = req.Page
+	res.ResponsePerPage = req.ResponsePerPage
 
-		pageNumber, err = strconv.Atoi(page)
-		if err != nil {
-			log.Error("honeycast : Invalid 'Page' Param: %+q", err)
-			http.Error(w, "Invalid 'From' parameter: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-	} else {
-		pageNumber = -1
-	}
-
-	var items []message.Event
 	var terr error
 
-	if responsePerPage == -1 || pageNumber == -1 {
+	if req.ResponsePerPage <= 0 && req.Page <= 0 {
 
-		items, terr = h.bolted.Get(eventsBucket, -1, -1)
+		res.Events, terr = h.bolted.Get(eventsBucket, -1, -1)
 		if terr != nil {
-			log.Error("honeycast : Invalid 'From' Param: %+q", terr)
+			log.Error("honeycast : Invalid Response received : %+q", err)
 			http.Error(w, "Invalid 'From' parameter: "+terr.Error(), http.StatusInternalServerError)
 			return
 		}
-
 	} else {
-
-		length := responsePerPage * pageNumber
+		length := req.ResponsePerPage * req.Page
 
 		if length >= total {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 
-		items, terr = h.bolted.Get(eventsBucket, (length/2)+1, length)
+		res.Events, terr = h.bolted.Get(eventsBucket, (length/2)+1, length)
 		if terr != nil {
-			log.Error("honeycast : Invalid 'From' Param: %+q", terr)
+			log.Error("honeycast : Invalid Response received : %+q", err)
 			http.Error(w, "Invalid 'From' parameter: "+terr.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -250,7 +230,7 @@ func (h *Honeycast) Events(w http.ResponseWriter, r *http.Request, params map[st
 	}
 
 	var bu bytes.Buffer
-	if jserr := json.NewEncoder(&bu).Encode(items); jserr != nil {
+	if jserr := json.NewEncoder(&bu).Encode(res); jserr != nil {
 		log.Error("honeycast : Invalid 'From' Param: %+q", jserr)
 		http.Error(w, "Invalid 'From' parameter: "+jserr.Error(), http.StatusInternalServerError)
 		return
