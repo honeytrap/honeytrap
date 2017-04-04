@@ -118,6 +118,11 @@ func TestHoneycast(t *testing.T) {
 				t.Fatalf("\t%s\t Should have retrieved 2 event for sessions: %q.", failed, err.Error())
 			}
 			t.Logf("\t%s\t Should have retrieved 2 event for sessions.", passed)
+
+			if item.Total != 2 {
+				t.Fatalf("\t%s\t Should have total of 2 events in store: %d.", failed, item.Total)
+			}
+			t.Logf("\t%s\t Should have total of 2 events in store.", passed)
 		}
 
 		t.Logf("\t When retrieving events from the /events endpoints")
@@ -157,6 +162,11 @@ func TestHoneycast(t *testing.T) {
 				t.Fatalf("\t%s\t Should have retrieved 1 event for sessions: %q.", failed, err.Error())
 			}
 			t.Logf("\t%s\t Should have retrieved 1 event for sessions.", passed)
+
+			if item.Total != 1 {
+				t.Fatalf("\t%s\t Should have total of 1 events in store: %d.", failed, item.Total)
+			}
+			t.Logf("\t%s\t Should have total of 2 events in store.", passed)
 		}
 
 	}

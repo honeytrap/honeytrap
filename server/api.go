@@ -132,13 +132,14 @@ func (h *Honeycast) Sessions(w http.ResponseWriter, r *http.Request, params map[
 
 	var req EventRequest
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Error("honeycast : Invalid Request Object data: %+q", err)
-		http.Error(w, "Invalid Request Object data: "+err.Error(), http.StatusInternalServerError)
+	if terr := json.NewDecoder(r.Body).Decode(&req); terr != nil {
+		log.Error("honeycast : Invalid Request Object data: %+q", terr)
+		http.Error(w, "Invalid Request Object data: "+terr.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	var res EventResponse
+	res.Total = total
 	res.Page = req.Page
 	res.ResponsePerPage = req.ResponsePerPage
 
@@ -192,13 +193,14 @@ func (h *Honeycast) Events(w http.ResponseWriter, r *http.Request, params map[st
 
 	var req EventRequest
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Error("honeycast : Invalid Request Object data: %+q", err)
-		http.Error(w, "Invalid Request Object data: "+err.Error(), http.StatusInternalServerError)
+	if terr := json.NewDecoder(r.Body).Decode(&req); terr != nil {
+		log.Error("honeycast : Invalid Request Object data: %+q", terr)
+		http.Error(w, "Invalid Request Object data: "+terr.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	var res EventResponse
+	res.Total = total
 	res.Page = req.Page
 	res.ResponsePerPage = req.ResponsePerPage
 
