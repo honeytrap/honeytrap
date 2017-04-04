@@ -145,7 +145,7 @@ func (h *Honeycast) Sessions(w http.ResponseWriter, r *http.Request, params map[
 
 	var terr error
 
-	if req.ResponsePerPage <= 0 && req.Page <= 0 {
+	if req.ResponsePerPage <= 0 || req.Page <= 0 {
 
 		res.Events, terr = h.bolted.Get(sessionBucket, -1, -1)
 		if terr != nil {
@@ -155,13 +155,13 @@ func (h *Honeycast) Sessions(w http.ResponseWriter, r *http.Request, params map[
 		}
 	} else {
 		length := req.ResponsePerPage * req.Page
+		index := (length / 2)
 
-		if length >= total {
-			w.WriteHeader(http.StatusNoContent)
-			return
+		if req.Page > 1 {
+			index++
 		}
 
-		res.Events, terr = h.bolted.Get(sessionBucket, (length/2)+1, length)
+		res.Events, terr = h.bolted.Get(eventsBucket, index, length)
 		if terr != nil {
 			log.Error("honeycast : Invalid Response received : %+q", err)
 			http.Error(w, "Invalid 'From' parameter: "+terr.Error(), http.StatusInternalServerError)
@@ -206,7 +206,7 @@ func (h *Honeycast) Events(w http.ResponseWriter, r *http.Request, params map[st
 
 	var terr error
 
-	if req.ResponsePerPage <= 0 && req.Page <= 0 {
+	if req.ResponsePerPage <= 0 || req.Page <= 0 {
 
 		res.Events, terr = h.bolted.Get(eventsBucket, -1, -1)
 		if terr != nil {
@@ -216,13 +216,13 @@ func (h *Honeycast) Events(w http.ResponseWriter, r *http.Request, params map[st
 		}
 	} else {
 		length := req.ResponsePerPage * req.Page
+		index := (length / 2)
 
-		if length >= total {
-			w.WriteHeader(http.StatusNoContent)
-			return
+		if req.Page > 1 {
+			index++
 		}
 
-		res.Events, terr = h.bolted.Get(eventsBucket, (length/2)+1, length)
+		res.Events, terr = h.bolted.Get(eventsBucket, index, length)
 		if terr != nil {
 			log.Error("honeycast : Invalid Response received : %+q", err)
 			http.Error(w, "Invalid 'From' parameter: "+terr.Error(), http.StatusInternalServerError)
