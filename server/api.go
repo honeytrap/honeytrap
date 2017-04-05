@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
+	"strings"
 
 	"github.com/dimfeld/httptreemux"
 	assetfs "github.com/elazarl/go-bindata-assetfs"
@@ -36,10 +38,10 @@ type EventResponse struct {
 // EventRequest defines a struct which receives a request type used to retrieve
 // given requests type.
 type EventRequest struct {
-	ResponsePerPage int             `json:"responser_per_page"`
-	Page            int             `json:"page"`
-	TypeFilters     map[string]bool `json:"types"`
-	SensorFilters   map[string]bool `json:"sensors"`
+	ResponsePerPage int      `json:"responser_per_page"`
+	Page            int      `json:"page"`
+	TypeFilters     []int    `json:"types"`
+	SensorFilters   []string `json:"sensors"`
 }
 
 // Honeycast defines a struct which exposes methods to handle api related service
@@ -143,10 +145,9 @@ func (h *Honeycast) Sessions(w http.ResponseWriter, r *http.Request, params map[
 	res.Page = req.Page
 	res.ResponsePerPage = req.ResponsePerPage
 
-	var terr error
-
 	if req.ResponsePerPage <= 0 || req.Page <= 0 {
 
+		var terr error
 		res.Events, terr = h.bolted.Get(sessionBucket, -1, -1)
 		if terr != nil {
 			log.Error("honeycast : Invalid Response received : %+q", err)
@@ -161,13 +162,67 @@ func (h *Honeycast) Sessions(w http.ResponseWriter, r *http.Request, params map[
 			index++
 		}
 
-		res.Events, terr = h.bolted.Get(eventsBucket, index, length)
+		var terr error
+		var events, filteredEvents []message.Event
+
+		events, terr = h.bolted.Get(eventsBucket, index, length)
 		if terr != nil {
 			log.Error("honeycast : Invalid Response received : %+q", err)
 			http.Error(w, "Invalid 'From' parameter: "+terr.Error(), http.StatusInternalServerError)
 			return
 		}
 
+		{
+			doTypeMatch := len(req.TypeFilters) != 0
+			doSensorMatch := len(req.SensorFilters) != 0
+
+			if doTypeMatch || doSensorMatch {
+				for _, event := range events {
+
+					var typeMatched bool
+					var sensorMatched bool
+
+					{
+					typeFilterLoop:
+						for _, tp := range req.TypeFilters {
+							// If we match atleast one type then allow event event.
+							if int(event.Type) == tp {
+								typeMatched = true
+								break typeFilterLoop
+							}
+						}
+
+						// If there are type filters and event does not match, skip.
+						if doTypeMatch && !typeMatched {
+							continue
+						}
+					}
+
+					{
+					sensorFilterLoop:
+						for _, tp := range req.SensorFilters {
+							// If we match atleast one type then allow event event.
+							if strings.ToLower(event.Sensor) == strings.ToLower(tp) {
+								sensorMatched = true
+								break sensorFilterLoop
+							}
+						}
+
+						// If there are sensor filters and event does not match, skip.
+						if doSensorMatch && !sensorMatched {
+							continue
+						}
+
+					}
+
+					filteredEvents = append(filteredEvents, event)
+				}
+
+				res.Events = filteredEvents
+			} else {
+				res.Events = events
+			}
+		}
 	}
 
 	var bu bytes.Buffer
@@ -222,11 +277,73 @@ func (h *Honeycast) Events(w http.ResponseWriter, r *http.Request, params map[st
 			index++
 		}
 
-		res.Events, terr = h.bolted.Get(eventsBucket, index, length)
+		var terr error
+		var events, filteredEvents []message.Event
+
+		events, terr = h.bolted.Get(eventsBucket, index, length)
 		if terr != nil {
 			log.Error("honeycast : Invalid Response received : %+q", err)
 			http.Error(w, "Invalid 'From' parameter: "+terr.Error(), http.StatusInternalServerError)
 			return
+		}
+
+		{
+			doTypeMatch := len(req.TypeFilters) != 0
+			doSensorMatch := len(req.SensorFilters) != 0
+
+			if doTypeMatch || doSensorMatch {
+				for _, event := range events {
+
+					var typeMatched bool
+					var sensorMatched bool
+
+					{
+					typeFilterLoop:
+						for _, tp := range req.TypeFilters {
+							// If we match atleast one type then allow event event.
+							if int(event.Type) == tp {
+								typeMatched = true
+								break typeFilterLoop
+							}
+						}
+
+						// If there are type filters and event does not match, skip.
+						if doTypeMatch && !typeMatched {
+							continue
+						}
+					}
+
+					{
+					sensorFilterLoop:
+						for _, tp := range req.SensorFilters {
+
+							sensorRegExp, err := regexp.Compile(tp)
+							if err != nil {
+								log.Errorf("Honeycast : Failed to creat match for %q : %+q", tp, err)
+								continue sensorFilterLoop
+							}
+
+							// If we match atleast one type then allow event event.
+							if sensorRegExp.MatchString(event.Sensor) {
+								sensorMatched = true
+								break sensorFilterLoop
+							}
+						}
+
+						// If there are sensor filters and event does not match, skip.
+						if doSensorMatch && !sensorMatched {
+							continue
+						}
+
+					}
+
+					filteredEvents = append(filteredEvents, event)
+				}
+
+				res.Events = filteredEvents
+			} else {
+				res.Events = events
+			}
 		}
 
 	}

@@ -317,5 +317,158 @@ func TestHoneycastFiltering(t *testing.T) {
 			t.Logf("\t%s\t Should have total of 3 events in store.", passed)
 		}
 
+		t.Logf("\t When retrieving events from the /events endpoints with type filtering")
+		{
+			var event server.EventRequest
+			event.Page = 1
+			event.ResponsePerPage = 3
+			event.TypeFilters = []int{message.ContainerTarBackup, message.ProcessBegin}
+
+			var buf bytes.Buffer
+			if err := json.NewEncoder(&buf).Encode(event); err != nil {
+				t.Fatalf("\t%s\t Should have successfully created event body: %q.", failed, err.Error())
+			}
+			t.Logf("\t%s\t Should have successfully created event body.", passed)
+
+			req, err := http.NewRequest("GET", sm.URL+"/events", &buf)
+			if err != nil {
+				t.Fatalf("\t%s\t Should have successfully created request: %q.", failed, err.Error())
+			}
+			t.Logf("\t%s\t Should have successfully created request.", passed)
+
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("\t%s\t Should have successfully made request: %q.", failed, err.Error())
+			}
+			t.Logf("\t%s\t Should have successfully made request.", passed)
+
+			defer res.Body.Close()
+
+			if res.StatusCode != http.StatusOK {
+				t.Fatalf("\t%s\t Should have successfully received response with body.", failed)
+			}
+			t.Logf("\t%s\t Should have successfully received response with body.", passed)
+
+			var item server.EventResponse
+
+			if err := json.NewDecoder(res.Body).Decode(&item); err != nil {
+				t.Fatalf("\t%s\t Should have successfully decoded response: %q.", failed, err.Error())
+			}
+			t.Logf("\t%s\t Should have successfully decoded response.", passed)
+
+			if len(item.Events) != 2 {
+				t.Logf("\t\tReceived: %+q, Total: %d\n", item.Events, item.Total)
+				t.Fatalf("\t%s\t Should have retrieved 2 event for /events: %d.", failed, len(item.Events))
+			}
+			t.Logf("\t%s\t Should have retrieved 2 event for /events.", passed)
+
+			if item.Total != 3 {
+				t.Fatalf("\t%s\t Should have total of 3 events in store: %d.", failed, item.Total)
+			}
+			t.Logf("\t%s\t Should have total of 3 events in store.", passed)
+		}
+
+		t.Logf("\t When retrieving events from the /events endpoints with type filtering")
+		{
+			var event server.EventRequest
+			event.Page = 1
+			event.ResponsePerPage = 3
+			event.TypeFilters = []int{message.ProcessBegin}
+
+			var buf bytes.Buffer
+			if err := json.NewEncoder(&buf).Encode(event); err != nil {
+				t.Fatalf("\t%s\t Should have successfully created event body: %q.", failed, err.Error())
+			}
+			t.Logf("\t%s\t Should have successfully created event body.", passed)
+
+			req, err := http.NewRequest("GET", sm.URL+"/events", &buf)
+			if err != nil {
+				t.Fatalf("\t%s\t Should have successfully created request: %q.", failed, err.Error())
+			}
+			t.Logf("\t%s\t Should have successfully created request.", passed)
+
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("\t%s\t Should have successfully made request: %q.", failed, err.Error())
+			}
+			t.Logf("\t%s\t Should have successfully made request.", passed)
+
+			defer res.Body.Close()
+
+			if res.StatusCode != http.StatusOK {
+				t.Fatalf("\t%s\t Should have successfully received response with body.", failed)
+			}
+			t.Logf("\t%s\t Should have successfully received response with body.", passed)
+
+			var item server.EventResponse
+
+			if err := json.NewDecoder(res.Body).Decode(&item); err != nil {
+				t.Fatalf("\t%s\t Should have successfully decoded response: %q.", failed, err.Error())
+			}
+			t.Logf("\t%s\t Should have successfully decoded response.", passed)
+
+			if len(item.Events) != 1 {
+				t.Logf("\t\tReceived: %+q, Total: %d\n", item.Events, item.Total)
+				t.Fatalf("\t%s\t Should have retrieved 1 event for /events: %d.", failed, len(item.Events))
+			}
+			t.Logf("\t%s\t Should have retrieved 1 event for /events.", passed)
+
+			if item.Total != 3 {
+				t.Fatalf("\t%s\t Should have total of 3 events in store: %d.", failed, item.Total)
+			}
+			t.Logf("\t%s\t Should have total of 3 events in store.", passed)
+		}
+
+		t.Logf("\t When retrieving events from the /events endpoints with type and sensor filtering")
+		{
+			var event server.EventRequest
+			event.Page = 1
+			event.ResponsePerPage = 3
+			event.TypeFilters = []int{message.ProcessBegin, message.ContainerTarBackup}
+			event.SensorFilters = []string{"^Rag"}
+
+			var buf bytes.Buffer
+			if err := json.NewEncoder(&buf).Encode(event); err != nil {
+				t.Fatalf("\t%s\t Should have successfully created event body: %q.", failed, err.Error())
+			}
+			t.Logf("\t%s\t Should have successfully created event body.", passed)
+
+			req, err := http.NewRequest("GET", sm.URL+"/events", &buf)
+			if err != nil {
+				t.Fatalf("\t%s\t Should have successfully created request: %q.", failed, err.Error())
+			}
+			t.Logf("\t%s\t Should have successfully created request.", passed)
+
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("\t%s\t Should have successfully made request: %q.", failed, err.Error())
+			}
+			t.Logf("\t%s\t Should have successfully made request.", passed)
+
+			defer res.Body.Close()
+
+			if res.StatusCode != http.StatusOK {
+				t.Fatalf("\t%s\t Should have successfully received response with body.", failed)
+			}
+			t.Logf("\t%s\t Should have successfully received response with body.", passed)
+
+			var item server.EventResponse
+
+			if err := json.NewDecoder(res.Body).Decode(&item); err != nil {
+				t.Fatalf("\t%s\t Should have successfully decoded response: %q.", failed, err.Error())
+			}
+			t.Logf("\t%s\t Should have successfully decoded response.", passed)
+
+			if len(item.Events) != 1 {
+				t.Logf("\t\tReceived: %+q, Total: %d\n", item.Events, item.Total)
+				t.Fatalf("\t%s\t Should have retrieved 1 event for /events: %d.", failed, len(item.Events))
+			}
+			t.Logf("\t%s\t Should have retrieved 1 event for /events.", passed)
+
+			if item.Total != 3 {
+				t.Fatalf("\t%s\t Should have total of 3 events in store: %d.", failed, item.Total)
+			}
+			t.Logf("\t%s\t Should have total of 3 events in store.", passed)
+		}
 	}
 }
