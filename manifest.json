@@ -1,5 +1,11 @@
 {
     "dependencies": {
+        "github.com/dimfeld/httptreemux": {
+            "branch": "master"
+        },
+        "github.com/gorilla/websocket": {
+            "branch": "master"
+        },
         "github.com/honeytrap/golxc": {
             "revision": "365776ef525bf6740eb39531895cb95f7d3fb2b5"
         },
