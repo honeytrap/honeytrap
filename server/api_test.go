@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"testing"
 
@@ -476,16 +477,19 @@ func TestHoneycastFiltering(t *testing.T) {
 		t.Logf("\t When connecting with websocket to the /ws endpoints ")
 		{
 
-			conn, _, err := connectWS(sm.URL+"/ws", nil)
+			wsPath := sm.URL + "/ws"
+			wsURL, _ := url.Parse(wsPath)
+			wsURL.Scheme = "ws"
+
+			conn, _, err := connectWS(wsURL.String(), nil)
 			if err != nil {
-				tests.Failed("Should have successfully connected with a websocket client")
+				tests.Failed("Should have successfully connected with a websocket client to %q: %+q.", wsURL.String(), err)
 			}
 			tests.Passed("Should have successfully connected with a websocket client")
 
 			defer conn.WriteMessage(websocket.CloseMessage, nil)
 			defer conn.Close()
 
-			t.Logf("\t When retrieving all sessions from websocket connection")
 			{
 				if serr := send(conn, server.FetchSessions, nil); serr != nil {
 					tests.Failed("Should have successfully delivered message to a websocket server")
@@ -505,7 +509,6 @@ func TestHoneycastFiltering(t *testing.T) {
 				tests.Passed("Should have successfully received FetchSessionReply from websocket server")
 			}
 
-			t.Logf("\t When retrieving all events from websocket connection")
 			{
 				if serr := send(conn, server.FetchEvents, nil); serr != nil {
 					tests.Failed("Should have successfully delivered message to a websocket server")
@@ -525,7 +528,6 @@ func TestHoneycastFiltering(t *testing.T) {
 				tests.Passed("Should have successfully received FetchEventsReply from websocket server")
 			}
 
-			t.Logf("\t When retrieving an unknown event type '20' from websocket connection")
 			{
 				if serr := send(conn, server.MessageType(20), nil); serr != nil {
 					tests.Failed("Should have successfully delivered message to a websocket server")
