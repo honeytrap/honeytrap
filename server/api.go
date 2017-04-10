@@ -3,10 +3,12 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dimfeld/httptreemux"
@@ -50,9 +52,10 @@ type EventRequest struct {
 // responses.
 type Honeycast struct {
 	*httptreemux.TreeMux
-	assets http.Handler
 	bolted *Bolted
+	assets http.Handler
 	config *config.Config
+	socket *Socketcast
 }
 
 // NewHoneycast returns a new instance of a Honeycast struct.
@@ -69,8 +72,9 @@ func NewHoneycast(config *config.Config, assets *assetfs.AssetFS) *Honeycast {
 
 	var hc Honeycast
 	hc.config = config
-	hc.TreeMux = httptreemux.New()
 	hc.bolted = bolted
+	hc.TreeMux = httptreemux.New()
+	hc.socket = NewSocketcast(config, bolted, func(r *http.Request) bool { return true })
 
 	// Register endpoints for all handlers.
 	if hc.assets != nil {
@@ -78,9 +82,9 @@ func NewHoneycast(config *config.Config, assets *assetfs.AssetFS) *Honeycast {
 	}
 
 	hc.TreeMux.Handle("GET", "/", hc.Index)
-	hc.TreeMux.Handle("GET", "/ws", hc.Websocket)
 	hc.TreeMux.Handle("GET", "/events", hc.Events)
 	hc.TreeMux.Handle("GET", "/sessions", hc.Sessions)
+	hc.TreeMux.Handle("GET", "/ws", hc.socket.ServeHandle)
 
 	return &hc
 }
@@ -108,6 +112,10 @@ func (h *Honeycast) Send(msgs []message.PushMessage) {
 			events = append(events, event)
 		}
 	}
+
+	// Batch deliver both sessions and events data to all connected
+	h.socket.events <- events
+	h.socket.sessions <- sessions
 
 	//  Batch save the events received for both sessions and events.
 	if terr := h.bolted.Save(sessionBucket, sessions...); terr != nil {
@@ -379,23 +387,147 @@ const (
 	maxPingPongWait     = (maxPingPongInterval * 9) / 10
 )
 
+type targetMessage struct {
+	client  *websocket.Conn
+	message []byte
+	mtype   int
+}
+
 // Socketcast defines structure which exposes specific interface for interacting with a
 // websocket structure.
 type Socketcast struct {
-	uprader   websocket.Upgrader
-	transport SocketTransport
+	uprader      websocket.Upgrader
+	transport    *SocketTransport
+	clients      map[*websocket.Conn]bool
+	newClients   chan *websocket.Conn
+	closeClients chan *websocket.Conn
+	events       chan []message.Event
+	sessions     chan []message.Event
+	close        chan struct{}
+	data         chan targetMessage
+	wg           sync.WaitGroup
+	closed       bool
 }
 
 // NewSocketcast returns a new instance of a Socketcast.
-func NewSocketcast(config *config.Config, origins func(*http.Request) bool) *Socketcast {
+func NewSocketcast(config *config.Config, db *Bolted, origins func(*http.Request) bool) *Socketcast {
 	var socket Socketcast
+
 	socket.uprader = websocket.Upgrader{
 		ReadBufferSize:  maxBufferSize,
 		WriteBufferSize: maxBufferSize,
 		CheckOrigin:     origins,
 	}
 
+	socket.close = make(chan struct{}, 0)
+	socket.data = make(chan targetMessage, 0)
+	socket.events = make(chan []message.Event, 0)
+	socket.clients = make(map[*websocket.Conn]bool)
+	socket.sessions = make(chan []message.Event, 0)
+	socket.newClients = make(chan *websocket.Conn, 0)
+	socket.closeClients = make(chan *websocket.Conn, 0)
+	socket.transport = SocketTransportWithDB(config, db)
+
+	// spin up the socket internal processes.
+	go socket.manage()
+
 	return &socket
+}
+
+// ServeHandle defines a method which implements the httptreemux.Handle to allow us easily,
+// use the socket as a server to a giving httptreemux.Tree router.
+func (socket *Socketcast) ServeHandle(w http.ResponseWriter, r *http.Request, _ map[string]string) {
+	socket.ServeHTTP(w, r)
+}
+
+// Close ends the internal routine of the Socket server.
+func (socket *Socketcast) Close() error {
+	if socket.closed {
+		return errors.New("Already Closed")
+	}
+
+	close(socket.close)
+	socket.closed = true
+
+	socket.wg.Wait()
+
+	return nil
+}
+
+// manage runs the loop to manage the connections and message delivery processes of the
+// Socketcast instance.
+func (socket *Socketcast) manage() {
+	socket.wg.Add(1)
+	defer socket.wg.Done()
+
+	ticker := time.NewTicker(maxPingPongInterval)
+
+	{
+	mloop:
+		for {
+			select {
+			case <-ticker.C:
+
+				for client := range socket.clients {
+					client.WriteMessage(websocket.PingMessage, nil)
+				}
+
+			case newConn, ok := <-socket.newClients:
+				if !ok {
+					ticker.Stop()
+					break mloop
+				}
+
+				socket.clients[newConn] = true
+
+			case message, ok := <-socket.data:
+				if !ok {
+					ticker.Stop()
+					break mloop
+				}
+
+				if err := socket.transport.HandleMessage(message.message, message.client); err != nil {
+					log.Error("honeycast : Failed to process message : %+q : %+q", message, err)
+				}
+
+			case closeConn, ok := <-socket.closeClients:
+				if !ok {
+					ticker.Stop()
+					break mloop
+				}
+
+				delete(socket.clients, closeConn)
+
+				// Close the connection as well.
+				closeConn.WriteMessage(websocket.CloseMessage, nil)
+				closeConn.Close()
+
+			case newEvents, ok := <-socket.events:
+				if !ok {
+					ticker.Stop()
+					break mloop
+				}
+
+				for client := range socket.clients {
+					if err := socket.transport.DeliverNewEvents(newEvents, client); err != nil {
+						log.Error("honeycast : Failed to deliver events : %+q : %+q", client.RemoteAddr(), err)
+					}
+				}
+
+			case newEvents, ok := <-socket.sessions:
+				if !ok {
+					ticker.Stop()
+					break mloop
+				}
+
+				for client := range socket.clients {
+					if err := socket.transport.DeliverNewSessions(newEvents, client); err != nil {
+						log.Error("honeycast : Failed to deliver events : %+q : %+q", client.RemoteAddr(), err)
+					}
+				}
+			}
+		}
+	}
 }
 
 // ServeHTTP serves and transforms incoming request into websocket connections.
@@ -412,10 +544,8 @@ func (socket *Socketcast) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 
-	closer := make(chan struct{})
-	defer close(closer)
-
-	go initPingPongCycle(closer, conn)
+	// Register new connection into our client map and routine.
+	socket.newClients <- conn
 
 	{
 		for {
@@ -423,9 +553,7 @@ func (socket *Socketcast) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				// Error possibly occured, so we need to stop here.
 				log.Error("honeycast : Connection read failed abruptly : %+q", err)
-
-				// Close the connection as well.
-				conn.WriteMessage(websocket.CloseMessage, nil)
+				socket.closeClients <- conn
 				return
 			}
 
@@ -433,42 +561,141 @@ func (socket *Socketcast) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 			switch messageType {
 			case websocket.CloseMessage:
-				go conn.Close()
+				socket.closeClients <- conn
 				return
 			}
 
-			if err := socket.transport.HandleMessage(message, conn); err != nil {
-				log.Error("honeycast : Failed to process message : %+q : %+q", message, err)
-
-				// TODO: Should we close the connection here.
-				continue
+			socket.data <- targetMessage{
+				client:  conn,
+				message: message,
+				mtype:   messageType,
 			}
 		}
 	}
 
 }
 
-// initPingPongCycle runs continously sends ping requests to the client connection
-// to ensure the connection stays live.
-func initPingPongCycle(closer chan struct{}, conn *websocket.Conn) {
+//=============================================================================================
 
-	ticker := time.NewTicker(maxPingPongInterval)
+// SocketTransport defines a struct which implements a message consumption and
+// response transport for use over a websocket connection.
+type SocketTransport struct {
+	bolted *Bolted
+	config *config.Config
+}
 
-	{
-	pploop:
-		for {
-			select {
-			case <-closer:
-				ticker.Stop()
-				break pploop
+// SocketTransportWithDB returns a new instance of a SocketTransport using the provided
+// Bolted instance.
+func SocketTransportWithDB(config *config.Config, bolt *Bolted) *SocketTransport {
+	var socket SocketTransport
+	socket.config = config
+	socket.bolted = bolt
+	return &socket
+}
 
-			case _, ok := <-ticker.C:
-				if !ok {
-					break pploop
-				}
+// NewSocketTransport returns a new instance of a SocketTransport.
+func NewSocketTransport(config *config.Config) (*SocketTransport, error) {
+	var socket SocketTransport
+	socket.config = config
 
-				conn.WriteMessage(websocket.PingMessage, nil)
-			}
-		}
+	// Create the database we desire.
+	bolted, err := NewBolted(fmt.Sprintf("%s-bolted", config.Token), string(sessionBucket), string(eventsBucket))
+	if err != nil {
+		log.Errorf("Failed to created BoltDB session: %+q", err)
+		return nil, err
 	}
+
+	socket.bolted = bolted
+
+	return &socket, nil
+}
+
+// HandleMessage defines a central method which provides the entry point which is used
+// to respond to new messages.
+func (so *SocketTransport) HandleMessage(message []byte, conn *websocket.Conn) error {
+	var newMessage Message
+
+	if err := json.NewDecoder(bytes.NewBuffer(message)).Decode(&newMessage); err != nil {
+		log.Errorf("Honeycast : Failed to decode message : %+q", err)
+		return err
+	}
+
+	// We initially will only handle just two requests of getter types.
+	// TODO: Handle NewSessions and NewEvents somewhere else.
+	switch newMessage.Type {
+	case FetchEvents:
+		var message Message
+		message.Type = FetchEventsReply
+
+		var terr error
+		message.Payload, terr = so.bolted.Get(eventsBucket, -1, -1)
+		if terr != nil {
+			log.Error("honeycast : Invalid Response with Sessions Retrieval : %+q", terr)
+			return so.DeliverMessage(Message{
+				Type:    ErrorResponse,
+				Payload: terr.Error(),
+			}, conn)
+		}
+
+		return so.DeliverMessage(message, conn)
+
+	case FetchSessions:
+		var message Message
+		message.Type = FetchSessionsReply
+
+		var terr error
+		message.Payload, terr = so.bolted.Get(sessionBucket, -1, -1)
+		if terr != nil {
+			log.Error("honeycast : Invalid Response with Sessions Retrieval : %+q", terr)
+			return so.DeliverMessage(Message{
+				Type:    ErrorResponse,
+				Payload: terr.Error(),
+			}, conn)
+		}
+
+		return so.DeliverMessage(message, conn)
+
+	default:
+		return so.DeliverMessage(Message{
+			Type:    ErrorResponse,
+			Payload: "Unknown Request Type",
+		}, conn)
+	}
+}
+
+// DeliverNewSessions delivers new incoming requests to the underline socket transport.
+func (so *SocketTransport) DeliverNewSessions(events []message.Event, conn *websocket.Conn) error {
+	if events == nil {
+		return nil
+	}
+
+	return so.DeliverMessage(Message{
+		Type:    NewSessions,
+		Payload: events,
+	}, conn)
+}
+
+// DeliverNewEvents delivers new incoming requests to the underline socket transport.
+func (so *SocketTransport) DeliverNewEvents(events []message.Event, conn *websocket.Conn) error {
+	if events == nil {
+		return nil
+	}
+
+	return so.DeliverMessage(Message{
+		Type:    NewEvents,
+		Payload: events,
+	}, conn)
+}
+
+// DeliverMessage defines a method which handles the delivery of a message to a giving
+// websocket.Conn.
+func (so *SocketTransport) DeliverMessage(message Message, conn *websocket.Conn) error {
+	var bu bytes.Buffer
+
+	if err := json.NewEncoder(&bu).Encode(message); err != nil {
+		log.Errorf("Honeycast : Failed to decode message : %+q", err)
+		return err
+	}
+
+	return conn.WriteMessage(websocket.BinaryMessage, bu.Bytes())
 }
