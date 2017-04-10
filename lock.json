@@ -1,10 +1,26 @@
 {
-    "memo": "9d6edd49f025137798bcf74ec330dde1a8aa950788d1b3f2befa9f381edf7709",
+    "memo": "9d723c53bc12edb05df669651297d45c26444b5fa83ea1fa72a648664b4f5477",
     "projects": [
         {
             "name": "github.com/BurntSushi/toml",
             "version": "v0.3.0",
             "revision": "b26d9c308763d68093482582cea63d69be07a0f0",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/boltdb/bolt",
+            "version": "v1.3.0",
+            "revision": "583e8937c61f1af6513608ccc75c97b6abdf4ff9",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/dimfeld/httptreemux",
+            "version": "v3.8.0",
+            "revision": "86f7c217d9043ebc6adfd8e2ed04a0bb1e1db651",
             "packages": [
                 "."
             ]
@@ -42,6 +58,14 @@
                 "layers",
                 "pcap",
                 "pcapgo"
+            ]
+        },
+        {
+            "name": "github.com/gorilla/websocket",
+            "branch": "master",
+            "revision": "a91eba7f97777409bc2c443f5534d41dd20c5720",
+            "packages": [
+                "."
             ]
         },
         {
@@ -121,14 +145,6 @@
             "revision": "b061729afc07e77a8aa4fad0a2fd840958f1942a",
             "packages": [
                 "."
-            ]
-        },
-        {
-            "name": "github.com/tidwall/tile38",
-            "branch": "master",
-            "revision": "710ed9685047b96804b653931b782dc0a96ec8bc",
-            "packages": [
-                "controller/log"
             ]
         },
         {

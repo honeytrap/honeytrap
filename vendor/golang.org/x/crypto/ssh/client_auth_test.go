@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 )
@@ -76,7 +77,6 @@ func tryAuth(t *testing.T, config *ClientConfig) error {
 			return nil, errors.New("keyboard-interactive failed")
 		},
 		AuthLogCallback: func(conn ConnMetadata, method string, err error) {
-			t.Logf("user %q, method %q: %v", conn.User(), method, err)
 		},
 	}
 	serverConfig.AddHostKey(testSigners["rsa"])
@@ -243,6 +243,9 @@ func TestClientUnsupportedCipher(t *testing.T) {
 }
 
 func TestClientUnsupportedKex(t *testing.T) {
+	if os.Getenv("GO_BUILDER_NAME") != "" {
+		t.Skip("skipping known-flaky test on the Go build dashboard; see golang.org/issue/15198")
+	}
 	config := &ClientConfig{
 		User: "testuser",
 		Auth: []AuthMethod{
@@ -252,8 +255,8 @@ func TestClientUnsupportedKex(t *testing.T) {
 			KeyExchanges: []string{"diffie-hellman-group-exchange-sha256"}, // not currently supported
 		},
 	}
-	if err := tryAuth(t, config); err == nil || !strings.Contains(err.Error(), "no common algorithms") {
-		t.Errorf("got %v, expected 'no common algorithms'", err)
+	if err := tryAuth(t, config); err == nil || !strings.Contains(err.Error(), "common algorithm") {
+		t.Errorf("got %v, expected 'common algorithm'", err)
 	}
 }
 
@@ -274,18 +277,18 @@ func TestClientLoginCert(t *testing.T) {
 	}
 	clientConfig.Auth = append(clientConfig.Auth, PublicKeys(certSigner))
 
-	t.Log("should succeed")
+	// should succeed
 	if err := tryAuth(t, clientConfig); err != nil {
 		t.Errorf("cert login failed: %v", err)
 	}
 
-	t.Log("corrupted signature")
+	// corrupted signature
 	cert.Signature.Blob[0]++
 	if err := tryAuth(t, clientConfig); err == nil {
 		t.Errorf("cert login passed with corrupted sig")
 	}
 
-	t.Log("revoked")
+	// revoked
 	cert.Serial = 666
 	cert.SignCert(rand.Reader, testSigners["ecdsa"])
 	if err := tryAuth(t, clientConfig); err == nil {
@@ -293,13 +296,13 @@ func TestClientLoginCert(t *testing.T) {
 	}
 	cert.Serial = 1
 
-	t.Log("sign with wrong key")
+	// sign with wrong key
 	cert.SignCert(rand.Reader, testSigners["dsa"])
 	if err := tryAuth(t, clientConfig); err == nil {
-		t.Errorf("cert login passed with non-authoritive key")
+		t.Errorf("cert login passed with non-authoritative key")
 	}
 
-	t.Log("host cert")
+	// host cert
 	cert.CertType = HostCert
 	cert.SignCert(rand.Reader, testSigners["ecdsa"])
 	if err := tryAuth(t, clientConfig); err == nil {
@@ -307,14 +310,14 @@ func TestClientLoginCert(t *testing.T) {
 	}
 	cert.CertType = UserCert
 
-	t.Log("principal specified")
+	// principal specified
 	cert.ValidPrincipals = []string{"user"}
 	cert.SignCert(rand.Reader, testSigners["ecdsa"])
 	if err := tryAuth(t, clientConfig); err != nil {
 		t.Errorf("cert login failed: %v", err)
 	}
 
-	t.Log("wrong principal specified")
+	// wrong principal specified
 	cert.ValidPrincipals = []string{"fred"}
 	cert.SignCert(rand.Reader, testSigners["ecdsa"])
 	if err := tryAuth(t, clientConfig); err == nil {
@@ -322,22 +325,22 @@ func TestClientLoginCert(t *testing.T) {
 	}
 	cert.ValidPrincipals = nil
 
-	t.Log("added critical option")
+	// added critical option
 	cert.CriticalOptions = map[string]string{"root-access": "yes"}
 	cert.SignCert(rand.Reader, testSigners["ecdsa"])
 	if err := tryAuth(t, clientConfig); err == nil {
 		t.Errorf("cert login passed with unrecognized critical option")
 	}
 
-	t.Log("allowed source address")
-	cert.CriticalOptions = map[string]string{"source-address": "127.0.0.42/24"}
+	// allowed source address
+	cert.CriticalOptions = map[string]string{"source-address": "127.0.0.42/24,::42/120"}
 	cert.SignCert(rand.Reader, testSigners["ecdsa"])
 	if err := tryAuth(t, clientConfig); err != nil {
 		t.Errorf("cert login with source-address failed: %v", err)
 	}
 
-	t.Log("disallowed source address")
-	cert.CriticalOptions = map[string]string{"source-address": "127.0.0.42"}
+	// disallowed source address
+	cert.CriticalOptions = map[string]string{"source-address": "127.0.0.42,::42"}
 	cert.SignCert(rand.Reader, testSigners["ecdsa"])
 	if err := tryAuth(t, clientConfig); err == nil {
 		t.Errorf("cert login with source-address succeeded")
@@ -390,4 +393,79 @@ func TestPermissionsPassing(t *testing.T) {
 
 func TestNoPermissionsPassing(t *testing.T) {
 	testPermissionsPassing(false, t)
+}
+
+func TestRetryableAuth(t *testing.T) {
+	n := 0
+	passwords := []string{"WRONG1", "WRONG2"}
+
+	config := &ClientConfig{
+		User: "testuser",
+		Auth: []AuthMethod{
+			RetryableAuthMethod(PasswordCallback(func() (string, error) {
+				p := passwords[n]
+				n++
+				return p, nil
+			}), 2),
+			PublicKeys(testSigners["rsa"]),
+		},
+	}
+
+	if err := tryAuth(t, config); err != nil {
+		t.Fatalf("unable to dial remote side: %s", err)
+	}
+	if n != 2 {
+		t.Fatalf("Did not try all passwords")
+	}
+}
+
+func ExampleRetryableAuthMethod(t *testing.T) {
+	user := "testuser"
+	NumberOfPrompts := 3
+
+	// Normally this would be a callback that prompts the user to answer the
+	// provided questions
+	Cb := func(user, instruction string, questions []string, echos []bool) (answers []string, err error) {
+		return []string{"answer1", "answer2"}, nil
+	}
+
+	config := &ClientConfig{
+		User: user,
+		Auth: []AuthMethod{
+			RetryableAuthMethod(KeyboardInteractiveChallenge(Cb), NumberOfPrompts),
+		},
+	}
+
+	if err := tryAuth(t, config); err != nil {
+		t.Fatalf("unable to dial remote side: %s", err)
+	}
+}
+
+// Test if username is received on server side when NoClientAuth is used
+func TestClientAuthNone(t *testing.T) {
+	user := "testuser"
+	serverConfig := &ServerConfig{
+		NoClientAuth: true,
+	}
+	serverConfig.AddHostKey(testSigners["rsa"])
+
+	clientConfig := &ClientConfig{
+		User: user,
+	}
+
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	go NewClientConn(c2, "", clientConfig)
+	serverConn, err := newServer(c1, serverConfig)
+	if err != nil {
+		t.Fatalf("newServer: %v", err)
+	}
+	if serverConn.User() != user {
+		t.Fatalf("server: got %q, want %q", serverConn.User(), user)
+	}
 }
