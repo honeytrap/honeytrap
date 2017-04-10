@@ -66,7 +66,11 @@ func NewEventDelivery(channel Channel) *EventDelivery {
 // Deliver adds the giving event into the provided message.Channel for the delivery
 func (d *EventDelivery) Deliver(ev message.Event) {
 	// Set the time for the event
-	ev.Time = time.Now()
+	ev.Date = time.Now()
+
+	if ev.Location == "" {
+		ev.Location = "Unknown"
+	}
 
 	d.sync.Send([]message.PushMessage{
 		{

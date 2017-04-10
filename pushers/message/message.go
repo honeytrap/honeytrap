@@ -52,8 +52,8 @@ const (
 	ContainerDataCheckpoint
 
 	// SSH based events.
-	SSHSessionBegin
-	SSHSessionEnd
+	SessionStarted
+	SessionEnded
 
 	// Authentication events.
 	Login = iota + 30
@@ -64,8 +64,11 @@ const (
 // a giving event.
 type Event struct {
 	Sensor      string                 `json:"sensor"`
-	Time        time.Time              `json:"time"`
+	Date        time.Time              `json:"date"`
+	Started     time.Time              `json:"started,omitempty"`
+	Ended       time.Time              `json:"ended,omitempty"`
 	Token       string                 `json:"token,omitempty"`
+	Location    string                 `json:"location,omitempty"`
 	Category    string                 `json:"category"`
 	HostAddr    string                 `json:"host_addr"`
 	LocalAddr   string                 `json:"local_addr"`

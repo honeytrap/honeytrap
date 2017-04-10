@@ -55,13 +55,14 @@ type SSHRecorderSession struct {
 	conn      *proxies.ProxyConn
 	username  string
 	password  string
+	events    pushers.Events
 }
 
 // NewSession creates a new session session recorder.
 func (r *SSHRecorder) NewSession(c *proxies.ProxyConn) *SSHRecorderSession {
 	sessionID := uuid.NewV4()
 	startDate := time.Now()
-	return &SSHRecorderSession{conn: c, sessionID: sessionID, seq: 0, r: r, startDate: startDate}
+	return &SSHRecorderSession{conn: c, sessionID: sessionID, seq: 0, r: r, startDate: startDate, events: r.events}
 }
 
 // Connect records the connect operation for the underline ssh connection.

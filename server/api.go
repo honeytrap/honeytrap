@@ -7,9 +7,11 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/dimfeld/httptreemux"
 	assetfs "github.com/elazarl/go-bindata-assetfs"
+	"github.com/gorilla/websocket"
 	"github.com/honeytrap/honeytrap/config"
 	"github.com/honeytrap/honeytrap/pushers/message"
 )
@@ -367,4 +369,106 @@ func (h *Honeycast) Index(w http.ResponseWriter, r *http.Request, params map[str
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+//=================================================================================
+
+const (
+	maxBufferSize       = 1024 * 1024
+	maxPingPongInterval = 5 * time.Second
+	maxPingPongWait     = (maxPingPongInterval * 9) / 10
+)
+
+// Socketcast defines structure which exposes specific interface for interacting with a
+// websocket structure.
+type Socketcast struct {
+	uprader   websocket.Upgrader
+	transport SocketTransport
+}
+
+// NewSocketcast returns a new instance of a Socketcast.
+func NewSocketcast(config *config.Config, origins func(*http.Request) bool) *Socketcast {
+	var socket Socketcast
+	socket.uprader = websocket.Upgrader{
+		ReadBufferSize:  maxBufferSize,
+		WriteBufferSize: maxBufferSize,
+		CheckOrigin:     origins,
+	}
+
+	return &socket
+}
+
+// ServeHTTP serves and transforms incoming request into websocket connections.
+func (socket *Socketcast) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	conn, err := socket.uprader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Error("honeycast : Failed to uprade request : %+q", err)
+		http.Error(w, "Failed to upgrade request", http.StatusInternalServerError)
+		return
+	}
+
+	conn.SetPongHandler(func(appData string) error {
+		conn.SetReadDeadline(time.Now().Add(maxPingPongWait))
+		return nil
+	})
+
+	closer := make(chan struct{})
+	defer close(closer)
+
+	go initPingPongCycle(closer, conn)
+
+	{
+		for {
+			messageType, message, err := conn.ReadMessage()
+			if err != nil {
+				// Error possibly occured, so we need to stop here.
+				log.Error("honeycast : Connection read failed abruptly : %+q", err)
+
+				// Close the connection as well.
+				conn.WriteMessage(websocket.CloseMessage, nil)
+				return
+			}
+
+			conn.SetReadDeadline(time.Time{})
+
+			switch messageType {
+			case websocket.CloseMessage:
+				go conn.Close()
+				return
+			}
+
+			if err := socket.transport.HandleMessage(message, conn); err != nil {
+				log.Error("honeycast : Failed to process message : %+q : %+q", message, err)
+
+				// TODO: Should we close the connection here.
+				continue
+			}
+		}
+	}
+
+}
+
+// initPingPongCycle runs continously sends ping requests to the client connection
+// to ensure the connection stays live.
+func initPingPongCycle(closer chan struct{}, conn *websocket.Conn) {
+
+	ticker := time.NewTicker(maxPingPongInterval)
+
+	{
+	pploop:
+		for {
+			select {
+			case <-closer:
+				ticker.Stop()
+				break pploop
+
+			case _, ok := <-ticker.C:
+				if !ok {
+					break pploop
+				}
+
+				conn.WriteMessage(websocket.PingMessage, nil)
+			}
+		}
+	}
 }
