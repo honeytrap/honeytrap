@@ -14,7 +14,7 @@ import (
 	"github.com/honeytrap/honeytrap/config"
 	"github.com/honeytrap/honeytrap/pushers/message"
 	"github.com/honeytrap/honeytrap/server"
-	"github.com/influx6/faux/tests"
+	"github.com/honeytrap/honeytrap/utils/tests"
 
 	web "github.com/honeytrap/honeytrap-web"
 )
