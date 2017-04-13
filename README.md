@@ -43,8 +43,8 @@ Expects to recieve a `GET` request to retrieve stored events, with the following
 {
     "response_per_page": 10,
     "page":1,
-    "types": [1,5,20], // Optional, to filter the type of Event which are marked by integers.
-    "sensors": ["ping", "^connect"] // Optional, to filter the type of event's sensor.
+    "types": [1,5,20], 
+    "sensors": ["ping", "^connect"] 
 }
 ```
 
@@ -95,6 +95,8 @@ The API will responds with the following response body as regarding the above re
     ]
 }
 ```
+The `total` field represents the total events records stored within the db.
+
 
 - `GET /sessions`
 
@@ -104,8 +106,8 @@ Expects to recieve a `GET` request to retrieve stored session events, with the f
 {
     "response_per_page": 10,
     "page":1,
-    "types": [1], // Optional, to filter the type of Event which are marked by integers.
-    "sensors": ["^ssh_"] // Optional, to filter the type of event's sensor.
+    "types": [1], 
+    "sensors": ["^ssh_"] 
 }
 ```
 
@@ -119,7 +121,7 @@ The API will responds with the following response body as regarding the above re
 {
     "response_per_page": 10,
     "page":1,
-    "total":100, // Represents the total of all session event records in db.
+    "total":100, 
     "events":[
         {
             "type": 1,
@@ -140,6 +142,8 @@ The API will responds with the following response body as regarding the above re
     ]
 }
 ```
+
+The `total` field represents the total events records stored within the db.
 
 ### Websocket API
 The Honeytrap exposes also the ability to use websocket to connect with the API to retrieve events and sesssion data, whilst also receiving notifications as to the presence of new events or sessions.
@@ -176,7 +180,7 @@ Resposne from the API via the websocket use the JSON format and follow the layou
 }
 ```
 
-The API supports the following requests types with specific int values:
+The API supports the following response types with specific int values:
 
 ```
 FETCH_SESSIONS_REPLY=2
