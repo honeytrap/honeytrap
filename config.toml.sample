@@ -1,4 +1,8 @@
+director = "lxc"
 template = "honeytrap"
+
+[directormeta]
+service_addr = "http://api.honeytrap.com/pixi:4060"
 
 [delays]
 push_every = "10s"

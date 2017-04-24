@@ -637,7 +637,7 @@ func (c *LxcContainer) CleanUp() error {
 
 // Dial attempts to connect to the internal network of the
 // internal container.
-func (c *LxcContainer) Dial(port string) (net.Conn, error) {
+func (c *LxcContainer) Dial() (net.Conn, error) {
 	if err := c.ensureStarted(); err != nil {
 		return nil, err
 	}
@@ -652,7 +652,7 @@ func (c *LxcContainer) Dial(port string) (net.Conn, error) {
 	retries := 0
 	for {
 		// TODO(nl5887): remove
-		port = "22"
+		port := "22"
 
 		conn, err = net.Dial("tcp", net.JoinHostPort(c.ip, port))
 		if err == nil {

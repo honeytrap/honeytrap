@@ -17,6 +17,6 @@ type Director interface {
 
 // Container defines a type which exposes methods for connecting to a container.
 type Container interface {
-	Dial(string) (net.Conn, error)
+	Dial() (net.Conn, error)
 	Name() string
 }

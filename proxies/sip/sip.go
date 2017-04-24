@@ -18,7 +18,7 @@ var log = logging.MustGetLogger("honeytrap:proxy:sip")
 
 // ListenSIP returns a new net.Listener for listening for sip connections.
 // TODO: Change amount of params.
-func ListenSIP(address string, d *director.Director, p *pushers.Pusher, e pushers.Events, c *config.Config) (net.Listener, error) {
+func ListenSIP(address string, d director.Director, p *pushers.Pusher, e pushers.Events, c *config.Config) (net.Listener, error) {
 	l, err := net.Listen("tcp", address)
 	if err != nil {
 		log.Fatal(err)
