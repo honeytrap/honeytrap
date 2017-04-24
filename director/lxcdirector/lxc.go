@@ -1,6 +1,4 @@
-// +build linux
-
-package providers
+package lxcdirector
 
 import (
 	"compress/gzip"
@@ -13,15 +11,17 @@ import (
 	"time"
 
 	"github.com/honeytrap/honeytrap/config"
+	"github.com/honeytrap/honeytrap/director"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/pushers/message"
 	"github.com/honeytrap/honeytrap/sniffer"
+	"github.com/honeytrap/honeytrap/utils/files"
 	logging "github.com/op/go-logging"
 
 	lxc "github.com/honeytrap/golxc"
 )
 
-var log = logging.MustGetLogger("honeytrap:providers")
+var log = logging.MustGetLogger("honeytrap:lxcdirector")
 
 /*
 TODO: enable providers registration
@@ -42,26 +42,12 @@ type LxcProvider struct {
 }
 
 // NewLxcProvider returns a new instance of a LxcProvider as a Provider.
-func NewLxcProvider(config *config.Config, events pushers.Events) Provider {
+func NewLxcProvider(config *config.Config, events pushers.Events) *LxcProvider {
 	return &LxcProvider{config, events}
 }
 
-// LxcContainer defines a struct to encapsulated a lxc.Container.
-type LxcContainer struct {
-	ip       string
-	name     string
-	template string
-	idevice  string
-	config   *config.Config
-	idle     time.Time
-	c        *lxc.Container
-	m        sync.Mutex
-	sf       *sniffer.Sniffer
-	provider *LxcProvider
-}
-
 // NewContainer returns a new LxcContainer from the provider.
-func (lp *LxcProvider) NewContainer(name string) (Container, error) {
+func (lp *LxcProvider) NewContainer(name string) (director.Container, error) {
 	c := LxcContainer{
 		provider: lp,
 		name:     name,
@@ -78,6 +64,20 @@ func (lp *LxcProvider) NewContainer(name string) (Container, error) {
 	go c.housekeeper()
 
 	return &c, nil
+}
+
+// LxcContainer defines a struct to encapsulated a lxc.Container.
+type LxcContainer struct {
+	ip       string
+	name     string
+	template string
+	idevice  string
+	config   *config.Config
+	idle     time.Time
+	c        *lxc.Container
+	m        sync.Mutex
+	sf       *sniffer.Sniffer
+	provider *LxcProvider
 }
 
 // clone attempts to clone the underline lxc.Container.
@@ -397,7 +397,7 @@ func (c *LxcContainer) deltaUp() (string, error) {
 	rootfs := c.c.ConfigItem("lxc.rootfs")[0]
 	deltaPath := strings.Split(rootfs, ":")[2]
 
-	err = TarWalker(deltaPath, w)
+	err = files.TarWalker(deltaPath, w)
 	if err != nil {
 		return "", err
 	}
@@ -437,7 +437,7 @@ func (c *LxcContainer) checkpoint() (string, error) {
 	w := gzip.NewWriter(fo)
 	defer w.Close()
 
-	err = TarWalker(tmpdir, w)
+	err = files.TarWalker(tmpdir, w)
 	if err != nil {
 		return "", err
 	}
@@ -472,7 +472,7 @@ func (c *LxcContainer) freeze() error {
 			break
 		}
 
-		chp, err := NewFileCloser(chpnt)
+		chp, err := files.NewFileCloser(chpnt)
 		if err != nil {
 			log.Errorf("Unable to find checkpoint file closer: %s", err)
 			break
@@ -553,7 +553,7 @@ func (c *LxcContainer) freeze() error {
 			break
 		}
 
-		r, err := NewFileCloser(delta)
+		r, err := files.NewFileCloser(delta)
 		if err != nil {
 			log.Error(err.Error())
 			break
