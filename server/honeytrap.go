@@ -12,8 +12,10 @@ import (
 	web "github.com/honeytrap/honeytrap-web"
 
 	"github.com/BurntSushi/toml"
-	config "github.com/honeytrap/honeytrap/config"
-	director "github.com/honeytrap/honeytrap/director"
+	"github.com/honeytrap/honeytrap/config"
+	"github.com/honeytrap/honeytrap/director"
+	"github.com/honeytrap/honeytrap/director/iodirector"
+	"github.com/honeytrap/honeytrap/director/lxcdirector"
 
 	proxies "github.com/honeytrap/honeytrap/proxies"
 	_ "github.com/honeytrap/honeytrap/proxies/ssh" // TODO: Add comment
@@ -30,14 +32,20 @@ import (
 
 var log = logging.MustGetLogger("Honeytrap")
 
+// contains Director type names.
+const (
+	LXCDirector = "lxc"
+	IODirector  = "io"
+)
+
 // Honeytrap defines a struct which coordinates the internal logic for the honeytrap
 // container infrastructure.
 type Honeytrap struct {
 	config    *config.Config
-	director  *director.Director
 	pusher    *pushers.Pusher
 	events    pushers.Events
 	honeycast *Honeycast
+	director  director.Director
 }
 
 // ServeFunc defines the function called to handle internal server details.
@@ -57,19 +65,35 @@ func New(conf *config.Config) *Honeytrap {
 
 	channels := pushers.ChannelStream{pushChannel, honeycast}
 	events := pushers.NewTokenedEventDelivery(conf.Token, channels)
-	director := director.New(conf, events)
 
-	return &Honeytrap{conf, director, pusher, events, honeycast}
+	var director director.Director
+
+	switch conf.Director {
+	case IODirector:
+		director = iodirector.New(conf, events)
+	case LXCDirector:
+		director = lxcdirector.New(conf, events)
+	default:
+		panic(fmt.Sprintf("Unknown director type: %q", conf.Director))
+	}
+
+	return &Honeytrap{
+		config:    conf,
+		director:  director,
+		pusher:    pusher,
+		events:    events,
+		honeycast: honeycast,
+	}
 }
 
 func (hc *Honeytrap) startAgentServer() {
-	// as := proxies.NewAgentServer(hc.director, hc.pusher, hc.config)
+	// as := proxies.NewAgentServer(hc.director, hc.pusher, hc.configig)
 	// go as.ListenAndServe()
 }
 
 // ListenFunc defines a function type which returns a net.Listener specific for the
 // use of its argument and for the reception of net connections.
-type ListenFunc func(string, *director.Director, *pushers.Pusher, *pushers.EventDelivery, *config.Config) (net.Listener, error)
+type ListenFunc func(string, director.Director, *pushers.Pusher, *pushers.EventDelivery, *config.Config) (net.Listener, error)
 
 // ListenerConfig defines a struct for holding configuration fields for a Listener
 // builder.

@@ -10,13 +10,13 @@ import (
 // ProxyListener defines a struct which holds a giving net.Listener.
 type ProxyListener struct {
 	net.Listener
-	director *director.Director
+	director director.Director
 	pusher   *pushers.Pusher
 	events   pushers.Events
 }
 
 // NewProxyListener returns a new instance for a ProxyListener.
-func NewProxyListener(l net.Listener, d *director.Director, p *pushers.Pusher, e pushers.Events) *ProxyListener {
+func NewProxyListener(l net.Listener, d director.Director, p *pushers.Pusher, e pushers.Events) *ProxyListener {
 	return &ProxyListener{
 		l,
 		d,
@@ -39,32 +39,38 @@ func (lw *ProxyListener) Accept() (c net.Conn, err error) {
 
 	lw.events.Deliver(EventConnectionOpened(c.RemoteAddr(), c.LocalAddr(), "ProxyConn", nil, nil))
 
+	// Attempt to GetContainer from director.
 	container, err := lw.director.GetContainer(c)
 	if err != nil {
-		lw.events.Deliver(EventConnectionError(c.RemoteAddr(), c.LocalAddr(), "ProxyConn", nil, map[string]interface{}{
-			"error": err,
-		}))
 
-		lw.events.Deliver(EventConnectionClosed(c.RemoteAddr(), c.LocalAddr(), "ProxyConn", nil, nil))
-		c.Close()
-		return nil, err
+		// Container does not exists on director, so ask for new one.
+		container, err = lw.director.NewContainer(c.RemoteAddr().String())
+		if err != nil {
+			lw.events.Deliver(EventConnectionError(c.RemoteAddr(), c.LocalAddr(), "ProxyConn", nil, map[string]interface{}{
+				"error": err,
+			}))
+
+			lw.events.Deliver(EventConnectionClosed(c.RemoteAddr(), c.LocalAddr(), "ProxyConn", nil, nil))
+			c.Close()
+			return nil, err
+		}
 	}
 
-	_, port, err := net.SplitHostPort(c.LocalAddr().String())
-	if err != nil {
-		lw.events.Deliver(EventConnectionError(c.RemoteAddr(), c.LocalAddr(), "ProxyConn", nil, map[string]interface{}{
-			"error": err,
-		}))
+	// _, port, err := net.SplitHostPort(c.LocalAddr().String())
+	// if err != nil {
+	// 	lw.events.Deliver(EventConnectionError(c.RemoteAddr(), c.LocalAddr(), "ProxyConn", nil, map[string]interface{}{
+	// 		"error": err,
+	// 	}))
 
-		lw.events.Deliver(EventConnectionClosed(c.RemoteAddr(), c.LocalAddr(), "ProxyConn", nil, nil))
-		c.Close()
-		return nil, err
-	}
+	// 	lw.events.Deliver(EventConnectionClosed(c.RemoteAddr(), c.LocalAddr(), "ProxyConn", nil, nil))
+	// 	c.Close()
+	// 	return nil, err
+	// }
 
-	log.Debugf("Connecting to container port: %s", port)
+	// log.Debugf("Connecting to container port: %s", port)
 
 	var c2 net.Conn
-	c2, err = container.Dial(port)
+	c2, err = container.Dial()
 	if err != nil {
 		lw.events.Deliver(EventConnectionError(c.RemoteAddr(), c.LocalAddr(), "ProxyConn", nil, map[string]interface{}{
 			"error": err,

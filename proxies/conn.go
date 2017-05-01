@@ -3,7 +3,7 @@ package proxies
 import (
 	"net"
 
-	providers "github.com/honeytrap/honeytrap/providers"
+	"github.com/honeytrap/honeytrap/director"
 	pushers "github.com/honeytrap/honeytrap/pushers"
 )
 
@@ -14,7 +14,7 @@ type ProxyConn struct {
 	// Connection to container
 	Server net.Conn
 
-	Container providers.Container
+	Container director.Container
 
 	Pusher *pushers.Pusher
 	Event  pushers.Events

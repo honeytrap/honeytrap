@@ -1,4 +1,4 @@
-package providers
+package files
 
 import (
 	"archive/tar"
@@ -7,7 +7,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	logging "github.com/op/go-logging"
 )
+
+var log = logging.MustGetLogger("honeytrap:utils/files")
 
 // FileCloser defines a struct which implements the io.Closer for a file object
 // which removes the path when closed.

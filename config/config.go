@@ -28,6 +28,11 @@ type (
 		Every Delay `toml:"every"`
 	}
 
+	// DirectorMeta defines the settings for director meta.
+	DirectorMeta struct {
+		ServiceAddr string `toml:"service_addr"`
+	}
+
 	// Delays sets the individual duration set for all ops.
 	// TODO: rename to Timers
 	Delays struct {
@@ -49,13 +54,15 @@ type (
 
 	// Config defines the central type where all configuration is umarhsalled to.
 	Config struct {
-		Token       string      `toml:"token"`
-		Template    string      `toml:"template"`
-		NetFilter   string      `toml:"net_filter"`
-		Keys        string      `toml:"keys"`
-		Delays      Delays      `toml:"delays"`
-		Folders     Folders     `toml:"folders"`
-		HouseKeeper HouseKeeper `toml:"housekeeper"`
+		Token        string       `toml:"token"`
+		Template     string       `toml:"template"`
+		NetFilter    string       `toml:"net_filter"`
+		Keys         string       `toml:"keys"`
+		Director     string       `toml:"director"`
+		Delays       Delays       `toml:"delays"`
+		Folders      Folders      `toml:"folders"`
+		HouseKeeper  HouseKeeper  `toml:"housekeeper"`
+		DirectorMeta DirectorMeta `toml:"directormeta"`
 
 		Backends map[string]interface{}   `toml:"backends"`
 		Channels []map[string]interface{} `toml:"channels"`
