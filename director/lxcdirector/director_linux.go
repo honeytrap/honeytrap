@@ -16,6 +16,11 @@ import (
 	"github.com/honeytrap/namecon"
 )
 
+const (
+	// DirectorKey defines the key used to choose this giving director.
+	DirectorKey = "lxc"
+)
+
 // Director defines a struct which handles the management of registered containers.
 type Director struct {
 	config     *config.Config

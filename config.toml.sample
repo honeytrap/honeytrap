@@ -5,6 +5,10 @@ token = "433UI-56JK-3433NJ-KI954"
 [[directors.io_config]]
 service_addr = "http://api.honeytrap.com/pixi:4060"
 
+[[directors.cowrie_config]]
+ssh_addr = "localhost"
+ssh_port = "2222"
+
 [delays]
 push_every = "10s"
 freeze_every = "10s"

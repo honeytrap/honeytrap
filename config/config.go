@@ -28,14 +28,22 @@ type (
 		Every Delay `toml:"every"`
 	}
 
-	// IOConfig defines the settings for director meta.
+	// IOConfig defines the settings for the iodirector.
 	IOConfig struct {
 		ServiceAddr string `toml:"service_addr"`
 	}
 
-	// DirectorConfig defines the settings for director meta.
+	// CowrieConfig defines the settings for director meta.
+	CowrieConfig struct {
+		SSHPort string `toml:"ssh_port"`
+		SSHAddr string `toml:"ssh_addr"`
+	}
+
+	// DirectorConfig defines the settings for all directors supported
+	// by honeytrap.
 	DirectorConfig struct {
-		IOConfig IOConfig `toml:"io_config"`
+		IOConfig IOConfig     `toml:"io_config"`
+		Cowrie   CowrieConfig `toml:"cowrie_config"`
 	}
 
 	// Delays sets the individual duration set for all ops.

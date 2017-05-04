@@ -14,6 +14,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/config"
 	"github.com/honeytrap/honeytrap/director"
+	"github.com/honeytrap/honeytrap/director/cowriedirector"
 	"github.com/honeytrap/honeytrap/director/iodirector"
 	"github.com/honeytrap/honeytrap/director/lxcdirector"
 
@@ -21,8 +22,6 @@ import (
 	_ "github.com/honeytrap/honeytrap/proxies/ssh" // TODO: Add comment
 
 	pushers "github.com/honeytrap/honeytrap/pushers"
-	// _ "github.com/Honeytrap/Honeytrap/pushers/elasticsearch"
-	// _ "github.com/Honeytrap/Honeytrap/pushers/Honeytrap"
 	"github.com/honeytrap/honeytrap/pushers/message"
 
 	utils "github.com/honeytrap/honeytrap/utils"
@@ -31,12 +30,6 @@ import (
 )
 
 var log = logging.MustGetLogger("Honeytrap")
-
-// contains Director type names.
-const (
-	LXCDirector = "lxc"
-	IODirector  = "io"
-)
 
 // Honeytrap defines a struct which coordinates the internal logic for the honeytrap
 // container infrastructure.
@@ -69,9 +62,11 @@ func New(conf *config.Config) *Honeytrap {
 	var director director.Director
 
 	switch conf.Director {
-	case IODirector:
+	case cowriedirector.DirectorKey:
+		director = cowriedirector.New(conf, events)
+	case iodirector.DirectorKey:
 		director = iodirector.New(conf, events)
-	case LXCDirector:
+	case lxcdirector.DirectorKey:
 		director = lxcdirector.New(conf, events)
 	default:
 		panic(fmt.Sprintf("Unknown director type: %q", conf.Director))
