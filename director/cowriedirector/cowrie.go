@@ -1,10 +1,11 @@
-// Package iodirector creates a director which simply generates new Containers that
-// creates net.Conn connections which allows you to proxy data between these two
+// Package cowriedirector creates a director which simply generates new Containers that
+// creates net.Conn connectCowriens which allows you to proxy data between these two
 // endpoints.
-package iodirector
+package cowriedirector
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -17,7 +18,7 @@ import (
 
 const (
 	// DirectorKey defines the key used to choose this giving director.
-	DirectorKey = "io"
+	DirectorKey = "cowrie"
 )
 
 var (
@@ -25,7 +26,7 @@ var (
 )
 
 // Director defines a central structure which creates/retrieves Container
-// connections for the giving system.
+// connectCowriens for the giving system.
 type Director struct {
 	config     *config.Config
 	namer      namecon.Namer
@@ -64,8 +65,8 @@ func (d *Director) NewContainer(addr string) (director.Container, error) {
 	}
 	d.m.Unlock()
 
-	container = &IOContainer{
-		meta:       d.config.Directors.IOConfig,
+	container = &CowrieContainer{
+		meta:       d.config.Directors.Cowrie,
 		targetName: name,
 	}
 
@@ -112,17 +113,22 @@ func (d *Director) getName(addr string) (string, error) {
 
 //=================================================================================
 
-// IOContainer defines a core container structure which generates new net connections
+// CowrieContainer defines a core container structure which generates new net connectCowriens
 // between stream endpoints.
-type IOContainer struct {
-	meta       config.IOConfig
+type CowrieContainer struct {
+	meta       config.CowrieConfig
 	targetName string
 }
 
 // Dial connects to the giving address to provide proxying stream between
 // both endpoints.
-func (io *IOContainer) Dial() (net.Conn, error) {
-	conn, err := net.DialTimeout("tcp", io.meta.ServiceAddr, dailTimeout)
+func (c *CowrieContainer) Dial() (net.Conn, error) {
+
+	// TODO(alex): Do we need to do more here?
+	// We know we are dealing with ssh connections:
+	// Do we need some checks or conditions which must be met first before
+	// attempting to connect?
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%s", c.meta.SSHAddr, c.meta.SSHPort), dailTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -131,6 +137,6 @@ func (io *IOContainer) Dial() (net.Conn, error) {
 }
 
 // Name returns the target address for this specific container.
-func (io *IOContainer) Name() string {
-	return io.targetName
+func (c *CowrieContainer) Name() string {
+	return c.targetName
 }
