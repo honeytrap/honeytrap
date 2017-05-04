@@ -168,6 +168,11 @@ var DefaultConfig = Config{
 	HouseKeeper: HouseKeeper{
 		Every: Delay(60 * time.Second),
 	},
+	Directors: DirectorConfig{
+		Cowrie: CowrieConfig{
+			SSHPort: "2222",
+		},
+	},
 	Web: WebConfig{
 		Port: ":3000",
 		Path: "",
