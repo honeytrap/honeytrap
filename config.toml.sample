@@ -2,7 +2,7 @@ director = "lxc"
 template = "honeytrap"
 token = "433UI-56JK-3433NJ-KI954"
 
-[directormeta]
+[[directors.io_config]]
 service_addr = "http://api.honeytrap.com/pixi:4060"
 
 [delays]
