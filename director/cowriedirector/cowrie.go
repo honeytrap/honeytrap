@@ -14,6 +14,7 @@ import (
 	"github.com/honeytrap/honeytrap/director"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/namecon"
+	logging "github.com/op/go-logging"
 )
 
 const (
@@ -23,6 +24,7 @@ const (
 
 var (
 	dailTimeout = 5 * time.Second
+	log         = logging.MustGetLogger("honeytrap:director:cowrie")
 )
 
 // Director defines a central structure which creates/retrieves Container
@@ -47,11 +49,14 @@ func New(config *config.Config, events pushers.Events) *Director {
 
 // NewContainer returns a new Container generated from the director with the specified address.
 func (d *Director) NewContainer(addr string) (director.Container, error) {
+	log.Infof("Cowrie : Creating new container : %s", addr)
+
 	var err error
 	var container director.Container
 
 	name, err := d.getName(addr)
 	if err != nil {
+		log.Errorf("Cowrie : Failed to make new container name : %+q", err)
 		return nil, err
 	}
 
@@ -81,6 +86,8 @@ func (d *Director) NewContainer(addr string) (director.Container, error) {
 
 // GetContainer returns a new Container using the provided net.Conn if already registered.
 func (d *Director) GetContainer(conn net.Conn) (director.Container, error) {
+	log.Infof("Cowrie : Attempt to retrieve existing container : %+q", conn.RemoteAddr())
+
 	var container director.Container
 
 	name, err := d.getName(conn.RemoteAddr().String())
@@ -123,12 +130,15 @@ type CowrieContainer struct {
 // Dial connects to the giving address to provide proxying stream between
 // both endpoints.
 func (c *CowrieContainer) Dial() (net.Conn, error) {
+	addr := fmt.Sprintf("%s:%s", c.meta.SSHAddr, c.meta.SSHPort)
+
+	log.Infof("Cowrie : %q : Dial Connection : Remote : %+q", c.targetName, addr)
 
 	// TODO(alex): Do we need to do more here?
 	// We know we are dealing with ssh connections:
 	// Do we need some checks or conditions which must be met first before
 	// attempting to connect?
-	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%s", c.meta.SSHAddr, c.meta.SSHPort), dailTimeout)
+	conn, err := net.DialTimeout("tcp", addr, dailTimeout)
 	if err != nil {
 		return nil, err
 	}
