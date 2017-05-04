@@ -60,7 +60,7 @@ func (d *Director) NewContainer(addr string) (director.Container, error) {
 	d.m.Unlock()
 
 	container = &IOContainer{
-		meta:       d.config.DirectorMeta,
+		meta:       d.config.Directors.IOConfig,
 		targetName: name,
 	}
 
@@ -110,7 +110,7 @@ func (d *Director) getName(addr string) (string, error) {
 // IOContainer defines a core container structure which generates new net connections
 // between stream endpoints.
 type IOContainer struct {
-	meta       config.DirectorMeta
+	meta       config.IOConfig
 	targetName string
 }
 
