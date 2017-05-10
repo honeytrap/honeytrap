@@ -48,7 +48,7 @@ func New(config *config.Config, events pushers.Events) *Director {
 		config:         config,
 		events:         events,
 		containers:     make(map[string]director.Container),
-		globalScripts:  process.SyncScript{Scripts: config.Directors.Scripts},
+		globalScripts:  process.SyncScripts{Scripts: config.Directors.Scripts},
 		globalCommands: process.SyncProcess{Commands: config.Directors.Commands},
 		namer:          namecon.NewNamerCon(config.Template+"-%s", namecon.Basic{}),
 	}
