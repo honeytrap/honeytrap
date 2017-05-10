@@ -4,7 +4,6 @@ import (
 	"context"
 	"net"
 
-	"github.com/apex/log"
 	"github.com/honeytrap/honeytrap/director"
 	"github.com/honeytrap/honeytrap/pushers"
 )

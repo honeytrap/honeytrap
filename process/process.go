@@ -49,10 +49,10 @@ type Command struct {
 
 // Run executes the giving command and returns the bytes.Buffer for both
 // the Stdout and Stderr.
-func (c Command) Run(ctx context.Context, out, err io.Writer) error {
+func (c Command) Run(ctx context.Context, out, werr io.Writer) error {
 	proc := exec.Command(c.Name, c.Args...)
 	proc.Stdout = out
-	proc.Stderr = err
+	proc.Stderr = werr
 
 	log.Infof("Process : Command : Begin Execution : %q : %+q", c.Name, c.Args)
 
@@ -88,7 +88,7 @@ func (c Command) Run(ctx context.Context, out, err io.Writer) error {
 	}
 
 	if c.Level > Normal {
-		log.Debugf("Process : Debug : Command : %s : %+q", c.Name, fmt.Sprintf(commandMessage, c.Name, c.Args, proc.ProcessState.Success(), proc.ProcessState.String(), err.Error()))
+		log.Debugf("Process : Debug : Command : %s : %+q", c.Name, fmt.Sprintf(commandMessage, c.Name, c.Args, proc.ProcessState.Success(), proc.ProcessState.String()))
 	}
 
 	return nil
@@ -173,7 +173,7 @@ type ScriptProcess struct {
 
 // Exec executes a copy of the giving script source in a temporary file which it then executes
 // the contents.
-func (sp ScriptProcess) Exec(ctx context.Context, pipeOut, pipeErr io.Writer) error {
+func (c ScriptProcess) Exec(ctx context.Context, pipeOut, pipeErr io.Writer) error {
 	log.Infof("Process : Shell Script : Begin Execution : %q : %q", c.Shell, c.Source)
 
 	tmpFile, err := ioutil.TempFile("/tmp", "proc-shell")
@@ -182,7 +182,7 @@ func (sp ScriptProcess) Exec(ctx context.Context, pipeOut, pipeErr io.Writer) er
 		return err
 	}
 
-	if _, err := tmpFile.Write([]byte(sp.Source)); err != nil {
+	if _, err := tmpFile.Write([]byte(c.Source)); err != nil {
 		log.Errorf("Process : Error : Command : Begin Execution : %q : %+q", c.Shell, err)
 		tmpFile.Close()
 		return err
@@ -198,7 +198,7 @@ func (sp ScriptProcess) Exec(ctx context.Context, pipeOut, pipeErr io.Writer) er
 
 	defer os.Remove(tmpFile.Name())
 
-	proc := exec.Command(sp.Shell, tmpFile.Name())
+	proc := exec.Command(c.Shell, tmpFile.Name())
 	proc.Stdout = pipeOut
 	proc.Stderr = pipeErr
 
@@ -218,7 +218,7 @@ func (sp ScriptProcess) Exec(ctx context.Context, pipeOut, pipeErr io.Writer) er
 		log.Errorf("Process : Error : Command : Begin Execution : %q : %q", c.Shell, c.Source)
 
 		if c.Level > Normal {
-			log.Debugf("Process : Debug : Command : %s : %+q", c.Name, fmt.Sprintf(shellMessage, c.Shell, false, "Failed", err.Error(), c.Source))
+			log.Debugf("Process : Debug : Command : %+q", fmt.Sprintf(shellMessage, c.Shell, false, "Failed", err.Error(), c.Source))
 		}
 
 		if c.Level > Warning {
@@ -229,7 +229,7 @@ func (sp ScriptProcess) Exec(ctx context.Context, pipeOut, pipeErr io.Writer) er
 	}
 
 	if c.Level > Normal {
-		log.Debugf("Process : Debug : Command : %s : %+q", c.Name, fmt.Sprintf(shellMessage, c.Shell, proc.ProcessState.Success(), proc.ProcessState.String(), err.Error(), c.Source))
+		log.Debugf("Process : Debug : Command :  %+q", fmt.Sprintf(shellMessage, c.Shell, proc.ProcessState.Success(), proc.ProcessState.String(), err.Error(), c.Source))
 	}
 
 	return nil

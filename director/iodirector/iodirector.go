@@ -46,9 +46,8 @@ func New(config *config.Config, events pushers.Events) *Director {
 	return &Director{
 		config:         config,
 		events:         events,
-		globalScripts:  config.Directors.Scripts,
 		containers:     make(map[string]director.Container),
-		globalScripts:  process.SyncScript{Scripts: config.Directors.Scripts},
+		globalScripts:  process.SyncScripts{Scripts: config.Directors.Scripts},
 		globalCommands: process.SyncProcess{Commands: config.Directors.Commands},
 		namer:          namecon.NewNamerCon(config.Template+"-%s", namecon.Basic{}),
 	}
@@ -147,17 +146,17 @@ func (io *IOContainer) Dial(ctx context.Context) (net.Conn, error) {
 
 	// Execute all global commands.
 	// TODO: Move context to be supplied by caller and not set in code
-	if err := c.gcommands.SyncExec(ctx, os.Stdout, os.Stderr); err != nil {
+	if err := io.gcommands.SyncExec(ctx, os.Stdout, os.Stderr); err != nil {
 		return nil, err
 	}
 
-	if err := c.gscripts.SyncExec(ctx, os.Stdout, os.Stderr); err != nil {
+	if err := io.gscripts.SyncExec(ctx, os.Stdout, os.Stderr); err != nil {
 		return nil, err
 	}
 
 	// Execute all local commands.
-	localScripts := process.SyncScripts{Scripts: c.meta.Scripts}
-	localCommands := process.SyncProcess{Commands: c.meta.Commands}
+	localScripts := process.SyncScripts{Scripts: io.meta.Scripts}
+	localCommands := process.SyncProcess{Commands: io.meta.Commands}
 
 	if err := localCommands.SyncExec(ctx, os.Stdout, os.Stderr); err != nil {
 		return nil, err

@@ -8,7 +8,6 @@ import (
 	"net"
 	"sync"
 
-	"github.com/apex/log"
 	config "github.com/honeytrap/honeytrap/config"
 	"github.com/honeytrap/honeytrap/director"
 	"github.com/honeytrap/honeytrap/pushers"

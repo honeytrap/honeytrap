@@ -50,7 +50,7 @@ func NewLxcProvider(config *config.Config, events pushers.Events) *LxcProvider {
 	return &LxcProvider{
 		config:         config,
 		events:         events,
-		globalScripts:  process.SyncScript{Scripts: config.Directors.Scripts},
+		globalScripts:  process.SyncScripts{Scripts: config.Directors.Scripts},
 		globalCommands: process.SyncProcess{Commands: config.Directors.Commands},
 	}
 }
@@ -64,7 +64,7 @@ func (lp *LxcProvider) NewContainer(name string) (director.Container, error) {
 		idle:      time.Now(),
 		gscripts:  lp.globalScripts,
 		gcommands: lp.globalCommands,
-		meta:      lp.config.Directors.LxConfig,
+		meta:      lp.config.Directors.LXC,
 		sf:        sniffer.New(lp.config.NetFilter),
 	}
 

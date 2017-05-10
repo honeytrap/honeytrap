@@ -80,6 +80,7 @@ func serve(c *cli.Context) {
 		return
 	}
 
+	fmt.Printf("Config: %#v\n", conf)
 	var profiler interface {
 		Stop()
 	}

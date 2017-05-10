@@ -31,14 +31,14 @@ type (
 
 	// LxcConfig defines the settings for the lxc director.
 	LxcConfig struct {
-		Commands []process.Commands      `toml:"commands"`
+		Commands []process.Command       `toml:"commands"`
 		Scripts  []process.ScriptProcess `toml:"scripts"`
 	}
 
 	// IOConfig defines the settings for the iodirector.
 	IOConfig struct {
 		ServiceAddr string                  `toml:"service_addr"`
-		Commands    []process.Commands      `toml:"commands"`
+		Commands    []process.Command       `toml:"commands"`
 		Scripts     []process.ScriptProcess `toml:"scripts"`
 	}
 
@@ -46,7 +46,7 @@ type (
 	CowrieConfig struct {
 		SSHPort  string                  `toml:"ssh_port"`
 		SSHAddr  string                  `toml:"ssh_addr"`
-		Commands []process.Commands      `toml:"commands"`
+		Commands []process.Command       `toml:"commands"`
 		Scripts  []process.ScriptProcess `toml:"scripts"`
 	}
 
@@ -56,7 +56,7 @@ type (
 		IOConfig IOConfig                `toml:"io_config"`
 		Cowrie   CowrieConfig            `toml:"cowrie_config"`
 		LXC      LxcConfig               `toml:"lxc_config"`
-		Commands []process.Commands      `toml:"commands"`
+		Commands []process.Command       `toml:"commands"`
 		Scripts  []process.ScriptProcess `toml:"scripts"`
 	}
 
