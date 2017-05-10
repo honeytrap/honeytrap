@@ -2,6 +2,7 @@ package iodirector_test
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"testing"
 
@@ -27,7 +28,7 @@ func TestIODirector(t *testing.T) {
 	}
 	tests.Passed("Should have successfully created container.")
 
-	conn, err := container.Dial()
+	conn, err := container.Dial(context.Background())
 	if err != nil {
 		tests.Failed("Should have successfully created connection by container: %+q.", err)
 	}
