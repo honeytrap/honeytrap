@@ -8,6 +8,7 @@ import (
 	"net"
 	"sync"
 
+	"github.com/apex/log"
 	config "github.com/honeytrap/honeytrap/config"
 	"github.com/honeytrap/honeytrap/director"
 	"github.com/honeytrap/honeytrap/pushers"
@@ -37,8 +38,8 @@ func New(conf *config.Config, events pushers.Events) *Director {
 
 	d := &Director{
 		config:     conf,
-		containers: map[string]director.Container{},
 		provider:   NewLxcProvider(conf, events),
+		containers: map[string]director.Container{},
 		namer:      namecon.NewNamerCon(conf.Template+"-%s", namecon.Basic{}),
 	}
 

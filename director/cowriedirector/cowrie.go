@@ -4,14 +4,17 @@
 package cowriedirector
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"sync"
 	"time"
 
 	"github.com/honeytrap/honeytrap/config"
 	"github.com/honeytrap/honeytrap/director"
+	"github.com/honeytrap/honeytrap/process"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/namecon"
 	logging "github.com/op/go-logging"
@@ -30,20 +33,24 @@ var (
 // Director defines a central structure which creates/retrieves Container
 // connectCowriens for the giving system.
 type Director struct {
-	config     *config.Config
-	namer      namecon.Namer
-	events     pushers.Events
-	m          sync.Mutex
-	containers map[string]director.Container
+	config         *config.Config
+	namer          namecon.Namer
+	events         pushers.Events
+	m              sync.Mutex
+	containers     map[string]director.Container
+	globalCommands process.SyncProcess
+	globalScripts  process.SyncScripts
 }
 
 // New returns a new instance of the Director.
 func New(config *config.Config, events pushers.Events) *Director {
 	return &Director{
-		config:     config,
-		events:     events,
-		containers: make(map[string]director.Container),
-		namer:      namecon.NewNamerCon(config.Template+"-%s", namecon.Basic{}),
+		config:         config,
+		events:         events,
+		containers:     make(map[string]director.Container),
+		globalScripts:  process.SyncScript{Scripts: config.Directors.Scripts},
+		globalCommands: process.SyncProcess{Commands: config.Directors.Commands},
+		namer:          namecon.NewNamerCon(config.Template+"-%s", namecon.Basic{}),
 	}
 }
 
@@ -71,8 +78,11 @@ func (d *Director) NewContainer(addr string) (director.Container, error) {
 	d.m.Unlock()
 
 	container = &CowrieContainer{
-		meta:       d.config.Directors.Cowrie,
 		targetName: name,
+		config:     d.config,
+		gscripts:   d.globalScripts,
+		gcommands:  d.globalCommands,
+		meta:       d.config.Directors.Cowrie,
 	}
 
 	d.m.Lock()
@@ -123,16 +133,41 @@ func (d *Director) getName(addr string) (string, error) {
 // CowrieContainer defines a core container structure which generates new net connectCowriens
 // between stream endpoints.
 type CowrieContainer struct {
-	meta       config.CowrieConfig
 	targetName string
+	config     *config.Config
+	meta       config.CowrieConfig
+	gcommands  process.SyncProcess
+	gscripts   process.SyncScripts
 }
 
 // Dial connects to the giving address to provide proxying stream between
 // both endpoints.
-func (c *CowrieContainer) Dial() (net.Conn, error) {
+func (c *CowrieContainer) Dial(ctx context.Context) (net.Conn, error) {
 	addr := fmt.Sprintf("%s:%s", c.meta.SSHAddr, c.meta.SSHPort)
 
 	log.Infof("Cowrie : %q : Dial Connection : Remote : %+q", c.targetName, addr)
+
+	// Execute all global commands.
+	// TODO: Move context to be supplied by caller and not set in code
+	if err := c.gcommands.SyncExec(ctx, os.Stdout, os.Stderr); err != nil {
+		return nil, err
+	}
+
+	if err := c.gscripts.SyncExec(ctx, os.Stdout, os.Stderr); err != nil {
+		return nil, err
+	}
+
+	// Execute all local commands.
+	localScripts := process.SyncScripts{Scripts: c.meta.Scripts}
+	localCommands := process.SyncProcess{Commands: c.meta.Commands}
+
+	if err := localCommands.SyncExec(ctx, os.Stdout, os.Stderr); err != nil {
+		return nil, err
+	}
+
+	if err := localScripts.SyncExec(ctx, os.Stdout, os.Stderr); err != nil {
+		return nil, err
+	}
 
 	// TODO(alex): Do we need to do more here?
 	// We know we are dealing with ssh connections:
