@@ -1,6 +1,7 @@
 package director
 
 import (
+	"context"
 	"net"
 
 	logging "github.com/op/go-logging"
@@ -17,6 +18,6 @@ type Director interface {
 
 // Container defines a type which exposes methods for connecting to a container.
 type Container interface {
-	Dial() (net.Conn, error)
+	Dial(context.Context) (net.Conn, error)
 	Name() string
 }

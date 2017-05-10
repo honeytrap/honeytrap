@@ -2,6 +2,7 @@ package lxcdirector
 
 import (
 	"compress/gzip"
+	"context"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/honeytrap/honeytrap/config"
 	"github.com/honeytrap/honeytrap/director"
+	"github.com/honeytrap/honeytrap/process"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/pushers/message"
 	"github.com/honeytrap/honeytrap/sniffer"
@@ -37,23 +39,33 @@ type LxcConfig struct {
 // LxcProvider defines a struct which loads the needed configuration for handling
 // lxc based containers.
 type LxcProvider struct {
-	config *config.Config
-	events pushers.Events
+	config         *config.Config
+	events         pushers.Events
+	globalCommands process.SyncProcess
+	globalScripts  process.SyncScripts
 }
 
 // NewLxcProvider returns a new instance of a LxcProvider as a Provider.
 func NewLxcProvider(config *config.Config, events pushers.Events) *LxcProvider {
-	return &LxcProvider{config, events}
+	return &LxcProvider{
+		config:         config,
+		events:         events,
+		globalScripts:  process.SyncScript{Scripts: config.Directors.Scripts},
+		globalCommands: process.SyncProcess{Commands: config.Directors.Commands},
+	}
 }
 
 // NewContainer returns a new LxcContainer from the provider.
 func (lp *LxcProvider) NewContainer(name string) (director.Container, error) {
 	c := LxcContainer{
-		provider: lp,
-		name:     name,
-		config:   lp.config,
-		idle:     time.Now(),
-		sf:       sniffer.New(lp.config.NetFilter),
+		provider:  lp,
+		name:      name,
+		config:    lp.config,
+		idle:      time.Now(),
+		gscripts:  lp.globalScripts,
+		gcommands: lp.globalCommands,
+		meta:      lp.config.Directors.LxConfig,
+		sf:        sniffer.New(lp.config.NetFilter),
 	}
 
 	var err error
@@ -68,16 +80,19 @@ func (lp *LxcProvider) NewContainer(name string) (director.Container, error) {
 
 // LxcContainer defines a struct to encapsulated a lxc.Container.
 type LxcContainer struct {
-	ip       string
-	name     string
-	template string
-	idevice  string
-	config   *config.Config
-	idle     time.Time
-	c        *lxc.Container
-	m        sync.Mutex
-	sf       *sniffer.Sniffer
-	provider *LxcProvider
+	ip        string
+	name      string
+	template  string
+	idevice   string
+	idle      time.Time
+	config    *config.Config
+	meta      config.LxcConfig
+	c         *lxc.Container
+	m         sync.Mutex
+	sf        *sniffer.Sniffer
+	provider  *LxcProvider
+	gcommands process.SyncProcess
+	gscripts  process.SyncScripts
 }
 
 // clone attempts to clone the underline lxc.Container.
@@ -637,12 +652,34 @@ func (c *LxcContainer) CleanUp() error {
 
 // Dial attempts to connect to the internal network of the
 // internal container.
-func (c *LxcContainer) Dial() (net.Conn, error) {
+func (c *LxcContainer) Dial(ctx context.Context) (net.Conn, error) {
 	if err := c.ensureStarted(); err != nil {
 		return nil, err
 	}
 
 	if err := c.settle(); err != nil {
+		return nil, err
+	}
+
+	// Execute all global commands.
+	// TODO: Move context to be supplied by caller and not set in code
+	if err := c.gcommands.SyncExec(ctx, os.Stdout, os.Stderr); err != nil {
+		return nil, err
+	}
+
+	if err := c.gscripts.SyncExec(ctx, os.Stdout, os.Stderr); err != nil {
+		return nil, err
+	}
+
+	// Execute all local commands.
+	localScripts := process.SyncScripts{Scripts: c.meta.Scripts}
+	localCommands := process.SyncProcess{Commands: c.meta.Commands}
+
+	if err := localCommands.SyncExec(ctx, os.Stdout, os.Stderr); err != nil {
+		return nil, err
+	}
+
+	if err := localScripts.SyncExec(ctx, os.Stdout, os.Stderr); err != nil {
 		return nil, err
 	}
 

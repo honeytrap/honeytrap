@@ -10,6 +10,7 @@ import (
 	"os"
 
 	"github.com/BurntSushi/toml"
+	"github.com/honeytrap/honeytrap/process"
 	logging "github.com/op/go-logging"
 )
 
@@ -28,22 +29,35 @@ type (
 		Every Delay `toml:"every"`
 	}
 
+	// LxcConfig defines the settings for the lxc director.
+	LxcConfig struct {
+		Commands []process.Commands      `toml:"commands"`
+		Scripts  []process.ScriptProcess `toml:"scripts"`
+	}
+
 	// IOConfig defines the settings for the iodirector.
 	IOConfig struct {
-		ServiceAddr string `toml:"service_addr"`
+		ServiceAddr string                  `toml:"service_addr"`
+		Commands    []process.Commands      `toml:"commands"`
+		Scripts     []process.ScriptProcess `toml:"scripts"`
 	}
 
 	// CowrieConfig defines the settings for director meta.
 	CowrieConfig struct {
-		SSHPort string `toml:"ssh_port"`
-		SSHAddr string `toml:"ssh_addr"`
+		SSHPort  string                  `toml:"ssh_port"`
+		SSHAddr  string                  `toml:"ssh_addr"`
+		Commands []process.Commands      `toml:"commands"`
+		Scripts  []process.ScriptProcess `toml:"scripts"`
 	}
 
 	// DirectorConfig defines the settings for all directors supported
 	// by honeytrap.
 	DirectorConfig struct {
-		IOConfig IOConfig     `toml:"io_config"`
-		Cowrie   CowrieConfig `toml:"cowrie_config"`
+		IOConfig IOConfig                `toml:"io_config"`
+		Cowrie   CowrieConfig            `toml:"cowrie_config"`
+		LXC      LxcConfig               `toml:"lxc_config"`
+		Commands []process.Commands      `toml:"commands"`
+		Scripts  []process.ScriptProcess `toml:"scripts"`
 	}
 
 	// Delays sets the individual duration set for all ops.
