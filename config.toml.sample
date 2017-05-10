@@ -8,10 +8,12 @@ token = "433UI-56JK-3433NJ-KI954"
 
         [[directors.io_config.commands]]
         	name = "echo"
+        	level = 2
         	args = ["hello"]
 
         [[directors.io_config.commands]]
         	name = "echo"
+        	level = 3
         	args = ["world!"]
 
 
