@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/honeytrap/honeytrap/process"
-	"github.com/honeytrap/tests"
+	"github.com/honeytrap/honeytrap/utils/tests"
 )
 
 // TestCommandProcess validates the behaviours of the process.Command structure.
@@ -64,6 +64,7 @@ func TestScriptProcess(t *testing.T) {
 func TestScriptProcessWithCancel(t *testing.T) {
 	src := process.ScriptProcess{
 		Shell: "/bin/bash",
+		Level: process.RedAlert,
 		Source: `echo "New Login"
 date
 sleep 10
