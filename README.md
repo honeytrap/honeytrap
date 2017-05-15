@@ -53,7 +53,7 @@ lxc-start -n honeytrap
 ```
 
 ## API
-Honeytrap exposes a specific API which allows us to easily retrieve data about sessions and events which are occuring within the deployed instance. This API allows anyone using the project to expose an interface to showcase the different occuring sessions running on the instance.
+Honeytrap exposes a specific API which allows us to easily retrieve data about sessions and events which are occurring within the deployed instance. This API allows anyone using the project to expose an interface to showcase the different occurring sessions running on the instance.
 
 ### HTTP API
 The HTTP API exposed by Honeytrap is a *GET* only API that focuses on providing access to **events** and **sessions**. The sessions contain data about the users and credentials in containers, and events data provides a view of all processes that executed during the specific container usage and session periods.
@@ -74,7 +74,7 @@ This is a `GET` request to retrieve all stored events. Optionally a request body
 }
 ```
 
-> All the fields in the request body are optional and when ommitted, all events are simply returned. If the `page` field is used, then the `response_per_page` field is also mandatory. The `types` and `sensor` field provide a means of filtering based on strings or regular expressions, filtering out the events based on the set criterias.
+> All the fields in the request body are optional and when ommitted, all events are simply returned. If the `page` field is used, then the `response_per_page` field is also mandatory. The `types` and `sensor` field provide a means of filtering based on strings or regular expressions, filtering out the events based on the set criteria.
 
 The following response body is an example reply to the command above:
 
@@ -136,7 +136,7 @@ This is a `GET` request to retrieve all stored session data. Optionally a reques
 }
 ```
 
-> Note that as with the events reqest, All the fields in the request body are optional and when ommitted, all events are simply returned. If the `page` field is used, then the `response_per_page` field is also mandatory.  The `types` and `sensor` field provide a means of filtering based on strings or regular expressions, filtering out the events based on the set criterias.
+> Note that as with the events reqest, All the fields in the request body are optional and when ommitted, all events are simply returned. If the `page` field is used, then the `response_per_page` field is also mandatory.  The `types` and `sensor` field provide a means of filtering based on strings or regular expressions, filtering out the events based on the set criteria.
 
 The following response body is an example reply to the command above:
 
@@ -417,7 +417,7 @@ $ cd honeytrap/honeytrap
     - Make sure `go test -race ./...` and `go build` completes.
 
 * Read [Effective Go](https://github.com/golang/go/wiki/CodeReviewComments) article from Golang project.
-    - `Honeytrap` project is fully conformant with Golang style.
+    - `Honeytrap` project fully conforms to Golang style.
     - If you found offending code, please feel free to send a pull request.
 
 ## Creators
