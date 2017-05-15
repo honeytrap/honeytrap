@@ -2,42 +2,68 @@
 
 ## Installation from source
 
+First, install the libraries libpcap-dev for network monitoring, and lxc1 and lxc-dev for container services. 
 ```
-apt install -y libpcap-dev lxc-dev
+apt install -y libpcap-dev lxc1 lxc-dev
+```
 
+Honeytrap is written in Go, so we download the Go language from Google.
+```
 cd /usr/local
 wget https://storage.googleapis.com/golang/go1.8rc3.linux-amd64.tar.gz
 tar vxf go1.8rc3.linux-amd64.tar.gz
+```
 
+Create a directory for the Honeytrap installation.
+```
 mkdir /opt/honeytrap
-cd /opt/honeytrap/
+```
 
+Set the Go environment variables for your shell. Add the following to *~/.bashrc*.
+```
 export GOPATH=/opt/honeytrap
 export PATH=$PATH:/usr/local/go/bin/
+```
 
+And apply these changes:
+```
+source ~/.bashrc
+```
+
+Now, let's download the application.
+```
+cd /opt/honeytrap/
 go get github.com/honeytrap/honeytrap
+```
 
-cp config.toml.sample config.toml
+Copy the sample config file for usage.
+```
+cp ./src/github.com/honeytrap/honeytrap/config.toml.sample /opt/honeytrap/config.toml
+```
+
+Start Honeytrap with the following command:
+```
 $GOPATH/bin/honeytrap
 
 ```
-
+Create a LXC container base image and start it.
 ```
-# create container base image
-$ lxc-create -t download -n honeytrap -- --dist ubuntu --release trusty --arch amd64
+$ lxc-create -t download -n honeytrap -- --dist ubuntu --release xenial --arch amd64
+lxc-start -n honeytrap
 ```
 
 ## API
-Honeytrap exposes a specific API which allows us to easily retrieve data about sessions and 
-events which are occuring with the deployed instance. This API should allow anyone using the project to expose an interface to showcase the different occuring sessions running on the instance.
+Honeytrap exposes a specific API which allows us to easily retrieve data about sessions and events which are occuring within the deployed instance. This API allows anyone using the project to expose an interface to showcase the different occuring sessions running on the instance.
 
 ### HTTP API
-The HTTP API exposed by Honeytrap is a `GET` only API which focuses on providing access to 
-events and sessions, where the sessions hold's data about containers being used by who and with what credentials and events providing us a view of all processes which occured during the specific container usage and session periods.
+The HTTP API exposed by Honeytrap is a *GET* only API that focuses on providing access to **events** and **sessions**. The sessions contain data about the users and credentials in containers, and events data provides a view of all processes that executed during the specific container usage and session periods.
 
+#### Events
+The syntax to receive events information is:
 - `GET /events`
 
-Expects to recieve a `GET` request to retrieve stored events, with the following body:
+This is a `GET` request to retrieve all stored events. Optionally a request body is added, such as the following:
+
 
 ```json
 {
@@ -48,11 +74,9 @@ Expects to recieve a `GET` request to retrieve stored events, with the following
 }
 ```
 
-Note that all the request body fields are optional and if not present, will instead have all events returned, but if `page` is being used then `response_per_page` must be set as well. 
+> All the fields in the request body are optional and when ommitted, all events are simply returned. If the `page` field is used, then the `response_per_page` field is also mandatory. The `types` and `sensor` field provide a means of filtering based on strings or regular expressions, filtering out the events based on the set criterias.
 
-The `types` and `sensor` field provides a means of filtering based on strings or regular expressions which will filter out the events according to the set criterias.
-
-The API will responds with the following response body as regarding the above request:
+The following response body is an example reply to the command above:
 
 ```json
 {
@@ -95,12 +119,13 @@ The API will responds with the following response body as regarding the above re
     ]
 }
 ```
-The `total` field represents the total events records stored within the db.
+The `total` field represents the total events records stored within the database.
 
-
+#### Sessions
+The syntax to receive session information is:
 - `GET /sessions`
 
-Expects to recieve a `GET` request to retrieve stored session events, with the following body:
+This is a `GET` request to retrieve all stored session data. Optionally a request body is added, such as the following:
 
 ```json
 {
@@ -111,11 +136,9 @@ Expects to recieve a `GET` request to retrieve stored session events, with the f
 }
 ```
 
-Note that all the request body fields are optional and if not present, will instead have all events returned, but if `page` is being used then `response_per_page` must be set as well. 
+> Note that as with the events reqest, All the fields in the request body are optional and when ommitted, all events are simply returned. If the `page` field is used, then the `response_per_page` field is also mandatory.  The `types` and `sensor` field provide a means of filtering based on strings or regular expressions, filtering out the events based on the set criterias.
 
-The `types` and `sensor` field provides a means of filtering based on strings or regular expressions which will filter out the events according to the set criterias.
-
-The API will responds with the following response body as regarding the above request:
+The following response body is an example reply to the command above:
 
 ```json
 {
@@ -143,16 +166,16 @@ The API will responds with the following response body as regarding the above re
 }
 ```
 
-The `total` field represents the total events records stored within the db.
+The `total` field represents the total session records stored within the database.
 
-### Websocket API
-The Honeytrap exposes also the ability to use websocket to connect with the API to retrieve events and sesssion data, whilst also receiving notifications as to the presence of new events or sessions.
+### WebSocket API
+Honeytrap is also able to use WebSockets to connect to the API to retrieve events and session data, and receiving notifications when new events or sessions are detected.
 
 - `GET /ws`
-Exposed by the API is a `/ws` route which will attempt to upgrade any http request into a websocket connection which allows interfacing with the API to receive updates:
+The exposed `/ws` route will attempt to upgrade any HTTP request to a WebSocket connection which allows interfacing with the API to receive updates.
 
-- Requests
-Requests to the API via the websocket endpoint expects requests in JSON format which follow the standard below, this requests are only retrieval and do not store/update any data to the API.
+#### Requests
+Requests to the API via the WebSocket endpoint are expected in JSON format seen below. These requests only retrieve data and do not store or update any data through the API.
 
 ```json
 {
@@ -160,18 +183,18 @@ Requests to the API via the websocket endpoint expects requests in JSON format w
 }
 ```
 
-The API supports the following requests types with specific int values:
+The API supports the following request types with specific integer values:
 
 ```
 FETCH_SESSIONS = 1
 FETCH_EVENTS = 3
 ```
 
-    - `FETCH_SESSIONS` returns all session related events which occur within the system.
-    - `FETCH_EVENTS` returns all non-session related events which occur within the system.
+- `FETCH_SESSIONS` returns all session related events that occur within the system.
+- `FETCH_EVENTS` returns all non-session related events that occur within the system.
 
-- Responses
-Resposne from the API via the websocket use the JSON format and follow the layout order:
+#### Responses
+Responses from the API via the WebSocket are in the JSON format and use the following order:
 
 ```json
 {
@@ -180,7 +203,7 @@ Resposne from the API via the websocket use the JSON format and follow the layou
 }
 ```
 
-The API supports the following response types with specific int values:
+The API supports the following response types with specific integer values:
 
 ```
 FETCH_SESSIONS_REPLY=2
@@ -189,26 +212,24 @@ ERROR_RESPONSE = 7
 ```
 
 
-- `FETCH_SESSIONS_REPLY` returns all session events retrieved when `FETCH_SESSIONS` request is sent.
+- `FETCH_SESSIONS_REPLY` returns all session events when `FETCH_SESSIONS` request is sent.
 
-- `FETCH_EVENTS_REPLY` returns all session events retrieved when `FETCH_EVENTS` request is sent.
+- `FETCH_EVENTS_REPLY` returns all session events when `FETCH_EVENTS` request is sent.
 
-- `ERROR_RESPONSE` is returned if any request sent fails to complete or is rejected due to internal system errors.
+- an `ERROR_RESPONSE` is returned if any request sent fails to complete or is rejected due to internal system errors.
 
+##### Example Responses
+To clarify what happens, some example requests and response examples are provided in this section.
 
-Below are response samples:
-
-- `FETCH_SESSIONS`: 
-
-With Request:
-
+Request with request body:
+`FETCH_SESSIONS`
 ```json
 {
-    "type":1,
+    "type": 1,
 }
 ```
 
-Expected Response if Failed:
+The expected response, if failed:
 
 ```json
 {
@@ -221,7 +242,7 @@ Expected Response if Failed:
 ```
 
 
-Expected Response if Successfully:
+The expected response when successful:
 
 ```json
 {
@@ -247,17 +268,15 @@ Expected Response if Successfully:
 }
 ```
 
-- `FETCH_EVENTS`:
-
-With Request:
+Another example request with request body, this time for `FETCH_EVENTS`:
 
 ```json
 {
-    "type":3,
+    "type": 3,
 }
 ```
 
-Expected Response if Failed:
+The expected response, if failed:
 
 ```json
 {
@@ -270,7 +289,7 @@ Expected Response if Failed:
 ```
 
 
-Expected Response if Successfully:
+The expected response when successful:
 
 ```json
 {
@@ -296,21 +315,16 @@ Expected Response if Successfully:
 }
 ```
 
-
-The websocket API also provides specific response which contain updates on sessions and non-session events:
+### Updating Events and Sessions
+The WebSocket API also provides a specific response which contains updates for sessions and non-session events. `NEW_SESSIONS` indicate new session events from the backend and `NEW_EVENTS` indicate new non-session events from the backend.
 
 ```
 NEW_SESSIONS=5
 NEW_EVENTS=6
 ```
 
-    - `NEW_SESSIONS` indicates new session events from the backend.
-
-    - `NEW_EVENTS` indicates new non-session events from the backend.
-
-- `NEW_SESSIONS`:
-
-Expected Response Body
+#### Examples
+When requesting a new session with`NEW_SESSIONS`, the expected response body is:
 
 ```json
 {
@@ -336,10 +350,7 @@ Expected Response Body
 }
 ```
 
-
-- `NEW_EVENTS`:
-
-Expected Response Body
+When requesting a new event with `NEW_EVENTS`, the expected response body is:
 
 ```json
 {
@@ -390,24 +401,24 @@ $ cd honeytrap/honeytrap
     - Push to the branch (git push origin my-new-feature)
     - Create new Pull Request
 
-* If you have additional dependencies for ``Honeytrap``, ``Honeytrap`` manages its dependencies using [govendor](https://github.com/kardianos/govendor)
-    - Run `go get foo/bar`
-    - Edit your code to import foo/bar
-    - Run `make pkg-add PKG=foo/bar` from top-level directory
+* If you have additional dependencies for ``Honeytrap``, ``Honeytrap`` manages its dependencies using [govendor](https://github.com/kardianos/govendor):
+    - Run `go get foo/bar`.
+    - Edit your code to import foo/bar.
+    - Run `make pkg-add PKG=foo/bar` from the top-level directory.
 
-* If you have dependencies for ``Honeytrap`` which needs to be removed
-    - Edit your code to not import foo/bar
-    - Run `make pkg-remove PKG=foo/bar` from top-level directory
+* If you have dependencies for ``Honeytrap`` which needs to be removed:
+    - Edit your code to not import foo/bar.
+    - Run `make pkg-remove PKG=foo/bar` from top-level directory.
 
 * When you're ready to create a pull request, be sure to:
     - Have test cases for the new code. If you have questions about how to do it, please ask in your pull request.
     - Run `make verifiers`
-    - Squash your commits into a single commit. `git rebase -i`. It's okay to force update your pull request.
+    - Squash your commits into a single commit. `git rebase -i`. It's okay to force-update your pull request.
     - Make sure `go test -race ./...` and `go build` completes.
 
-* Read [Effective Go](https://github.com/golang/go/wiki/CodeReviewComments) article from Golang project
-    - `Honeytrap` project is fully conformant with Golang style
-    - if you happen to observe offending code, please feel free to send a pull request
+* Read [Effective Go](https://github.com/golang/go/wiki/CodeReviewComments) article from Golang project.
+    - `Honeytrap` project is fully conformant with Golang style.
+    - If you found offending code, please feel free to send a pull request.
 
 ## Creators
 
