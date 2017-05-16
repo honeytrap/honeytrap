@@ -110,3 +110,6 @@ The following response body is an example reply to the command above:
 ```
 
 The `total` field represents the total session records stored within the database.
+
+Further reading:
+- [WebSocket API](WebSocket-API.md) 

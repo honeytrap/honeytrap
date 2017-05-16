@@ -205,3 +205,6 @@ When requesting a new event with `NEW_EVENTS`, the expected response body is:
     ]
 }
 ```
+
+Further reading:
+- [HTTP API](HTTP-API.md) 
