@@ -1,10 +1,11 @@
-# WebSocket API
-Honeytrap is also able to use WebSockets to connect to the API to retrieve events and session data, and receiving notifications when new events or sessions are detected.
+![Honeytrap_logo](honeytrap.2.jpg  "Honeytrap")
+## WebSocket API
+Honeytrap is able to use WebSockets to connect to the API to retrieve events and session data, and receiving notifications when new events or sessions are detected.
 
 - `GET /ws`
 The exposed `/ws` route will attempt to upgrade any HTTP request to a WebSocket connection which allows interfacing with the API to receive updates.
 
-## Requests
+### Requests
 Requests to the API via the WebSocket endpoint are expected in JSON format seen below. These requests only retrieve data and do not store or update any data through the API.
 
 ```json
@@ -23,7 +24,7 @@ FETCH_EVENTS = 3
 - `FETCH_SESSIONS` returns all session related events that occur within the system.
 - `FETCH_EVENTS` returns all non-session related events that occur within the system.
 
-## Responses
+### Responses
 Responses from the API via the WebSocket are in the JSON format and use the following order:
 
 ```json
@@ -48,7 +49,7 @@ ERROR_RESPONSE = 7
 
 - an `ERROR_RESPONSE` is returned if any request sent fails to complete or is rejected due to internal system errors.
 
-###Example Responses
+####Example Responses
 To clarify what happens, some example requests and response examples are provided in this section.
 
 Request with request body:
@@ -145,7 +146,7 @@ The expected response when successful:
 }
 ```
 
-# Updating Events and Sessions
+## Updating Events and Sessions
 The WebSocket API also provides a specific response which contains updates for sessions and non-session events. `NEW_SESSIONS` indicate new session events from the backend and `NEW_EVENTS` indicate new non-session events from the backend.
 
 ```
@@ -153,7 +154,7 @@ NEW_SESSIONS=5
 NEW_EVENTS=6
 ```
 
-## Examples
+### Examples
 When requesting a new session with`NEW_SESSIONS`, the expected response body is:
 
 ```json
@@ -206,5 +207,5 @@ When requesting a new event with `NEW_EVENTS`, the expected response body is:
 }
 ```
 
-**Further reading**:
-- [HTTP API](HTTP-API.md) 
+####Further reading:
+[HTTP API documentation](HTTP-API.md) 

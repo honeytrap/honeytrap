@@ -1,10 +1,9 @@
-# HTTP API
+![Honeytrap_logo](honeytrap.2.jpg  "Honeytrap")
+## HTTP API
 The HTTP API exposed by Honeytrap is a *GET* only API that focuses on providing access to **events** and **sessions**. The sessions contain data about the users and credentials in containers, and events data provides a view of all processes that executed during the specific container usage and session periods.
 
-## Events
-The syntax to receive events information is:
-- `GET /events`
-
+### Events
+The syntax to receive events information is `GET /events`.
 This is a `GET` request to retrieve all stored events. Optionally a request body is added, such as the following:
 
 
@@ -64,10 +63,8 @@ The following response body is an example reply to the command above:
 ```
 The `total` field represents the total events records stored within the database.
 
-## Sessions
-The syntax to receive session information is:
-- `GET /sessions`
-
+### Sessions
+The syntax to receive session information is `GET /sessions`.
 This is a `GET` request to retrieve all stored session data. Optionally a request body is added, such as the following:
 
 ```json
@@ -111,5 +108,5 @@ The following response body is an example reply to the command above:
 
 The `total` field represents the total session records stored within the database.
 
-**Further reading**:
-- [WebSocket API](WebSocket-API.md) 
+####Further reading:
+ [WebSocket API documentation](WebSocket-API.md) 
