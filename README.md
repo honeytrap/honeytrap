@@ -2,6 +2,7 @@
 
 
 <img src="honeytrap_icon.png" alt="Honeytrap" style="width: 200px;" align="middle"/>
+
 ## What is Honeytrap?
 Honeytrap is a honeypot framework written in Go, that isolates each attacker in it's own LXC container. On subsequent attacks, the attacker will be presented with the same container, making monitoring their actions easier. The container events and user sessions can be monitored with an HTTP and WebSocket API. Notifications can be sent to Slack channels. 
 
