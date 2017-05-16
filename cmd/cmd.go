@@ -132,10 +132,10 @@ func New() *Cmd {
 			Action: VersionAction,
 		},
 		{
-			Name: "server",
+			Name:   "server",
 			Action: serve,
-			Flags: globalFlags,
-		}
+			Flags:  globalFlags,
+		},
 	}
 
 	app.Before = func(c *cli.Context) error {
