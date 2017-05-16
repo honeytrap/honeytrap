@@ -125,20 +125,22 @@ func New() *Cmd {
 	app.Author = ""
 	app.Usage = "honeytrap"
 	app.Description = `The ultimate honeypot framework.`
-	app.Flags = globalFlags
 	app.CustomAppHelpTemplate = helpTemplate
 	app.Commands = []cli.Command{
 		{
 			Name:   "version",
 			Action: VersionAction,
 		},
+		{
+			Name: "server",
+			Action: serve,
+			Flags: globalFlags,
+		}
 	}
 
 	app.Before = func(c *cli.Context) error {
 		return nil
 	}
-
-	app.Action = serve
 
 	return &Cmd{
 		App: app,
