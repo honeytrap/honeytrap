@@ -76,7 +76,7 @@ func runServer(c *cli.Context) {
 	serverCmd := process.AsyncProcess{
 		Commands: []process.Command{
 			{
-				Name:  "honeytrap-server",
+				Name:  "honeytrap-serve",
 				Level: process.RedAlert,
 				Args:  []string{configArg, profilerArg, cpuProfileArg, memProfileArg},
 			},
