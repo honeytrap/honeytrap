@@ -58,7 +58,7 @@ lxc-start -n honeytrap
 ## API
 Honeytrap exposes a specific API which allows us to easily retrieve data about sessions and events which are occurring within the deployed instance. This API allows anyone using the project to expose an interface to showcase the different occurring sessions running on the instance.
 
-The API manual can be found here
+More information on the **HTTP API** manual can be found [here](blob/updated-docs/HTTP-API.md), and the **WebSocket API** manual is listed [here](blob/updated-docs/WebSocket-API.md) .
 
 
 ## Contribute
