@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
-	"sync"
 
 	logging "github.com/op/go-logging"
 )
@@ -45,6 +44,7 @@ type Command struct {
 	Name  string        `json:"name" toml:"name"`
 	Level CriticalLevel `json:"level" toml:"level"`
 	Args  []string      `json:"args" toml:"args"`
+	Async bool          `json:"async" toml:"async"`
 }
 
 // Run executes the giving command and returns the bytes.Buffer for both
@@ -60,7 +60,7 @@ func (c Command) Run(ctx context.Context, out, werr io.Writer) error {
 		log.Errorf("Process : Error : Command : Begin Execution : %q : %q", c.Name, c.Args)
 
 		if c.Level > Normal {
-			log.Debugf("Process : Debug : Command : %s : %+q", c.Name, fmt.Sprintf(commandMessage, c.Name, c.Args, false, "Failed", err.Error()))
+			log.Debugf("Process : Debug : Command : %s : %s", c.Name, fmt.Sprintf(commandMessage, c.Name, c.Args, false, "Failed", err.Error()))
 		}
 
 		return err
@@ -73,22 +73,24 @@ func (c Command) Run(ctx context.Context, out, werr io.Writer) error {
 		}
 	}()
 
-	if err := proc.Wait(); err != nil {
-		log.Errorf("Process : Error : Command : Begin Execution : %q : %q", c.Name, c.Args)
-
-		if c.Level > Normal {
-			log.Debugf("Process : Debug : Command : %s : %+q", c.Name, fmt.Sprintf(commandMessage, c.Name, c.Args, false, "Failed", err.Error()))
-		}
-
-		if c.Level > Warning {
-			return err
-		}
-
-		return nil
+	if c.Level > Normal {
+		log.Debugf("Process : Debug : Command : %s : %s", c.Name, fmt.Sprintf(commandMessage, c.Name, c.Args, proc.ProcessState.Success(), proc.ProcessState.String()))
 	}
 
-	if c.Level > Normal {
-		log.Debugf("Process : Debug : Command : %s : %+q", c.Name, fmt.Sprintf(commandMessage, c.Name, c.Args, proc.ProcessState.Success(), proc.ProcessState.String()))
+	if !c.Async {
+		if err := proc.Wait(); err != nil {
+			log.Errorf("Process : Error : Command : Begin Execution : %q : %q", c.Name, c.Args)
+
+			if c.Level > Normal {
+				log.Debugf("Process : Debug : Command : %s : %s", c.Name, fmt.Sprintf(commandMessage, c.Name, c.Args, false, "Failed", err.Error()))
+			}
+
+			if c.Level > Warning {
+				return err
+			}
+
+			return nil
+		}
 	}
 
 	return nil
@@ -125,18 +127,11 @@ type AsyncProcess struct {
 // AsyncExec executes the giving series of commands attached to the
 // process.
 func (p AsyncProcess) AsyncExec(ctx context.Context, pipeOut, pipeErr io.Writer) error {
-	var waiter sync.WaitGroup
-
 	for _, command := range p.Commands {
-		go func(cmd Command) {
-			waiter.Add(1)
-			defer waiter.Done()
-
-			cmd.Run(ctx, pipeOut, pipeErr)
-		}(command)
+		command.Async = true
+		command.Run(ctx, pipeOut, pipeErr)
 	}
 
-	waiter.Wait()
 	return nil
 }
 
@@ -218,7 +213,7 @@ func (c ScriptProcess) Exec(ctx context.Context, pipeOut, pipeErr io.Writer) err
 		log.Errorf("Process : Error : Command : Begin Execution : %q : %q", c.Shell, c.Source)
 
 		if c.Level > Normal {
-			log.Debugf("Process : Debug : Command : %+q", fmt.Sprintf(shellMessage, c.Shell, false, "Failed", err.Error(), c.Source))
+			log.Debugf("Process : Debug : Command : %s", fmt.Sprintf(shellMessage, c.Shell, false, "Failed", err.Error(), c.Source))
 		}
 
 		if c.Level > Warning {
@@ -229,7 +224,7 @@ func (c ScriptProcess) Exec(ctx context.Context, pipeOut, pipeErr io.Writer) err
 	}
 
 	if c.Level > Normal {
-		log.Debugf("Process : Debug : Command :  %+q", fmt.Sprintf(shellMessage, c.Shell, proc.ProcessState.Success(), proc.ProcessState.String(), err.Error(), c.Source))
+		log.Debugf("Process : Debug : Command :  %s", fmt.Sprintf(shellMessage, c.Shell, proc.ProcessState.Success(), proc.ProcessState.String(), err.Error(), c.Source))
 	}
 
 	return nil
