@@ -1,5 +1,8 @@
 # Honeytrap [![Gitter](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/honeytrap/honeytrap?utm_source=badge&utm_medium=badge&utm_campaign=&utm_campaign=pr-badge&utm_content=badge) [![Go Report Card](https://goreportcard.com/badge/honeytrap/honeytrap)](https://goreportcard.com/report/honeytrap/honeytrap) [![Build Status](https://travis-ci.org/honeytrap/honeytrap.svg?branch=master)](https://travis-ci.org/honeytrap/honeytrap)
 
+## What is Honeytrap?
+Honeytrap is a honeypot framework written in Go, that isolates each attacker in it's own LXC container. On subsequent attacks, the attacker will be presented with the same container, making monitoring their actions easier. The container events and user sessions can be monitored with an HTTP and WebSocket API. Notifications can be sent to Slack channels. 
+
 ## Installation from source
 
 First, install the libraries libpcap-dev for network monitoring, and lxc1 and lxc-dev for container services. 
@@ -36,11 +39,11 @@ cd /opt/honeytrap/
 go get github.com/honeytrap/honeytrap
 ```
 
-Copy the sample config file for usage.
+Copy the sample configuration file for usage.
 ```
 cp ./src/github.com/honeytrap/honeytrap/config.toml.sample /opt/honeytrap/config.toml
 ```
-
+Now the configuration file will be used automatically. 
 Start Honeytrap with the following command:
 ```
 $GOPATH/bin/honeytrap
