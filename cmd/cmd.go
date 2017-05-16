@@ -74,9 +74,9 @@ func serve(c *cli.Context) {
 		return
 	}
 
-	configFile := c.GlobalString("config")
+	configFile := c.String("config")
 	if err := conf.Load(configFile); err != nil {
-		fmt.Fprintf(os.Stdout, err.Error())
+		fmt.Fprintf(os.Stdout, "Configuration Error: %q - %q", configFile, err.Error())
 		return
 	}
 
@@ -84,15 +84,15 @@ func serve(c *cli.Context) {
 		Stop()
 	}
 
-	if c.GlobalBool("cpu-profile") {
+	if c.Bool("cpu-profile") {
 		log.Info("CPU profiler started.")
 		profiler = profile.Start(profile.CPUProfile, profile.ProfilePath("."), profile.NoShutdownHook)
-	} else if c.GlobalBool("mem-profile") {
+	} else if c.Bool("mem-profile") {
 		log.Info("Memory profiler started.")
 		profiler = profile.Start(profile.MemProfile, profile.ProfilePath("."), profile.NoShutdownHook)
 	}
 
-	if c.GlobalBool("profiler") {
+	if c.Bool("profiler") {
 		log.Info("Profiler listening.")
 
 		go func() {
