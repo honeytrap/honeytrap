@@ -52,7 +52,6 @@ $GOPATH/bin/honeytrap
 Create a LXC container base image and start it.
 ```
 $ lxc-create -t download -n honeytrap -- --dist ubuntu --release xenial --arch amd64
-lxc-start -n honeytrap
 ```
 
 ## API
