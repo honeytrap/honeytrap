@@ -26,16 +26,25 @@ const (
 
 const (
 	shellMessage = `
+
 	Shell: %q
 	Status: %t (%q)
 	Reason: \n%+q
 	Script: %+q
 `
 	commandMessage = `
+
 	Command: %q
 	Arguments: %+q
 	Status: %t (%q)
 	Reason: \n%+q
+`
+
+	commandPidMessage = `
+
+	Command: %q
+	Arguments: %+q
+	Process Pid: %d 
 `
 )
 
@@ -73,9 +82,11 @@ func (c Command) Run(ctx context.Context, out, werr io.Writer) error {
 		}
 	}()
 
-	if c.Level > Normal {
+	if c.Level > Normal && proc.ProcessState != nil {
 		log.Debugf("Process : Debug : Command : %s : %s", c.Name, fmt.Sprintf(commandMessage, c.Name, c.Args, proc.ProcessState.Success(), proc.ProcessState.String()))
 	}
+
+	log.Debugf("Process : Debug : Command : %s : %s", c.Name, fmt.Sprintf(commandPidMessage, c.Name, c.Args, proc.Process.Pid))
 
 	if !c.Async {
 		if err := proc.Wait(); err != nil {
@@ -104,9 +115,9 @@ type SyncProcess struct {
 	Commands []Command `json:"commands"`
 }
 
-// SyncExec executes the giving series of commands attached to the
+// Exec executes the giving series of commands attached to the
 // process.
-func (p SyncProcess) SyncExec(ctx context.Context, pipeOut, pipeErr io.Writer) error {
+func (p SyncProcess) Exec(ctx context.Context, pipeOut, pipeErr io.Writer) error {
 	for _, command := range p.Commands {
 		if err := command.Run(ctx, pipeOut, pipeErr); err != nil {
 			return err
@@ -124,9 +135,9 @@ type AsyncProcess struct {
 	Commands []Command `json:"commands"`
 }
 
-// AsyncExec executes the giving series of commands attached to the
+// Exec executes the giving series of commands attached to the
 // process.
-func (p AsyncProcess) AsyncExec(ctx context.Context, pipeOut, pipeErr io.Writer) error {
+func (p AsyncProcess) Exec(ctx context.Context, pipeOut, pipeErr io.Writer) error {
 	for _, command := range p.Commands {
 		command.Async = true
 		command.Run(ctx, pipeOut, pipeErr)
@@ -145,7 +156,7 @@ type SyncScripts struct {
 
 // SyncExec executes the giving series of commands attached to the
 // process.
-func (p SyncScripts) SyncExec(ctx context.Context, pipeOut, pipeErr io.Writer) error {
+func (p SyncScripts) Exec(ctx context.Context, pipeOut, pipeErr io.Writer) error {
 	for _, command := range p.Scripts {
 		if err := command.Exec(ctx, pipeOut, pipeErr); err != nil {
 			return err

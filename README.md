@@ -15,7 +15,7 @@ cd /opt/honeytrap/
 export GOPATH=/opt/honeytrap
 export PATH=$PATH:/usr/local/go/bin/
 
-go get github.com/honeytrap/honeytrap
+go get github.com/honeytrap/honeytrap/...
 
 cp config.toml.sample config.toml
 $GOPATH/bin/honeytrap

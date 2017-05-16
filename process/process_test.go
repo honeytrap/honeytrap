@@ -24,7 +24,7 @@ func TestCommandSyncProcess(t *testing.T) {
 	ctx := context.Background()
 
 	var errBu, outBu bytes.Buffer
-	err := src.SyncExec(ctx, &outBu, &errBu)
+	err := src.Exec(ctx, &outBu, &errBu)
 	if err != nil {
 		tests.Failed("Should have successfully executed shell script: %+q.", err)
 	}

@@ -663,11 +663,11 @@ func (c *LxcContainer) Dial(ctx context.Context) (net.Conn, error) {
 
 	// Execute all global commands.
 	// TODO: Move context to be supplied by caller and not set in code
-	if err := c.gcommands.SyncExec(ctx, os.Stdout, os.Stderr); err != nil {
+	if err := c.gcommands.Exec(ctx, os.Stdout, os.Stderr); err != nil {
 		return nil, err
 	}
 
-	if err := c.gscripts.SyncExec(ctx, os.Stdout, os.Stderr); err != nil {
+	if err := c.gscripts.Exec(ctx, os.Stdout, os.Stderr); err != nil {
 		return nil, err
 	}
 
@@ -675,11 +675,11 @@ func (c *LxcContainer) Dial(ctx context.Context) (net.Conn, error) {
 	localScripts := process.SyncScripts{Scripts: c.meta.Scripts}
 	localCommands := process.SyncProcess{Commands: c.meta.Commands}
 
-	if err := localCommands.SyncExec(ctx, os.Stdout, os.Stderr); err != nil {
+	if err := localCommands.Exec(ctx, os.Stdout, os.Stderr); err != nil {
 		return nil, err
 	}
 
-	if err := localScripts.SyncExec(ctx, os.Stdout, os.Stderr); err != nil {
+	if err := localScripts.Exec(ctx, os.Stdout, os.Stderr); err != nil {
 		return nil, err
 	}
 

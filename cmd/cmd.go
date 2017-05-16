@@ -1,9 +1,9 @@
 package cmd
 
 import (
-	"bytes"
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/fatih/color"
 	"github.com/honeytrap/honeytrap/process"
@@ -68,29 +68,26 @@ func runServer(c *cli.Context) {
 	cpuProfileFile := c.GlobalBool("cpu-profile")
 	memProfileFile := c.GlobalBool("mem-profile")
 
-	configArg := fmt.Sprintf("--config %s", configFile)
-	profilerArg := fmt.Sprintf("--profiler %t", profilerEnabled)
-	cpuProfileArg := fmt.Sprintf("--cpu-profile %t", cpuProfileFile)
-	memProfileArg := fmt.Sprintf("--mem-profile %t", memProfileFile)
-
 	serverCmd := process.AsyncProcess{
 		Commands: []process.Command{
 			{
 				Name:  "honeytrap-serve",
 				Level: process.RedAlert,
-				Args:  []string{configArg, profilerArg, cpuProfileArg, memProfileArg},
+				Args: []string{
+					"--config", configFile,
+					"--profiler", fmt.Sprintf("%t", profilerEnabled),
+					"--cpu-profile", fmt.Sprintf("%t", cpuProfileFile),
+					"--mem-profile", fmt.Sprintf("%t", memProfileFile),
+				},
 			},
 		},
 	}
 
-	var pout, perr bytes.Buffer
-
-	if err := serverCmd.AsyncExec(context.Background(), &pout, &perr); err != nil {
-		fmt.Println(perr.String())
+	if err := serverCmd.Exec(context.Background(), os.Stdout, os.Stderr); err != nil {
+		fmt.Printf("Error occured: %+q", err)
 		return
 	}
 
-	fmt.Println(pout.String())
 }
 
 // New returns a new instance of the Cmd struct.
