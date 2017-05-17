@@ -1,14 +1,15 @@
 // +build linux
 
-package director
+package lxcdirector
 
 import (
 	// #nosec
+	"errors"
 	"net"
 	"sync"
 
 	config "github.com/honeytrap/honeytrap/config"
-	providers "github.com/honeytrap/honeytrap/providers"
+	"github.com/honeytrap/honeytrap/director"
 	"github.com/honeytrap/honeytrap/pushers"
 
 	lxc "github.com/honeytrap/golxc"
@@ -17,11 +18,11 @@ import (
 
 // Director defines a struct which handles the management of registered containers.
 type Director struct {
-	containers map[string]providers.Container
-	m          sync.Mutex
 	config     *config.Config
-	provider   providers.Provider
+	provider   *LxcProvider
 	namer      namecon.Namer
+	m          sync.Mutex
+	containers map[string]director.Container
 }
 
 // New returns a new instance of a Director.
@@ -31,8 +32,8 @@ func New(conf *config.Config, events pushers.Events) *Director {
 
 	d := &Director{
 		config:     conf,
-		containers: map[string]providers.Container{},
-		provider:   providers.NewLxcProvider(conf, events),
+		containers: map[string]director.Container{},
+		provider:   NewLxcProvider(conf, events),
 		namer:      namecon.NewNamerCon(conf.Template+"-%s", namecon.Basic{}),
 	}
 
@@ -67,8 +68,8 @@ func (d *Director) registerContainers() {
 	}
 }
 
-func (d *Director) getName(c net.Conn) (string, error) {
-	rhost, _, err := net.SplitHostPort(c.RemoteAddr().String())
+func (d *Director) getName(addr string) (string, error) {
+	rhost, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		return "", err
 	}
@@ -77,18 +78,34 @@ func (d *Director) getName(c net.Conn) (string, error) {
 }
 
 // NewContainer returns a new providers.Container instance from the provided internal providers.
-func (d *Director) NewContainer(name string) (providers.Container, error) {
-	return d.provider.NewContainer(
-		name,
-	)
+func (d *Director) NewContainer(addr string) (director.Container, error) {
+	name, err := d.getName(addr)
+	if err != nil {
+		return nil, err
+	}
+
+	if container, ok := d.containers[name]; ok {
+		return container, nil
+	}
+
+	log.Infof("Add new container %s for addr: %s", name, addr)
+
+	// TODO: ContainerConfig?
+	dl, err := d.provider.NewContainer(name)
+	if err != nil {
+		return nil, err
+	}
+
+	d.containers[name] = dl
+	return dl, nil
 }
 
 // GetContainer returns a provider.Container instance from those already created on the director.
-func (d *Director) GetContainer(c net.Conn) (providers.Container, error) {
+func (d *Director) GetContainer(c net.Conn) (director.Container, error) {
 	d.m.Lock()
 	defer d.m.Unlock()
 
-	name, err := d.getName(c)
+	name, err := d.getName(c.RemoteAddr().String())
 	if err != nil {
 		return nil, err
 	}
@@ -99,8 +116,5 @@ func (d *Director) GetContainer(c net.Conn) (providers.Container, error) {
 		return container, nil
 	}
 
-	// TODO: ContainerConfig?
-	container, err := d.NewContainer(name)
-	d.containers[name] = container
-	return container, err
+	return nil, errors.New("Container not found")
 }
