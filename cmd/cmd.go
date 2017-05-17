@@ -68,7 +68,7 @@ func runServer(c *cli.Context) {
 	cpuProfileFile := c.GlobalBool("cpu-profile")
 	memProfileFile := c.GlobalBool("mem-profile")
 
-	serverCmd := process.AsyncProcess{
+	serverCmd := process.SyncProcess{
 		Commands: []process.Command{
 			{
 				Name:  "honeytrap-serve",
