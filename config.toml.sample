@@ -5,39 +5,51 @@ push_every = "10s"
 freeze_every = "10s"
 stop_every = "30s"
 
-[[backend.honeytrap]]
+[[backends.honeytrap]]
 host = "http://api.honeytrap.io/"
 token = "b0b6e462-ef0b-11e6-abc7-0fb6247f5820"
 
-[[backend.file]]
+[[backends.file]]
 file = "/store/files/pushers.pub"
 ms = "50s"
 max_size = 3000
 
-[[backend.slack]]
+[[backends.slack]]
 key = "slack.1"
 host = "https://hooks.slack.com/services/"
 token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
 
-[[backend.slack]]
+[[backends.slack]]
 key = "slack.1"
 host = "https://hooks.slack.com/services/"
 token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
 
-[[backend.slack]]
+[[backends.slack]]
 key = "slack.2"
 host = "https://hooks.slack.com/services/"
 token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
 
-[[backend.slack]]
+[[backends.slack]]
 key = "slack.3"
 host = "https://hooks.slack.com/services/"
 token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
 
-[[backend.slack]]
+[[backends.slack]]
 key = "slack.4"
 host = "https://hooks.slack.com/services/"
 token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
+
+[[channels]]
+backends = ["slack.4", "slack.2"]
+sensors = ["sessions-start", "containers-open"]
+categories = ["sessions", "containers", "attackers"]
+events = ["new_session", "connection-open", "connection-closed"]
+
+[[channels]]
+backends = ["slack.1", "slack.2"]
+categories = ["sessions", "containers"]
+sensors = ["sessions-start", "containers-open"]
+events = ["connection-open", "connection-closed"]
 
 [housekeeper]
 every = "10s"
