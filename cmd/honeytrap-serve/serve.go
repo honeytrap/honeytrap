@@ -38,7 +38,7 @@ VERSION:
 ` + Version +
 	`{{ "\n"}}`
 
-var log = logging.MustGetLogger("honeytrap/cmd")
+var log = logging.MustGetLogger("honeytrap/cmd/honeytrap-serve")
 
 var globalFlags = []cli.Flag{
 	cli.StringFlag{
@@ -46,12 +46,6 @@ var globalFlags = []cli.Flag{
 		Usage: "config file",
 		Value: "config.toml",
 	},
-	/*
-		cli.BoolFlag{
-			Name:  "help, h",
-			Usage: "Show help.",
-		},
-	*/
 	cli.BoolFlag{Name: "cpu-profile", Usage: "Enable cpu profiler"},
 	cli.BoolFlag{Name: "mem-profile", Usage: "Enable memory profiler"},
 	cli.BoolFlag{Name: "profiler", Usage: "Enable web profiler"},
@@ -120,11 +114,11 @@ func serve(c *cli.Context) {
 
 func main() {
 	app := cli.NewApp()
-	app.Name = "honeytrap"
+	app.Name = "honeytrap-serve"
 	app.Author = ""
-	app.Usage = "honeytrap"
+	app.Usage = "honeytrap-serve"
 	app.Flags = globalFlags
-	app.Description = `The ultimate honeypot framework.`
+	app.Description = `honeytrap-serve: The honeypot server CLI.`
 	app.CustomAppHelpTemplate = helpTemplate
 	app.Commands = []cli.Command{
 		{

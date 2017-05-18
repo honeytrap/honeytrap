@@ -1,7 +1,7 @@
 package pushers
 
 import (
-	"errors"
+	"fmt"
 	"time"
 
 	"github.com/honeytrap/honeytrap/config"
@@ -48,6 +48,8 @@ func (p ProxyPusher) Send(messages []message.PushMessage) {
 
 //=======================================================================================================
 
+//=======================================================================================================
+
 // Pusher defines a struct which implements a pusher to manage the loading and
 // delivery of message.PushMessage.
 type Pusher struct {
@@ -75,7 +77,7 @@ func New(conf *config.Config) *Pusher {
 			key = name
 		}
 
-		// Check if key already exists and panic.
+		// Check if key already exists and log.
 		if _, ok := backends[key]; ok {
 			// TODO: should log instead of panic here?
 			log.Errorf("Found key %q already used for previous backend", key)
@@ -140,17 +142,13 @@ func New(conf *config.Config) *Pusher {
 	return p
 }
 
-// ErrBackendNotFound defines an error returned when a backend key
-// does not match the registered keys.
-var ErrBackendNotFound = errors.New("Backend not found")
-
 // GetBackend returns a giving backend registered with the pusher.
 func (p *Pusher) GetBackend(key string) (Channel, error) {
 	if channel, ok := p.backends[key]; ok {
 		return channel, nil
 	}
 
-	return nil, ErrBackendNotFound
+	return nil, fmt.Errorf("Backend %q not found", key)
 }
 
 // Start defines a function which kickstarts the internal pusher call loop.

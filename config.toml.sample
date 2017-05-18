@@ -60,6 +60,20 @@ key = "slack.4"
 host = "https://hooks.slack.com/services/"
 token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
 
+
+[[channels]]
+backends = ["slack.4", "slack.2"]
+sensors = ["sessions-start", "containers-open"]
+categories = ["sessions", "containers", "attackers"]
+events = ["new_session", "connection-open", "connection-closed"]
+
+
+[[channels]]
+backends = ["slack.1", "slack.2"]
+categories = ["sessions", "containers"]
+sensors = ["sessions-start", "containers-open"]
+events = ["connection-open", "connection-closed"]
+
 [housekeeper]
 every = "10s"
 

@@ -60,6 +60,13 @@ type (
 		Scripts  []process.ScriptProcess `toml:"scripts"`
 	}
 
+	ChannelConfig struct {
+		Backends   []string `toml:"backends"`
+		Sensors    []string `toml:"sensors"`
+		Categories []string `toml:"categories"`
+		Events     []string `toml:"events"`
+	}
+
 	// Delays sets the individual duration set for all ops.
 	// TODO: rename to Timers
 	Delays struct {
@@ -91,8 +98,8 @@ type (
 		HouseKeeper HouseKeeper    `toml:"housekeeper"`
 		Directors   DirectorConfig `toml:"directors"`
 
-		Backends map[string]interface{}   `toml:"backends"`
-		Channels []map[string]interface{} `toml:"channels"`
+		Backends map[string]interface{} `toml:"backends"`
+		Channels []ChannelConfig        `toml:"channels"`
 
 		Services []toml.Primitive `toml:"services"`
 
