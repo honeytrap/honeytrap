@@ -30,39 +30,44 @@ stop_every = "30s"
 host = "http://api.honeytrap.io/"
 token = "b0b6e462-ef0b-11e6-abc7-0fb6247f5820"
 
-[[backends."event-file"]]
-server = "file"
-    [config]
-        ms = "50s"
-        max_size = 3000
-        file = "/store/files/pushers.pub"
+[[backends.file]]
+file = "/store/files/pushers.pub"
+ms = "50s"
+max_size = 3000
 
-[[backends.gophers]]
-server = "slack"
-    [config]
-        host = "https://hooks.slack.com/services/"
-        token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
+[[backends.slack]]
+key = "slack.1"
+host = "https://hooks.slack.com/services/"
+token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
 
-[[backends.devcenters]]
-server = "slack"
-    [config]
-        host = "https://hooks.slack.com/services/"
-        token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
+[[backends.slack]]
+key = "slack.1"
+host = "https://hooks.slack.com/services/"
+token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
 
-[[backends.minios]]
-server = "slack"
-    [config]
-        host = "https://hooks.slack.com/services/"
-        token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
+[[backends.slack]]
+key = "slack.2"
+host = "https://hooks.slack.com/services/"
+token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
+
+[[backends.slack]]
+key = "slack.3"
+host = "https://hooks.slack.com/services/"
+token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
+
+[[backends.slack]]
+key = "slack.4"
+host = "https://hooks.slack.com/services/"
+token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
 
 [[channels]]
-backends = ["devcenters", "minios"]
+backends = ["slack.4", "slack.2"]
 sensors = ["sessions-start", "containers-open"]
 categories = ["sessions", "containers", "attackers"]
 events = ["new_session", "connection-open", "connection-closed"]
 
 [[channels]]
-backends = ["gophers", "event-file"]
+backends = ["slack.1", "slack.2"]
 categories = ["sessions", "containers"]
 sensors = ["sessions-start", "containers-open"]
 events = ["connection-open", "connection-closed"]
