@@ -4,12 +4,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/config"
-	"github.com/honeytrap/honeytrap/pushers/elasticsearch"
-	"github.com/honeytrap/honeytrap/pushers/fschannel"
-	"github.com/honeytrap/honeytrap/pushers/honeytrap"
 	"github.com/honeytrap/honeytrap/pushers/message"
-	"github.com/honeytrap/honeytrap/pushers/slack"
 )
 
 // Channel defines a interface which exposes a single method for delivering
@@ -67,7 +64,6 @@ func (p ProxyPusher) Send(messages []message.PushMessage) {
 
 //=======================================================================================================
 
-
 // Pusher defines a struct which implements a pusher to manage the loading and
 // delivery of message.PushMessage.
 type Pusher struct {
@@ -75,80 +71,20 @@ type Pusher struct {
 	q        chan message.PushMessage
 	queue    []message.PushMessage
 	age      time.Duration
-	backends map[string]Channel
 	channels []Channel
 }
 
 // New returns a new instance of Pusher.
 func New(conf *config.Config) *Pusher {
-	backends := make(map[string]Channel)
-
-	for name, c := range conf.Backends {
-		backend, ok := c.(map[string]interface{})
-		if !ok {
-			log.Errorf("Found key %q with non-map config value: %#v", name, c)
-			continue
-		}
-
-		key, ok := backend["key"].(string)
-		if !ok {
-			key = name
-		}
-
-		// Check if key already exists and log.
-		if _, ok := backends[key]; ok {
-			// TODO: should log instead of panic here?
-			log.Errorf("Found key %q already used for previous backend", key)
-			continue
-		}
-
-		switch name {
-		case "elasticsearch":
-			var elastic elasticsearch.SearchChannel
-			if err := elastic.UnmarshalConfig(backend); err != nil {
-				log.Errorf("Error initializing channel: %s", err.Error())
-				continue
-			}
-
-			backends[key] = &elastic
-		case "file":
-			fchan := fschannel.New()
-			if err := fchan.UnmarshalConfig(backend); err != nil {
-				log.Errorf("Error initializing channel: %s", err.Error())
-
-				continue
-			}
-
-			backends[key] = fchan
-		case "honeytrap":
-			var htrap honeytrap.TrapChannel
-			if err := htrap.UnmarshalConfig(backend); err != nil {
-				log.Errorf("Error initializing channel: %s", err.Error())
-				continue
-			}
-
-			backends[key] = &htrap
-		case "slack":
-			var slackChannel slack.MessageChannel
-			if err := slackChannel.UnmarshalConfig(backend); err != nil {
-				log.Errorf("Error initializing channel: %s", err.Error())
-				continue
-			}
-
-			backends[key] = &slackChannel
-		}
-	}
-
 	p := &Pusher{
-		config:   conf,
-		backends: backends,
-		queue:    []message.PushMessage{},
-		q:        make(chan message.PushMessage),
-		age:      conf.Delays.PushDelay.Duration(),
+		config: conf,
+		queue:  []message.PushMessage{},
+		q:      make(chan message.PushMessage),
+		age:    conf.Delays.PushDelay.Duration(),
 	}
 
 	for _, cb := range conf.Channels {
-		master := NewMasterChannel(p)
+		master := NewMasterChannel(conf)
 		if err := master.UnmarshalConfig(cb); err != nil {
 			log.Errorf("Failed to create channel for config [%#q]: %+q", cb, err)
 			continue
@@ -158,15 +94,6 @@ func New(conf *config.Config) *Pusher {
 	}
 
 	return p
-}
-
-// GetBackend returns a giving backend registered with the pusher.
-func (p *Pusher) GetBackend(key string) (Channel, error) {
-	if channel, ok := p.backends[key]; ok {
-		return channel, nil
-	}
-
-	return nil, fmt.Errorf("Backend %q not found", key)
 }
 
 // Start defines a function which kickstarts the internal pusher call loop.

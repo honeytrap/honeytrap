@@ -60,6 +60,13 @@ type (
 		Scripts  []process.ScriptProcess `toml:"scripts"`
 	}
 
+	// BackendConfig defines the configuration values used to setup a backend.
+	BackendConfig struct {
+		Server string         `toml:"server"`
+		Config toml.Primitive `toml:"config"`
+	}
+
+	// ChannelConfig defines the giving fields used to generate a custom event channel.
 	ChannelConfig struct {
 		Backends   []string `toml:"backends"`
 		Sensors    []string `toml:"sensors"`
@@ -99,8 +106,8 @@ type (
 		Directors    DirectorConfig `toml:"directors"`
 		TomlMetadata *toml.MetaData `toml:"-"`
 
-		Backends map[string]interface{} `toml:"backends"`
-		Channels []ChannelConfig        `toml:"channels"`
+		Backends map[string]BackendConfig `toml:"backends"`
+		Channels []ChannelConfig          `toml:"channels"`
 
 		Services []toml.Primitive `toml:"services"`
 
