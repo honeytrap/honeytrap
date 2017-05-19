@@ -226,7 +226,7 @@ func (p *Conn) Proxy() error {
 				// defer p.Close()
 			}
 
-			log.Errorf("Authorization failed (ip: %s, client: %s, username: %s, password: %s): %s", p.Server.RemoteAddr().String(), string(conn.ClientVersion()), username, password, err.Error())
+			log.Errorf("Authorization failed (ip: %s, client: %s, username: %s, password: %s): %s", p.Server.RemoteAddr().String(), string(conn.ClientVersion()), username, password, err)
 			rs.AuthorizationFailed(conn.User(), string(password), string(conn.ClientVersion()))
 			return nil, err
 		},
