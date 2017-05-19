@@ -2,8 +2,24 @@ director = "lxc"
 template = "honeytrap"
 token = "433UI-56JK-3433NJ-KI954"
 
-[directormeta]
-service_addr = "http://api.honeytrap.com/pixi:4060"
+[directors]
+    [directors.io_config]
+        service_addr = "http://api.honeytrap.com/pixi:4060"
+
+        [[directors.io_config.commands]]
+        	name = "echo"
+        	level = 2
+        	args = ["hello"]
+
+        [[directors.io_config.commands]]
+        	name = "echo"
+        	level = 3
+        	args = ["world!"]
+
+
+    [directors.cowrie_config]
+        ssh_addr = "localhost"
+        ssh_port = "2222"
 
 [delays]
 push_every = "10s"
