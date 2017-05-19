@@ -1,7 +1,7 @@
 # Honeytrap [![Gitter](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/honeytrap/honeytrap?utm_source=badge&utm_medium=badge&utm_campaign=&utm_campaign=pr-badge&utm_content=badge) [![Go Report Card](https://goreportcard.com/badge/honeytrap/honeytrap)](https://goreportcard.com/report/honeytrap/honeytrap) [![Build Status](https://travis-ci.org/honeytrap/honeytrap.svg?branch=master)](https://travis-ci.org/honeytrap/honeytrap)
 
 
-<img src="honeytrap_icon.png" alt="" style="width: 200px;" align="middle"/>
+<img src="honeytrap_icon-small.png" alt="" style="width: 200px;" align="middle"/>
 ## What is Honeytrap?
 Honeytrap is a honeypot framework written in Go, that isolates each attacker in it's own LXC container. On subsequent attacks, the attacker will be presented with the same container, making monitoring their actions easier. The container events and user sessions can be monitored with an HTTP and WebSocket API. Notifications can be sent to Slack channels. 
 
