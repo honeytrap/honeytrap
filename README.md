@@ -47,15 +47,11 @@ Copy the sample configuration file for usage.
 ```
 cp ./src/github.com/honeytrap/honeytrap/config.toml.sample /opt/honeytrap/config.toml
 ``` 
-Start Honeytrap with the following command:
-```
-$GOPATH/bin/honeytrap --config $GOPATH/config.toml 
-
-```
 Create a LXC container base image, so Honeytrap can start this when required.
 ```
 $ lxc-create -t download -n honeytrap -- --dist ubuntu --release xenial --arch amd64
 ```
+
 Now we have to run a script from this source repository.
 This script will create a chrooted environment for LXC with Apache, curl, wget and an SSH server.
 First cd to the location of this repo and set the executable bit on the *container.sh* script in the *contrib* folder and run it with sudo.
@@ -64,9 +60,14 @@ honeypot/contrib$ chmod +x container.sh
 honeypot/contrib$ sudo ./container.sh
 ``` 
 Congratulations, the setup is done and testing can begin!
-Try connecting to the honeypot, with the password being root:
+Start Honeytrap with the following command:
 ```
-ssh -p 8022 root@localhost
+$GOPATH/bin/honeytrap --config $GOPATH/config.toml 
+
+```
+Try connecting to the honeypot, with the password ubuntu:
+```
+ssh -p 8022 ubuntu@localhost
 ```
 
 
