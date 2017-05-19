@@ -11,7 +11,7 @@ Honeytrap is a honeypot framework written in Go, that isolates each attacker in 
 First, install the libraries libpcap-dev for network monitoring, and lxc1 and lxc-dev for container services. 
 We also need gcc and pkgconfig to compile the Honeytrap package.
 ```
-apt install -y libpcap-dev lxc1 lxc-dev
+apt install -y libpcap-dev lxc1 lxc-dev gcc pkg-config
 ```
 
 Honeytrap is written in Go, so we download the Go language from Google.
