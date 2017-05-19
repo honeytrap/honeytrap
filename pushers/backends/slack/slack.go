@@ -3,13 +3,15 @@ package slack
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
-	"regexp"
 	"time"
 
+	"github.com/BurntSushi/toml"
+	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/pushers/message"
 	logging "github.com/op/go-logging"
 )
@@ -43,11 +45,29 @@ func New(api APIConfig) MessageChannel {
 	}
 }
 
-type channelSelector struct {
-	Field   string
-	Token   string
-	Channel string
-	Matcher *regexp.Regexp
+// NewWith defines a function to return a pushers.Channel which delivers
+// new messages to a giving underline slack channel defined by the configuration
+// retrieved from the giving toml.Primitive.
+func NewWith(meta toml.MetaData, data toml.Primitive) (pushers.Channel, error) {
+	var apiconfig APIConfig
+
+	if err := meta.PrimitiveDecode(data, &apiconfig); err != nil {
+		return nil, err
+	}
+
+	if apiconfig.Host == "" {
+		return nil, errors.New("slack.APIConfig Invalid: Host can not be empty")
+	}
+
+	if apiconfig.Token == "" {
+		return nil, errors.New("slack.APIConfig Invalid: Token can not be empty")
+	}
+
+	return New(apiconfig), nil
+}
+
+func init() {
+	pushers.RegisterBackend("slack", NewWith)
 }
 
 // Send delivers the giving push messages to the required slack channel.

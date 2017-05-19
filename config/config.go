@@ -62,8 +62,8 @@ type (
 
 	// BackendConfig defines the configuration values used to setup a backend.
 	BackendConfig struct {
-		Server string         `toml:"server"`
-		Config toml.Primitive `toml:"config"`
+		Backend string         `toml:"backend"`
+		Config  toml.Primitive `toml:"config"`
 	}
 
 	// ChannelConfig defines the giving fields used to generate a custom event channel.
@@ -95,16 +95,16 @@ type (
 
 	// Config defines the central type where all configuration is umarhsalled to.
 	Config struct {
-		Token        string         `toml:"token"`
-		Template     string         `toml:"template"`
-		NetFilter    string         `toml:"net_filter"`
-		Keys         string         `toml:"keys"`
-		Director     string         `toml:"director"`
-		Delays       Delays         `toml:"delays"`
-		Folders      Folders        `toml:"folders"`
-		HouseKeeper  HouseKeeper    `toml:"housekeeper"`
-		Directors    DirectorConfig `toml:"directors"`
-		TomlMetadata *toml.MetaData `toml:"-"`
+		toml.MetaData
+		Token       string         `toml:"token"`
+		Template    string         `toml:"template"`
+		NetFilter   string         `toml:"net_filter"`
+		Keys        string         `toml:"keys"`
+		Director    string         `toml:"director"`
+		Delays      Delays         `toml:"delays"`
+		Folders     Folders        `toml:"folders"`
+		HouseKeeper HouseKeeper    `toml:"housekeeper"`
+		Directors   DirectorConfig `toml:"directors"`
 
 		Backends map[string]BackendConfig `toml:"backends"`
 		Channels []ChannelConfig          `toml:"channels"`
@@ -226,7 +226,7 @@ func (c *Config) Load(file string) error {
 		return err
 	}
 
-	c.TomlMetadata = &meta
+	c.MetaData = meta
 
 	if err := mergo.MergeWithOverwrite(c, conf); err != nil {
 		return err

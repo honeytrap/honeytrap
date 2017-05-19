@@ -60,10 +60,6 @@ func (mc *MasterChannel) UnmarshalConfig(m interface{}) error {
 		return errors.New("Expected to receive a ChannelConfig type")
 	}
 
-	if mc.config.TomlMetadata == nil {
-		return errors.New("MasterChannel requires Toml Metadata for backends")
-	}
-
 	// Generate all filters for the channel's backends
 	for _, backend := range conf.Backends {
 
@@ -75,7 +71,7 @@ func (mc *MasterChannel) UnmarshalConfig(m interface{}) error {
 
 		// Attempt to create backend channel for master with the giving
 		// channel's name and config toml.Primitive.
-		newBackend, err := NewBackend(bc.Server, *mc.config.TomlMetadata, bc.Config)
+		newBackend, err := NewBackend(bc.Backend, mc.config.MetaData, bc.Config)
 		if err != nil {
 			return err
 		}

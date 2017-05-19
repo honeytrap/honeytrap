@@ -3,6 +3,7 @@ package elasticsearch
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"io"
@@ -10,8 +11,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/BurntSushi/toml"
 	"github.com/satori/go.uuid"
 
+	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/pushers/message"
 	"github.com/op/go-logging"
 )
@@ -41,6 +44,27 @@ func New(conf SearchConfig) SearchChannel {
 			Timeout: time.Duration(20) * time.Second,
 		},
 	}
+}
+
+// NewWith defines a function to return a pushers.Channel which delivers
+// new messages to a giving underline ElasticSearch API defined by the configuration
+// retrieved from the giving toml.Primitive.
+func NewWith(meta toml.MetaData, data toml.Primitive) (pushers.Channel, error) {
+	var apiconfig SearchConfig
+
+	if err := meta.PrimitiveDecode(data, &apiconfig); err != nil {
+		return nil, err
+	}
+
+	if apiconfig.Host == "" {
+		return nil, errors.New("elasticsearch.SearchConfig Invalid: Host can not be empty")
+	}
+
+	return New(apiconfig), nil
+}
+
+func init() {
+	pushers.RegisterBackend("elasticsearch", NewWith)
 }
 
 // Send delivers the giving push messages into the internal elastic search endpoint.

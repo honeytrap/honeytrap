@@ -24,7 +24,10 @@ import (
 	"github.com/honeytrap/honeytrap/pushers/message"
 
 	pushers "github.com/honeytrap/honeytrap/pushers"
-	_ "github.com/honeytrap/honeytrap/pushers/backends" // Registers default backend providers.
+	_ "github.com/honeytrap/honeytrap/pushers/backends/elasticsearch" // Registers elasticsearch backend.
+	_ "github.com/honeytrap/honeytrap/pushers/backends/fschannel"     // Registers file backend.
+	_ "github.com/honeytrap/honeytrap/pushers/backends/honeytrap"     // Registers honeytrap backend.
+	_ "github.com/honeytrap/honeytrap/pushers/backends/slack"         // Registers slack backend.
 
 	utils "github.com/honeytrap/honeytrap/utils"
 
