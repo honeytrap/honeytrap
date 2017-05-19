@@ -1,8 +1,7 @@
 # Honeytrap [![Gitter](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/honeytrap/honeytrap?utm_source=badge&utm_medium=badge&utm_campaign=&utm_campaign=pr-badge&utm_content=badge) [![Go Report Card](https://goreportcard.com/badge/honeytrap/honeytrap)](https://goreportcard.com/report/honeytrap/honeytrap) [![Build Status](https://travis-ci.org/honeytrap/honeytrap.svg?branch=master)](https://travis-ci.org/honeytrap/honeytrap)
 
 
-<img src="honeytrap_icon-small.png" alt="Honeytrap" style="width: 200px;" align="middle"/>
-
+<img src="honeytrap_icon.png" alt="" style="width: 200px;" align="middle"/>
 ## What is Honeytrap?
 Honeytrap is a honeypot framework written in Go, that isolates each attacker in it's own LXC container. On subsequent attacks, the attacker will be presented with the same container, making monitoring their actions easier. The container events and user sessions can be monitored with an HTTP and WebSocket API. Notifications can be sent to Slack channels. 
 
@@ -45,17 +44,29 @@ go get github.com/honeytrap/honeytrap
 Copy the sample configuration file for usage.
 ```
 cp ./src/github.com/honeytrap/honeytrap/config.toml.sample /opt/honeytrap/config.toml
-```
-Now the configuration file will be used automatically. 
+``` 
 Start Honeytrap with the following command:
 ```
-$GOPATH/bin/honeytrap
+$GOPATH/bin/honeytrap --config $GOPATH/config.toml 
 
 ```
 Create a LXC container base image, so Honeytrap can start this when required.
 ```
 $ lxc-create -t download -n honeytrap -- --dist ubuntu --release xenial --arch amd64
 ```
+Now we have to run a script from this source repository.
+This script will create a chrooted environment for LXC with Apache, curl, wget and an SSH server.
+First cd to the location of this repo and set the executable bit on the *container.sh* script in the *contrib* folder and run it with sudo.
+```
+honeypot/contrib$ chmod +x container.sh
+honeypot/contrib$ sudo ./container.sh
+``` 
+Congratulations, the setup is done and testing can begin!
+Try connecting to the honeypot, with the password being root:
+```
+ssh -p 8022 root@localhost
+```
+
 
 ## API
 Honeytrap exposes a specific API which allows us to easily retrieve data about sessions and events which are occurring within the deployed instance. This API allows anyone using the project to expose an interface to showcase the different occurring sessions running on the instance.
@@ -119,3 +130,4 @@ $ cd honeytrap/honeytrap
 Code and documentation copyright 2017 Honeytrap.
 
 Code released under [Affero General Public License](LICENSE).
+
