@@ -59,6 +59,7 @@ categories = ["sessions", "containers"]
 sensors = ["sessions-start", "containers-open"]
 events = ["connection-open", "connection-closed"]
 
+
 [housekeeper]
 every = "10s"
 
