@@ -1,13 +1,11 @@
 package honeytrap
 
 import (
-	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
 
-	api "github.com/honeytrap/honeytrap/pushers/api"
+	"github.com/honeytrap/honeytrap/pushers/api"
 
 	"github.com/honeytrap/honeytrap/pushers/message"
 	"github.com/op/go-logging"
@@ -15,34 +13,26 @@ import (
 
 var log = logging.MustGetLogger("honeytrap:channels:honeytrap")
 
+// TrapConfig defines the configuration used to setup a TrapChannel.
+type TrapConfig struct {
+	Host  string `toml:"host"`
+	Token string `toml:"token"`
+}
+
 // TrapChannel defines a struct which implmenets the pushers.Channel
 // interface for delivery honeytrap special messages.
 type TrapChannel struct {
 	client *api.Client
 }
 
-// UnmarshalConfig attempts to unmarshal the provided value into the giving
-// HoneytrapChannel.
-func (hc *TrapChannel) UnmarshalConfig(m interface{}) error {
-	conf, ok := m.(map[string]interface{})
-	if !ok {
-		return errors.New("Expected to receive a map")
+// New returns a new instance of a TrapChannel.
+func New(config TrapConfig) TrapChannel {
+	return TrapChannel{
+		client: api.New(&api.Config{
+			Url:   config.Host,
+			Token: config.Token,
+		}),
 	}
-
-	if _, ok := conf["host"]; !ok {
-		return fmt.Errorf("Host not set for channel honeytrap")
-	}
-
-	if _, ok := conf["token"]; !ok {
-		return fmt.Errorf("Token not set for channel honeytrap")
-	}
-
-	hc.client = api.New(&api.Config{
-		Url:   conf["host"].(string),
-		Token: conf["token"].(string),
-	})
-
-	return nil
 }
 
 // Send delivers all messages to the underline connection.

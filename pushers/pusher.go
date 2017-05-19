@@ -12,20 +12,39 @@ import (
 	"github.com/honeytrap/honeytrap/pushers/slack"
 )
 
-//=======================================================================================================
-
-// Waiter exposes a method to call a wait method to allow a channel finish it's
-// operation.
-type Waiter interface {
-	Wait()
-}
-
-//=======================================================================================================
-
 // Channel defines a interface which exposes a single method for delivering
 // PushMessages to a giving underline service.
 type Channel interface {
 	Send([]message.PushMessage)
+}
+
+//=======================================================================================================
+
+// ChannelGenerator defines a function type which returns a Channel created
+// from a primitive.
+type ChannelGenerator func(toml.MetaData, toml.Primitive) (Channel, error)
+
+// TODO(alex): Decide if we need a mutex to secure things concurrently.
+// We assume it will never be read/written to concurrently.
+var backends = struct {
+	b map[string]ChannelGenerator
+}{
+	b: make(map[string]ChannelGenerator),
+}
+
+// RegisterBackend adds the giving generator to the global generator lists.
+func RegisterBackend(name string, generator ChannelGenerator) {
+	backends.b[name] = generator
+}
+
+// NewBackend returns a new Channel of the giving name with the provided toml.Primitive.
+func NewBackend(name string, meta toml.MetaData, primi toml.Primitive) (Channel, error) {
+	maker, ok := backends.b[name]
+	if !ok {
+		return nil, fmt.Errorf("Backend %q maker not found", name)
+	}
+
+	return maker(meta, primi)
 }
 
 //=======================================================================================================
@@ -48,7 +67,6 @@ func (p ProxyPusher) Send(messages []message.PushMessage) {
 
 //=======================================================================================================
 
-//=======================================================================================================
 
 // Pusher defines a struct which implements a pusher to manage the loading and
 // delivery of message.PushMessage.
@@ -175,8 +193,6 @@ func (p *Pusher) run() {
 }
 
 func (p *Pusher) send(messages []message.PushMessage) {
-	// TODO: Should we do some waitgroup here to ensure all channels
-	// properly finish?
 	for _, channel := range p.channels {
 		channel.Send(messages)
 	}

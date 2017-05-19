@@ -2,6 +2,7 @@ package pushers
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/honeytrap/honeytrap/config"
 	"github.com/honeytrap/honeytrap/pushers/message"
@@ -36,15 +37,16 @@ type BackendRegistry interface {
 // MasterChannel defines a struct which handles the delivery of giving
 // messages to a specific sets of backend channels based on specific criterias.
 type MasterChannel struct {
+	config   *config.Config
 	backends []Channel
 	filters  []Filters
 	registry BackendRegistry
 }
 
 // NewMasterChannel returns a new instance of the MasterChannel.
-func NewMasterChannel(br BackendRegistry, filters ...Filters) *MasterChannel {
+func NewMasterChannel(config *config.Config, filters ...Filters) *MasterChannel {
 	var mc MasterChannel
-	mc.registry = br
+	mc.config = config
 	mc.filters = filters
 
 	return &mc
@@ -58,14 +60,27 @@ func (mc *MasterChannel) UnmarshalConfig(m interface{}) error {
 		return errors.New("Expected to receive a ChannelConfig type")
 	}
 
+	if mc.config.TomlMetadata == nil {
+		return errors.New("MasterChannel requires Toml Metadata for backends")
+	}
+
 	// Generate all filters for the channel's backends
 	for _, backend := range conf.Backends {
-		bl, err := mc.registry.GetBackend(backend)
+
+		// Retrieve backend configuration.
+		bc, ok := mc.config.Backends[backend]
+		if !ok {
+			return fmt.Errorf("Application has no backend named %q", backend)
+		}
+
+		// Attempt to create backend channel for master with the giving
+		// channel's name and config toml.Primitive.
+		newBackend, err := NewBackend(bc.Server, *mc.config.TomlMetadata, bc.Config)
 		if err != nil {
 			return err
 		}
 
-		mc.backends = append(mc.backends, bl)
+		mc.backends = append(mc.backends, newBackend)
 	}
 
 	mc.filters = append(mc.filters, NewRegExpFilter(CategoryFilterFunc, MakeMatchers(conf.Categories...)...))

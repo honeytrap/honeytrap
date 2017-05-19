@@ -21,8 +21,10 @@ import (
 	proxies "github.com/honeytrap/honeytrap/proxies"
 	_ "github.com/honeytrap/honeytrap/proxies/ssh" // TODO: Add comment
 
-	pushers "github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/pushers/message"
+
+	pushers "github.com/honeytrap/honeytrap/pushers"
+	_ "github.com/honeytrap/honeytrap/pushers/backends" // Registers default backend providers.
 
 	utils "github.com/honeytrap/honeytrap/utils"
 

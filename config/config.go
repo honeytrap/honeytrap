@@ -88,15 +88,16 @@ type (
 
 	// Config defines the central type where all configuration is umarhsalled to.
 	Config struct {
-		Token       string         `toml:"token"`
-		Template    string         `toml:"template"`
-		NetFilter   string         `toml:"net_filter"`
-		Keys        string         `toml:"keys"`
-		Director    string         `toml:"director"`
-		Delays      Delays         `toml:"delays"`
-		Folders     Folders        `toml:"folders"`
-		HouseKeeper HouseKeeper    `toml:"housekeeper"`
-		Directors   DirectorConfig `toml:"directors"`
+		Token        string         `toml:"token"`
+		Template     string         `toml:"template"`
+		NetFilter    string         `toml:"net_filter"`
+		Keys         string         `toml:"keys"`
+		Director     string         `toml:"director"`
+		Delays       Delays         `toml:"delays"`
+		Folders      Folders        `toml:"folders"`
+		HouseKeeper  HouseKeeper    `toml:"housekeeper"`
+		Directors    DirectorConfig `toml:"directors"`
+		TomlMetadata *toml.MetaData `toml:"-"`
 
 		Backends map[string]interface{} `toml:"backends"`
 		Channels []ChannelConfig        `toml:"channels"`
@@ -212,9 +213,13 @@ func New() (*Config, error) {
 // Load attempts to load the giving toml configuration file.
 func (c *Config) Load(file string) error {
 	conf := Config{}
-	if _, err := toml.DecodeFile(file, &conf); err != nil {
+
+	meta, err := toml.DecodeFile(file, &conf)
+	if err != nil {
 		return err
 	}
+
+	c.TomlMetadata = &meta
 
 	if err := mergo.MergeWithOverwrite(c, conf); err != nil {
 		return err

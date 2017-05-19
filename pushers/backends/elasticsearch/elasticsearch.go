@@ -3,7 +3,6 @@ package elasticsearch
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"io"
@@ -19,35 +18,29 @@ import (
 
 var log = logging.MustGetLogger("honeytrap:channels:elasticsearch")
 
+// SearchConfig defines a struct which holds configuration values for a SearchChannel.
+type SearchConfig struct {
+	Host string
+}
+
 // SearchChannel defines a struct which provides a channel for delivery
 // push messages to an elasticsearch api.
 type SearchChannel struct {
 	client *http.Client
-	host   string
+	config SearchConfig
 }
 
-// UnmarshalConfig attempts to unmarshal the provided value into the giving
-// ElasticSearchChannel.
-func (hc *SearchChannel) UnmarshalConfig(m interface{}) error {
-	conf, ok := m.(map[string]interface{})
-	if !ok {
-		return errors.New("Expected to receive a map")
-	}
-
-	if hc.client == nil {
-		hc.client = &http.Client{
+// New returns a new instance of a SearchChannel.
+func New(conf SearchConfig) SearchChannel {
+	return SearchChannel{
+		config: conf,
+		client: &http.Client{
 			Transport: &http.Transport{
 				MaxIdleConnsPerHost: 5,
 			},
 			Timeout: time.Duration(20) * time.Second,
-		}
+		},
 	}
-
-	if hc.host, ok = conf["host"].(string); !ok {
-		return fmt.Errorf("Host not set for channel elasticsearch")
-	}
-
-	return nil
 }
 
 // Send delivers the giving push messages into the internal elastic search endpoint.
@@ -66,7 +59,7 @@ func (hc SearchChannel) Send(messages []message.PushMessage) {
 		}
 
 		messageID := uuid.NewV4()
-		req, err := http.NewRequest("PUT", fmt.Sprintf("%s/%s/%s/%s", hc.host, message.Sensor, message.Category, messageID.String()), buf)
+		req, err := http.NewRequest("PUT", fmt.Sprintf("%s/%s/%s/%s", hc.config.Host, message.Sensor, message.Category, messageID.String()), buf)
 		if err != nil {
 			log.Errorf("ElasticSearchChannel: Error while preparing request: %s", err.Error())
 			continue
