@@ -64,14 +64,22 @@ func (mc *MasterChannel) UnmarshalConfig(m interface{}) error {
 	for _, backend := range conf.Backends {
 
 		// Retrieve backend configuration.
-		bc, ok := mc.config.Backends[backend]
+		backendPrimitive, ok := mc.config.Backends[backend]
 		if !ok {
 			return fmt.Errorf("Application has no backend named %q", backend)
 		}
 
+		var item = struct {
+			Backend string `toml:"backend"`
+		}{}
+
+		if err := mc.config.PrimitiveDecode(backendPrimitive, &item); err != nil {
+			return err
+		}
+
 		// Attempt to create backend channel for master with the giving
 		// channel's name and config toml.Primitive.
-		newBackend, err := NewBackend(bc.Backend, mc.config.MetaData, bc.Config)
+		newBackend, err := NewBackend(item.Backend, mc.config.MetaData, backendPrimitive)
 		if err != nil {
 			return err
 		}
