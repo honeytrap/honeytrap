@@ -49,14 +49,7 @@ type ServeFunc func() error
 // New returns a new instance of a Honeytrap struct.
 func New(conf *config.Config) *Honeytrap {
 	pusher := pushers.New(conf)
-
 	pushChannel := pushers.NewProxyPusher(pusher)
-	honeycast := NewHoneycast(conf, &assetfs.AssetFS{
-		Asset:     web.Asset,
-		AssetDir:  web.AssetDir,
-		AssetInfo: web.AssetInfo,
-		Prefix:    web.Prefix,
-	})
 
 	channels := pushers.ChannelStream{pushChannel, honeycast}
 	events := pushers.NewTokenedEventDelivery(conf.Token, channels)
@@ -73,6 +66,13 @@ func New(conf *config.Config) *Honeytrap {
 	default:
 		panic(fmt.Sprintf("Unknown director type: %q", conf.Director))
 	}
+
+	honeycast := NewHoneycast(conf, director, HoneycastAssets(&assetfs.AssetFS{
+		Asset:     web.Asset,
+		AssetDir:  web.AssetDir,
+		AssetInfo: web.AssetInfo,
+		Prefix:    web.Prefix,
+	}))
 
 	return &Honeytrap{
 		config:    conf,
@@ -123,9 +123,8 @@ func (hc *Honeytrap) startProxies() {
 				log.Errorf("Error in service: %s: %s", st.Service, err.Error())
 
 				hc.events.Deliver(message.Event{
-					Sensor:   st.Service,
-					Category: "Services",
-					Type:     message.ServiceStarted,
+					Sensor: st.Service,
+					Type:   message.ServiceStarted,
 					Details: map[string]interface{}{
 						"primitive": primitive,
 						"error":     err.Error(),
@@ -136,9 +135,8 @@ func (hc *Honeytrap) startProxies() {
 			}
 
 			hc.events.Deliver(message.Event{
-				Sensor:   st.Service,
-				Category: "Services",
-				Type:     message.ServiceStarted,
+				Sensor: st.Service,
+				Type:   message.ServiceStarted,
 				Details: map[string]interface{}{
 					"primitive": primitive,
 				},

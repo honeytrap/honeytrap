@@ -95,6 +95,20 @@ type LxcContainer struct {
 	gscripts  process.SyncScripts
 }
 
+// Detail returns the ContainerDetail related to this giving container.
+func (c *LxcContainer) Detail() director.ContainerDetail {
+	return director.ContainerDetail{
+		Name:          c.name,
+		ContainerAddr: c.ip,
+		Meta: map[string]interface{}{
+			"template": c.template,
+			"idle":     c.idle,
+			"driver":   "lxc",
+			"idevice":  c.idevice,
+		},
+	}
+}
+
 // clone attempts to clone the underline lxc.Container.
 func (c *LxcContainer) clone() error {
 	log.Debugf("Creating new container %s from template %s", c.name, c.config.Template)
