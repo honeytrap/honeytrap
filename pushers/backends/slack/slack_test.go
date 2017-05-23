@@ -9,8 +9,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/pushers/backends/slack"
 	"github.com/honeytrap/honeytrap/pushers/message"
+	"github.com/honeytrap/tests"
 )
 
 const (
@@ -138,4 +140,39 @@ func TestSlackPusher(t *testing.T) {
 			t.Logf("\t%s\t Should have successfully retrieved 4 fields.", passed)
 		}
 	}
+}
+
+func TestSlackGenerator(t *testing.T) {
+	tomlConfig := `
+	backend = "slack"
+	host = "https://hooks.slack.com/services/"
+	token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"`
+
+	var config toml.Primitive
+
+	meta, err := toml.Decode(tomlConfig, &config)
+	if err != nil {
+		tests.Failed("Should have successfully parsed toml config: %+q", err)
+	}
+	tests.Passed("Should have successfully parsed toml config.")
+
+	var backend = struct {
+		Backend string `toml:"backend"`
+	}{}
+
+	if err := meta.PrimitiveDecode(config, &backend); err != nil {
+		tests.Failed("Should have successfully parsed backend name.")
+	}
+	tests.Passed("Should have successfully parsed backend name.")
+
+	if backend.Backend != "slack" {
+		tests.Failed("Should have properly unmarshalled value of config.Backend.")
+	}
+	tests.Passed("Should have properly unmarshalled value of config.Backend.")
+
+	if _, err := slack.NewWith(meta, config); err != nil {
+		tests.Failed("Should have successfully created new  backend: %+q.", err)
+	}
+	tests.Passed("Should have successfully created new  backend.")
+
 }

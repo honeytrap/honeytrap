@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"io/ioutil"
 	"testing"
-	"time"
 
+	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/pushers/backends/fschannel"
 	"github.com/honeytrap/honeytrap/pushers/message"
+	"github.com/honeytrap/tests"
 )
 
 const (
@@ -52,9 +53,9 @@ func TestFileChannel(t *testing.T) {
 		{
 
 			fc := fschannel.New(fschannel.FileConfig{
-				MaxSize:         5,
-				Timeout:         4 * time.Second,
-				DestinationFile: tmpFile,
+				MaxSize: 5,
+				Timeout: "40s",
+				File:    tmpFile,
 			})
 
 			fc.Send([]message.PushMessage{blueChip, crum, ping})
@@ -73,4 +74,38 @@ func TestFileChannel(t *testing.T) {
 			t.Logf("\t%s\t Should have successfully match content length in %s to %d", passed, tmpFile, 3)
 		}
 	}
+}
+
+func TestFileGenerator(t *testing.T) {
+	tomlConfig := `
+	file = "/store/files/pushers.pub"
+	ms = "50s"
+	max_size = 3000`
+
+	var config toml.Primitive
+
+	meta, err := toml.Decode(tomlConfig, &config)
+	if err != nil {
+		tests.Failed("Should have successfully parsed toml config: %+q", err)
+	}
+	tests.Passed("Should have successfully parsed toml config.")
+
+	var backend = struct {
+		Backend string `toml:"backend"`
+	}{}
+
+	if err := meta.PrimitiveDecode(config, &backend); err != nil {
+		tests.Failed("Should have successfully parsed backend name.")
+	}
+	tests.Passed("Should have successfully parsed backend name.")
+
+	if backend.Backend != "file" {
+		tests.Failed("Should have properly unmarshalled value of config.Backend.")
+	}
+	tests.Passed("Should have properly unmarshalled value of config.Backend.")
+
+	if _, err := fschannel.NewWith(meta, config); err != nil {
+		tests.Failed("Should have successfully created new  backend:: %+q.", err)
+	}
+	tests.Passed("Should have successfully created new  backend.")
 }

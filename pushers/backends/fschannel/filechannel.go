@@ -10,19 +10,25 @@ import (
 	"sync"
 	"time"
 
+	"github.com/BurntSushi/toml"
+	"github.com/honeytrap/honeytrap/config"
+	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/pushers/message"
 	"github.com/op/go-logging"
 )
 
-var crtlline = []byte("\r\n")
-
-var log = logging.MustGetLogger("honeytrap:channels:filechannel")
+var (
+	defaultMaxSize  = 1024 * 1024 * 1024
+	defaultWaitTime = 5 * time.Second
+	crtlline        = []byte("\r\n")
+	log             = logging.MustGetLogger("honeytrap:channels:filechannel")
+)
 
 // FileConfig defines the config used to setup the FileChannel.
 type FileConfig struct {
-	MaxSize         int
-	DestinationFile string
-	Timeout         time.Duration
+	MaxSize int    `toml:"maxsize"`
+	File    string `toml:"file"`
+	Timeout string `toml:"timeout"`
 }
 
 // FileChannel defines a struct which implements the pushers.Pusher interface
@@ -34,18 +40,41 @@ type FileConfig struct {
 // also the old file will be renamed with the current timestamp and a new file created.
 type FileChannel struct {
 	config  FileConfig
+	timeout time.Duration
 	dest    *os.File
 	request chan message.PushMessage
 	wg      sync.WaitGroup
 }
 
 // New returns a new instance of a FileChannel.
-func New(config FileConfig) *FileChannel {
+func New(c FileConfig) *FileChannel {
 	var fc FileChannel
-	fc.config = config
+	fc.config = c
 	fc.request = make(chan message.PushMessage)
+	fc.timeout = config.MakeDuration(c.Timeout, int(defaultWaitTime))
 
 	return &fc
+}
+
+// NewWith defines a function to return a pushers.Channel which delivers
+// new messages to a giving underline system file, defined by the configuration
+// retrieved from the giving toml.Primitive.
+func NewWith(meta toml.MetaData, data toml.Primitive) (pushers.Channel, error) {
+	var apiconfig FileConfig
+
+	if err := meta.PrimitiveDecode(data, &apiconfig); err != nil {
+		return nil, err
+	}
+
+	if apiconfig.File == "" {
+		return nil, errors.New("fschannel.FileConfig Invalid: File can not be empty")
+	}
+
+	return New(apiconfig), nil
+}
+
+func init() {
+	pushers.RegisterBackend("file", NewWith)
 }
 
 // Wait calls the internal waiter.
@@ -82,7 +111,7 @@ func (f *FileChannel) syncWrites() error {
 
 	var err error
 
-	f.dest, err = newFile(f.config.DestinationFile, f.config.MaxSize)
+	f.dest, err = newFile(f.config.File, f.config.MaxSize)
 	if err != nil {
 		log.Info("FileChannel.syncWrites : Completed : Failed create destination file")
 		return err
@@ -99,7 +128,7 @@ func (f *FileChannel) syncWrites() error {
 func (f *FileChannel) syncLoop() {
 	defer f.wg.Done()
 
-	ticker := time.NewTimer(f.config.Timeout)
+	ticker := time.NewTimer(f.timeout)
 	var buf bytes.Buffer
 
 	{

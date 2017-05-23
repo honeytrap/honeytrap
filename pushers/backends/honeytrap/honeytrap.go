@@ -1,10 +1,13 @@
 package honeytrap
 
 import (
+	"errors"
 	"io"
 	"io/ioutil"
 	"net/http"
 
+	"github.com/BurntSushi/toml"
+	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/pushers/api"
 
 	"github.com/honeytrap/honeytrap/pushers/message"
@@ -33,6 +36,31 @@ func New(config TrapConfig) TrapChannel {
 			Token: config.Token,
 		}),
 	}
+}
+
+// NewWith defines a function to return a pushers.Channel which delivers
+// new messages to a giving underline honeytrap API defined by the configuration
+// retrieved from the giving toml.Primitive.
+func NewWith(meta toml.MetaData, data toml.Primitive) (pushers.Channel, error) {
+	var apiconfig TrapConfig
+
+	if err := meta.PrimitiveDecode(data, &apiconfig); err != nil {
+		return nil, err
+	}
+
+	if apiconfig.Host == "" {
+		return nil, errors.New("honeytrap.TrapConfig Invalid: Host can not be empty")
+	}
+
+	if apiconfig.Token == "" {
+		return nil, errors.New("honeytrap.TrapConfig Invalid: Token can not be empty")
+	}
+
+	return New(apiconfig), nil
+}
+
+func init() {
+	pushers.RegisterBackend("honeytrap", NewWith)
 }
 
 // Send delivers all messages to the underline connection.
