@@ -107,7 +107,7 @@ func runLS(c *cli.Context) {
 		Commands: []process.Command{
 			{
 				Name:  "honeytrap-ls",
-				Level: process.RedAlert,
+				Level: process.SilentKill,
 				Args: append([]string{
 					"--config", configFile,
 				}, extras...),
@@ -132,7 +132,7 @@ func runServer(c *cli.Context) {
 		Commands: []process.Command{
 			{
 				Name:  "honeytrap-serve",
-				Level: process.RedAlert,
+				Level: process.SilentKill,
 				Args: []string{
 					"--config", configFile,
 					"--profiler", fmt.Sprintf("%t", profilerEnabled),
