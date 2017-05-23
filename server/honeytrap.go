@@ -54,9 +54,8 @@ func New(conf *config.Config) *Honeytrap {
 	pusher := pushers.New(conf)
 	pushChannel := pushers.NewProxyPusher(pusher)
 
-	var honeycast *Honeycast
-
-	channels := pushers.ChannelStream{pushChannel, honeycast}
+	bus := pushers.NewEventBus()
+	channels := pushers.ChannelStream{pushChannel, bus}
 	events := pushers.NewTokenedEventDelivery(conf.Token, channels)
 
 	var director director.Director
@@ -72,12 +71,14 @@ func New(conf *config.Config) *Honeytrap {
 		panic(fmt.Sprintf("Unknown director type: %q", conf.Director))
 	}
 
-	honeycast = NewHoneycast(conf, director, HoneycastAssets(&assetfs.AssetFS{
+	honeycast := NewHoneycast(conf, director, HoneycastAssets(&assetfs.AssetFS{
 		Asset:     web.Asset,
 		AssetDir:  web.AssetDir,
 		AssetInfo: web.AssetInfo,
 		Prefix:    web.Prefix,
 	}))
+
+	bus.Subscribe(honeycast)
 
 	return &Honeytrap{
 		config:    conf,
