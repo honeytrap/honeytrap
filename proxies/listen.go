@@ -1,6 +1,7 @@
 package proxies
 
 import (
+	"context"
 	"net"
 
 	"github.com/honeytrap/honeytrap/director"
@@ -70,7 +71,10 @@ func (lw *ProxyListener) Accept() (c net.Conn, err error) {
 	// log.Debugf("Connecting to container port: %s", port)
 
 	var c2 net.Conn
-	c2, err = container.Dial()
+
+	// TODO(alex): Decide if changing the signature makes sense and if it does, shouldn't
+	// there therefore be a time-stamp added to use the deadline capability of context?
+	c2, err = container.Dial(context.Background())
 	if err != nil {
 		lw.events.Deliver(EventConnectionError(c.RemoteAddr(), c.LocalAddr(), "ProxyConn", nil, map[string]interface{}{
 			"error": err,

@@ -2,7 +2,9 @@ package pushers
 
 import (
 	"errors"
+	"fmt"
 
+	"github.com/honeytrap/honeytrap/config"
 	"github.com/honeytrap/honeytrap/pushers/message"
 	logging "github.com/op/go-logging"
 )
@@ -35,15 +37,16 @@ type BackendRegistry interface {
 // MasterChannel defines a struct which handles the delivery of giving
 // messages to a specific sets of backend channels based on specific criterias.
 type MasterChannel struct {
+	config   *config.Config
 	backends []Channel
 	filters  []Filters
 	registry BackendRegistry
 }
 
 // NewMasterChannel returns a new instance of the MasterChannel.
-func NewMasterChannel(br BackendRegistry, filters ...Filters) *MasterChannel {
+func NewMasterChannel(config *config.Config, filters ...Filters) *MasterChannel {
 	var mc MasterChannel
-	mc.registry = br
+	mc.config = config
 	mc.filters = filters
 
 	return &mc
@@ -52,46 +55,41 @@ func NewMasterChannel(br BackendRegistry, filters ...Filters) *MasterChannel {
 // UnmarshalConfig attempts to unmarshal the provided value into the target
 // MasterChannel.
 func (mc *MasterChannel) UnmarshalConfig(m interface{}) error {
-	conf, ok := m.(map[string]interface{})
+	conf, ok := m.(config.ChannelConfig)
 	if !ok {
-		return errors.New("Expected to receive a map")
-	}
-
-	backends, ok := conf["backends"].([]string)
-	if !ok {
-		return errors.New("Expected to have 'backends' key in map")
+		return errors.New("Expected to receive a ChannelConfig type")
 	}
 
 	// Generate all filters for the channel's backends
-	for _, backend := range backends {
-		bl, err := mc.registry.GetBackend(backend)
+	for _, backend := range conf.Backends {
+
+		// Retrieve backend configuration.
+		backendPrimitive, ok := mc.config.Backends[backend]
+		if !ok {
+			return fmt.Errorf("Application has no backend named %q", backend)
+		}
+
+		var item = struct {
+			Backend string `toml:"backend"`
+		}{}
+
+		if err := mc.config.PrimitiveDecode(backendPrimitive, &item); err != nil {
+			return err
+		}
+
+		// Attempt to create backend channel for master with the giving
+		// channel's name and config toml.Primitive.
+		newBackend, err := NewBackend(item.Backend, mc.config.MetaData, backendPrimitive)
 		if err != nil {
 			return err
 		}
 
-		mc.backends = append(mc.backends, bl)
+		mc.backends = append(mc.backends, newBackend)
 	}
 
-	categories, ok := conf["categories"].([]string)
-	if !ok {
-		return errors.New("Expected to have 'categories' key in map")
-	}
-
-	mc.filters = append(mc.filters, NewRegExpFilter(CategoryFilterFunc, MakeMatchers(categories...)...))
-
-	sensors, ok := conf["sensors"].([]string)
-	if !ok {
-		return errors.New("Expected to have 'sensors' key in map")
-	}
-
-	mc.filters = append(mc.filters, NewRegExpFilter(SensorFilterFunc, MakeMatchers(sensors...)...))
-
-	events, ok := conf["events"].([]string)
-	if !ok {
-		return errors.New("Expected to have 'events' key in map")
-	}
-
-	mc.filters = append(mc.filters, NewRegExpFilter(EventFilterFunc, MakeMatchers(events...)...))
+	mc.filters = append(mc.filters, NewRegExpFilter(CategoryFilterFunc, MakeMatchers(conf.Categories...)...))
+	mc.filters = append(mc.filters, NewRegExpFilter(SensorFilterFunc, MakeMatchers(conf.Sensors...)...))
+	mc.filters = append(mc.filters, NewRegExpFilter(EventFilterFunc, MakeMatchers(conf.Events...)...))
 
 	return nil
 }

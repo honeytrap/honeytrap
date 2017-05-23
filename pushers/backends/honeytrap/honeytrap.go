@@ -2,12 +2,13 @@ package honeytrap
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
 
-	api "github.com/honeytrap/honeytrap/pushers/api"
+	"github.com/BurntSushi/toml"
+	"github.com/honeytrap/honeytrap/pushers"
+	"github.com/honeytrap/honeytrap/pushers/api"
 
 	"github.com/honeytrap/honeytrap/pushers/message"
 	"github.com/op/go-logging"
@@ -15,34 +16,51 @@ import (
 
 var log = logging.MustGetLogger("honeytrap:channels:honeytrap")
 
+// TrapConfig defines the configuration used to setup a TrapChannel.
+type TrapConfig struct {
+	Host  string `toml:"host"`
+	Token string `toml:"token"`
+}
+
 // TrapChannel defines a struct which implmenets the pushers.Channel
 // interface for delivery honeytrap special messages.
 type TrapChannel struct {
 	client *api.Client
 }
 
-// UnmarshalConfig attempts to unmarshal the provided value into the giving
-// HoneytrapChannel.
-func (hc *TrapChannel) UnmarshalConfig(m interface{}) error {
-	conf, ok := m.(map[string]interface{})
-	if !ok {
-		return errors.New("Expected to receive a map")
+// New returns a new instance of a TrapChannel.
+func New(config TrapConfig) TrapChannel {
+	return TrapChannel{
+		client: api.New(&api.Config{
+			Url:   config.Host,
+			Token: config.Token,
+		}),
+	}
+}
+
+// NewWith defines a function to return a pushers.Channel which delivers
+// new messages to a giving underline honeytrap API defined by the configuration
+// retrieved from the giving toml.Primitive.
+func NewWith(meta toml.MetaData, data toml.Primitive) (pushers.Channel, error) {
+	var apiconfig TrapConfig
+
+	if err := meta.PrimitiveDecode(data, &apiconfig); err != nil {
+		return nil, err
 	}
 
-	if _, ok := conf["host"]; !ok {
-		return fmt.Errorf("Host not set for channel honeytrap")
+	if apiconfig.Host == "" {
+		return nil, errors.New("honeytrap.TrapConfig Invalid: Host can not be empty")
 	}
 
-	if _, ok := conf["token"]; !ok {
-		return fmt.Errorf("Token not set for channel honeytrap")
+	if apiconfig.Token == "" {
+		return nil, errors.New("honeytrap.TrapConfig Invalid: Token can not be empty")
 	}
 
-	hc.client = api.New(&api.Config{
-		Url:   conf["host"].(string),
-		Token: conf["token"].(string),
-	})
+	return New(apiconfig), nil
+}
 
-	return nil
+func init() {
+	pushers.RegisterBackend("honeytrap", NewWith)
 }
 
 // Send delivers all messages to the underline connection.

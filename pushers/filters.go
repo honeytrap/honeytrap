@@ -66,6 +66,10 @@ func NewRegExpFilter(fn RegExpFilterFunction, rx ...*regexp.Regexp) *RegExpFilte
 // Filter returns a slice of messages passed in which passes the internal regular
 // expressions criterias.
 func (r *RegExpFilter) Filter(messages ...message.PushMessage) []message.PushMessage {
+	if r.conditions == nil || len(r.conditions) == 0 {
+		return messages
+	}
+
 	var filtered []message.PushMessage
 
 	{

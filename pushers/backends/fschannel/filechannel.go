@@ -7,20 +7,29 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"regexp"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/config"
+	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/pushers/message"
 	"github.com/op/go-logging"
 )
 
-var crtlline = []byte("\r\n")
-var defaultMaxSize = 1024 * 1024 * 1024
-var defaultWaitTime = 5 * time.Second
-var log = logging.MustGetLogger("honeytrap:channels:elasticsearch")
+var (
+	defaultMaxSize  = 1024 * 1024 * 1024
+	defaultWaitTime = 5 * time.Second
+	crtlline        = []byte("\r\n")
+	log             = logging.MustGetLogger("honeytrap:channels:filechannel")
+)
+
+// FileConfig defines the config used to setup the FileChannel.
+type FileConfig struct {
+	MaxSize int    `toml:"maxsize"`
+	File    string `toml:"file"`
+	Timeout string `toml:"timeout"`
+}
 
 // FileChannel defines a struct which implements the pushers.Pusher interface
 // and allows us to write PushMessage updates into a giving file path. Mainly for
@@ -30,24 +39,42 @@ var log = logging.MustGetLogger("honeytrap:channels:elasticsearch")
 // there exists a max size set in configuration, then that will be used instead,
 // also the old file will be renamed with the current timestamp and a new file created.
 type FileChannel struct {
-	maxSize  int
-	destFile string
-	dest     *os.File
-	ms       time.Duration
-	filters  map[string]*regexp.Regexp
-	request  chan message.PushMessage
-	wg       sync.WaitGroup
+	config  FileConfig
+	timeout time.Duration
+	dest    *os.File
+	request chan message.PushMessage
+	wg      sync.WaitGroup
 }
 
 // New returns a new instance of a FileChannel.
-func New() *FileChannel {
+func New(c FileConfig) *FileChannel {
 	var fc FileChannel
-	fc.ms = defaultWaitTime
-	fc.maxSize = defaultMaxSize
+	fc.config = c
 	fc.request = make(chan message.PushMessage)
-	fc.filters = make(map[string]*regexp.Regexp, 0)
+	fc.timeout = config.MakeDuration(c.Timeout, int(defaultWaitTime))
 
 	return &fc
+}
+
+// NewWith defines a function to return a pushers.Channel which delivers
+// new messages to a giving underline system file, defined by the configuration
+// retrieved from the giving toml.Primitive.
+func NewWith(meta toml.MetaData, data toml.Primitive) (pushers.Channel, error) {
+	var apiconfig FileConfig
+
+	if err := meta.PrimitiveDecode(data, &apiconfig); err != nil {
+		return nil, err
+	}
+
+	if apiconfig.File == "" {
+		return nil, errors.New("fschannel.FileConfig Invalid: File can not be empty")
+	}
+
+	return New(apiconfig), nil
+}
+
+func init() {
+	pushers.RegisterBackend("file", NewWith)
 }
 
 // Wait calls the internal waiter.
@@ -65,70 +92,8 @@ func (f *FileChannel) Send(messages []message.PushMessage) {
 		return
 	}
 
-	for _, message := range messages {
-		if matcher, ok := f.filters["sensor"]; ok && !matcher.MatchString(message.Sensor) {
-			continue
-		}
-
-		if matcher, ok := f.filters["category"]; ok && !matcher.MatchString(message.Category) {
-			continue
-		}
-
-		if matcher, ok := f.filters["session_id"]; ok && !matcher.MatchString(message.SessionID) {
-			continue
-		}
-
-		if matcher, ok := f.filters["container_id"]; ok && !matcher.MatchString(message.ContainerID) {
-			continue
-		}
-
-		f.request <- message
-	}
-
 	// Close channel.
 	close(f.request)
-}
-
-// UnmarshalConfig takes a provide configuration map type and sets the
-// underline configuration for the giving file channel.
-func (f *FileChannel) UnmarshalConfig(c interface{}) error {
-	conf, ok := c.(map[string]interface{})
-	if !ok {
-		return errors.New("Invalid configuration type, expected a map")
-	}
-
-	targetFile, ok := conf["file"].(string)
-	if !ok {
-		return errors.New("Expected 'file' key for target file path")
-	}
-
-	if strings.TrimSpace(targetFile) == "" {
-		return errors.New("Expected 'file' value not to be empty")
-	}
-
-	if filters, ok := conf["filters"].(map[string]interface{}); ok {
-		for name, val := range filters {
-			name = strings.ToLower(name)
-			switch rVal := val.(type) {
-			case *regexp.Regexp:
-				f.filters[name] = rVal
-			case string:
-				f.filters[name] = regexp.MustCompile(rVal)
-			}
-		}
-	}
-
-	if waitMS, ok := conf["ms"].(string); ok {
-		f.ms = config.MakeDuration(waitMS, int(defaultWaitTime))
-	}
-
-	if mxSize, ok := conf["max_size"].(string); ok {
-		f.maxSize = config.ConvertToInt(mxSize, defaultMaxSize)
-	}
-
-	f.destFile = targetFile
-
-	return nil
 }
 
 // syncWrites startups the channel procedure to listen for new writes to giving file.
@@ -146,7 +111,7 @@ func (f *FileChannel) syncWrites() error {
 
 	var err error
 
-	f.dest, err = newFile(f.destFile, f.maxSize)
+	f.dest, err = newFile(f.config.File, f.config.MaxSize)
 	if err != nil {
 		log.Info("FileChannel.syncWrites : Completed : Failed create destination file")
 		return err
@@ -163,7 +128,7 @@ func (f *FileChannel) syncWrites() error {
 func (f *FileChannel) syncLoop() {
 	defer f.wg.Done()
 
-	ticker := time.NewTimer(f.ms)
+	ticker := time.NewTimer(f.timeout)
 	var buf bytes.Buffer
 
 	{

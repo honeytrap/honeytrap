@@ -1,19 +1,14 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
-
-	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/fatih/color"
-	"github.com/honeytrap/honeytrap/config"
-	"github.com/honeytrap/honeytrap/server"
+	"github.com/honeytrap/honeytrap/process"
 	"github.com/minio/cli"
 	"github.com/op/go-logging"
-	"github.com/pkg/profile"
 )
 
 // Version defines the version number for the cli.
@@ -40,7 +35,7 @@ VERSION:
 
 var log = logging.MustGetLogger("honeytrap/cmd")
 
-var globalFlags = []cli.Flag{
+var serveFlags = []cli.Flag{
 	cli.StringFlag{
 		Name:  "c,config",
 		Usage: "config file",
@@ -67,55 +62,32 @@ func VersionAction(c *cli.Context) {
 	fmt.Println(color.YellowString(fmt.Sprintf("Honeytrap: The ultimate honeypot framework.")))
 }
 
-func serve(c *cli.Context) {
-	conf, err := config.New()
-	if err != nil {
-		fmt.Fprintf(os.Stdout, err.Error())
+func runServer(c *cli.Context) {
+	configFile := c.String("config")
+	profilerEnabled := c.GlobalBool("profiler")
+	cpuProfileFile := c.GlobalBool("cpu-profile")
+	memProfileFile := c.GlobalBool("mem-profile")
+
+	serverCmd := process.SyncProcess{
+		Commands: []process.Command{
+			{
+				Name:  "honeytrap-serve",
+				Level: process.RedAlert,
+				Args: []string{
+					"--config", configFile,
+					"--profiler", fmt.Sprintf("%t", profilerEnabled),
+					"--cpu-profile", fmt.Sprintf("%t", cpuProfileFile),
+					"--mem-profile", fmt.Sprintf("%t", memProfileFile),
+				},
+			},
+		},
+	}
+
+	if err := serverCmd.Exec(context.Background(), os.Stdout, os.Stderr); err != nil {
+		fmt.Printf("Error occured: %+q", err)
 		return
 	}
 
-	configFile := c.GlobalString("config")
-	if err := conf.Load(configFile); err != nil {
-		fmt.Fprintf(os.Stdout, err.Error())
-		return
-	}
-
-	var profiler interface {
-		Stop()
-	}
-
-	if c.GlobalBool("cpu-profile") {
-		log.Info("CPU profiler started.")
-		profiler = profile.Start(profile.CPUProfile, profile.ProfilePath("."), profile.NoShutdownHook)
-	} else if c.GlobalBool("mem-profile") {
-		log.Info("Memory profiler started.")
-		profiler = profile.Start(profile.MemProfile, profile.ProfilePath("."), profile.NoShutdownHook)
-	}
-
-	if c.GlobalBool("profiler") {
-		log.Info("Profiler listening.")
-
-		go func() {
-			http.ListenAndServe(":6060", nil)
-		}()
-	}
-
-	var server = server.New(conf)
-	server.Serve()
-
-	s := make(chan os.Signal, 1)
-	signal.Notify(s, os.Interrupt)
-	signal.Notify(s, syscall.SIGTERM)
-
-	<-s
-
-	if profiler != nil {
-		profiler.Stop()
-	}
-
-	log.Info("Stopping honeytrap....")
-
-	os.Exit(0)
 }
 
 // New returns a new instance of the Cmd struct.
@@ -125,20 +97,22 @@ func New() *Cmd {
 	app.Author = ""
 	app.Usage = "honeytrap"
 	app.Description = `The ultimate honeypot framework.`
-	app.Flags = globalFlags
 	app.CustomAppHelpTemplate = helpTemplate
 	app.Commands = []cli.Command{
 		{
 			Name:   "version",
 			Action: VersionAction,
 		},
+		{
+			Name:   "serve",
+			Action: runServer,
+			Flags:  serveFlags,
+		},
 	}
 
 	app.Before = func(c *cli.Context) error {
 		return nil
 	}
-
-	app.Action = serve
 
 	return &Cmd{
 		App: app,
