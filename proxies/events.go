@@ -6,49 +6,174 @@ import (
 	"github.com/honeytrap/honeytrap/pushers/message"
 )
 
-// ConnectionEvent defines a function to return an event object for related
-// connection events.
-func ConnectionEvent(host, local net.Addr, ev message.EventType, sensor string, data interface{}, dt map[string]interface{}) message.Event {
+// ServiceStartedEvent returns a connection open event object giving the associated data values.
+func ServiceStartedEvent(addr net.Addr, data interface{}, meta map[string]interface{}) message.Event {
 	return message.Event{
-		Sensor:    sensor,
-		Category:  "Connections",
-		Type:      ev,
 		Data:      data,
-		HostAddr:  host.String(),
-		LocalAddr: local.String(),
-		Details:   dt,
+		Details:   meta,
+		Sensor:    message.ServiceSensor,
+		Type:      message.ServiceStarted,
+		HostAddr:  addr.String(),
+		LocalAddr: addr.String(),
+	}
+}
+
+// ServiceEndedEvent returns a connection open event object giving the associated data values.
+func ServiceEndedEvent(addr net.Addr, data interface{}, meta map[string]interface{}) message.Event {
+	return message.Event{
+		Data:      data,
+		Details:   meta,
+		Sensor:    message.ServiceSensor,
+		Type:      message.ServiceStarted,
+		HostAddr:  addr.String(),
+		LocalAddr: addr.String(),
+	}
+}
+
+// UserSessionClosedEvent returns a connection open event object giving the associated data values.
+func UserSessionClosedEvent(c net.Conn, data interface{}) message.Event {
+	return message.Event{
+		Data:      data,
+		Sensor:    message.SessionSensor,
+		Type:      message.UserSessionOpened,
+		HostAddr:  c.RemoteAddr().String(),
+		LocalAddr: c.LocalAddr().String(),
+	}
+}
+
+// UserSessionOpenedEvent returns a connection open event object giving the associated data values.
+func UserSessionOpenedEvent(c net.Conn, data interface{}, meta map[string]interface{}) message.Event {
+	return message.Event{
+		Data:      data,
+		Sensor:    message.SessionSensor,
+		Type:      message.UserSessionClosed,
+		HostAddr:  c.RemoteAddr().String(),
+		LocalAddr: c.LocalAddr().String(),
+		Details:   meta,
+	}
+}
+
+// ConnectionOpenedEvent returns a connection open event object giving the associated data values.
+func ConnectionOpenedEvent(c net.Conn) message.Event {
+	return message.Event{
+		Sensor:    message.ConnectionSensor,
+		Type:      message.ConnectionOpened,
+		HostAddr:  c.RemoteAddr().String(),
+		LocalAddr: c.LocalAddr().String(),
+	}
+}
+
+// ConnectionClosedEvent returns a connection open event object giving the associated data values.
+func ConnectionClosedEvent(c net.Conn) message.Event {
+	return message.Event{
+		Sensor:    message.ConnectionSensor,
+		Type:      message.ConnectionClosed,
+		HostAddr:  c.RemoteAddr().String(),
+		LocalAddr: c.LocalAddr().String(),
+	}
+}
+
+// ConnectionWriteErrorEvent returns a connection open event object giving the associated data values.
+func ConnectionWriteErrorEvent(c net.Conn, data error) message.Event {
+	return message.Event{
+		Data:      data,
+		Sensor:    message.ConnectionErrorSensor,
+		Type:      message.ConnectionWriteError,
+		HostAddr:  c.RemoteAddr().String(),
+		LocalAddr: c.LocalAddr().String(),
+	}
+}
+
+// ConnectionReadErrorEvent returns a connection open event object giving the associated data values.
+func ConnectionReadErrorEvent(c net.Conn, data error) message.Event {
+	return message.Event{
+		Data:      data,
+		Sensor:    message.ConnectionErrorSensor,
+		Type:      message.ConnectionReadError,
+		HostAddr:  c.RemoteAddr().String(),
+		LocalAddr: c.LocalAddr().String(),
+	}
+}
+
+// ListenerClosedEvent returns a connection open event object giving the associated data values.
+func ListenerClosedEvent(c net.Listener) message.Event {
+	return message.Event{
+		Sensor:    message.ConnectionSensor,
+		Type:      message.ConnectionClosed,
+		HostAddr:  c.Addr().String(),
+		LocalAddr: c.Addr().String(),
+	}
+}
+
+// ListenerOpenedEvent returns a connection open event object giving the associated data values.
+func ListenerOpenedEvent(c net.Listener, data interface{}, meta map[string]interface{}) message.Event {
+	return message.Event{
+		Data:      data,
+		Sensor:    message.ConnectionSensor,
+		Type:      message.ConnectionOpened,
+		HostAddr:  c.Addr().String(),
+		LocalAddr: c.Addr().String(),
+		Details:   meta,
 	}
 }
 
 // AgentRequestEvent defines a function which returns a event object for a
 // request connection.
-func AgentRequestEvent(host, local net.Addr, sensor string, session string, data interface{}, detail map[string]interface{}) message.Event {
+func AgentRequestEvent(addr net.Addr, session string, data interface{}, detail map[string]interface{}) message.Event {
 	return message.Event{
 		Data:      data,
 		SessionID: session,
-		Sensor:    sensor,
-		Category:  "agent-request",
-		Type:      message.Ping,
-		HostAddr:  host.String(),
-		LocalAddr: local.String(),
+		Sensor:    message.DataSensor,
+		Type:      message.DataRequest,
+		HostAddr:  addr.String(),
+		LocalAddr: addr.String(),
 		Details:   detail,
 	}
 }
 
-// EventConnectionError defines a function which returns a event object for a
-// error occurence with a connection.
-func EventConnectionError(ip, local net.Addr, sensor string, data error, dt map[string]interface{}) message.Event {
-	return ConnectionEvent(ip, local, message.ConnectionError, sensor, data, dt)
+// DataRequest returns a connection open event object giving the associated data values.
+func DataRequest(c net.Conn, data interface{}, detail map[string]interface{}) message.Event {
+	return message.Event{
+		Data:      data,
+		Details:   detail,
+		Sensor:    message.DataSensor,
+		Type:      message.DataRequest,
+		HostAddr:  c.RemoteAddr().String(),
+		LocalAddr: c.LocalAddr().String(),
+	}
 }
 
-// EventConnectionClosed defines a function which returns a event object for a
-// closed connection.
-func EventConnectionClosed(ip, local net.Addr, sensor string, data interface{}, detail map[string]interface{}) message.Event {
-	return ConnectionEvent(ip, local, message.ConnectionClosed, sensor, data, detail)
+// DataReadEvent returns a connection open event object giving the associated data values.
+func DataReadEvent(c net.Conn, data interface{}, detail map[string]interface{}) message.Event {
+	return message.Event{
+		Data:      data,
+		Details:   detail,
+		Sensor:    message.DataSensor,
+		Type:      message.DataRead,
+		HostAddr:  c.RemoteAddr().String(),
+		LocalAddr: c.LocalAddr().String(),
+	}
 }
 
-// EventConnectionOpened defines a function which returns a event object for a
-// closed connection.
-func EventConnectionOpened(ip, local net.Addr, sensor string, data interface{}, detail map[string]interface{}) message.Event {
-	return ConnectionEvent(ip, local, message.ConnectionStarted, sensor, data, detail)
+// DataWriteEvent returns a connection open event object giving the associated data values.
+func DataWriteEvent(c net.Conn, data interface{}, detail map[string]interface{}) message.Event {
+	return message.Event{
+		Data:      data,
+		Details:   detail,
+		Sensor:    message.DataSensor,
+		Type:      message.DataWrite,
+		HostAddr:  c.RemoteAddr().String(),
+		LocalAddr: c.LocalAddr().String(),
+	}
+}
+
+// PingEvent returns a connection open event object giving the associated data values.
+func PingEvent(c net.Conn, data interface{}) message.Event {
+	return message.Event{
+		Data:      data,
+		Sensor:    message.PingSensor,
+		Type:      message.PingEvent,
+		HostAddr:  c.RemoteAddr().String(),
+		LocalAddr: c.LocalAddr().String(),
+	}
 }

@@ -76,7 +76,7 @@ func (d *EventDelivery) Deliver(ev message.Event) {
 		{
 			Event:       true,
 			Sensor:      ev.Sensor,
-			Category:    ev.Category,
+			Category:    string(ev.Type),
 			SessionID:   ev.SessionID,
 			ContainerID: ev.ContainerID,
 			Data:        ev,

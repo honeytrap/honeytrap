@@ -20,68 +20,71 @@ type PushMessage struct {
 
 //====================================================================================
 
-// EventType defines a int type for all event types available.
-type EventType int
+// EventType defines a string type for all event types available.
+type EventType string
 
 // contains different sets of possible events type.
 const (
-	// Process based events.
-	ProcessBegin = iota + 1
-	ProcessEnd
+	PingEvent            EventType = "PING"
+	DataRequest          EventType = "DATA:REQUEST"
+	DataRead             EventType = "DATA:READ"
+	DataWrite            EventType = "DATA:WRITE"
+	ServiceEnded         EventType = "SERVICE:ENDED"
+	ServiceStarted       EventType = "SERVICE:STARTED"
+	ConnectionOpened     EventType = "CONNECTION:OPENED"
+	ConnectionClosed     EventType = "CONNECTION:CLOSED"
+	UserSessionOpened    EventType = "SESSION:USER:OPENED"
+	UserSessionClosed    EventType = "SESSION:USER:CLOSED"
+	ConnectionReadError  EventType = "CONNECTION:ERROR:READ"
+	ConnectionWriteError EventType = "CONNECTION:ERROR:WRITE"
+	ContainerStarted     EventType = "CONTAINER:STARTED"
+	ContainerFrozen      EventType = "CONTAINER:FROZEN"
+	ContainerDial        EventType = "CONTAINER:DIAL"
+	ContainerUnfrozen    EventType = "CONTAINER:UNFROZEN"
+	ContainerCloned      EventType = "CONTAINER:CLONED"
+	ContainerStopped     EventType = "CONTAINER:STOPPED"
+	ContainerPaused      EventType = "CONTAINER:PAUSED"
+	ContainerResumed     EventType = "CONTAINER:RESUMED"
+	ContainerTarred      EventType = "CONTAINER:TARRED"
+	ContainerCheckpoint  EventType = "CONTAINER:CHECKPOINT"
+	ContainerPcaped      EventType = "CONTAINER:PCAPED"
+)
 
-	Ping
-
-	NewConnection
-	ConnectionStarted
-	ConnectionClosed
-	ConnectionRequest
-	ConnectionResponse
-	ConnectionError
-
-	ServiceStarted
-	ServiceEnded
-
-	// Container based events.
-	ContainerClone
-	ContainerStarted
-	ContainerFrozen
-	ContainerUnfrozen
-	ContainerStopped
-	ContainerTarBackup
-	ContainerDataPacket
-	ContainerDataCheckpoint
-
-	// SSH based events.
-	SessionStarted
-	SessionEnded
-
-	// Authentication events.
-	Login = iota + 30
-	Logout
+// Contains a series of sensors constants.
+const (
+	ContainersSensor      = "CONTAINER"
+	ConnectionSensor      = "CONNECTION"
+	ServiceSensor         = "SERVICE"
+	SessionSensor         = "SESSIONS"
+	EventSensor           = "EVENTS"
+	PingSensor            = "PING"
+	DataSensor            = "DATA"
+	ErrorsSensor          = "ERRORS"
+	DataErrorSensor       = "DATA:ERROR"
+	ConnectionErrorSensor = "CONNECTION:ERROR"
 )
 
 // Event defines a struct which contains definitive details about the operation of
 // a giving event.
 type Event struct {
-	Sensor      string                 `json:"sensor"`
 	Date        time.Time              `json:"date"`
-	Started     time.Time              `json:"started,omitempty"`
-	Ended       time.Time              `json:"ended,omitempty"`
-	Token       string                 `json:"token,omitempty"`
-	Location    string                 `json:"location,omitempty"`
-	Category    string                 `json:"category"`
+	Data        interface{}            `json:"data"`
+	Sensor      string                 `json:"sensor"`
+	Details     map[string]interface{} `json:"details"`
 	HostAddr    string                 `json:"host_addr"`
 	LocalAddr   string                 `json:"local_addr"`
 	Type        EventType              `json:"event_type"`
-	Data        interface{}            `json:"data"`
-	Details     map[string]interface{} `json:"details"`
+	Ended       time.Time              `json:"ended,omitempty"`
+	Token       string                 `json:"token,omitempty"`
+	Started     time.Time              `json:"started,omitempty"`
+	Location    string                 `json:"location,omitempty"`
 	SessionID   string                 `json:"session_id,omitempty"`
 	ContainerID string                 `json:"container_id,omitempty"`
 }
 
 // String returns a stringified version of the event.
 func (e Event) String() string {
-	return fmt.Sprintf("Event %d occured with for Sensor[%q] in Category[%q]. Data[%#q] - Detail[%#q]", e.Type, e.Sensor, e.Category, e.Data, e.Details)
+	return fmt.Sprintf("Event %q occured with for Sensor[%q], Data[%#q] - Detail[%#q]", e.Type, e.Sensor, e.Data, e.Details)
 }
 
 //====================================================================================

@@ -14,10 +14,19 @@ var log = logging.MustGetLogger("honeytrap:director")
 type Director interface {
 	NewContainer(string) (Container, error)
 	GetContainer(net.Conn) (Container, error)
+	ListContainers() []ContainerDetail
+}
+
+// ContainerDetail defines a struct which is used to detail specific container meta-data.
+type ContainerDetail struct {
+	Name          string                 `json:"name"`
+	ContainerAddr string                 `json:"container_addr"`
+	Meta          map[string]interface{} `json:"meta"`
 }
 
 // Container defines a type which exposes methods for connecting to a container.
 type Container interface {
-	Dial(context.Context) (net.Conn, error)
 	Name() string
+	Dial(context.Context) (net.Conn, error)
+	Detail() ContainerDetail
 }

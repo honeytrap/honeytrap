@@ -9,9 +9,8 @@ import (
 // ping delivers a ping event to the server indicate it's alive.
 func (hc *Honeytrap) ping() error {
 	hc.events.Deliver(message.Event{
-		Sensor:   "Ping",
-		Category: "Server",
-		Type:     message.Ping,
+		Sensor: message.PingSensor,
+		Type:   message.PingEvent,
 	})
 	return nil
 }
