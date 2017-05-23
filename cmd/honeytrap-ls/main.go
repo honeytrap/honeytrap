@@ -38,7 +38,7 @@ VERSION:
 	`{{ "\n"}}`
 
 var (
-	log = logging.MustGetLogger("honeytrap/cmd/lxc-cli")
+	log = logging.MustGetLogger("honeytrap/cmd/honeytrap-ls")
 
 	globalFlags = []cli.Flag{
 		cli.StringFlag{
@@ -76,7 +76,7 @@ func serviceContainers(c *cli.Context) {
 
 	ip, port, _ := net.SplitHostPort(conf.Web.Port)
 	if ip == "" {
-		ip = getAddr("")
+		ip, _, _ = net.SplitHostPort(getAddr(""))
 	}
 
 	webIP := net.JoinHostPort(ip, port)
@@ -89,7 +89,15 @@ func serviceContainers(c *cli.Context) {
 		addr = webIP
 	}
 
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s/containers", addr), nil)
+	fmt.Fprintf(os.Stdout, "Honeytrap-ls: Containers\n")
+	fmt.Fprintf(os.Stdout, "Honeytrap Server: Token: %q\n", conf.Token)
+	fmt.Fprintf(os.Stdout, "Honeytrap Server: API Addr: %q\n", addr)
+
+	targetAddr := fmt.Sprintf("http://%s/metrics/containers", addr)
+
+	fmt.Fprintf(os.Stdout, "Honeytrap Server: Request Addr: %q\n", targetAddr)
+
+	req, err := http.NewRequest("GET", targetAddr, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stdout, "HTTP Request Error: %q - %q", addr, err.Error())
 		return
@@ -104,12 +112,9 @@ func serviceContainers(c *cli.Context) {
 	defer res.Body.Close()
 
 	var body bytes.Buffer
-
 	io.Copy(&body, res.Body)
 
-	fmt.Fprintf(os.Stdout, "Honeytrap-ls: Containers\n")
-	fmt.Fprintf(os.Stdout, "Honeytrap Server: Token: %q\n\tAddr: %q", conf.Token, addr)
-	fmt.Fprintf(os.Stdout, "Containers: %+s", body.String())
+	fmt.Fprintf(os.Stdout, "\n%+s\n", body.String())
 }
 
 func main() {

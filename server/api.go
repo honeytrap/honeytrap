@@ -107,13 +107,16 @@ func (h *Honeycast) Containers(w http.ResponseWriter, r *http.Request, params ma
 		Containers: containers,
 	}
 
-	if err := json.NewEncoder(w).Encode(response); err != nil {
+	w.WriteHeader(http.StatusOK)
+
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "\t")
+
+	if err := encoder.Encode(response); err != nil {
 		log.Error("honeycast : Operation Failed : %+q", err)
 		http.Error(w, "Operation Failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	w.WriteHeader(http.StatusOK)
 }
 
 // Send delivers the underline provided messages and stores them into the underline
