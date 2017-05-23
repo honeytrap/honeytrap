@@ -15,7 +15,6 @@ import (
 	"github.com/honeytrap/honeytrap/director"
 	"github.com/honeytrap/honeytrap/process"
 	"github.com/honeytrap/honeytrap/pushers"
-	"github.com/honeytrap/honeytrap/pushers/message"
 	"github.com/honeytrap/honeytrap/sniffer"
 	"github.com/honeytrap/honeytrap/utils/files"
 	logging "github.com/op/go-logging"
@@ -95,6 +94,20 @@ type LxcContainer struct {
 	gscripts  process.SyncScripts
 }
 
+// Detail returns the ContainerDetail related to this giving container.
+func (c *LxcContainer) Detail() director.ContainerDetail {
+	return director.ContainerDetail{
+		Name:          c.name,
+		ContainerAddr: c.ip,
+		Meta: map[string]interface{}{
+			"template": c.template,
+			"idle":     c.idle,
+			"driver":   "lxc",
+			"idevice":  c.idevice,
+		},
+	}
+}
+
 // clone attempts to clone the underline lxc.Container.
 func (c *LxcContainer) clone() error {
 	log.Debugf("Creating new container %s from template %s", c.name, c.config.Template)
@@ -107,16 +120,11 @@ func (c *LxcContainer) clone() error {
 
 	defer lxc.Release(c1)
 
-	c.provider.events.Deliver(message.Event{
-		Sensor:   c.name,
-		Category: "Containers",
-		Type:     message.ContainerClone,
-		Details: map[string]interface{}{
-			"name":     c.name,
-			"template": c.template,
-			"ip":       c.ip,
-		},
-	})
+	c.provider.events.Deliver(director.ContainerClonedEvent(c, map[string]interface{}{
+		"name":     c.name,
+		"template": c.template,
+		"ip":       c.ip,
+	}))
 
 	// http://developerblog.redhat.com/2014/09/30/overview-storage-scalability-docker/
 	// TODO: use overlayfs / make it configurable
@@ -153,32 +161,15 @@ func (c *LxcContainer) start() error {
 		if err := c.clone(); err != nil {
 			log.Error(err.Error())
 
-			c.provider.events.Deliver(message.Event{
-				Sensor:   c.name,
-				Category: "Containers",
-				Type:     message.ContainerStarted,
-				Details: map[string]interface{}{
-					"error":    err.Error(),
-					"name":     c.name,
-					"template": c.template,
-					"ip":       c.ip,
-				},
-			})
-
 			return err
 		}
 	}
 
-	c.provider.events.Deliver(message.Event{
-		Sensor:   c.name,
-		Category: "Containers",
-		Type:     message.ContainerStarted,
-		Details: map[string]interface{}{
-			"name":     c.name,
-			"template": c.template,
-			"ip":       c.ip,
-		},
-	})
+	c.provider.events.Deliver(director.ContainerStartedEvent(c, map[string]interface{}{
+		"name":     c.name,
+		"template": c.template,
+		"ip":       c.ip,
+	}))
 
 	// run independent of our process
 	c.c.WantDaemonize(true)
@@ -244,31 +235,14 @@ func (c *LxcContainer) unfreeze() error {
 	log.Infof("Unfreezing container: %s", c.name)
 
 	if err := c.c.Unfreeze(); err != nil {
-		c.provider.events.Deliver(message.Event{
-			Sensor:   c.name,
-			Category: "Containers",
-			Type:     message.ContainerFrozen,
-			Details: map[string]interface{}{
-				"error":    err.Error(),
-				"name":     c.name,
-				"template": c.template,
-				"ip":       c.ip,
-			},
-		})
-
 		return err
 	}
 
-	c.provider.events.Deliver(message.Event{
-		Sensor:   c.name,
-		Category: "Containers",
-		Type:     message.ContainerUnfrozen,
-		Details: map[string]interface{}{
-			"name":     c.name,
-			"template": c.template,
-			"ip":       c.ip,
-		},
-	})
+	c.provider.events.Deliver(director.ContainerUnfrozenEvent(c, map[string]interface{}{
+		"name":     c.name,
+		"template": c.template,
+		"ip":       c.ip,
+	}))
 
 	if err := c.settle(); err != nil {
 		return err
@@ -467,16 +441,11 @@ func (c *LxcContainer) freeze() error {
 		return nil
 	}
 
-	c.provider.events.Deliver(message.Event{
-		Sensor:   c.name,
-		Category: "Containers",
-		Type:     message.ContainerFrozen,
-		Details: map[string]interface{}{
-			"name":     c.name,
-			"template": c.template,
-			"ip":       c.ip,
-		},
-	})
+	c.provider.events.Deliver(director.ContainerFrozenEvent(c, map[string]interface{}{
+		"name":     c.name,
+		"template": c.template,
+		"ip":       c.ip,
+	}))
 
 	// should actually first checkpoint, stop sniffer and freeze, then tar
 	for {
@@ -507,18 +476,13 @@ func (c *LxcContainer) freeze() error {
 
 		endpoint := fmt.Sprintf("http://api.honeytrap.io/v1/container/%s/checkpoint", c.name)
 
-		c.provider.events.Deliver(message.Event{
-			Data:     buff,
-			Sensor:   c.name,
-			Category: "Containers",
-			Type:     message.ContainerDataCheckpoint,
-			Details: map[string]interface{}{
-				"endpoint": endpoint,
-				"name":     c.name,
-				"template": c.template,
-				"ip":       c.ip,
-			},
-		})
+		c.provider.events.Deliver(director.ContainerCheckpointEvent(c, buff, map[string]interface{}{
+			"name":     c.name,
+			"template": c.template,
+			"ip":       c.ip,
+			"endpoint": endpoint,
+		}))
+
 		break
 	}
 
@@ -545,18 +509,12 @@ func (c *LxcContainer) freeze() error {
 
 		log.Debugf("Pushing packets")
 
-		c.provider.events.Deliver(message.Event{
-			Data:     buff,
-			Sensor:   c.name,
-			Category: "Containers",
-			Type:     message.ContainerDataPacket,
-			Details: map[string]interface{}{
-				"endpoint": endpoint,
-				"name":     c.name,
-				"template": c.template,
-				"ip":       c.ip,
-			},
-		})
+		c.provider.events.Deliver(director.ContainerPcappedEvent(c, buff, map[string]interface{}{
+			"name":     c.name,
+			"template": c.template,
+			"ip":       c.ip,
+			"endpoint": endpoint,
+		}))
 		break
 	}
 
@@ -588,18 +546,12 @@ func (c *LxcContainer) freeze() error {
 
 		endpoint := fmt.Sprintf("http://api.honeytrap.io/v1/container/%s/data", c.name)
 
-		c.provider.events.Deliver(message.Event{
-			Data:     buff,
-			Sensor:   c.name,
-			Category: "Containers",
-			Type:     message.ContainerTarBackup,
-			Details: map[string]interface{}{
-				"endpoint": endpoint,
-				"name":     c.name,
-				"template": c.template,
-				"ip":       c.ip,
-			},
-		})
+		c.provider.events.Deliver(director.ContainerTarredEvent(c, buff, map[string]interface{}{
+			"name":     c.name,
+			"template": c.template,
+			"ip":       c.ip,
+			"endpoint": endpoint,
+		}))
 		break
 	}
 
@@ -616,30 +568,14 @@ func (c *LxcContainer) stop() error {
 	log.Infof("LxcContainer (%s) stopping (ip: %s)", c.name, c.ip)
 
 	if err := c.c.Stop(); err != nil {
-		c.provider.events.Deliver(message.Event{
-			Sensor:   c.name,
-			Category: "Containers",
-			Type:     message.ContainerStopped,
-			Details: map[string]interface{}{
-				"error":    err.Error(),
-				"name":     c.name,
-				"template": c.template,
-				"ip":       c.ip,
-			},
-		})
 		return err
 	}
 
-	c.provider.events.Deliver(message.Event{
-		Sensor:   c.name,
-		Category: "Containers",
-		Type:     message.ContainerStopped,
-		Details: map[string]interface{}{
-			"name":     c.name,
-			"template": c.template,
-			"ip":       c.ip,
-		},
-	})
+	c.provider.events.Deliver(director.ContainerStoppedEvent(c, map[string]interface{}{
+		"name":     c.name,
+		"template": c.template,
+		"ip":       c.ip,
+	}))
 
 	return nil
 }

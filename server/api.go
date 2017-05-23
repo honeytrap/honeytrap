@@ -15,56 +15,56 @@ import (
 	assetfs "github.com/elazarl/go-bindata-assetfs"
 	"github.com/gorilla/websocket"
 	"github.com/honeytrap/honeytrap/config"
+	"github.com/honeytrap/honeytrap/director"
 	"github.com/honeytrap/honeytrap/pushers/message"
 )
 
-// Contains values for use.
-const (
-	ResponsePerPageHeader = "response_per_page"
-	PageHeader            = "page"
-)
+//=============================================================================================================
 
 // Contains the different buckets used
 var (
-	sessionBucket = []byte("sessions")
-	eventsBucket  = []byte("events")
+	eventsBucket  = []byte(message.EventSensor)
+	sessionBucket = []byte(message.SessionSensor)
+
+	pingEventsBucket = []byte(message.PingEvent)
 )
 
-// EventResponse defines a struct which is sent a request type used to respond to
-// given requests.
-type EventResponse struct {
-	ResponsePerPage int             `json:"responser_per_page"`
-	Page            int             `json:"page"`
-	Total           int             `json:"total"`
-	Events          []message.Event `json:"events"`
+//=============================================================================================================
+
+// HoneycastOption defines a function which is used to enchance/add configurational
+// options for use with the honeycast API.
+type HoneycastOption func(*Honeycast)
+
+// AcceptAllOrigins defines a function to use to validate origin request.
+func AcceptAllOrigins(r *http.Request) bool { return true }
+
+// HoneycastAssets sets the assets http.Handler for use with a Honeycast instance.
+func HoneycastAssets(assets *assetfs.AssetFS) HoneycastOption {
+	return func(hc *Honeycast) {
+		hc.assets = http.FileServer(assets)
+	}
 }
 
-// EventRequest defines a struct which receives a request type used to retrieve
-// given requests type.
-type EventRequest struct {
-	ResponsePerPage int      `json:"responser_per_page"`
-	Page            int      `json:"page"`
-	TypeFilters     []int    `json:"types"`
-	SensorFilters   []string `json:"sensors"`
-}
+//=============================================================================================================
 
 // Honeycast defines a struct which exposes methods to handle api related service
 // responses.
 type Honeycast struct {
 	*httptreemux.TreeMux
-	bolted *Bolted
-	assets http.Handler
-	config *config.Config
-	socket *Socketcast
+	bolted   *Bolted
+	socket   *Socketcast
+	assets   http.Handler
+	config   *config.Config
+	director director.Director
 }
 
 // NewHoneycast returns a new instance of a Honeycast struct.
-func NewHoneycast(config *config.Config, assets *assetfs.AssetFS) *Honeycast {
+func NewHoneycast(config *config.Config, director director.Director, options ...HoneycastOption) *Honeycast {
 
 	// Create the database we desire.
 	// TODO: Should we really panic here, it makes sense to do that, since it's the server
 	// right?
-	bolted, err := NewBolted(fmt.Sprintf("%s-bolted", config.Token), string(sessionBucket), string(eventsBucket))
+	bolted, err := NewBolted(fmt.Sprintf("%s-bolted", config.Token), message.ContainersSensor, message.ConnectionSensor, message.ServiceSensor, message.SessionSensor, message.PingSensor, message.DataSensor, message.ErrorsSensor, message.EventSensor)
 	if err != nil {
 		log.Errorf("Failed to created BoltDB session: %+q", err)
 		panic(err)
@@ -73,26 +73,56 @@ func NewHoneycast(config *config.Config, assets *assetfs.AssetFS) *Honeycast {
 	var hc Honeycast
 	hc.config = config
 	hc.bolted = bolted
+	hc.director = director
 	hc.TreeMux = httptreemux.New()
-	hc.socket = NewSocketcast(config, bolted, func(r *http.Request) bool { return true })
+	hc.socket = NewSocketcast(config, bolted, AcceptAllOrigins)
 
 	// Register endpoints for all handlers.
-	if hc.assets != nil {
-		hc.assets = http.FileServer(assets)
-	}
-
 	hc.TreeMux.Handle("GET", "/", hc.Index)
 	hc.TreeMux.Handle("GET", "/events", hc.Events)
 	hc.TreeMux.Handle("GET", "/sessions", hc.Sessions)
 	hc.TreeMux.Handle("GET", "/ws", hc.socket.ServeHandle)
 
+	hc.TreeMux.Handle("GET", "/metrics/containers", hc.Containers)
+	// hc.TreeMux.Handle("GET", "/metrics/containers", nil)
+	// hc.TreeMux.Handle("GET", "/metrics/containers", nil)
+
 	return &hc
+}
+
+// ContainerResponse defines the response delivered for requesting list of all containers
+// lunched.
+type ContainerResponse struct {
+	Total      int                        `json:"total"`
+	Containers []director.ContainerDetail `json:"containers"`
+}
+
+// Containers delivers metrics from the underlying API about specific data related to containers
+// started, stopped and running.
+func (h *Honeycast) Containers(w http.ResponseWriter, r *http.Request, params map[string]string) {
+	containers := h.director.ListContainers()
+
+	response := ContainerResponse{
+		Total:      len(containers),
+		Containers: containers,
+	}
+
+	w.WriteHeader(http.StatusOK)
+
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "\t")
+
+	if err := encoder.Encode(response); err != nil {
+		log.Error("honeycast : Operation Failed : %+q", err)
+		http.Error(w, "Operation Failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 // Send delivers the underline provided messages and stores them into the underline
 // Honeycast database for retrieval through the API.
 func (h *Honeycast) Send(msgs []message.PushMessage) {
-	var sessions, events []message.Event
+	var containers, connections, data, services, pings, serrors, sessions, events []message.Event
 
 	// Seperate out the event types appropriately.
 	for _, msg := range msgs {
@@ -105,11 +135,23 @@ func (h *Honeycast) Send(msgs []message.PushMessage) {
 			continue
 		}
 
-		switch event.Type {
-		case message.ConnectionStarted, message.ConnectionClosed:
+		events = append(events, event)
+
+		switch event.Sensor {
+		case message.SessionSensor:
 			sessions = append(sessions, event)
-		default:
-			events = append(events, event)
+		case message.PingSensor:
+			pings = append(pings, event)
+		case message.DataSensor:
+			data = append(data, event)
+		case message.ServiceSensor:
+			services = append(services, event)
+		case message.ContainersSensor:
+			containers = append(containers, event)
+		case message.ConnectionSensor:
+			connections = append(connections, event)
+		case message.ConnectionErrorSensor, message.DataErrorSensor:
+			serrors = append(serrors, event)
 		}
 	}
 
@@ -117,19 +159,38 @@ func (h *Honeycast) Send(msgs []message.PushMessage) {
 	h.socket.events <- events
 	h.socket.sessions <- sessions
 
-	//  Batch save the events received for both sessions and events.
-	if terr := h.bolted.Save(sessionBucket, sessions...); terr != nil {
+	//  Batch save all events into individual buckets.
+	if terr := h.bolted.Save([]byte(message.SessionSensor), sessions...); terr != nil {
 		log.Errorf("honeycast : Failed to save session events to db: %+q", terr)
 	}
 
-	if terr := h.bolted.Save(eventsBucket, events...); terr != nil {
+	if terr := h.bolted.Save([]byte(message.ErrorsSensor), serrors...); terr != nil {
+		log.Errorf("honeycast : Failed to save errors events to db: %+q", terr)
+	}
+
+	if terr := h.bolted.Save([]byte(message.ConnectionSensor), connections...); terr != nil {
+		log.Errorf("honeycast : Failed to save connections events to db: %+q", terr)
+	}
+
+	if terr := h.bolted.Save([]byte(message.ServiceSensor), services...); terr != nil {
+		log.Errorf("honeycast : Failed to save service events to db: %+q", terr)
+	}
+
+	if terr := h.bolted.Save([]byte(message.ContainersSensor), containers...); terr != nil {
+		log.Errorf("honeycast : Failed to save data events to db: %+q", terr)
+	}
+
+	if terr := h.bolted.Save([]byte(message.DataSensor), data...); terr != nil {
+		log.Errorf("honeycast : Failed to save data events to db: %+q", terr)
+	}
+
+	if terr := h.bolted.Save([]byte(message.PingSensor), pings...); terr != nil {
+		log.Errorf("honeycast : Failed to save ping events to db: %+q", terr)
+	}
+
+	if terr := h.bolted.Save([]byte(message.EventSensor), events...); terr != nil {
 		log.Errorf("honeycast : Failed to save events to db: %+q", terr)
 	}
-}
-
-// Websocket handles response for all `/sessions` target endpoint and returns all giving push
-// messages returns the slice of data.
-func (h *Honeycast) Websocket(w http.ResponseWriter, r *http.Request, params map[string]string) {
 }
 
 // Sessions handles response for all `/sessions` target endpoint and returns all giving push
@@ -196,7 +257,7 @@ func (h *Honeycast) Sessions(w http.ResponseWriter, r *http.Request, params map[
 					typeFilterLoop:
 						for _, tp := range req.TypeFilters {
 							// If we match atleast one type then allow event event.
-							if int(event.Type) == tp {
+							if string(event.Type) == tp {
 								typeMatched = true
 								break typeFilterLoop
 							}
@@ -311,7 +372,7 @@ func (h *Honeycast) Events(w http.ResponseWriter, r *http.Request, params map[st
 					typeFilterLoop:
 						for _, tp := range req.TypeFilters {
 							// If we match atleast one type then allow event event.
-							if int(event.Type) == tp {
+							if string(event.Type) == tp {
 								typeMatched = true
 								break typeFilterLoop
 							}
@@ -698,4 +759,30 @@ func (so *SocketTransport) DeliverMessage(message Message, conn *websocket.Conn)
 	}
 
 	return conn.WriteMessage(websocket.BinaryMessage, bu.Bytes())
+}
+
+//=====================================================================================================
+
+// Contains values for use.
+const (
+	ResponsePerPageHeader = "response_per_page"
+	PageHeader            = "page"
+)
+
+// EventResponse defines a struct which is sent a request type used to respond to
+// given requests.
+type EventResponse struct {
+	ResponsePerPage int             `json:"responser_per_page"`
+	Page            int             `json:"page"`
+	Total           int             `json:"total"`
+	Events          []message.Event `json:"events"`
+}
+
+// EventRequest defines a struct which receives a request type used to retrieve
+// given requests type.
+type EventRequest struct {
+	ResponsePerPage int      `json:"responser_per_page"`
+	Page            int      `json:"page"`
+	TypeFilters     []string `json:"types"`
+	SensorFilters   []string `json:"sensors"`
 }

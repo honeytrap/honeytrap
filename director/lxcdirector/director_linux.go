@@ -54,6 +54,18 @@ func New(conf *config.Config, events pushers.Events) *Director {
 	return d
 }
 
+// ListContainers returns the giving list of containers details
+// for all connected containers.
+func (d *Director) ListContainers() []director.ContainerDetail {
+	var details []director.ContainerDetail
+
+	for _, item := range d.containers {
+		details = append(details, item.Detail())
+	}
+
+	return details
+}
+
 func (d *Director) registerContainers() {
 	// TODO: make this lxc independent
 	for _, c := range lxc.Containers() {
