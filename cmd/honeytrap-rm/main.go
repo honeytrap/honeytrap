@@ -53,7 +53,7 @@ type Cmd struct {
 
 // VersionAction defines the action called when seeking the Version detail.
 func VersionAction(c *cli.Context) {
-	fmt.Println(color.YellowString(fmt.Sprintf("LxcCLI: Providing lxc interaction commands.")))
+	fmt.Println(color.YellowString(fmt.Sprintf("Honeytrap-rm: CLI clients to remove containers and running sessions.")))
 }
 
 func service(c *cli.Context) {
@@ -62,11 +62,11 @@ func service(c *cli.Context) {
 
 func main() {
 	app := cli.NewApp()
-	app.Name = "honeytrap"
+	app.Name = "honeytrap-rm"
 	app.Author = ""
-	app.Usage = "honeytrap"
+	app.Usage = "honeytrap-rm"
 	app.Flags = globalFlags
-	app.Description = `The ultimate honeypot framework.`
+	app.Description = `CLI client to both remove and end container sessions and connections.`
 	app.CustomAppHelpTemplate = helpTemplate
 	app.Commands = []cli.Command{
 		{
