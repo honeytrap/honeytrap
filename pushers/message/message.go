@@ -37,15 +37,29 @@ const (
 	UserSessionClosed    EventType = "SESSION:USER:CLOSED"
 	ConnectionReadError  EventType = "CONNECTION:ERROR:READ"
 	ConnectionWriteError EventType = "CONNECTION:ERROR:WRITE"
+	ContainerStarted     EventType = "CONTAINER:STARTED"
+	ContainerFrozen      EventType = "CONTAINER:FROZEN"
+	ContainerDial        EventType = "CONTAINER:DIAL"
+	ContainerUnfrozen    EventType = "CONTAINER:UNFROZEN"
+	ContainerCloned      EventType = "CONTAINER:CLONED"
+	ContainerStopped     EventType = "CONTAINER:STOPPED"
+	ContainerPaused      EventType = "CONTAINER:PAUSED"
+	ContainerResumed     EventType = "CONTAINER:RESUMED"
+	ContainerTarred      EventType = "CONTAINER:TARRED"
+	ContainerCheckpoint  EventType = "CONTAINER:CHECKPOINT"
+	ContainerPcaped      EventType = "CONTAINER:PCAPED"
 )
 
 // Contains a series of sensors constants.
 const (
+	ContainersSensor      = "CONTAINER"
 	ConnectionSensor      = "CONNECTION"
 	ServiceSensor         = "SERVICE"
-	SessionSensor         = "SESSION"
+	SessionSensor         = "SESSIONS"
+	EventSensor           = "EVENTS"
 	PingSensor            = "PING"
 	DataSensor            = "DATA"
+	ErrorsSensor          = "ERRORS"
 	DataErrorSensor       = "DATA:ERROR"
 	ConnectionErrorSensor = "CONNECTION:ERROR"
 )

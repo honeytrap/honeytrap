@@ -23,8 +23,8 @@ import (
 
 // Contains the different buckets used
 var (
-	sessionBucket = []byte("sessions")
-	eventsBucket  = []byte("events")
+	eventsBucket  = []byte(message.EventSensor)
+	sessionBucket = []byte(message.SessionSensor)
 
 	pingEventsBucket = []byte(message.PingEvent)
 )
@@ -64,7 +64,7 @@ func NewHoneycast(config *config.Config, director director.Director, options ...
 	// Create the database we desire.
 	// TODO: Should we really panic here, it makes sense to do that, since it's the server
 	// right?
-	bolted, err := NewBolted(fmt.Sprintf("%s-bolted", config.Token), string(sessionBucket), string(eventsBucket))
+	bolted, err := NewBolted(fmt.Sprintf("%s-bolted", config.Token), message.ContainersSensor, message.ConnectionSensor, message.ServiceSensor, message.SessionSensor, message.PingSensor, message.DataSensor, message.ErrorsSensor, message.EventSensor)
 	if err != nil {
 		log.Errorf("Failed to created BoltDB session: %+q", err)
 		panic(err)
@@ -101,26 +101,25 @@ type ContainerResponse struct {
 // started, stopped and running.
 func (h *Honeycast) Containers(w http.ResponseWriter, r *http.Request, params map[string]string) {
 	containers := h.director.ListContainers()
+
 	response := ContainerResponse{
 		Total:      len(containers),
 		Containers: containers,
 	}
 
-	var bs bytes.Buffer
-
-	if err := json.NewEncoder(&bs).Encode(response); err != nil {
+	if err := json.NewEncoder(w).Encode(response); err != nil {
 		log.Error("honeycast : Operation Failed : %+q", err)
 		http.Error(w, "Operation Failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	bs.WriteTo(w)
+	w.WriteHeader(http.StatusOK)
 }
 
 // Send delivers the underline provided messages and stores them into the underline
 // Honeycast database for retrieval through the API.
 func (h *Honeycast) Send(msgs []message.PushMessage) {
-	var sessions, events []message.Event
+	var containers, connections, data, services, pings, serrors, sessions, events []message.Event
 
 	// Seperate out the event types appropriately.
 	for _, msg := range msgs {
@@ -133,11 +132,23 @@ func (h *Honeycast) Send(msgs []message.PushMessage) {
 			continue
 		}
 
-		switch event.Type {
-		case message.ConnectionStarted, message.ConnectionClosed:
+		events = append(events, event)
+
+		switch event.Sensor {
+		case message.SessionSensor:
 			sessions = append(sessions, event)
-		default:
-			events = append(events, event)
+		case message.PingSensor:
+			pings = append(pings, event)
+		case message.DataSensor:
+			data = append(data, event)
+		case message.ServiceSensor:
+			services = append(services, event)
+		case message.ContainersSensor:
+			containers = append(containers, event)
+		case message.ConnectionSensor:
+			connections = append(connections, event)
+		case message.ConnectionErrorSensor, message.DataErrorSensor:
+			serrors = append(serrors, event)
 		}
 	}
 
@@ -145,12 +156,36 @@ func (h *Honeycast) Send(msgs []message.PushMessage) {
 	h.socket.events <- events
 	h.socket.sessions <- sessions
 
-	//  Batch save the events received for both sessions and events.
-	if terr := h.bolted.Save(sessionBucket, sessions...); terr != nil {
+	//  Batch save all events into individual buckets.
+	if terr := h.bolted.Save([]byte(message.SessionSensor), sessions...); terr != nil {
 		log.Errorf("honeycast : Failed to save session events to db: %+q", terr)
 	}
 
-	if terr := h.bolted.Save(eventsBucket, events...); terr != nil {
+	if terr := h.bolted.Save([]byte(message.ErrorsSensor), serrors...); terr != nil {
+		log.Errorf("honeycast : Failed to save errors events to db: %+q", terr)
+	}
+
+	if terr := h.bolted.Save([]byte(message.ConnectionSensor), connections...); terr != nil {
+		log.Errorf("honeycast : Failed to save connections events to db: %+q", terr)
+	}
+
+	if terr := h.bolted.Save([]byte(message.ServiceSensor), services...); terr != nil {
+		log.Errorf("honeycast : Failed to save service events to db: %+q", terr)
+	}
+
+	if terr := h.bolted.Save([]byte(message.ContainersSensor), containers...); terr != nil {
+		log.Errorf("honeycast : Failed to save data events to db: %+q", terr)
+	}
+
+	if terr := h.bolted.Save([]byte(message.DataSensor), data...); terr != nil {
+		log.Errorf("honeycast : Failed to save data events to db: %+q", terr)
+	}
+
+	if terr := h.bolted.Save([]byte(message.PingSensor), pings...); terr != nil {
+		log.Errorf("honeycast : Failed to save ping events to db: %+q", terr)
+	}
+
+	if terr := h.bolted.Save([]byte(message.EventSensor), events...); terr != nil {
 		log.Errorf("honeycast : Failed to save events to db: %+q", terr)
 	}
 }
@@ -219,7 +254,7 @@ func (h *Honeycast) Sessions(w http.ResponseWriter, r *http.Request, params map[
 					typeFilterLoop:
 						for _, tp := range req.TypeFilters {
 							// If we match atleast one type then allow event event.
-							if int(event.Type) == tp {
+							if string(event.Type) == tp {
 								typeMatched = true
 								break typeFilterLoop
 							}
@@ -334,7 +369,7 @@ func (h *Honeycast) Events(w http.ResponseWriter, r *http.Request, params map[st
 					typeFilterLoop:
 						for _, tp := range req.TypeFilters {
 							// If we match atleast one type then allow event event.
-							if int(event.Type) == tp {
+							if string(event.Type) == tp {
 								typeMatched = true
 								break typeFilterLoop
 							}
@@ -745,6 +780,6 @@ type EventResponse struct {
 type EventRequest struct {
 	ResponsePerPage int      `json:"responser_per_page"`
 	Page            int      `json:"page"`
-	TypeFilters     []int    `json:"types"`
+	TypeFilters     []string `json:"types"`
 	SensorFilters   []string `json:"sensors"`
 }
