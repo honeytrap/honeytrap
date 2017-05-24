@@ -59,6 +59,94 @@ func VersionAction(c *cli.Context) {
 	fmt.Println(color.YellowString(fmt.Sprintf("honeytrap-ls: Providing container listing.")))
 }
 
+func main() {
+	app := cli.NewApp()
+	app.Name = "honeytrap-ls"
+	app.Author = ""
+	app.Usage = "honeytrap-ls"
+	app.Flags = globalFlags
+	app.Description = `List all current active containers with the running server.`
+	app.CustomAppHelpTemplate = helpTemplate
+	app.Commands = []cli.Command{
+		{
+			Name:   "version",
+			Action: VersionAction,
+		},
+		{
+			Name:   "containers",
+			Action: serviceContainers,
+		},
+		{
+			Name:   "attackers",
+			Action: serviceUsers,
+		},
+	}
+
+	app.Before = func(c *cli.Context) error {
+		return nil
+	}
+
+	app.RunAndExitOnError()
+}
+
+// serviceUsers requests all containers users from the running honeytrap instance by
+// using the address generated from the config provided.
+func serviceUsers(c *cli.Context) {
+	conf, err := config.New()
+	if err != nil {
+		fmt.Fprintf(os.Stdout, err.Error())
+		return
+	}
+
+	configFile := c.GlobalString("config")
+	if err := conf.Load(configFile); err != nil {
+		fmt.Fprintf(os.Stdout, "Configuration Error: %q - %q", configFile, err.Error())
+		return
+	}
+
+	ip, port, _ := net.SplitHostPort(conf.Web.Port)
+	if ip == "" {
+		ip, _, _ = net.SplitHostPort(getAddr(""))
+	}
+
+	webIP := net.JoinHostPort(ip, port)
+
+	var addr string
+
+	if conf.Web.Path != "" {
+		addr = fmt.Sprintf("%s/%s", webIP, conf.Web.Path)
+	} else {
+		addr = webIP
+	}
+
+	fmt.Fprintf(os.Stdout, "Honeytrap-ls: Attackers\n")
+	fmt.Fprintf(os.Stdout, "Honeytrap Server: Token: %q\n", conf.Token)
+	fmt.Fprintf(os.Stdout, "Honeytrap Server: API Addr: %q\n", addr)
+
+	targetAddr := fmt.Sprintf("http://%s/metrics/attackers", addr)
+
+	fmt.Fprintf(os.Stdout, "Honeytrap Server: Request Addr: %q\n", targetAddr)
+
+	req, err := http.NewRequest("GET", targetAddr, nil)
+	if err != nil {
+		fmt.Fprintf(os.Stdout, "HTTP Request Error: %q - %q", addr, err.Error())
+		return
+	}
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		fmt.Fprintf(os.Stdout, "HTTP Request Error: %q - %q", addr, err.Error())
+		return
+	}
+
+	defer res.Body.Close()
+
+	var body bytes.Buffer
+	io.Copy(&body, res.Body)
+
+	fmt.Fprintf(os.Stdout, "\n%+s\n", body.String())
+}
+
 // serviceContainers requests all containers from the running honeytrap instance by
 // using the address generated from the config provided.
 func serviceContainers(c *cli.Context) {
@@ -115,32 +203,6 @@ func serviceContainers(c *cli.Context) {
 	io.Copy(&body, res.Body)
 
 	fmt.Fprintf(os.Stdout, "\n%+s\n", body.String())
-}
-
-func main() {
-	app := cli.NewApp()
-	app.Name = "honeytrap-ls"
-	app.Author = ""
-	app.Usage = "honeytrap-ls"
-	app.Flags = globalFlags
-	app.Description = `List all current active containers with the running server.`
-	app.CustomAppHelpTemplate = helpTemplate
-	app.Commands = []cli.Command{
-		{
-			Name:   "version",
-			Action: VersionAction,
-		},
-		{
-			Name:   "containers",
-			Action: serviceContainers,
-		},
-	}
-
-	app.Before = func(c *cli.Context) error {
-		return nil
-	}
-
-	app.RunAndExitOnError()
 }
 
 // getAddr takes the giving address string and if it has no ip or use the
