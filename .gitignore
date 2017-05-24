@@ -2,6 +2,8 @@
 *.o
 *.a
 *.so
+*.bolted 
+*.db
 
 # Folders
 _obj

@@ -73,6 +73,17 @@ func New() *Cmd {
 			},
 		},
 		{
+			Name:   "rm",
+			Action: runRM,
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "c,config",
+					Usage: "config file",
+					Value: "config.toml",
+				},
+			},
+		},
+		{
 			Name:   "ls",
 			Action: runLS,
 			Flags: []cli.Flag{

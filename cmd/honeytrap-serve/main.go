@@ -64,13 +64,13 @@ func VersionAction(c *cli.Context) {
 func serve(c *cli.Context) {
 	conf, err := config.New()
 	if err != nil {
-		fmt.Fprintf(os.Stdout, err.Error())
+		fmt.Printf(err.Error())
 		return
 	}
 
 	configFile := c.GlobalString("config")
 	if err := conf.Load(configFile); err != nil {
-		fmt.Fprintf(os.Stdout, "Configuration Error: %q - %q", configFile, err.Error())
+		fmt.Printf("Configuration Error: %q - %q", configFile, err.Error())
 		return
 	}
 

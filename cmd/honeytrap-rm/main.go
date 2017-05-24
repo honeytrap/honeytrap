@@ -6,7 +6,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/fatih/color"
@@ -110,19 +109,19 @@ func main() {
 func serviceRemoveContainerWithConnections(c *cli.Context) {
 	conf, err := config.New()
 	if err != nil {
-		fmt.Fprintf(os.Stdout, err.Error())
+		fmt.Printf(err.Error())
 		return
 	}
 
 	containerID := c.String("container")
 	if containerID == "" {
-		fmt.Fprintf(os.Stdout, "Error : Container ID required")
+		fmt.Printf("Error : Container ID required")
 		return
 	}
 
 	configFile := c.GlobalString("config")
 	if err := conf.Load(configFile); err != nil {
-		fmt.Fprintf(os.Stdout, "Configuration Error: %q - %q", configFile, err.Error())
+		fmt.Printf("Configuration Error: %q - %q", configFile, err.Error())
 		return
 	}
 
@@ -141,34 +140,34 @@ func serviceRemoveContainerWithConnections(c *cli.Context) {
 		addr = webIP
 	}
 
-	fmt.Fprintf(os.Stdout, "Honeytrap-ls: Attackers\n")
-	fmt.Fprintf(os.Stdout, "Honeytrap Server: Token: %q\n", conf.Token)
-	fmt.Fprintf(os.Stdout, "Honeytrap Server: API Addr: %q\n", addr)
+	fmt.Printf("Honeytrap-rm: Containers/Connections\n")
+	fmt.Printf("Honeytrap Server: Token: %q\n", conf.Token)
+	fmt.Printf("Honeytrap Server: API Addr: %q\n", addr)
 
 	targetAddr := fmt.Sprintf("http://%s/containers/connections/%s", addr, containerID)
 
-	fmt.Fprintf(os.Stdout, "Honeytrap Server: Request Addr: %q\n", targetAddr)
+	fmt.Printf("Honeytrap Server: Request Addr: %q\n", targetAddr)
 
 	req, err := http.NewRequest("DELETE", targetAddr, nil)
 	if err != nil {
-		fmt.Fprintf(os.Stdout, "HTTP Request Error: %q - %q", addr, err.Error())
+		fmt.Printf("HTTP Request Error: %q - %q", addr, err.Error())
 		return
 	}
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		fmt.Fprintf(os.Stdout, "HTTP Request Error: %q - %q", addr, err.Error())
+		fmt.Printf("HTTP Request Error: %q - %q", addr, err.Error())
 		return
 	}
 
-	fmt.Fprintf(os.Stdout, "Honeytrap Server: API Response Status: %d - %q\n", res.StatusCode, res.Status)
+	fmt.Printf("Honeytrap Server: API Response Status: %d - %q\n", res.StatusCode, res.Status)
 
 	defer res.Body.Close()
 
 	var body bytes.Buffer
 	io.Copy(&body, res.Body)
 
-	fmt.Fprintf(os.Stdout, "\n%+s\n", body.String())
+	fmt.Println(body.String())
 }
 
 // serviceRemoveContainerOnly delivers a call to the honeytrap API to remove the container
@@ -176,19 +175,19 @@ func serviceRemoveContainerWithConnections(c *cli.Context) {
 func serviceRemoveContainerOnly(c *cli.Context) {
 	conf, err := config.New()
 	if err != nil {
-		fmt.Fprintf(os.Stdout, err.Error())
+		fmt.Printf(err.Error())
 		return
 	}
 
 	containerID := c.String("container")
 	if containerID == "" {
-		fmt.Fprintf(os.Stdout, "Error : Container ID required")
+		fmt.Printf("Error : Container ID required")
 		return
 	}
 
 	configFile := c.GlobalString("config")
 	if err := conf.Load(configFile); err != nil {
-		fmt.Fprintf(os.Stdout, "Configuration Error: %q - %q", configFile, err.Error())
+		fmt.Printf("Configuration Error: %q - %q", configFile, err.Error())
 		return
 	}
 
@@ -207,34 +206,34 @@ func serviceRemoveContainerOnly(c *cli.Context) {
 		addr = webIP
 	}
 
-	fmt.Fprintf(os.Stdout, "Honeytrap-ls: Attackers\n")
-	fmt.Fprintf(os.Stdout, "Honeytrap Server: Token: %q\n", conf.Token)
-	fmt.Fprintf(os.Stdout, "Honeytrap Server: API Addr: %q\n", addr)
+	fmt.Printf("Honeytrap-rm: Containers/Clients\n")
+	fmt.Printf("Honeytrap Server: Token: %q\n", conf.Token)
+	fmt.Printf("Honeytrap Server: API Addr: %q\n", addr)
 
 	targetAddr := fmt.Sprintf("http://%s/containers/clients/%s", addr, containerID)
 
-	fmt.Fprintf(os.Stdout, "Honeytrap Server: Request Addr: %q\n", targetAddr)
+	fmt.Printf("Honeytrap Server: Request Addr: %q\n", targetAddr)
 
 	req, err := http.NewRequest("DELETE", targetAddr, nil)
 	if err != nil {
-		fmt.Fprintf(os.Stdout, "HTTP Request Error: %q - %q", addr, err.Error())
+		fmt.Printf("HTTP Request Error: %q - %q", addr, err.Error())
 		return
 	}
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		fmt.Fprintf(os.Stdout, "HTTP Request Error: %q - %q", addr, err.Error())
+		fmt.Printf("HTTP Request Error: %q - %q", addr, err.Error())
 		return
 	}
 
-	fmt.Fprintf(os.Stdout, "Honeytrap Server: API Response Status: %d - %q\n", res.StatusCode, res.Status)
+	fmt.Printf("Honeytrap Server: API Response Status: %d - %q\n", res.StatusCode, res.Status)
 
 	defer res.Body.Close()
 
 	var body bytes.Buffer
 	io.Copy(&body, res.Body)
 
-	fmt.Fprintf(os.Stdout, "\n%+s\n", body.String())
+	fmt.Println(body.String())
 }
 
 // getAddr takes the giving address string and if it has no ip or use the

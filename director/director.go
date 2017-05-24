@@ -110,6 +110,7 @@ func (cn *ContainerConnections) AddClient(conn net.Conn, detail ContainerDetail)
 // all internal operations and request for the ContainerConnections.
 func (cn *ContainerConnections) manage() {
 	{
+	nloop:
 		for {
 			select {
 			case newClient, ok := <-cn.newClient:
@@ -122,12 +123,12 @@ func (cn *ContainerConnections) manage() {
 					cn.connections[newClient.Container.Name] = []net.Conn{newClient.Conn}
 					cn.clients[newClient.Container.Name] = newClient.Container
 
-					return
+					continue nloop
 				}
 
 				connections, connFound := cn.connections[newClient.Container.Name]
 				if !connFound {
-					return
+					continue nloop
 				}
 
 				connections = append(connections, newClient.Conn)
@@ -160,7 +161,7 @@ func (cn *ContainerConnections) manage() {
 				_, clientFound := cn.clients[clientID]
 				if !clientFound {
 					cn.rmResponse <- fmt.Errorf("Client %q does not exists", clientID)
-					return
+					continue nloop
 				}
 
 				delete(cn.clients, clientID)
@@ -180,7 +181,7 @@ func (cn *ContainerConnections) manage() {
 				_, clientFound := cn.clients[clientID]
 				if !clientFound {
 					cn.rmResponse <- fmt.Errorf("Client %q does not exists", clientID)
-					return
+					continue nloop
 				}
 
 				delete(cn.clients, clientID)

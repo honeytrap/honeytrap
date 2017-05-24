@@ -6,7 +6,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/fatih/color"
@@ -94,13 +93,13 @@ func main() {
 func serviceUsers(c *cli.Context) {
 	conf, err := config.New()
 	if err != nil {
-		fmt.Fprintf(os.Stdout, err.Error())
+		fmt.Printf(err.Error())
 		return
 	}
 
 	configFile := c.GlobalString("config")
 	if err := conf.Load(configFile); err != nil {
-		fmt.Fprintf(os.Stdout, "Configuration Error: %q - %q", configFile, err.Error())
+		fmt.Printf("Configuration Error: %q - %q", configFile, err.Error())
 		return
 	}
 
@@ -119,34 +118,34 @@ func serviceUsers(c *cli.Context) {
 		addr = webIP
 	}
 
-	fmt.Fprintf(os.Stdout, "Honeytrap-ls: Attackers\n")
-	fmt.Fprintf(os.Stdout, "Honeytrap Server: Token: %q\n", conf.Token)
-	fmt.Fprintf(os.Stdout, "Honeytrap Server: API Addr: %q\n", addr)
+	fmt.Printf("Honeytrap-ls: Attackers\n")
+	fmt.Printf("Honeytrap Server: Token: %q\n", conf.Token)
+	fmt.Printf("Honeytrap Server: API Addr: %q\n", addr)
 
 	targetAddr := fmt.Sprintf("http://%s/metrics/attackers", addr)
 
-	fmt.Fprintf(os.Stdout, "Honeytrap Server: Request Addr: %q\n", targetAddr)
+	fmt.Printf("Honeytrap Server: Request Addr: %q\n", targetAddr)
 
 	req, err := http.NewRequest("GET", targetAddr, nil)
 	if err != nil {
-		fmt.Fprintf(os.Stdout, "HTTP Request Error: %q - %q", addr, err.Error())
+		fmt.Printf("HTTP Request Error: %q - %q", addr, err.Error())
 		return
 	}
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		fmt.Fprintf(os.Stdout, "HTTP Request Error: %q - %q", addr, err.Error())
+		fmt.Printf("HTTP Request Error: %q - %q", addr, err.Error())
 		return
 	}
 
-	fmt.Fprintf(os.Stdout, "Honeytrap Server: API Response Status: %d - %q\n", res.StatusCode, res.Status)
+	fmt.Printf("Honeytrap Server: API Response Status: %d - %q\n", res.StatusCode, res.Status)
 
 	defer res.Body.Close()
 
 	var body bytes.Buffer
 	io.Copy(&body, res.Body)
 
-	fmt.Fprintf(os.Stdout, "\n%+s\n", body.String())
+	fmt.Printf("\n%+s\n", body.String())
 }
 
 // serviceContainers requests all containers from the running honeytrap instance by
@@ -154,13 +153,13 @@ func serviceUsers(c *cli.Context) {
 func serviceContainers(c *cli.Context) {
 	conf, err := config.New()
 	if err != nil {
-		fmt.Fprintf(os.Stdout, err.Error())
+		fmt.Printf(err.Error())
 		return
 	}
 
 	configFile := c.GlobalString("config")
 	if err := conf.Load(configFile); err != nil {
-		fmt.Fprintf(os.Stdout, "Configuration Error: %q - %q", configFile, err.Error())
+		fmt.Printf("Configuration Error: %q - %q", configFile, err.Error())
 		return
 	}
 
@@ -179,34 +178,34 @@ func serviceContainers(c *cli.Context) {
 		addr = webIP
 	}
 
-	fmt.Fprintf(os.Stdout, "Honeytrap-ls: Containers\n")
-	fmt.Fprintf(os.Stdout, "Honeytrap Server: Token: %q\n", conf.Token)
-	fmt.Fprintf(os.Stdout, "Honeytrap Server: API Addr: %q\n", addr)
+	fmt.Printf("Honeytrap-ls: Containers\n")
+	fmt.Printf("Honeytrap Server: Token: %q\n", conf.Token)
+	fmt.Printf("Honeytrap Server: API Addr: %q\n", addr)
 
 	targetAddr := fmt.Sprintf("http://%s/metrics/containers", addr)
 
-	fmt.Fprintf(os.Stdout, "Honeytrap Server: Request Addr: %q\n", targetAddr)
+	fmt.Printf("Honeytrap Server: Request Addr: %q\n", targetAddr)
 
 	req, err := http.NewRequest("GET", targetAddr, nil)
 	if err != nil {
-		fmt.Fprintf(os.Stdout, "HTTP Request Error: %q - %q", addr, err.Error())
+		fmt.Printf("HTTP Request Error: %q - %q", addr, err.Error())
 		return
 	}
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		fmt.Fprintf(os.Stdout, "HTTP Request Error: %q - %q", addr, err.Error())
+		fmt.Printf("HTTP Request Error: %q - %q", addr, err.Error())
 		return
 	}
 
-	fmt.Fprintf(os.Stdout, "Honeytrap Server: API Response Status: %d - %q\n", res.StatusCode, res.Status)
+	fmt.Printf("Honeytrap Server: API Response Status: %d - %q\n", res.StatusCode, res.Status)
 
 	defer res.Body.Close()
 
 	var body bytes.Buffer
 	io.Copy(&body, res.Body)
 
-	fmt.Fprintf(os.Stdout, "\n%+s\n", body.String())
+	fmt.Printf("\n%+s\n", body.String())
 }
 
 // getAddr takes the giving address string and if it has no ip or use the
