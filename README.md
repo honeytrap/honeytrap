@@ -116,7 +116,6 @@ Honeytrap Server: API Response Status: 500 - "500 Internal Server Error"
 *The command below passes the configuration file which contains configuration details, specifically related to the honeycast API HTTP service instance which is by default on port `3000`.*
 
 
-
 ## Contribute
 
 Contributions are welcome.
