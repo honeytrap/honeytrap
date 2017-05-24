@@ -132,7 +132,7 @@ type AttackerResponse struct {
 func (h *Honeycast) Attackers(w http.ResponseWriter, r *http.Request, params map[string]string) {
 	users := h.manager.ListClients()
 
-	response := ContainerResponse{
+	response := AttackerResponse{
 		Total:     len(users),
 		Attackers: users,
 	}
