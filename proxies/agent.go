@@ -3,6 +3,7 @@
 package proxies
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/binary"
 	"fmt"
@@ -31,8 +32,8 @@ const (
 var ErrAgentUnsupportedProtocol = fmt.Errorf("Unsupported agent protocol")
 
 // NewAgentServer returns a new AgentServer instance.
-func NewAgentServer(director director.Director, pusher *pushers.Pusher, events pushers.Events, cfg *config.Config) *AgentServer {
-	return &AgentServer{director, pusher, events, cfg}
+func NewAgentServer(manager *director.ContainerConnections, director director.Director, pusher *pushers.Pusher, events pushers.Events, cfg *config.Config) *AgentServer {
+	return &AgentServer{director, pusher, events, cfg, manager}
 }
 
 // AgentServer defines an a struct which implements a server to handle agent based
@@ -42,6 +43,7 @@ type AgentServer struct {
 	pusher   *pushers.Pusher
 	events   pushers.Events
 	config   *config.Config
+	manager  *director.ContainerConnections
 }
 
 // AgentConn defines the a struct which holds the underline net.Conn.
@@ -173,26 +175,26 @@ func (ac *AgentConn) Forward() error {
 	log.Debugf("Received Agent connection from: %s with token: %s", ac.remoteAddr, ac.token)
 
 	// TODO: make configurable
-	var dport string
-	switch {
-	case *payload.Protocol == "ssh":
-		dport = "22"
-	case *payload.Protocol == "http":
-		dport = "80"
-	case *payload.Protocol == "smtp":
-		dport = "25"
-	default:
-		log.Errorf("Unsupported agent protocol: %s", *payload.Protocol)
+	// var dport string
+	// switch {
+	// case *payload.Protocol == "ssh":
+	// 	dport = "22"
+	// case *payload.Protocol == "http":
+	// 	dport = "80"
+	// case *payload.Protocol == "smtp":
+	// 	dport = "25"
+	// default:
+	// 	log.Errorf("Unsupported agent protocol: %s", *payload.Protocol)
 
-		ac.as.events.Deliver(ServiceEndedEvent(ac.Conn, ErrAgentUnsupportedProtocol, nil))
+	// 	ac.as.events.Deliver(ServiceEndedEvent(ac.Conn, ErrAgentUnsupportedProtocol, nil))
 
-		return ErrAgentUnsupportedProtocol
-	}
+	// 	return ErrAgentUnsupportedProtocol
+	// }
 
 	log.Debugf("Agent forwarding protocol: %s(%s) %s", *payload.RemoteAddress, dport, *payload.Protocol)
 
 	var c2 net.Conn
-	c2, err = container.Dial(dport)
+	c2, err = container.Dial(context.Background())
 	if err != nil {
 		ac.as.events.Deliver(ServiceEndedEvent(ac.Conn, err, nil))
 
@@ -203,7 +205,10 @@ func (ac *AgentConn) Forward() error {
 
 	pc := ProxyConn{ac, c2, container, ac.as.pusher, ac.as.events}
 
+	ac.as.manager.AddClient(&pc, container.Detail())
+
 	var sp Proxyer
+
 	switch *payload.Protocol {
 	case "ssh":
 		sp = &SSHProxyConn{&pc, &ac.as.config.Proxies.SSH}

@@ -44,6 +44,7 @@ type Honeytrap struct {
 	events    pushers.Events
 	honeycast *Honeycast
 	director  director.Director
+	manager   *director.ContainerConnections
 }
 
 // ServeFunc defines the function called to handle internal server details.
@@ -58,20 +59,22 @@ func New(conf *config.Config) *Honeytrap {
 	channels := pushers.ChannelStream{pushChannel, bus}
 	events := pushers.NewTokenedEventDelivery(conf.Token, channels)
 
-	var director director.Director
+	var dr director.Director
 
 	switch conf.Director {
 	case cowriedirector.DirectorKey:
-		director = cowriedirector.New(conf, events)
+		dr = cowriedirector.New(conf, events)
 	case iodirector.DirectorKey:
-		director = iodirector.New(conf, events)
+		dr = iodirector.New(conf, events)
 	case lxcdirector.DirectorKey:
-		director = lxcdirector.New(conf, events)
+		dr = lxcdirector.New(conf, events)
 	default:
 		panic(fmt.Sprintf("Unknown director type: %q", conf.Director))
 	}
 
-	honeycast := NewHoneycast(conf, director, HoneycastAssets(&assetfs.AssetFS{
+	manager := director.NewContainerConnections()
+
+	honeycast := NewHoneycast(conf, manager, dr, HoneycastAssets(&assetfs.AssetFS{
 		Asset:     web.Asset,
 		AssetDir:  web.AssetDir,
 		AssetInfo: web.AssetInfo,
@@ -82,10 +85,11 @@ func New(conf *config.Config) *Honeytrap {
 
 	return &Honeytrap{
 		config:    conf,
-		director:  director,
+		director:  dr,
 		pusher:    pusher,
 		events:    events,
 		honeycast: honeycast,
+		manager:   manager,
 	}
 }
 
@@ -124,7 +128,7 @@ func (hc *Honeytrap) startProxies() {
 		if serviceFn, ok := proxies.Get(st.Service); ok {
 			log.Debugf("Listener starting: %s", st.Port)
 
-			service, err := serviceFn(st.Port, hc.director, hc.pusher, hc.events, primitive)
+			service, err := serviceFn(st.Port, hc.manager, hc.director, hc.pusher, hc.events, primitive)
 			if err != nil {
 				log.Errorf("Error in service: %s: %s", st.Service, err.Error())
 

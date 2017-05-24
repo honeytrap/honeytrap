@@ -11,18 +11,20 @@ import (
 // ProxyListener defines a struct which holds a giving net.Listener.
 type ProxyListener struct {
 	net.Listener
-	director director.Director
 	pusher   *pushers.Pusher
 	events   pushers.Events
+	director director.Director
+	manager  *director.ContainerConnections
 }
 
 // NewProxyListener returns a new instance for a ProxyListener.
-func NewProxyListener(l net.Listener, d director.Director, p *pushers.Pusher, e pushers.Events) *ProxyListener {
+func NewProxyListener(l net.Listener, m *director.ContainerConnections, d director.Director, p *pushers.Pusher, e pushers.Events) *ProxyListener {
 	return &ProxyListener{
-		l,
-		d,
-		p,
-		e,
+		Listener: l,
+		director: d,
+		pusher:   p,
+		events:   e,
+		manager:  m,
 	}
 }
 
@@ -79,7 +81,17 @@ func (lw *ProxyListener) Accept() (c net.Conn, err error) {
 		return nil, err
 	}
 
-	return &ProxyConn{c, c2, container, lw.pusher, lw.events}, err
+	proxyConn := &ProxyConn{
+		Conn:      c,
+		Server:    c2,
+		Container: container,
+		Pusher:    lw.pusher,
+		Event:     lw.events,
+	}
+
+	lw.manager.AddClient(proxyConn, container.Detail())
+
+	return proxyConn, err
 }
 
 // Close closes the underline net.Listener.

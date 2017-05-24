@@ -139,6 +139,8 @@ func serviceUsers(c *cli.Context) {
 		return
 	}
 
+	fmt.Fprintf(os.Stdout, "Honeytrap Server: API Response Status: %d - %q\n", res.StatusCode, res.Status)
+
 	defer res.Body.Close()
 
 	var body bytes.Buffer
@@ -196,6 +198,8 @@ func serviceContainers(c *cli.Context) {
 		fmt.Fprintf(os.Stdout, "HTTP Request Error: %q - %q", addr, err.Error())
 		return
 	}
+
+	fmt.Fprintf(os.Stdout, "Honeytrap Server: API Response Status: %d - %q\n", res.StatusCode, res.Status)
 
 	defer res.Body.Close()
 

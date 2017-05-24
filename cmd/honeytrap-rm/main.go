@@ -1,9 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"os"
+	"time"
 
 	"github.com/fatih/color"
+	"github.com/honeytrap/honeytrap/config"
 	"github.com/minio/cli"
 	"github.com/op/go-logging"
 )
@@ -33,17 +40,11 @@ VERSION:
 var log = logging.MustGetLogger("honeytrap/cmd/lxc-cli")
 
 var globalFlags = []cli.Flag{
-/*
 	cli.StringFlag{
 		Name:  "c,config",
 		Usage: "config file",
 		Value: "config.toml",
 	},
-	cli.BoolFlag{
-		Name:  "help, h",
-		Usage: "Show help.",
-	},
-*/
 }
 
 // Cmd defines a struct for defining a command.
@@ -73,6 +74,26 @@ func main() {
 			Name:   "version",
 			Action: VersionAction,
 		},
+		{
+			Name:   "connections",
+			Action: serviceRemoveContainerWithConnections,
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "c,container",
+					Usage: "--container bob-alpha",
+				},
+			},
+		},
+		{
+			Name:   "containers",
+			Action: serviceRemoveContainerOnly,
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "c,container",
+					Usage: "--container bob-alpha",
+				},
+			},
+		},
 	}
 
 	app.Before = func(c *cli.Context) error {
@@ -82,4 +103,171 @@ func main() {
 	app.Action = service
 
 	app.RunAndExitOnError()
+}
+
+// serviceRemoveContainerWithConnections delivers a call to the honeytrap API to remove the container
+// associted with the giving name.
+func serviceRemoveContainerWithConnections(c *cli.Context) {
+	conf, err := config.New()
+	if err != nil {
+		fmt.Fprintf(os.Stdout, err.Error())
+		return
+	}
+
+	containerID := c.String("container")
+	if containerID == "" {
+		fmt.Fprintf(os.Stdout, "Error : Container ID required")
+		return
+	}
+
+	configFile := c.GlobalString("config")
+	if err := conf.Load(configFile); err != nil {
+		fmt.Fprintf(os.Stdout, "Configuration Error: %q - %q", configFile, err.Error())
+		return
+	}
+
+	ip, port, _ := net.SplitHostPort(conf.Web.Port)
+	if ip == "" {
+		ip, _, _ = net.SplitHostPort(getAddr(""))
+	}
+
+	webIP := net.JoinHostPort(ip, port)
+
+	var addr string
+
+	if conf.Web.Path != "" {
+		addr = fmt.Sprintf("%s/%s", webIP, conf.Web.Path)
+	} else {
+		addr = webIP
+	}
+
+	fmt.Fprintf(os.Stdout, "Honeytrap-ls: Attackers\n")
+	fmt.Fprintf(os.Stdout, "Honeytrap Server: Token: %q\n", conf.Token)
+	fmt.Fprintf(os.Stdout, "Honeytrap Server: API Addr: %q\n", addr)
+
+	targetAddr := fmt.Sprintf("http://%s/containers/connections/%s", addr, containerID)
+
+	fmt.Fprintf(os.Stdout, "Honeytrap Server: Request Addr: %q\n", targetAddr)
+
+	req, err := http.NewRequest("DELETE", targetAddr, nil)
+	if err != nil {
+		fmt.Fprintf(os.Stdout, "HTTP Request Error: %q - %q", addr, err.Error())
+		return
+	}
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		fmt.Fprintf(os.Stdout, "HTTP Request Error: %q - %q", addr, err.Error())
+		return
+	}
+
+	fmt.Fprintf(os.Stdout, "Honeytrap Server: API Response Status: %d - %q\n", res.StatusCode, res.Status)
+
+	defer res.Body.Close()
+
+	var body bytes.Buffer
+	io.Copy(&body, res.Body)
+
+	fmt.Fprintf(os.Stdout, "\n%+s\n", body.String())
+}
+
+// serviceRemoveContainerOnly delivers a call to the honeytrap API to remove the container
+// associted with the giving name.
+func serviceRemoveContainerOnly(c *cli.Context) {
+	conf, err := config.New()
+	if err != nil {
+		fmt.Fprintf(os.Stdout, err.Error())
+		return
+	}
+
+	containerID := c.String("container")
+	if containerID == "" {
+		fmt.Fprintf(os.Stdout, "Error : Container ID required")
+		return
+	}
+
+	configFile := c.GlobalString("config")
+	if err := conf.Load(configFile); err != nil {
+		fmt.Fprintf(os.Stdout, "Configuration Error: %q - %q", configFile, err.Error())
+		return
+	}
+
+	ip, port, _ := net.SplitHostPort(conf.Web.Port)
+	if ip == "" {
+		ip, _, _ = net.SplitHostPort(getAddr(""))
+	}
+
+	webIP := net.JoinHostPort(ip, port)
+
+	var addr string
+
+	if conf.Web.Path != "" {
+		addr = fmt.Sprintf("%s/%s", webIP, conf.Web.Path)
+	} else {
+		addr = webIP
+	}
+
+	fmt.Fprintf(os.Stdout, "Honeytrap-ls: Attackers\n")
+	fmt.Fprintf(os.Stdout, "Honeytrap Server: Token: %q\n", conf.Token)
+	fmt.Fprintf(os.Stdout, "Honeytrap Server: API Addr: %q\n", addr)
+
+	targetAddr := fmt.Sprintf("http://%s/containers/clients/%s", addr, containerID)
+
+	fmt.Fprintf(os.Stdout, "Honeytrap Server: Request Addr: %q\n", targetAddr)
+
+	req, err := http.NewRequest("DELETE", targetAddr, nil)
+	if err != nil {
+		fmt.Fprintf(os.Stdout, "HTTP Request Error: %q - %q", addr, err.Error())
+		return
+	}
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		fmt.Fprintf(os.Stdout, "HTTP Request Error: %q - %q", addr, err.Error())
+		return
+	}
+
+	fmt.Fprintf(os.Stdout, "Honeytrap Server: API Response Status: %d - %q\n", res.StatusCode, res.Status)
+
+	defer res.Body.Close()
+
+	var body bytes.Buffer
+	io.Copy(&body, res.Body)
+
+	fmt.Fprintf(os.Stdout, "\n%+s\n", body.String())
+}
+
+// getAddr takes the giving address string and if it has no ip or use the
+// zeroth ip format, then modifies the ip with the current systems ip.
+func getAddr(addr string) string {
+	if addr == "" {
+		if real, err := getMainIP(); err == nil {
+			return real + ":0"
+		}
+	}
+
+	ip, port, err := net.SplitHostPort(addr)
+	if err == nil && ip == "" || ip == "0.0.0.0" {
+		if realIP, err := getMainIP(); err == nil {
+			return net.JoinHostPort(realIP, port)
+		}
+	}
+
+	return addr
+}
+
+// getMainIP returns the giving system IP by attempting to connect to a imaginary
+// ip and returns the giving system ip.
+func getMainIP() (string, error) {
+	udp, err := net.DialTimeout("udp", "8.8.8.8:80", 1*time.Millisecond)
+	if udp == nil {
+		return "", err
+	}
+
+	defer udp.Close()
+
+	localAddr := udp.LocalAddr().String()
+	ip, _, _ := net.SplitHostPort(localAddr)
+
+	return ip, nil
 }

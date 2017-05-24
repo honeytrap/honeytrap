@@ -21,14 +21,14 @@ var log = logging.MustGetLogger("honeytrap:proxy:sip")
 // ListenHTTP returns a new listener to handle proxy connections through the
 // http protocol.
 // TODO: Change amount of params.
-func ListenHTTP(address string, d director.Director, p *pushers.Pusher, e pushers.Events, c *config.Config) (net.Listener, error) {
+func ListenHTTP(address string, m *director.ContainerConnections, d director.Director, p *pushers.Pusher, e pushers.Events, c *config.Config) (net.Listener, error) {
 	l, err := net.Listen("tcp", address)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	return &HTTPProxyListener{
-		proxies.NewProxyListener(l, d, p, e),
+		proxies.NewProxyListener(l, m, d, p, e),
 	}, nil
 }
 

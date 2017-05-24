@@ -94,6 +94,33 @@ func New() *Cmd {
 	}
 }
 
+func runRM(c *cli.Context) {
+	configFile := c.String("config")
+
+	var extras []string
+
+	for _, item := range c.Args() {
+		extras = append(extras, string(item))
+	}
+
+	serverCmd := process.SyncProcess{
+		Commands: []process.Command{
+			{
+				Name:  "honeytrap-rm",
+				Level: process.SilentKill,
+				Args: append([]string{
+					"--config", configFile,
+				}, extras...),
+			},
+		},
+	}
+
+	if err := serverCmd.Exec(context.Background(), os.Stdout, os.Stderr); err != nil {
+		fmt.Printf("Error occured: %+q", err)
+		return
+	}
+}
+
 func runLS(c *cli.Context) {
 	configFile := c.String("config")
 
@@ -119,7 +146,6 @@ func runLS(c *cli.Context) {
 		fmt.Printf("Error occured: %+q", err)
 		return
 	}
-
 }
 
 func runServer(c *cli.Context) {
@@ -147,5 +173,4 @@ func runServer(c *cli.Context) {
 		fmt.Printf("Error occured: %+q", err)
 		return
 	}
-
 }

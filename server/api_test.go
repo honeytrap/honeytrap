@@ -11,6 +11,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/honeytrap/honeytrap/config"
+	"github.com/honeytrap/honeytrap/director"
 	"github.com/honeytrap/honeytrap/director/iodirector"
 	"github.com/honeytrap/honeytrap/pushers/message"
 	"github.com/honeytrap/honeytrap/server"
@@ -87,8 +88,9 @@ var (
 
 func TestHoneycast(t *testing.T) {
 	conf := &config.Config{Token: dbName}
-	director := iodirector.New(conf, nil)
-	cast := server.NewHoneycast(conf, director)
+	dir := iodirector.New(conf, nil)
+	manager := director.NewContainerConnections()
+	cast := server.NewHoneycast(conf, manager, dir)
 
 	defer os.Remove(dbName + "-bolted.db")
 
@@ -221,8 +223,9 @@ func TestHoneycast(t *testing.T) {
 
 func TestHoneycastWebsocket(t *testing.T) {
 	conf := &config.Config{Token: dbName}
-	director := iodirector.New(conf, nil)
-	cast := server.NewHoneycast(conf, director)
+	dir := iodirector.New(conf, nil)
+	manager := director.NewContainerConnections()
+	cast := server.NewHoneycast(conf, manager, dir)
 
 	defer os.Remove(dbName + "-bolted.db")
 

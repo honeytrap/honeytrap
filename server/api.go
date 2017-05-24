@@ -56,10 +56,11 @@ type Honeycast struct {
 	assets   http.Handler
 	config   *config.Config
 	director director.Director
+	manager  *director.ContainerConnections
 }
 
 // NewHoneycast returns a new instance of a Honeycast struct.
-func NewHoneycast(config *config.Config, director director.Director, options ...HoneycastOption) *Honeycast {
+func NewHoneycast(config *config.Config, manager *director.ContainerConnections, dir director.Director, options ...HoneycastOption) *Honeycast {
 
 	// Create the database we desire.
 	// TODO: Should we really panic here, it makes sense to do that, since it's the server
@@ -73,21 +74,79 @@ func NewHoneycast(config *config.Config, director director.Director, options ...
 	var hc Honeycast
 	hc.config = config
 	hc.bolted = bolted
-	hc.director = director
+	hc.director = dir
+	hc.manager = manager
 	hc.TreeMux = httptreemux.New()
 	hc.socket = NewSocketcast(config, bolted, AcceptAllOrigins)
 
-	// Register endpoints for all handlers.
+	// Register endpoints for events.
 	hc.TreeMux.Handle("GET", "/", hc.Index)
 	hc.TreeMux.Handle("GET", "/events", hc.Events)
 	hc.TreeMux.Handle("GET", "/sessions", hc.Sessions)
 	hc.TreeMux.Handle("GET", "/ws", hc.socket.ServeHandle)
 
+	// Register endpoints for metrics details
+	hc.TreeMux.Handle("GET", "/metrics/attackers", hc.Attackers)
 	hc.TreeMux.Handle("GET", "/metrics/containers", hc.Containers)
-	// hc.TreeMux.Handle("GET", "/metrics/containers", nil)
-	// hc.TreeMux.Handle("GET", "/metrics/containers", nil)
+
+	// Register endpoints for container interaction details
+	hc.TreeMux.Handle("DELETE", "/containers/clients/:container_id", hc.ContainerClientDelete)
+	hc.TreeMux.Handle("DELETE", "/containers/connections/:container_id", hc.ContainerConnectionsDelete)
 
 	return &hc
+}
+
+// ContainerClientDelete services the request to delete a giving containers client detail without
+// affecting the existing connections.
+func (h *Honeycast) ContainerClientDelete(w http.ResponseWriter, r *http.Request, params map[string]string) {
+	if err := h.manager.RemoveClient(params["container_id"]); err != nil {
+		log.Error("Honeycast API : Operation Failed : %+q", err)
+		http.Error(w, "Operation Failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ContainerConnectionsDelete services the request to delete a giving containers client detail and
+// related existing connections.
+func (h *Honeycast) ContainerConnectionsDelete(w http.ResponseWriter, r *http.Request, params map[string]string) {
+	if err := h.manager.RemoveClientWithConns(params["container_id"]); err != nil {
+		log.Error("Honeycast API : Operation Failed : %+q", err)
+		http.Error(w, "Operation Failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// AttackerResponse defines the response delivered for requesting list of all
+// current container users.
+type AttackerResponse struct {
+	Total     int                     `json:"total"`
+	Attackers []director.ClientDetail `json:"attackers"`
+}
+
+// Attackers delivers metrics from the underlying API about specific users
+// of the current running dataset.
+func (h *Honeycast) Attackers(w http.ResponseWriter, r *http.Request, params map[string]string) {
+	users := h.manager.ListClients()
+
+	response := ContainerResponse{
+		Total:     len(users),
+		Attackers: users,
+	}
+
+	w.WriteHeader(http.StatusOK)
+
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "\t")
+
+	if err := encoder.Encode(response); err != nil {
+		log.Error("Honeycast API : Operation Failed : %+q", err)
+		http.Error(w, "Operation Failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 // ContainerResponse defines the response delivered for requesting list of all containers
@@ -113,7 +172,7 @@ func (h *Honeycast) Containers(w http.ResponseWriter, r *http.Request, params ma
 	encoder.SetIndent("", "\t")
 
 	if err := encoder.Encode(response); err != nil {
-		log.Error("honeycast : Operation Failed : %+q", err)
+		log.Error("Honeycast API : Operation Failed : %+q", err)
 		http.Error(w, "Operation Failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -161,35 +220,35 @@ func (h *Honeycast) Send(msgs []message.PushMessage) {
 
 	//  Batch save all events into individual buckets.
 	if terr := h.bolted.Save([]byte(message.SessionSensor), sessions...); terr != nil {
-		log.Errorf("honeycast : Failed to save session events to db: %+q", terr)
+		log.Errorf("Honeycast API : Failed to save session events to db: %+q", terr)
 	}
 
 	if terr := h.bolted.Save([]byte(message.ErrorsSensor), serrors...); terr != nil {
-		log.Errorf("honeycast : Failed to save errors events to db: %+q", terr)
+		log.Errorf("Honeycast API : Failed to save errors events to db: %+q", terr)
 	}
 
 	if terr := h.bolted.Save([]byte(message.ConnectionSensor), connections...); terr != nil {
-		log.Errorf("honeycast : Failed to save connections events to db: %+q", terr)
+		log.Errorf("Honeycast API : Failed to save connections events to db: %+q", terr)
 	}
 
 	if terr := h.bolted.Save([]byte(message.ServiceSensor), services...); terr != nil {
-		log.Errorf("honeycast : Failed to save service events to db: %+q", terr)
+		log.Errorf("Honeycast API : Failed to save service events to db: %+q", terr)
 	}
 
 	if terr := h.bolted.Save([]byte(message.ContainersSensor), containers...); terr != nil {
-		log.Errorf("honeycast : Failed to save data events to db: %+q", terr)
+		log.Errorf("Honeycast API : Failed to save data events to db: %+q", terr)
 	}
 
 	if terr := h.bolted.Save([]byte(message.DataSensor), data...); terr != nil {
-		log.Errorf("honeycast : Failed to save data events to db: %+q", terr)
+		log.Errorf("Honeycast API : Failed to save data events to db: %+q", terr)
 	}
 
 	if terr := h.bolted.Save([]byte(message.PingSensor), pings...); terr != nil {
-		log.Errorf("honeycast : Failed to save ping events to db: %+q", terr)
+		log.Errorf("Honeycast API : Failed to save ping events to db: %+q", terr)
 	}
 
 	if terr := h.bolted.Save([]byte(message.EventSensor), events...); terr != nil {
-		log.Errorf("honeycast : Failed to save events to db: %+q", terr)
+		log.Errorf("Honeycast API : Failed to save events to db: %+q", terr)
 	}
 }
 
@@ -198,7 +257,7 @@ func (h *Honeycast) Send(msgs []message.PushMessage) {
 func (h *Honeycast) Sessions(w http.ResponseWriter, r *http.Request, params map[string]string) {
 	total, err := h.bolted.GetSize(sessionBucket)
 	if err != nil {
-		log.Error("honeycast : Operation Failed : %+q", err)
+		log.Error("Honeycast API : Operation Failed : %+q", err)
 		http.Error(w, "Operation Failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -206,7 +265,7 @@ func (h *Honeycast) Sessions(w http.ResponseWriter, r *http.Request, params map[
 	var req EventRequest
 
 	if terr := json.NewDecoder(r.Body).Decode(&req); terr != nil {
-		log.Error("honeycast : Invalid Request Object data: %+q", terr)
+		log.Error("Honeycast API : Invalid Request Object data: %+q", terr)
 		http.Error(w, "Invalid Request Object data: "+terr.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -221,7 +280,7 @@ func (h *Honeycast) Sessions(w http.ResponseWriter, r *http.Request, params map[
 		var terr error
 		res.Events, terr = h.bolted.Get(sessionBucket, -1, -1)
 		if terr != nil {
-			log.Error("honeycast : Invalid Response received : %+q", err)
+			log.Error("Honeycast API : Invalid Response received : %+q", err)
 			http.Error(w, "Invalid 'From' parameter: "+terr.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -238,7 +297,7 @@ func (h *Honeycast) Sessions(w http.ResponseWriter, r *http.Request, params map[
 
 		events, terr = h.bolted.Get(eventsBucket, index, length)
 		if terr != nil {
-			log.Error("honeycast : Invalid Response received : %+q", err)
+			log.Error("Honeycast API : Invalid Response received : %+q", err)
 			http.Error(w, "Invalid 'From' parameter: "+terr.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -298,7 +357,7 @@ func (h *Honeycast) Sessions(w http.ResponseWriter, r *http.Request, params map[
 
 	var bu bytes.Buffer
 	if jserr := json.NewEncoder(&bu).Encode(res); jserr != nil {
-		log.Error("honeycast : Invalid 'From' Param: %+q", jserr)
+		log.Error("Honeycast API : Invalid 'From' Param: %+q", jserr)
 		http.Error(w, "Invalid 'From' parameter: "+jserr.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -312,7 +371,7 @@ func (h *Honeycast) Sessions(w http.ResponseWriter, r *http.Request, params map[
 func (h *Honeycast) Events(w http.ResponseWriter, r *http.Request, params map[string]string) {
 	total, err := h.bolted.GetSize(eventsBucket)
 	if err != nil {
-		log.Error("honeycast : Operation Failed : %+q", err)
+		log.Error("Honeycast API : Operation Failed : %+q", err)
 		http.Error(w, "Operation Failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -320,7 +379,7 @@ func (h *Honeycast) Events(w http.ResponseWriter, r *http.Request, params map[st
 	var req EventRequest
 
 	if terr := json.NewDecoder(r.Body).Decode(&req); terr != nil {
-		log.Error("honeycast : Invalid Request Object data: %+q", terr)
+		log.Error("Honeycast API : Invalid Request Object data: %+q", terr)
 		http.Error(w, "Invalid Request Object data: "+terr.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -336,7 +395,7 @@ func (h *Honeycast) Events(w http.ResponseWriter, r *http.Request, params map[st
 
 		res.Events, terr = h.bolted.Get(eventsBucket, -1, -1)
 		if terr != nil {
-			log.Error("honeycast : Invalid Response received : %+q", err)
+			log.Error("Honeycast API : Invalid Response received : %+q", err)
 			http.Error(w, "Invalid 'From' parameter: "+terr.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -353,7 +412,7 @@ func (h *Honeycast) Events(w http.ResponseWriter, r *http.Request, params map[st
 
 		events, terr = h.bolted.Get(eventsBucket, index, length)
 		if terr != nil {
-			log.Error("honeycast : Invalid Response received : %+q", err)
+			log.Error("Honeycast API : Invalid Response received : %+q", err)
 			http.Error(w, "Invalid 'From' parameter: "+terr.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -390,7 +449,7 @@ func (h *Honeycast) Events(w http.ResponseWriter, r *http.Request, params map[st
 
 							sensorRegExp, err := regexp.Compile(tp)
 							if err != nil {
-								log.Errorf("Honeycast : Failed to creat match for %q : %+q", tp, err)
+								log.Errorf("Honeycast API : Failed to creat match for %q : %+q", tp, err)
 								continue sensorFilterLoop
 							}
 
@@ -421,7 +480,7 @@ func (h *Honeycast) Events(w http.ResponseWriter, r *http.Request, params map[st
 
 	var bu bytes.Buffer
 	if jserr := json.NewEncoder(&bu).Encode(res); jserr != nil {
-		log.Error("honeycast : Invalid 'From' Param: %+q", jserr)
+		log.Error("Honeycast API : Invalid 'From' Param: %+q", jserr)
 		http.Error(w, "Invalid 'From' parameter: "+jserr.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -548,7 +607,7 @@ func (socket *Socketcast) manage() {
 				}
 
 				if err := socket.transport.HandleMessage(message.message, message.client); err != nil {
-					log.Error("honeycast : Failed to process message : %+q : %+q", message, err)
+					log.Error("Honeycast API : Failed to process message : %+q : %+q", message, err)
 				}
 
 			case closeConn, ok := <-socket.closeClients:
@@ -571,7 +630,7 @@ func (socket *Socketcast) manage() {
 
 				for client := range socket.clients {
 					if err := socket.transport.DeliverNewEvents(newEvents, client); err != nil {
-						log.Error("honeycast : Failed to deliver events : %+q : %+q", client.RemoteAddr(), err)
+						log.Error("Honeycast API : Failed to deliver events : %+q : %+q", client.RemoteAddr(), err)
 					}
 				}
 
@@ -583,7 +642,7 @@ func (socket *Socketcast) manage() {
 
 				for client := range socket.clients {
 					if err := socket.transport.DeliverNewSessions(newEvents, client); err != nil {
-						log.Error("honeycast : Failed to deliver events : %+q : %+q", client.RemoteAddr(), err)
+						log.Error("Honeycast API : Failed to deliver events : %+q : %+q", client.RemoteAddr(), err)
 					}
 				}
 			}
@@ -595,7 +654,7 @@ func (socket *Socketcast) manage() {
 func (socket *Socketcast) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	conn, err := socket.uprader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Error("honeycast : Failed to uprade request : %+q", err)
+		log.Error("Honeycast API : Failed to uprade request : %+q", err)
 		http.Error(w, "Failed to upgrade request", http.StatusInternalServerError)
 		return
 	}
@@ -613,7 +672,7 @@ func (socket *Socketcast) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			messageType, message, err := conn.ReadMessage()
 			if err != nil {
 				// Error possibly occured, so we need to stop here.
-				log.Error("honeycast : Connection read failed abruptly : %+q", err)
+				log.Error("Honeycast API : Connection read failed abruptly : %+q", err)
 				socket.closeClients <- conn
 				return
 			}
@@ -677,7 +736,7 @@ func (so *SocketTransport) HandleMessage(message []byte, conn *websocket.Conn) e
 	var newMessage Message
 
 	if err := json.NewDecoder(bytes.NewBuffer(message)).Decode(&newMessage); err != nil {
-		log.Errorf("Honeycast : Failed to decode message : %+q", err)
+		log.Errorf("Honeycast API : Failed to decode message : %+q", err)
 		return err
 	}
 
@@ -691,7 +750,7 @@ func (so *SocketTransport) HandleMessage(message []byte, conn *websocket.Conn) e
 		var terr error
 		message.Payload, terr = so.bolted.Get(eventsBucket, -1, -1)
 		if terr != nil {
-			log.Error("honeycast : Invalid Response with Sessions Retrieval : %+q", terr)
+			log.Error("Honeycast API : Invalid Response with Sessions Retrieval : %+q", terr)
 			return so.DeliverMessage(Message{
 				Type:    ErrorResponse,
 				Payload: terr.Error(),
@@ -707,7 +766,7 @@ func (so *SocketTransport) HandleMessage(message []byte, conn *websocket.Conn) e
 		var terr error
 		message.Payload, terr = so.bolted.Get(sessionBucket, -1, -1)
 		if terr != nil {
-			log.Error("honeycast : Invalid Response with Sessions Retrieval : %+q", terr)
+			log.Error("Honeycast API : Invalid Response with Sessions Retrieval : %+q", terr)
 			return so.DeliverMessage(Message{
 				Type:    ErrorResponse,
 				Payload: terr.Error(),
@@ -754,7 +813,7 @@ func (so *SocketTransport) DeliverMessage(message Message, conn *websocket.Conn)
 	var bu bytes.Buffer
 
 	if err := json.NewEncoder(&bu).Encode(message); err != nil {
-		log.Errorf("Honeycast : Failed to decode message : %+q", err)
+		log.Errorf("Honeycast API : Failed to decode message : %+q", err)
 		return err
 	}
 
