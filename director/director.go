@@ -63,7 +63,7 @@ type newClientConnection struct {
 func NewContainerConnections() *ContainerConnections {
 	cc := &ContainerConnections{
 		connections:   make(map[string][]net.Conn),
-		clients:       make(map[string]ClientDetail),
+		clients:       make(map[string]ContainerDetail),
 		newClient:     make(chan newClientConnection),
 		rmResponse:    make(chan error),
 		rmClient:      make(chan string),
