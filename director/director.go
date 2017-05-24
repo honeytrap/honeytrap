@@ -160,7 +160,7 @@ func (cn *ContainerConnections) manage() {
 
 				_, clientFound := cn.clients[clientID]
 				if !clientFound {
-					cn.rmResponse <- fmt.Errorf("Client %q does not exists", clientID)
+					cn.rmResponse <- fmt.Errorf("Container with ID: %q does not exists", clientID)
 					continue nloop
 				}
 
@@ -180,7 +180,7 @@ func (cn *ContainerConnections) manage() {
 
 				_, clientFound := cn.clients[clientID]
 				if !clientFound {
-					cn.rmResponse <- fmt.Errorf("Client %q does not exists", clientID)
+					cn.rmResponse <- fmt.Errorf("Container with ID: %q does not exists", clientID)
 					continue nloop
 				}
 

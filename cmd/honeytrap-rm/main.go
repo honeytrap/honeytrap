@@ -167,7 +167,7 @@ func serviceRemoveContainerWithConnections(c *cli.Context) {
 	var body bytes.Buffer
 	io.Copy(&body, res.Body)
 
-	fmt.Println(body.String())
+	fmt.Println("\n", body.String())
 }
 
 // serviceRemoveContainerOnly delivers a call to the honeytrap API to remove the container
@@ -233,7 +233,7 @@ func serviceRemoveContainerOnly(c *cli.Context) {
 	var body bytes.Buffer
 	io.Copy(&body, res.Body)
 
-	fmt.Println(body.String())
+	fmt.Println("\n", body.String())
 }
 
 // getAddr takes the giving address string and if it has no ip or use the
