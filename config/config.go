@@ -177,7 +177,7 @@ func (t *Delay) UnmarshalText(text []byte) error {
 }
 
 // DefaultConfig defines the default Config to be used to set default values.
-var DefaultConfig = Config{
+var Default = Config{
 	Token:     "",
 	Template:  "honeytrap",
 	NetFilter: "",
@@ -203,12 +203,6 @@ var DefaultConfig = Config{
 	Agent: AgentConfig{
 		Port: ":6887",
 	},
-}
-
-// New returns a new instance of the config struct.
-func New() (*Config, error) {
-	c := DefaultConfig
-	return &c, nil
 }
 
 // Load attempts to load the giving toml configuration file.

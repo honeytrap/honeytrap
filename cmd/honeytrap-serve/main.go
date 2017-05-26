@@ -42,9 +42,9 @@ var log = logging.MustGetLogger("honeytrap/cmd/honeytrap-serve")
 
 var globalFlags = []cli.Flag{
 	cli.StringFlag{
-		Name:  "c,config",
-		Usage: "config file",
+		Name:  "config, c",
 		Value: "config.toml",
+		Usage: "Load configuration from `FILE`",
 	},
 	cli.BoolFlag{Name: "cpu-profile", Usage: "Enable cpu profiler"},
 	cli.BoolFlag{Name: "mem-profile", Usage: "Enable memory profiler"},
@@ -62,15 +62,11 @@ func VersionAction(c *cli.Context) {
 }
 
 func serve(c *cli.Context) {
-	conf, err := config.New()
-	if err != nil {
-		fmt.Printf(err.Error())
-		return
-	}
+	conf := config.Default
 
 	configFile := c.GlobalString("config")
 	if err := conf.Load(configFile); err != nil {
-		fmt.Printf("Configuration Error: %q - %q", configFile, err.Error())
+		fmt.Println(color.RedString("Configuration error: %s", err.Error()))
 		return
 	}
 
@@ -94,7 +90,7 @@ func serve(c *cli.Context) {
 		}()
 	}
 
-	var server = server.New(conf)
+	var server = server.New(&conf)
 	server.Serve()
 
 	s := make(chan os.Signal, 1)
