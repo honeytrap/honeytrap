@@ -70,6 +70,7 @@ type Event struct {
 	Date        time.Time              `json:"date"`
 	Data        interface{}            `json:"data"`
 	Sensor      string                 `json:"sensor"`
+	Category    string                 `json:"category"`
 	Details     map[string]interface{} `json:"details"`
 	HostAddr    string                 `json:"host_addr"`
 	LocalAddr   string                 `json:"local_addr"`
