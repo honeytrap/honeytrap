@@ -8,8 +8,6 @@ import (
 
 	_ "net/http/pprof"
 
-	"errors"
-
 	"github.com/elazarl/go-bindata-assetfs"
 	"github.com/fatih/color"
 	web "github.com/honeytrap/honeytrap-web"
@@ -272,23 +270,12 @@ func (hc *Honeytrap) startStatsServer() {
 }
 
 func (hc *Honeytrap) startCanary() error {
-	// get interface
-	iface := ""
-
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return err
 	}
 
-	for _, i := range ifaces {
-		iface = i.Name
-	}
-
-	if iface == "" {
-		return errors.New("No interface found")
-	}
-
-	c, err := canary.New(iface, hc.events)
+	c, err := canary.New(ifaces, hc.events)
 	if err != nil {
 		return err
 	}
