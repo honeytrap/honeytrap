@@ -2,7 +2,6 @@ package process
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -22,6 +21,7 @@ const (
 	Normal CriticalLevel = iota + 1
 	Warning
 	RedAlert
+	SilentKill
 )
 
 const (
@@ -63,15 +63,8 @@ func (c Command) Run(ctx context.Context, out, werr io.Writer) error {
 	proc.Stdout = out
 	proc.Stderr = werr
 
-	log.Infof("Process : Command : Begin Execution : %q : %+q", c.Name, c.Args)
-
 	if err := proc.Start(); err != nil {
 		log.Errorf("Process : Error : Command : Begin Execution : %q : %q", c.Name, c.Args)
-
-		if c.Level > Normal {
-			log.Debugf("Process : Debug : Command : %s : %s", c.Name, fmt.Sprintf(commandMessage, c.Name, c.Args, false, "Failed", err.Error()))
-		}
-
 		return err
 	}
 
@@ -82,19 +75,9 @@ func (c Command) Run(ctx context.Context, out, werr io.Writer) error {
 		}
 	}()
 
-	if c.Level > Normal && proc.ProcessState != nil {
-		log.Debugf("Process : Debug : Command : %s : %s", c.Name, fmt.Sprintf(commandMessage, c.Name, c.Args, proc.ProcessState.Success(), proc.ProcessState.String()))
-	}
-
-	log.Debugf("Process : Debug : Command : %s : %s", c.Name, fmt.Sprintf(commandPidMessage, c.Name, c.Args, proc.Process.Pid))
-
 	if !c.Async {
 		if err := proc.Wait(); err != nil {
 			log.Errorf("Process : Error : Command : Begin Execution : %q : %q", c.Name, c.Args)
-
-			if c.Level > Normal {
-				log.Debugf("Process : Debug : Command : %s : %s", c.Name, fmt.Sprintf(commandMessage, c.Name, c.Args, false, "Failed", err.Error()))
-			}
 
 			if c.Level > Warning {
 				return err
@@ -154,7 +137,7 @@ type SyncScripts struct {
 	Scripts []ScriptProcess `json:"commands"`
 }
 
-// SyncExec executes the giving series of commands attached to the
+// Exec executes the giving series of commands attached to the
 // process.
 func (p SyncScripts) Exec(ctx context.Context, pipeOut, pipeErr io.Writer) error {
 	for _, command := range p.Scripts {
@@ -180,8 +163,6 @@ type ScriptProcess struct {
 // Exec executes a copy of the giving script source in a temporary file which it then executes
 // the contents.
 func (c ScriptProcess) Exec(ctx context.Context, pipeOut, pipeErr io.Writer) error {
-	log.Infof("Process : Shell Script : Begin Execution : %q : %q", c.Shell, c.Source)
-
 	tmpFile, err := ioutil.TempFile("/tmp", "proc-shell")
 	if err != nil {
 		log.Errorf("Process : Error : Command : Begin Execution : %q : %+q", c.Shell, err)
@@ -223,19 +204,11 @@ func (c ScriptProcess) Exec(ctx context.Context, pipeOut, pipeErr io.Writer) err
 	if err := proc.Wait(); err != nil {
 		log.Errorf("Process : Error : Command : Begin Execution : %q : %q", c.Shell, c.Source)
 
-		if c.Level > Normal {
-			log.Debugf("Process : Debug : Command : %s", fmt.Sprintf(shellMessage, c.Shell, false, "Failed", err.Error(), c.Source))
-		}
-
 		if c.Level > Warning {
 			return err
 		}
 
 		return nil
-	}
-
-	if c.Level > Normal {
-		log.Debugf("Process : Debug : Command :  %s", fmt.Sprintf(shellMessage, c.Shell, proc.ProcessState.Success(), proc.ProcessState.String(), err.Error(), c.Source))
 	}
 
 	return nil

@@ -94,6 +94,18 @@ func (d *Director) NewContainer(addr string) (director.Container, error) {
 	return container, nil
 }
 
+// ListContainers returns the giving list of containers details
+// for all connected containers.
+func (d *Director) ListContainers() []director.ContainerDetail {
+	var details []director.ContainerDetail
+
+	for _, item := range d.containers {
+		details = append(details, item.Detail())
+	}
+
+	return details
+}
+
 // GetContainer returns a new Container using the provided net.Conn if already registered.
 func (d *Director) GetContainer(conn net.Conn) (director.Container, error) {
 	log.Infof("Cowrie : Attempt to retrieve existing container : %+q", conn.RemoteAddr())
@@ -138,6 +150,19 @@ type CowrieContainer struct {
 	meta       config.CowrieConfig
 	gcommands  process.SyncProcess
 	gscripts   process.SyncScripts
+}
+
+// Detail returns the ContainerDetail related to this giving container.
+func (c *CowrieContainer) Detail() director.ContainerDetail {
+	return director.ContainerDetail{
+		Name:          c.targetName,
+		ContainerAddr: c.meta.SSHAddr,
+		Meta: map[string]interface{}{
+			"driver": "io",
+			"ip":     c.meta.SSHAddr,
+			"port":   c.meta.SSHPort,
+		},
+	}
 }
 
 // Dial connects to the giving address to provide proxying stream between

@@ -1,15 +1,18 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 
-	_ "net/http/pprof" // Add pprof tooling
+	_ "net/http/pprof"
 
 	"github.com/elazarl/go-bindata-assetfs"
 	"github.com/fatih/color"
 	web "github.com/honeytrap/honeytrap-web"
+
+	"github.com/honeytrap/honeytrap/canary"
 
 	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/config"
@@ -44,6 +47,7 @@ type Honeytrap struct {
 	events    pushers.Events
 	honeycast *Honeycast
 	director  director.Director
+	manager   *director.ContainerConnections
 }
 
 // ServeFunc defines the function called to handle internal server details.
@@ -52,37 +56,43 @@ type ServeFunc func() error
 // New returns a new instance of a Honeytrap struct.
 func New(conf *config.Config) *Honeytrap {
 	pusher := pushers.New(conf)
-
 	pushChannel := pushers.NewProxyPusher(pusher)
-	honeycast := NewHoneycast(conf, &assetfs.AssetFS{
-		Asset:     web.Asset,
-		AssetDir:  web.AssetDir,
-		AssetInfo: web.AssetInfo,
-		Prefix:    web.Prefix,
-	})
 
-	channels := pushers.ChannelStream{pushChannel, honeycast}
+	bus := pushers.NewEventBus()
+	channels := pushers.ChannelStream{pushChannel, bus}
 	events := pushers.NewTokenedEventDelivery(conf.Token, channels)
 
-	var director director.Director
+	var dr director.Director
 
 	switch conf.Director {
 	case cowriedirector.DirectorKey:
-		director = cowriedirector.New(conf, events)
+		dr = cowriedirector.New(conf, events)
 	case iodirector.DirectorKey:
-		director = iodirector.New(conf, events)
+		dr = iodirector.New(conf, events)
 	case lxcdirector.DirectorKey:
-		director = lxcdirector.New(conf, events)
+		dr = lxcdirector.New(conf, events)
 	default:
 		panic(fmt.Sprintf("Unknown director type: %q", conf.Director))
 	}
 
+	manager := director.NewContainerConnections()
+
+	honeycast := NewHoneycast(conf, manager, dr, HoneycastAssets(&assetfs.AssetFS{
+		Asset:     web.Asset,
+		AssetDir:  web.AssetDir,
+		AssetInfo: web.AssetInfo,
+		Prefix:    web.Prefix,
+	}))
+
+	bus.Subscribe(honeycast)
+
 	return &Honeytrap{
 		config:    conf,
-		director:  director,
+		director:  dr,
 		pusher:    pusher,
 		events:    events,
 		honeycast: honeycast,
+		manager:   manager,
 	}
 }
 
@@ -106,6 +116,18 @@ func (hc *Honeytrap) startPusher() {
 	hc.pusher.Start()
 }
 
+// EventServiceStarted will return a service started Event struct
+func EventServiceStarted(service string, primitive toml.Primitive) message.Event {
+	return message.Event{
+		Sensor:   service,
+		Category: "Services",
+		Type:     message.ServiceStarted,
+		Details: map[string]interface{}{
+			"primitive": primitive,
+		},
+	}
+}
+
 func (hc *Honeytrap) startProxies() {
 	for _, primitive := range hc.config.Services {
 		st := struct {
@@ -121,14 +143,13 @@ func (hc *Honeytrap) startProxies() {
 		if serviceFn, ok := proxies.Get(st.Service); ok {
 			log.Debugf("Listener starting: %s", st.Port)
 
-			service, err := serviceFn(st.Port, hc.director, hc.pusher, hc.events, primitive)
+			service, err := serviceFn(st.Port, hc.manager, hc.director, hc.pusher, hc.events, primitive)
 			if err != nil {
 				log.Errorf("Error in service: %s: %s", st.Service, err.Error())
 
 				hc.events.Deliver(message.Event{
-					Sensor:   st.Service,
-					Category: "Services",
-					Type:     message.ServiceStarted,
+					Sensor: st.Service,
+					Type:   message.ServiceStarted,
 					Details: map[string]interface{}{
 						"primitive": primitive,
 						"error":     err.Error(),
@@ -139,9 +160,8 @@ func (hc *Honeytrap) startProxies() {
 			}
 
 			hc.events.Deliver(message.Event{
-				Sensor:   st.Service,
-				Category: "Services",
-				Type:     message.ServiceStarted,
+				Sensor: st.Service,
+				Type:   message.ServiceStarted,
 				Details: map[string]interface{}{
 					"primitive": primitive,
 				},
@@ -249,9 +269,37 @@ func (hc *Honeytrap) startStatsServer() {
 	}
 }
 
+func (hc *Honeytrap) startCanary() error {
+	// get interface
+	iface := ""
+
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return err
+	}
+
+	for _, i := range ifaces {
+		iface = i.Name
+	}
+
+	if iface == "" {
+		return errors.New("No interface found")
+	}
+
+	c, err := canary.New(iface, hc.events)
+	if err != nil {
+		return err
+	}
+
+	go c.Run()
+
+	return nil
+}
+
 // Serve initializes and starts the internal logic for the Honeytrap instance.
 func (hc *Honeytrap) Serve() {
 
+	+hc.startCanary()
 	hc.startPusher()
 	hc.startProxies()
 	hc.startStatsServer()

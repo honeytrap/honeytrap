@@ -77,6 +77,7 @@ func (d *Director) NewContainer(addr string) (director.Container, error) {
 	d.m.Unlock()
 
 	container = &IOContainer{
+		targetAddr: addr,
 		targetName: name,
 		config:     d.config,
 		gscripts:   d.globalScripts,
@@ -91,6 +92,18 @@ func (d *Director) NewContainer(addr string) (director.Container, error) {
 	d.m.Unlock()
 
 	return container, nil
+}
+
+// ListContainers returns the giving list of containers details
+// for all connected containers.
+func (d *Director) ListContainers() []director.ContainerDetail {
+	var details []director.ContainerDetail
+
+	for _, item := range d.containers {
+		details = append(details, item.Detail())
+	}
+
+	return details
 }
 
 // GetContainer returns a new Container using the provided net.Conn if already registered.
@@ -132,11 +145,23 @@ func (d *Director) getName(addr string) (string, error) {
 // IOContainer defines a core container structure which generates new net connections
 // between stream endpoints.
 type IOContainer struct {
+	targetAddr string
 	targetName string
 	config     *config.Config
 	meta       config.IOConfig
 	gcommands  process.SyncProcess
 	gscripts   process.SyncScripts
+}
+
+// Detail returns the ContainerDetail related to this giving container.
+func (io *IOContainer) Detail() director.ContainerDetail {
+	return director.ContainerDetail{
+		Name:          io.targetName,
+		ContainerAddr: io.meta.ServiceAddr,
+		Meta: map[string]interface{}{
+			"driver": "io",
+		},
+	}
 }
 
 // Dial connects to the giving address to provide proxying stream between
