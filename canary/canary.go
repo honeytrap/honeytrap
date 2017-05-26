@@ -213,6 +213,7 @@ func (s *Canary) knockDetector() {
 
 		case <-time.After(time.Second * 5):
 			// TODO: make time configurable
+
 			now := time.Now()
 
 			knocks.Each(func(i int, v interface{}) {

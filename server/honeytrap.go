@@ -8,6 +8,8 @@ import (
 
 	_ "net/http/pprof"
 
+	"errors"
+
 	"github.com/elazarl/go-bindata-assetfs"
 	"github.com/fatih/color"
 	web "github.com/honeytrap/honeytrap-web"
@@ -299,7 +301,7 @@ func (hc *Honeytrap) startCanary() error {
 // Serve initializes and starts the internal logic for the Honeytrap instance.
 func (hc *Honeytrap) Serve() {
 
-	+hc.startCanary()
+	hc.startCanary()
 	hc.startPusher()
 	hc.startProxies()
 	hc.startStatsServer()

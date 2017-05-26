@@ -69,6 +69,7 @@ const (
 type Event struct {
 	Date        time.Time              `json:"date"`
 	Data        interface{}            `json:"data"`
+	Category    string                 `json:"category"`
 	Sensor      string                 `json:"sensor"`
 	Category    string                 `json:"category"`
 	Details     map[string]interface{} `json:"details"`
