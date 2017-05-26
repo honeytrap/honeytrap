@@ -299,7 +299,7 @@ func (hc *Honeytrap) startCanary() error {
 // Serve initializes and starts the internal logic for the Honeytrap instance.
 func (hc *Honeytrap) Serve() {
 
-	+hc.startCanary()
+	hc.startCanary()
 	hc.startPusher()
 	hc.startProxies()
 	hc.startStatsServer()

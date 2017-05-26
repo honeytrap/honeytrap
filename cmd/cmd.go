@@ -47,17 +47,13 @@ func VersionAction(c *cli.Context) {
 
 func run(name string) func(c *cli.Context) {
 	return func(c *cli.Context) {
-		cmd := process.SyncProcess{
-			Commands: []process.Command{
-				{
-					Name:  name,
-					Level: process.SilentKill,
-					Args:  []string(c.Args()),
-				},
-			},
+		cmd := process.Command{
+			Name:  name,
+			Level: process.SilentKill,
+			Args:  []string(c.Args()),
 		}
 
-		if err := cmd.Exec(context.Background(), os.Stdout, os.Stderr); err != nil {
+		if err := cmd.Run(context.Background(), os.Stdout, os.Stderr); err != nil {
 			fmt.Println(color.RedString(err.Error()))
 			return
 		}
@@ -83,26 +79,14 @@ func New() *Cmd {
 			SkipFlagParsing: true,
 		},
 		{
-			Name:   "rm",
-			Action: runRM,
-			Flags: []cli.Flag{
-				cli.StringFlag{
-					Name:  "c,config",
-					Usage: "config file",
-					Value: "config.toml",
-				},
-			},
+			Name:            "containers",
+			Action:          run("honeytrap-containers"),
+			SkipFlagParsing: true,
 		},
 		{
-			Name:   "ls",
-			Action: runLS,
-			Flags: []cli.Flag{
-				cli.StringFlag{
-					Name:  "c,config",
-					Usage: "config file",
-					Value: "config.toml",
-				},
-			},
+			Name:            "users",
+			Action:          run("honeytrap-users"),
+			SkipFlagParsing: true,
 		},
 	}
 
@@ -112,59 +96,5 @@ func New() *Cmd {
 
 	return &Cmd{
 		App: app,
-	}
-}
-
-func runRM(c *cli.Context) {
-	configFile := c.String("config")
-
-	var extras []string
-
-	for _, item := range c.Args() {
-		extras = append(extras, string(item))
-	}
-
-	serverCmd := process.SyncProcess{
-		Commands: []process.Command{
-			{
-				Name:  "honeytrap-rm",
-				Level: process.SilentKill,
-				Args: append([]string{
-					"--config", configFile,
-				}, extras...),
-			},
-		},
-	}
-
-	if err := serverCmd.Exec(context.Background(), os.Stdout, os.Stderr); err != nil {
-		fmt.Printf("Error occured: %+q", err)
-		return
-	}
-}
-
-func runLS(c *cli.Context) {
-	configFile := c.String("config")
-
-	var extras []string
-
-	for _, item := range c.Args() {
-		extras = append(extras, string(item))
-	}
-
-	serverCmd := process.SyncProcess{
-		Commands: []process.Command{
-			{
-				Name:  "honeytrap-ls",
-				Level: process.SilentKill,
-				Args: append([]string{
-					"--config", configFile,
-				}, extras...),
-			},
-		},
-	}
-
-	if err := serverCmd.Exec(context.Background(), os.Stdout, os.Stderr); err != nil {
-		fmt.Printf("Error occured: %+q", err)
-		return
 	}
 }

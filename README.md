@@ -47,7 +47,7 @@ The central `honeytrap` CLI tooling provides access to the following commands wh
 - List all running containers
 
 ```shell
-> honeytrap ls -c config.toml containers
+> honeytrap containers -c config.toml ls
 
 honeytrap ls -c config.toml.sample containers
 Honeytrap-ls: Containers
@@ -67,7 +67,7 @@ Honeytrap Server: API Response Status: 200 - "200 OK"
 - List all running containers users/attackers
 
 ```shell
-> honeytrap ls -c config.toml attackers
+> honeytrap users -c config.toml ls
 
 Honeytrap-ls: Attackers
 Honeytrap Server: Token: "433UI-56JK-3433NJ-KI954"
@@ -86,7 +86,7 @@ Honeytrap Server: API Response Status: 200 - "200 OK"
 - Remove a container from API and end all the running sessions connected to it
 
 ```shell
-> honeytrap rm -c config.toml.sample connections -c 43434-bumber
+> honeytrap containers -c config.toml.sample rmc -c 43434-bumber
 
 Honeytrap-rm: Containers/Connections
 Honeytrap Server: Token: "433UI-56JK-3433NJ-KI954"
@@ -101,7 +101,7 @@ Honeytrap Server: API Response Status: 500 - "500 Internal Server Error"
 - Remove a container from API and without ending running sessions connected to it
 
 ```shell
-> honeytrap rm -c config.toml.sample containers -c 43434-bumber
+> honeytrap containers -c config.toml.sample rm -c 43434-bumber
 
 Honeytrap-rm: Containers/Connections
 Honeytrap Server: Token: "433UI-56JK-3433NJ-KI954"

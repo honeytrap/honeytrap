@@ -36,17 +36,15 @@ VERSION:
 ` + Version +
 	`{{ "\n"}}`
 
-var (
-	log = logging.MustGetLogger("honeytrap/cmd/honeytrap-ls")
+var log = logging.MustGetLogger("honeytrap/cmd/honeytrap-containers")
 
-	globalFlags = []cli.Flag{
-		cli.StringFlag{
-			Name:  "c,config",
-			Usage: "config file",
-			Value: "config.toml",
-		},
-	}
-)
+var globalFlags = []cli.Flag{
+	cli.StringFlag{
+		Name:  "c,config",
+		Usage: "config file",
+		Value: "config.toml",
+	},
+}
 
 // Cmd defines a struct for defining a command.
 type Cmd struct {
@@ -55,16 +53,16 @@ type Cmd struct {
 
 // VersionAction defines the action called when seeking the Version detail.
 func VersionAction(c *cli.Context) {
-	fmt.Println(color.YellowString(fmt.Sprintf("honeytrap-ls: Providing container listing.")))
+	fmt.Println(color.YellowString(fmt.Sprintf("Honeytrap-containers: CLI to interact with containers provided or created by honeytrap.")))
 }
 
 func main() {
 	app := cli.NewApp()
-	app.Name = "honeytrap-ls"
+	app.Name = "honeytrap-containers"
 	app.Author = ""
-	app.Usage = "honeytrap-ls"
+	app.Usage = "honeytrap-containers"
 	app.Flags = globalFlags
-	app.Description = `List all current active containers with the running server.`
+	app.Description = `The honeypot CLI tool to interact and manage container instances.`
 	app.CustomAppHelpTemplate = helpTemplate
 	app.Commands = []cli.Command{
 		{
@@ -72,12 +70,28 @@ func main() {
 			Action: VersionAction,
 		},
 		{
-			Name:   "containers",
-			Action: serviceContainers,
+			Name:   "ls",
+			Action: serviceListContainers,
 		},
 		{
-			Name:   "attackers",
-			Action: serviceUsers,
+			Name:   "rm",
+			Action: serviceRemoveContainerOnly,
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "c,container",
+					Usage: "--container bob-alpha",
+				},
+			},
+		},
+		{
+			Name:   "rmc",
+			Action: serviceRemoveContainerWithConnections,
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "c,container",
+					Usage: "--container bob-alpha",
+				},
+			},
 		},
 	}
 
@@ -88,18 +102,20 @@ func main() {
 	app.RunAndExitOnError()
 }
 
-// serviceUsers requests all containers users from the running honeytrap instance by
-// using the address generated from the config provided.
-func serviceUsers(c *cli.Context) {
-	conf, err := config.New()
-	if err != nil {
-		fmt.Printf(err.Error())
-		return
-	}
+// serviceRemoveContainerWithConnections delivers a call to the honeytrap API to remove the container
+// associted with the giving name.
+func serviceRemoveContainerWithConnections(c *cli.Context) {
+	conf := config.Default
 
 	configFile := c.GlobalString("config")
 	if err := conf.Load(configFile); err != nil {
-		fmt.Printf("Configuration Error: %q - %q", configFile, err.Error())
+		fmt.Println(color.RedString("Configuration error: %s", err.Error()))
+		return
+	}
+
+	containerID := c.String("container")
+	if containerID == "" {
+		fmt.Printf("Error : Container ID required")
 		return
 	}
 
@@ -118,15 +134,15 @@ func serviceUsers(c *cli.Context) {
 		addr = webIP
 	}
 
-	fmt.Printf("Honeytrap-ls: Attackers\n")
+	fmt.Printf("Honeytrap-rm: Containers/Connections\n")
 	fmt.Printf("Honeytrap Server: Token: %q\n", conf.Token)
 	fmt.Printf("Honeytrap Server: API Addr: %q\n", addr)
 
-	targetAddr := fmt.Sprintf("http://%s/metrics/attackers", addr)
+	targetAddr := fmt.Sprintf("http://%s/containers/connections/%s", addr, containerID)
 
 	fmt.Printf("Honeytrap Server: Request Addr: %q\n", targetAddr)
 
-	req, err := http.NewRequest("GET", targetAddr, nil)
+	req, err := http.NewRequest("DELETE", targetAddr, nil)
 	if err != nil {
 		fmt.Printf("HTTP Request Error: %q - %q", addr, err.Error())
 		return
@@ -145,21 +161,79 @@ func serviceUsers(c *cli.Context) {
 	var body bytes.Buffer
 	io.Copy(&body, res.Body)
 
-	fmt.Printf("\n%+s\n", body.String())
+	fmt.Println("\n", body.String())
 }
 
-// serviceContainers requests all containers from the running honeytrap instance by
-// using the address generated from the config provided.
-func serviceContainers(c *cli.Context) {
-	conf, err := config.New()
-	if err != nil {
-		fmt.Printf(err.Error())
-		return
-	}
+// serviceRemoveContainerOnly delivers a call to the honeytrap API to remove the container
+// associted with the giving name.
+func serviceRemoveContainerOnly(c *cli.Context) {
+	conf := config.Default
 
 	configFile := c.GlobalString("config")
 	if err := conf.Load(configFile); err != nil {
-		fmt.Printf("Configuration Error: %q - %q", configFile, err.Error())
+		fmt.Println(color.RedString("Configuration error: %s", err.Error()))
+		return
+	}
+
+	containerID := c.String("container")
+	if containerID == "" {
+		fmt.Printf("Error : Container ID required")
+		return
+	}
+
+	ip, port, _ := net.SplitHostPort(conf.Web.Port)
+	if ip == "" {
+		ip, _, _ = net.SplitHostPort(getAddr(""))
+	}
+
+	webIP := net.JoinHostPort(ip, port)
+
+	var addr string
+
+	if conf.Web.Path != "" {
+		addr = fmt.Sprintf("%s/%s", webIP, conf.Web.Path)
+	} else {
+		addr = webIP
+	}
+
+	fmt.Printf("Honeytrap-rm: Containers/Clients\n")
+	fmt.Printf("Honeytrap Server: Token: %q\n", conf.Token)
+	fmt.Printf("Honeytrap Server: API Addr: %q\n", addr)
+
+	targetAddr := fmt.Sprintf("http://%s/containers/clients/%s", addr, containerID)
+
+	fmt.Printf("Honeytrap Server: Request Addr: %q\n", targetAddr)
+
+	req, err := http.NewRequest("DELETE", targetAddr, nil)
+	if err != nil {
+		fmt.Printf("HTTP Request Error: %q - %q", addr, err.Error())
+		return
+	}
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		fmt.Printf("HTTP Request Error: %q - %q", addr, err.Error())
+		return
+	}
+
+	fmt.Printf("Honeytrap Server: API Response Status: %d - %q\n", res.StatusCode, res.Status)
+
+	defer res.Body.Close()
+
+	var body bytes.Buffer
+	io.Copy(&body, res.Body)
+
+	fmt.Println("\n", body.String())
+}
+
+// serviceListContainers requests all containers from the running honeytrap instance by
+// using the address generated from the config provided.
+func serviceListContainers(c *cli.Context) {
+	conf := config.Default
+
+	configFile := c.GlobalString("config")
+	if err := conf.Load(configFile); err != nil {
+		fmt.Println(color.RedString("Configuration error: %s", err.Error()))
 		return
 	}
 
