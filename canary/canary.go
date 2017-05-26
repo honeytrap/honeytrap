@@ -16,6 +16,8 @@ import (
 	"github.com/honeytrap/honeytrap/canary/ipv4"
 	"github.com/honeytrap/honeytrap/canary/tcp"
 	"github.com/honeytrap/honeytrap/canary/udp"
+	"github.com/honeytrap/honeytrap/pushers"
+	"github.com/honeytrap/honeytrap/pushers/message"
 )
 
 const (
@@ -39,6 +41,8 @@ type Canary struct {
 
 	knockChan        chan SingleKnock
 	networkInterface *net.Interface
+
+	events pushers.Events
 }
 
 // knock?
@@ -123,20 +127,36 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 		return nil
 	}
 
-	// debug
-	// fmt.Printf("tcp: src=%s, dst=%s, %s\n", iph.Src.String(), iph.Dst.String(), hdr)
+	myself := false
 
-	if hdr.Ctrl&tcp.SYN == tcp.SYN {
-		c.knockChan <- SingleKnock{
-			SourceIP:        iph.Src,
-			DestinationPort: hdr.Destination,
+	if addrs, err := c.networkInterface.Addrs(); err != nil {
+	} else {
+		for _, addr := range addrs {
+			myself = myself || addr.(*net.IPNet).Contains(iph.Dst)
 		}
+	}
+
+	_ = myself
+
+	if hdr.Ctrl&tcp.SYN != tcp.SYN {
+		return nil
+	} else if hdr.Ctrl&tcp.ACK != 0 {
+		return nil
+	}
+
+	if iph.Dst.String() != "172.16.84.159" {
+		return nil
+	}
+
+	c.knockChan <- SingleKnock{
+		SourceIP:        iph.Src,
+		DestinationPort: hdr.Destination,
 	}
 
 	return nil
 }
 
-func New(intf string) (*Canary, error) {
+func New(intf string, events pushers.Events) (*Canary, error) {
 	if networkInterface, err := net.InterfaceByName(intf); err != nil {
 		return nil, fmt.Errorf("The selected network interface %s does not exist.\n", intf)
 	} else if fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(htons(syscall.ETH_P_ALL))); err != nil {
@@ -159,6 +179,7 @@ func New(intf string) (*Canary, error) {
 			networkInterface: networkInterface,
 			r:                r,
 			knockChan:        make(chan SingleKnock, 100),
+			events:           events,
 		}, nil
 	}
 }
@@ -191,6 +212,7 @@ func (s *Canary) knockDetector() {
 			knock.Knocks.Add(sk.DestinationPort)
 
 		case <-time.After(time.Second * 5):
+			// TODO: make time configurable
 			now := time.Now()
 
 			knocks.Each(func(i int, v interface{}) {
@@ -200,18 +222,29 @@ func (s *Canary) knockDetector() {
 					return
 				}
 
+				defer knocks.Remove(k)
+
 				ports := make([]string, k.Knocks.Count())
 
 				k.Knocks.Each(func(i int, v interface{}) {
 					ports[i] = fmt.Sprintf("tcp/%d", v.(uint16))
 				})
 
-				fmt.Printf("Port touch(es) detected from %s with duration %+v: %s\n", k.SourceIP, k.Last.Sub(k.Start), strings.Join(ports, ", "))
-
-				// finished with this knock
-				knocks.Remove(k)
+				s.events.Deliver(EventPortscan(k.SourceIP, k.Last.Sub(k.Start), ports))
 			})
 		}
+	}
+}
+
+// EventPortscan will return a portscan event struct
+func EventPortscan(sourceIP net.IP, duration time.Duration, ports []string) message.Event {
+	return message.Event{
+		Sensor:   "Canary",
+		Category: "Portscan",
+		Type:     message.ServiceStarted,
+		Details: map[string]interface{}{
+			"message": fmt.Sprintf("Port touch(es) detected from %s with duration %+v: %s\n", sourceIP, duration, strings.Join(ports, ", ")),
+		},
 	}
 }
 

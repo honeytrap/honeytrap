@@ -15,7 +15,7 @@ cd /opt/honeytrap/
 export GOPATH=/opt/honeytrap
 export PATH=$PATH:/usr/local/go/bin/
 
-go get github.com/honeytrap/honeytrap
+go get github.com/honeytrap/honeytrap/...
 
 cp config.toml.sample config.toml
 $GOPATH/bin/honeytrap
@@ -26,6 +26,96 @@ $GOPATH/bin/honeytrap
 # create container base image
 $ lxc-create -t download -n honeytrap -- --dist ubuntu --release trusty --arch amd64
 ```
+
+## Configuration
+Information about the HTTP and Websocket API exposed by honeytrap can be found [here](./docs/config.md)
+
+## API
+Information about the HTTP and Websocket API exposed by honeytrap can be found [here](./docs/api.md)
+
+
+## CLI
+Honeytrap provides a set of CLI tools which allows interaction with a deployed honeytrap server and allows you to query specific details regarding containers, attacker connections, etc. The details below provides a brief introduction to their usage. 
+
+*All the CLI tooling available are automatically installed on `go get`.*
+
+### CLI `honeytrap`
+The central `honeytrap` CLI tooling provides access to the following commands which allows us retrieve specific information from running instance. 
+
+*`honeytrap` actually internally makes calls to a series of other honeytrap CLI tools which individually provide the collective options, the central `honeytrap` CLI tool provides.*
+
+- List all running containers
+
+```shell
+> honeytrap ls -c config.toml containers
+
+honeytrap ls -c config.toml.sample containers
+Honeytrap-ls: Containers
+Honeytrap Server: Token: "433UI-56JK-3433NJ-KI954"
+Honeytrap Server: API Addr: "192.168.0.106:3000"
+Honeytrap Server: Request Addr: "http://192.168.0.106:3000/metrics/containers"
+Honeytrap Server: API Response Status: 200 - "200 OK"
+
+{
+	"total": 0,
+	"containers": null
+}
+```
+
+*The command below passes the configuration file which contains configuration details, specifically related to the honeycast API HTTP service instance which is by default on port `3000`.*
+
+- List all running containers users/attackers
+
+```shell
+> honeytrap ls -c config.toml attackers
+
+Honeytrap-ls: Attackers
+Honeytrap Server: Token: "433UI-56JK-3433NJ-KI954"
+Honeytrap Server: API Addr: "192.168.0.106:3000"
+Honeytrap Server: Request Addr: "http://192.168.0.106:3000/metrics/attackers"
+Honeytrap Server: API Response Status: 200 - "200 OK"
+
+{
+	"total": 0,
+	"attackers": null
+}
+```
+
+*The command below passes the configuration file which contains configuration details, specifically related to the honeycast API HTTP service instance which is by default on port `3000`.*
+
+- Remove a container from API and end all the running sessions connected to it
+
+```shell
+> honeytrap rm -c config.toml.sample connections -c 43434-bumber
+
+Honeytrap-rm: Containers/Connections
+Honeytrap Server: Token: "433UI-56JK-3433NJ-KI954"
+Honeytrap Server: API Addr: "192.168.0.106:3000"
+Honeytrap Server: Request Addr: "http://192.168.0.106:3000/containers/connections/43434-bumber"
+Honeytrap Server: API Response Status: 500 - "500 Internal Server Error"
+
+ Operation Failed: Container with ID: "43434-bumber" does not exists
+
+```
+
+- Remove a container from API and without ending running sessions connected to it
+
+```shell
+> honeytrap rm -c config.toml.sample containers -c 43434-bumber
+
+Honeytrap-rm: Containers/Connections
+Honeytrap Server: Token: "433UI-56JK-3433NJ-KI954"
+Honeytrap Server: API Addr: "192.168.0.106:3000"
+Honeytrap Server: Request Addr: "http://192.168.0.106:3000/containers/connections/43434-bumber"
+Honeytrap Server: API Response Status: 500 - "500 Internal Server Error"
+
+ Operation Failed: Container with ID: "43434-bumber" does not exists
+
+```
+
+*The command below passes the configuration file which contains configuration details, specifically related to the honeycast API HTTP service instance which is by default on port `3000`.*
+
+
 ## Contribute
 
 Contributions are welcome.

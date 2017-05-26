@@ -1,11 +1,12 @@
-// Package iodirector creates a director which simply generates new Containers that
-// creates net.Conn connections which allows you to proxy data between these two
+// Package cowriedirector creates a director which simply generates new Containers that
+// creates net.Conn connectCowriens which allows you to proxy data between these two
 // endpoints.
-package iodirector
+package cowriedirector
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"sync"
@@ -21,16 +22,16 @@ import (
 
 const (
 	// DirectorKey defines the key used to choose this giving director.
-	DirectorKey = "io"
+	DirectorKey = "cowrie"
 )
 
 var (
 	dailTimeout = 5 * time.Second
-	log         = logging.MustGetLogger("honeytrap:director:io")
+	log         = logging.MustGetLogger("honeytrap:director:cowrie")
 )
 
 // Director defines a central structure which creates/retrieves Container
-// connections for the giving system.
+// connectCowriens for the giving system.
 type Director struct {
 	config         *config.Config
 	namer          namecon.Namer
@@ -55,14 +56,14 @@ func New(config *config.Config, events pushers.Events) *Director {
 
 // NewContainer returns a new Container generated from the director with the specified address.
 func (d *Director) NewContainer(addr string) (director.Container, error) {
-	log.Infof("IO : Creating new container : %s", addr)
+	log.Infof("Cowrie : Creating new container : %s", addr)
 
 	var err error
 	var container director.Container
 
 	name, err := d.getName(addr)
 	if err != nil {
-		log.Errorf("IO : Failed to make new container name : %+q", err)
+		log.Errorf("Cowrie : Failed to make new container name : %+q", err)
 		return nil, err
 	}
 
@@ -76,13 +77,12 @@ func (d *Director) NewContainer(addr string) (director.Container, error) {
 	}
 	d.m.Unlock()
 
-	container = &IOContainer{
-		targetAddr: addr,
+	container = &CowrieContainer{
 		targetName: name,
 		config:     d.config,
 		gscripts:   d.globalScripts,
 		gcommands:  d.globalCommands,
-		meta:       d.config.Directors.IOConfig,
+		meta:       d.config.Directors.Cowrie,
 	}
 
 	d.m.Lock()
@@ -108,7 +108,7 @@ func (d *Director) ListContainers() []director.ContainerDetail {
 
 // GetContainer returns a new Container using the provided net.Conn if already registered.
 func (d *Director) GetContainer(conn net.Conn) (director.Container, error) {
-	log.Infof("IO : Attempt to retrieve existing container : %+q", conn.RemoteAddr())
+	log.Infof("Cowrie : Attempt to retrieve existing container : %+q", conn.RemoteAddr())
 
 	var container director.Container
 
@@ -142,46 +142,49 @@ func (d *Director) getName(addr string) (string, error) {
 
 //=================================================================================
 
-// IOContainer defines a core container structure which generates new net connections
+// CowrieContainer defines a core container structure which generates new net connectCowriens
 // between stream endpoints.
-type IOContainer struct {
-	targetAddr string
+type CowrieContainer struct {
 	targetName string
 	config     *config.Config
-	meta       config.IOConfig
+	meta       config.CowrieConfig
 	gcommands  process.SyncProcess
 	gscripts   process.SyncScripts
 }
 
 // Detail returns the ContainerDetail related to this giving container.
-func (io *IOContainer) Detail() director.ContainerDetail {
+func (c *CowrieContainer) Detail() director.ContainerDetail {
 	return director.ContainerDetail{
-		Name:          io.targetName,
-		ContainerAddr: io.meta.ServiceAddr,
+		Name:          c.targetName,
+		ContainerAddr: c.meta.SSHAddr,
 		Meta: map[string]interface{}{
 			"driver": "io",
+			"ip":     c.meta.SSHAddr,
+			"port":   c.meta.SSHPort,
 		},
 	}
 }
 
 // Dial connects to the giving address to provide proxying stream between
 // both endpoints.
-func (io *IOContainer) Dial(ctx context.Context) (net.Conn, error) {
-	log.Infof("IO : %q : Dial Connection : Remote : %+q", io.targetName, io.meta.ServiceAddr)
+func (c *CowrieContainer) Dial(ctx context.Context) (net.Conn, error) {
+	addr := fmt.Sprintf("%s:%s", c.meta.SSHAddr, c.meta.SSHPort)
+
+	log.Infof("Cowrie : %q : Dial Connection : Remote : %+q", c.targetName, addr)
 
 	// Execute all global commands.
 	// TODO: Move context to be supplied by caller and not set in code
-	if err := io.gcommands.Exec(ctx, os.Stdout, os.Stderr); err != nil {
+	if err := c.gcommands.Exec(ctx, os.Stdout, os.Stderr); err != nil {
 		return nil, err
 	}
 
-	if err := io.gscripts.Exec(ctx, os.Stdout, os.Stderr); err != nil {
+	if err := c.gscripts.Exec(ctx, os.Stdout, os.Stderr); err != nil {
 		return nil, err
 	}
 
 	// Execute all local commands.
-	localScripts := process.SyncScripts{Scripts: io.meta.Scripts}
-	localCommands := process.SyncProcess{Commands: io.meta.Commands}
+	localScripts := process.SyncScripts{Scripts: c.meta.Scripts}
+	localCommands := process.SyncProcess{Commands: c.meta.Commands}
 
 	if err := localCommands.Exec(ctx, os.Stdout, os.Stderr); err != nil {
 		return nil, err
@@ -191,7 +194,11 @@ func (io *IOContainer) Dial(ctx context.Context) (net.Conn, error) {
 		return nil, err
 	}
 
-	conn, err := net.DialTimeout("tcp", io.meta.ServiceAddr, dailTimeout)
+	// TODO(alex): Do we need to do more here?
+	// We know we are dealing with ssh connections:
+	// Do we need some checks or conditions which must be met first before
+	// attempting to connect?
+	conn, err := net.DialTimeout("tcp", addr, dailTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -200,6 +207,6 @@ func (io *IOContainer) Dial(ctx context.Context) (net.Conn, error) {
 }
 
 // Name returns the target address for this specific container.
-func (io *IOContainer) Name() string {
-	return io.targetName
+func (c *CowrieContainer) Name() string {
+	return c.targetName
 }

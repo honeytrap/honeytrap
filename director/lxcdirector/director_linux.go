@@ -16,6 +16,11 @@ import (
 	"github.com/honeytrap/namecon"
 )
 
+const (
+	// DirectorKey defines the key used to choose this giving director.
+	DirectorKey = "lxc"
+)
+
 // Director defines a struct which handles the management of registered containers.
 type Director struct {
 	config     *config.Config
@@ -32,8 +37,8 @@ func New(conf *config.Config, events pushers.Events) *Director {
 
 	d := &Director{
 		config:     conf,
-		containers: map[string]director.Container{},
 		provider:   NewLxcProvider(conf, events),
+		containers: map[string]director.Container{},
 		namer:      namecon.NewNamerCon(conf.Template+"-%s", namecon.Basic{}),
 	}
 
@@ -47,6 +52,18 @@ func New(conf *config.Config, events pushers.Events) *Director {
 	// }()
 
 	return d
+}
+
+// ListContainers returns the giving list of containers details
+// for all connected containers.
+func (d *Director) ListContainers() []director.ContainerDetail {
+	var details []director.ContainerDetail
+
+	for _, item := range d.containers {
+		details = append(details, item.Detail())
+	}
+
+	return details
 }
 
 func (d *Director) registerContainers() {

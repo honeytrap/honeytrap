@@ -1,31 +1,49 @@
 package pushers
 
 import (
-	"errors"
+	"fmt"
 	"time"
 
+	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/config"
-	"github.com/honeytrap/honeytrap/pushers/elasticsearch"
-	"github.com/honeytrap/honeytrap/pushers/fschannel"
-	"github.com/honeytrap/honeytrap/pushers/honeytrap"
 	"github.com/honeytrap/honeytrap/pushers/message"
-	"github.com/honeytrap/honeytrap/pushers/slack"
 )
-
-//=======================================================================================================
-
-// Waiter exposes a method to call a wait method to allow a channel finish it's
-// operation.
-type Waiter interface {
-	Wait()
-}
-
-//=======================================================================================================
 
 // Channel defines a interface which exposes a single method for delivering
 // PushMessages to a giving underline service.
 type Channel interface {
 	Send([]message.PushMessage)
+}
+
+//=======================================================================================================
+
+// ChannelGenerator defines a function type which returns a Channel created
+// from a primitive.
+type ChannelGenerator func(toml.MetaData, toml.Primitive) (Channel, error)
+
+// TODO(alex): Decide if we need a mutex to secure things concurrently.
+// We assume it will never be read/written to concurrently.
+var backends = struct {
+	b map[string]ChannelGenerator
+}{
+	b: make(map[string]ChannelGenerator),
+}
+
+// RegisterBackend adds the giving generator to the global generator lists.
+func RegisterBackend(name string, generator ChannelGenerator) {
+	backends.b[name] = generator
+}
+
+// NewBackend returns a new Channel of the giving name with the provided toml.Primitive.
+func NewBackend(name string, meta toml.MetaData, primi toml.Primitive) (Channel, error) {
+	log.Info("honeytrap.Pusher : Creating %q Backend : %#q", name, primi)
+
+	maker, ok := backends.b[name]
+	if !ok {
+		return nil, fmt.Errorf("Backend %q maker not found", name)
+	}
+
+	return maker(meta, primi)
 }
 
 //=======================================================================================================
@@ -55,80 +73,20 @@ type Pusher struct {
 	q        chan message.PushMessage
 	queue    []message.PushMessage
 	age      time.Duration
-	backends map[string]Channel
 	channels []Channel
 }
 
 // New returns a new instance of Pusher.
 func New(conf *config.Config) *Pusher {
-	backends := make(map[string]Channel)
-
-	for name, c := range conf.Backends {
-		backend, ok := c.(map[string]interface{})
-		if !ok {
-			log.Errorf("Found key %q with non-map config value: %#v", name, c)
-			continue
-		}
-
-		key, ok := backend["key"].(string)
-		if !ok {
-			key = name
-		}
-
-		// Check if key already exists and panic.
-		if _, ok := backends[key]; ok {
-			// TODO: should log instead of panic here?
-			log.Errorf("Found key %q already used for previous backend", key)
-			continue
-		}
-
-		switch name {
-		case "elasticsearch":
-			var elastic elasticsearch.SearchChannel
-			if err := elastic.UnmarshalConfig(backend); err != nil {
-				log.Errorf("Error initializing channel: %s", err.Error())
-				continue
-			}
-
-			backends[key] = &elastic
-		case "file":
-			fchan := fschannel.New()
-			if err := fchan.UnmarshalConfig(backend); err != nil {
-				log.Errorf("Error initializing channel: %s", err.Error())
-
-				continue
-			}
-
-			backends[key] = fchan
-		case "honeytrap":
-			var htrap honeytrap.TrapChannel
-			if err := htrap.UnmarshalConfig(backend); err != nil {
-				log.Errorf("Error initializing channel: %s", err.Error())
-				continue
-			}
-
-			backends[key] = &htrap
-		case "slack":
-			var slackChannel slack.MessageChannel
-			if err := slackChannel.UnmarshalConfig(backend); err != nil {
-				log.Errorf("Error initializing channel: %s", err.Error())
-				continue
-			}
-
-			backends[key] = &slackChannel
-		}
-	}
-
 	p := &Pusher{
-		config:   conf,
-		backends: backends,
-		queue:    []message.PushMessage{},
-		q:        make(chan message.PushMessage),
-		age:      conf.Delays.PushDelay.Duration(),
+		config: conf,
+		queue:  []message.PushMessage{},
+		q:      make(chan message.PushMessage),
+		age:    conf.Delays.PushDelay.Duration(),
 	}
 
 	for _, cb := range conf.Channels {
-		master := NewMasterChannel(p)
+		master := NewMasterChannel(conf)
 		if err := master.UnmarshalConfig(cb); err != nil {
 			log.Errorf("Failed to create channel for config [%#q]: %+q", cb, err)
 			continue
@@ -138,19 +96,6 @@ func New(conf *config.Config) *Pusher {
 	}
 
 	return p
-}
-
-// ErrBackendNotFound defines an error returned when a backend key
-// does not match the registered keys.
-var ErrBackendNotFound = errors.New("Backend not found")
-
-// GetBackend returns a giving backend registered with the pusher.
-func (p *Pusher) GetBackend(key string) (Channel, error) {
-	if channel, ok := p.backends[key]; ok {
-		return channel, nil
-	}
-
-	return nil, ErrBackendNotFound
 }
 
 // Start defines a function which kickstarts the internal pusher call loop.
@@ -177,8 +122,6 @@ func (p *Pusher) run() {
 }
 
 func (p *Pusher) send(messages []message.PushMessage) {
-	// TODO: Should we do some waitgroup here to ensure all channels
-	// properly finish?
 	for _, channel := range p.channels {
 		channel.Send(messages)
 	}

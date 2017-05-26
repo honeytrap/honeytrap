@@ -10,6 +10,7 @@ import (
 	"os"
 
 	"github.com/BurntSushi/toml"
+	"github.com/honeytrap/honeytrap/process"
 	logging "github.com/op/go-logging"
 )
 
@@ -28,9 +29,43 @@ type (
 		Every Delay `toml:"every"`
 	}
 
-	// DirectorMeta defines the settings for director meta.
-	DirectorMeta struct {
-		ServiceAddr string `toml:"service_addr"`
+	// LxcConfig defines the settings for the lxc director.
+	LxcConfig struct {
+		Commands []process.Command       `toml:"commands"`
+		Scripts  []process.ScriptProcess `toml:"scripts"`
+	}
+
+	// IOConfig defines the settings for the iodirector.
+	IOConfig struct {
+		ServiceAddr string                  `toml:"service_addr"`
+		Commands    []process.Command       `toml:"commands"`
+		Scripts     []process.ScriptProcess `toml:"scripts"`
+	}
+
+	// CowrieConfig defines the settings for director meta.
+	CowrieConfig struct {
+		SSHPort  string                  `toml:"ssh_port"`
+		SSHAddr  string                  `toml:"ssh_addr"`
+		Commands []process.Command       `toml:"commands"`
+		Scripts  []process.ScriptProcess `toml:"scripts"`
+	}
+
+	// DirectorConfig defines the settings for all directors supported
+	// by honeytrap.
+	DirectorConfig struct {
+		IOConfig IOConfig                `toml:"io_config"`
+		Cowrie   CowrieConfig            `toml:"cowrie_config"`
+		LXC      LxcConfig               `toml:"lxc_config"`
+		Commands []process.Command       `toml:"commands"`
+		Scripts  []process.ScriptProcess `toml:"scripts"`
+	}
+
+	// ChannelConfig defines the giving fields used to generate a custom event channel.
+	ChannelConfig struct {
+		Backends   []string `toml:"backends"`
+		Sensors    []string `toml:"sensors"`
+		Categories []string `toml:"categories"`
+		Events     []string `toml:"events"`
 	}
 
 	// Delays sets the individual duration set for all ops.
@@ -54,18 +89,19 @@ type (
 
 	// Config defines the central type where all configuration is umarhsalled to.
 	Config struct {
-		Token        string       `toml:"token"`
-		Template     string       `toml:"template"`
-		NetFilter    string       `toml:"net_filter"`
-		Keys         string       `toml:"keys"`
-		Director     string       `toml:"director"`
-		Delays       Delays       `toml:"delays"`
-		Folders      Folders      `toml:"folders"`
-		HouseKeeper  HouseKeeper  `toml:"housekeeper"`
-		DirectorMeta DirectorMeta `toml:"directormeta"`
+		toml.MetaData
+		Token       string         `toml:"token"`
+		Template    string         `toml:"template"`
+		NetFilter   string         `toml:"net_filter"`
+		Keys        string         `toml:"keys"`
+		Director    string         `toml:"director"`
+		Delays      Delays         `toml:"delays"`
+		Folders     Folders        `toml:"folders"`
+		HouseKeeper HouseKeeper    `toml:"housekeeper"`
+		Directors   DirectorConfig `toml:"directors"`
 
-		Backends map[string]interface{}   `toml:"backends"`
-		Channels []map[string]interface{} `toml:"channels"`
+		Backends map[string]toml.Primitive `toml:"backends"`
+		Channels []ChannelConfig           `toml:"channels"`
 
 		Services []toml.Primitive `toml:"services"`
 
@@ -119,7 +155,7 @@ type SMTPProxyConfig struct {
 }
 
 // DefaultConfig defines the default Config to be used to set default values.
-var DefaultConfig = Config{
+var Default = Config{
 	Token:     "",
 	Template:  "honeytrap",
 	NetFilter: "",
@@ -133,6 +169,11 @@ var DefaultConfig = Config{
 	HouseKeeper: HouseKeeper{
 		Every: Delay(60 * time.Second),
 	},
+	Directors: DirectorConfig{
+		Cowrie: CowrieConfig{
+			SSHPort: "2222",
+		},
+	},
 	Web: WebConfig{
 		Port: ":3000",
 		Path: "",
@@ -142,18 +183,16 @@ var DefaultConfig = Config{
 	},
 }
 
-// New returns a new instance of the config struct.
-func New() (*Config, error) {
-	c := DefaultConfig
-	return &c, nil
-}
-
 // Load attempts to load the giving toml configuration file.
 func (c *Config) Load(file string) error {
 	conf := Config{}
-	if _, err := toml.DecodeFile(file, &conf); err != nil {
+
+	meta, err := toml.DecodeFile(file, &conf)
+	if err != nil {
 		return err
 	}
+
+	c.MetaData = meta
 
 	if err := mergo.MergeWithOverwrite(c, conf); err != nil {
 		return err
