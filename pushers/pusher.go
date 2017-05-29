@@ -104,8 +104,8 @@ func (p *Pusher) Start() {
 }
 
 func (p *Pusher) run() {
-	log.Info("Pusher started")
-	defer log.Info("Pusher exited")
+	log.Debug("Pusher started")
+	defer log.Debug("Pusher exited")
 
 	for {
 		select {

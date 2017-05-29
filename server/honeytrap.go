@@ -247,7 +247,7 @@ func (hc *Honeytrap) startProxies() {
 
 // startStatsServer starts the http server for handling request.
 func (hc *Honeytrap) startStatsServer() {
-	log.Infof("Stats server Listening on port: %s", hc.config.Web.Port)
+	log.Debugf("Stats server Listening on port: %s", hc.config.Web.Port)
 
 	// if hc.config.Web.Path != "" {
 	// 	log.Debug("Using static file path: ", hc.config.Web.Path)
