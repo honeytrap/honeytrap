@@ -64,12 +64,14 @@ const (
 	ConnectionErrorSensor = "CONNECTION:ERROR"
 )
 
+type EventCategory string
+
 // Event defines a struct which contains definitive details about the operation of
 // a giving event.
 type Event struct {
 	Date        time.Time              `json:"date"`
 	Data        interface{}            `json:"data"`
-	Category    string                 `json:"category"`
+	Category    EventCategory          `json:"category"`
 	Sensor      string                 `json:"sensor"`
 	Details     map[string]interface{} `json:"details"`
 	HostAddr    string                 `json:"host_addr"`
