@@ -30,7 +30,7 @@ var log = logging.MustGetLogger("honeytrap:proxy:smtp")
 // ListenSMTP returns a new proxy handler for the smtp provider.
 // TODO: Change amount of params.
 // combine listensmtp, smtpforwarder
-func ListenSMTP(address string,m *director.ContainerConnections, d director.Director, p *pushers.Pusher, e pushers.Events, c *config.Config) (net.Listener, error) {
+func ListenSMTP(address string,m *director.ContainerConnections, d director.Director, p *pushers.Pusher, e pushers.Channel, c *config.Config) (net.Listener, error) {
 	l, err := net.Listen("tcp", address)
 	if err != nil {
 		log.Fatal(err)
@@ -254,7 +254,7 @@ func (s *SMTPProxyConn) dataState() (stateFn, error) {
 
 	defer func() {
 
-		s.ProxyConn.Event.Deliver(proxies.DataReadEvent(s.ProxyConn, "SMTP:Message-Part",SMTPMessagePart{
+		s.ProxyConn.Event.Send(proxies.DataReadEvent(s.ProxyConn, "SMTP:Message-Part",SMTPMessagePart{
 			Date:       time.Now(),
 			MessageID:  messageID.String(),
 			RemoteAddr: s.ProxyConn.RemoteHost(),
@@ -270,7 +270,7 @@ func (s *SMTPProxyConn) dataState() (stateFn, error) {
 		log.Error(err.Error())
 
 		// if no mime email.
-		s.ProxyConn.Event.Deliver(proxies.ConnectionReadErrorEvent(s.ProxyConn, err))
+		s.ProxyConn.Event.Send(proxies.ConnectionReadErrorEvent(s.ProxyConn, err))
 
 		return s.loopState, nil
 	}
@@ -292,7 +292,7 @@ func (s *SMTPProxyConn) dataState() (stateFn, error) {
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			s.ProxyConn.Event.Deliver(proxies.ConnectionReadErrorEvent(s.ProxyConn, err))
+			s.ProxyConn.Event.Send(proxies.ConnectionReadErrorEvent(s.ProxyConn, err))
 			log.Error(err.Error())
 		}
 
@@ -302,7 +302,7 @@ func (s *SMTPProxyConn) dataState() (stateFn, error) {
 
 		// TODO: should actually fix this, not in memory
 		defer func() {
-			s.ProxyConn.Event.Deliver(proxies.DataReadEvent(s.ProxyConn, "SMTP:Message-Part",SMTPMessagePart{
+			s.ProxyConn.Event.Send(proxies.DataReadEvent(s.ProxyConn, "SMTP:Message-Part",SMTPMessagePart{
 				Date:      time.Now(),
 				MessageID: messageID.String(),
 				Headers:   part.Header,

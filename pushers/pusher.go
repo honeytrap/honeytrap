@@ -12,7 +12,7 @@ import (
 // Channel defines a interface which exposes a single method for delivering
 // PushMessages to a giving underline service.
 type Channel interface {
-	Send([]message.PushMessage)
+	Send(...message.Event)
 }
 
 //=======================================================================================================
@@ -48,30 +48,12 @@ func NewBackend(name string, meta toml.MetaData, primi toml.Primitive) (Channel,
 
 //=======================================================================================================
 
-// ProxyPusher defines a decorator for the Pusher object which decorates it as a
-// Channel.
-type ProxyPusher struct {
-	pusher *Pusher
-}
-
-// NewProxyPusher returns a new instance of a ProxyPusher
-func NewProxyPusher(p *Pusher) *ProxyPusher {
-	return &ProxyPusher{pusher: p}
-}
-
-// Send delivers the messages to the underline Pusher instance.
-func (p ProxyPusher) Send(messages []message.PushMessage) {
-	p.pusher.send(messages)
-}
-
-//=======================================================================================================
-
 // Pusher defines a struct which implements a pusher to manage the loading and
-// delivery of message.PushMessage.
+// delivery of message.Event.
 type Pusher struct {
 	config   *config.Config
-	q        chan message.PushMessage
-	queue    []message.PushMessage
+	q        chan message.Event
+	queue    []message.Event
 	age      time.Duration
 	channels []Channel
 }
@@ -80,13 +62,13 @@ type Pusher struct {
 func New(conf *config.Config) *Pusher {
 	p := &Pusher{
 		config: conf,
-		queue:  []message.PushMessage{},
-		q:      make(chan message.PushMessage),
+		queue:  []message.Event{},
+		q:      make(chan message.Event),
 		age:    conf.Delays.PushDelay.Duration(),
 	}
 
 	for _, cb := range conf.Channels {
-		master := NewMasterChannel(conf)
+		master := NewFilteringChannel(conf)
 		if err := master.UnmarshalConfig(cb); err != nil {
 			log.Errorf("Failed to create channel for config [%#q]: %+q", cb, err)
 			continue
@@ -121,9 +103,17 @@ func (p *Pusher) run() {
 	// 2. Does it not stop at all, hence this code becomes unreachable.
 }
 
-func (p *Pusher) send(messages []message.PushMessage) {
+// Send delivers the giving events to the underline channels.
+func (p *Pusher) Send(messages ...message.Event) {
+	for index, item := range messages {
+		item.Date = time.Now()
+		item.Token = p.config.Token
+
+		messages[index] = item
+	}
+
 	for _, channel := range p.channels {
-		channel.Send(messages)
+		channel.Send(messages...)
 	}
 }
 
@@ -132,9 +122,9 @@ func (p *Pusher) flush() {
 		return
 	}
 
-	go p.send(p.queue)
+	go p.Send(p.queue...)
 
-	p.queue = []message.PushMessage{}
+	p.queue = []message.Event{}
 }
 
 // TODO: Cannot we do the following
@@ -148,7 +138,7 @@ func (p *Pusher) flush() {
 // Push adds the giving data as part of a single PushMessage to be published to
 // the pushers backends.
 func (p *Pusher) Push(sensor, category, containerID, sessionID string, data interface{}) {
-	p.q <- message.PushMessage{
+	p.q <- message.Event{
 		Sensor:      sensor,
 		Category:    category,
 		SessionID:   sessionID,
@@ -160,7 +150,7 @@ func (p *Pusher) Push(sensor, category, containerID, sessionID string, data inte
 // PushFile adds the giving data as push notifications for a file data.
 // TODO: implement PushFile instead of RecordPush
 func (p *Pusher) PushFile(sensor, category, containerID, sessionID string, filename string, data []byte) {
-	p.q <- message.PushMessage{
+	p.q <- message.Event{
 		Sensor:      sensor,
 		Category:    category,
 		SessionID:   sessionID,
@@ -169,7 +159,7 @@ func (p *Pusher) PushFile(sensor, category, containerID, sessionID string, filen
 	}
 }
 
-func (p *Pusher) add(a message.PushMessage) {
+func (p *Pusher) add(a message.Event) {
 	p.queue = append(p.queue, a)
 
 	if len(p.queue) > 20 {

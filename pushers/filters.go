@@ -11,30 +11,30 @@ import (
 // Filters defines an interface which exposes a method for filtering specific
 // messages by specific boundaries.
 type Filters interface {
-	Filter(...message.PushMessage) []message.PushMessage
+	Filter(...message.Event) []message.Event
 }
 
 //==========================================================================================
 
 // RegExpFilterFunction defines the function used by the RegExpFilter
 // to provide custom filtering validation for each provided message.PushMessage.
-type RegExpFilterFunction func(*regexp.Regexp, message.PushMessage) bool
+type RegExpFilterFunction func(*regexp.Regexp, message.Event) bool
 
 // SensorFilterFunc defines a function to validate a PushMessage.Sensor value
 // based on a provided regular expression.
-func SensorFilterFunc(rx *regexp.Regexp, message message.PushMessage) bool {
+func SensorFilterFunc(rx *regexp.Regexp, message message.Event) bool {
 	return rx.MatchString(message.Sensor)
 }
 
 // CategoryFilterFunc defines a function to validate a PushMessage.Category value
 // based on a provided regular expression.
-func CategoryFilterFunc(rx *regexp.Regexp, message message.PushMessage) bool {
+func CategoryFilterFunc(rx *regexp.Regexp, message message.Event) bool {
 	return rx.MatchString(message.Category)
 }
 
 // EventFilterFunc defines a function to validate a PushMessage.Category value
 // based on a provided regular expression.
-func EventFilterFunc(rx *regexp.Regexp, m message.PushMessage) bool {
+func EventFilterFunc(rx *regexp.Regexp, m message.Event) bool {
 	if event, ok := m.Data.(message.Event); ok {
 		return rx.MatchString(event.Sensor)
 	}
@@ -65,12 +65,12 @@ func NewRegExpFilter(fn RegExpFilterFunction, rx ...*regexp.Regexp) *RegExpFilte
 
 // Filter returns a slice of messages passed in which passes the internal regular
 // expressions criterias.
-func (r *RegExpFilter) Filter(messages ...message.PushMessage) []message.PushMessage {
+func (r *RegExpFilter) Filter(messages ...message.Event) []message.Event {
 	if r.conditions == nil || len(r.conditions) == 0 {
 		return messages
 	}
 
-	var filtered []message.PushMessage
+	var filtered []message.Event
 
 	{
 	mloop:

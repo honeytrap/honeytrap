@@ -84,7 +84,7 @@ func (f *FileChannel) Wait() {
 
 // Send delivers the giving if it passes all filtering criteria into the
 // FileChannel write queue.
-func (f *FileChannel) Send(messages []message.PushMessage) {
+func (f *FileChannel) Send(messages ...message.Event) {
 	log.Info("FileChannel.Send : Started")
 
 	if err := f.syncWrites(); err != nil {

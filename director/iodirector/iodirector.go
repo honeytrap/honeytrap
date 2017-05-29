@@ -34,7 +34,7 @@ var (
 type Director struct {
 	config         *config.Config
 	namer          namecon.Namer
-	events         pushers.Events
+	events         pushers.Channel
 	m              sync.Mutex
 	containers     map[string]director.Container
 	globalCommands process.SyncProcess
@@ -42,7 +42,7 @@ type Director struct {
 }
 
 // New returns a new instance of the Director.
-func New(config *config.Config, events pushers.Events) *Director {
+func New(config *config.Config, events pushers.Channel) *Director {
 	return &Director{
 		config:         config,
 		events:         events,

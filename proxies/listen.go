@@ -12,13 +12,13 @@ import (
 type ProxyListener struct {
 	net.Listener
 	pusher   *pushers.Pusher
-	events   pushers.Events
+	events   pushers.Channel
 	director director.Director
 	manager  *director.ContainerConnections
 }
 
 // NewProxyListener returns a new instance for a ProxyListener.
-func NewProxyListener(l net.Listener, m *director.ContainerConnections, d director.Director, p *pushers.Pusher, e pushers.Events) *ProxyListener {
+func NewProxyListener(l net.Listener, m *director.ContainerConnections, d director.Director, p *pushers.Pusher, e pushers.Channel) *ProxyListener {
 	return &ProxyListener{
 		Listener: l,
 		director: d,
@@ -35,7 +35,7 @@ func (lw *ProxyListener) Accept() (c net.Conn, err error) {
 		return nil, err
 	}
 
-	lw.events.Deliver(ConnectionOpenedEvent(c))
+	lw.events.Send(ConnectionOpenedEvent(c))
 
 	// Attempt to GetContainer from director.
 	container, err := lw.director.GetContainer(c)
@@ -45,22 +45,22 @@ func (lw *ProxyListener) Accept() (c net.Conn, err error) {
 		container, err = lw.director.NewContainer(c.RemoteAddr().String())
 		if err != nil {
 
-			lw.events.Deliver(ConnectionClosedEvent(c))
+			lw.events.Send(ConnectionClosedEvent(c))
 
 			c.Close()
 			return nil, err
 		}
 	}
 
-	lw.events.Deliver(UserSessionOpenedEvent(c, container.Detail(), nil))
+	lw.events.Send(UserSessionOpenedEvent(c, container.Detail(), nil))
 
 	// _, port, err := net.SplitHostPort(c.LocalAddr().String())
 	// if err != nil {
-	// 	lw.events.Deliver(EventConnectionError(c.RemoteAddr(), c.LocalAddr(), "ProxyConn", nil, map[string]interface{}{
+	// 	lw.events.Send(EventConnectionError(c.RemoteAddr(), c.LocalAddr(), "ProxyConn", nil, map[string]interface{}{
 	// 		"error": err,
 	// 	}))
 
-	// 	lw.events.Deliver(EventConnectionClosed(c.RemoteAddr(), c.LocalAddr(), "ProxyConn", nil, nil))
+	// 	lw.events.Send(EventConnectionClosed(c.RemoteAddr(), c.LocalAddr(), "ProxyConn", nil, nil))
 	// 	c.Close()
 	// 	return nil, err
 	// }
@@ -73,9 +73,9 @@ func (lw *ProxyListener) Accept() (c net.Conn, err error) {
 	// there therefore be a time-stamp added to use the deadline capability of context?
 	c2, err = container.Dial(context.Background())
 	if err != nil {
-		lw.events.Deliver(UserSessionClosedEvent(c, container.Detail()))
+		lw.events.Send(UserSessionClosedEvent(c, container.Detail()))
 
-		lw.events.Deliver(ConnectionClosedEvent(c))
+		lw.events.Send(ConnectionClosedEvent(c))
 
 		c.Close()
 		return nil, err
@@ -98,7 +98,7 @@ func (lw *ProxyListener) Accept() (c net.Conn, err error) {
 func (lw *ProxyListener) Close() error {
 	log.Info("Listener closed")
 
-	lw.events.Deliver(ListenerClosedEvent(lw.Listener))
+	lw.events.Send(ListenerClosedEvent(lw.Listener))
 
 	return lw.Listener.Close()
 }

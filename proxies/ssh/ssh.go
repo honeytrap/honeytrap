@@ -120,7 +120,7 @@ func (t *PrivateKey) UnmarshalText(data []byte) (err error) {
 // that we can swap. So we can use for emxapl cowrie as well, but also our raw stack
 //
 // TODO: Change amount of params.
-func Listen(address string, m *director.ContainerConnections, d director.Director, p *pushers.Pusher, events pushers.Events, primitive toml.Primitive) (net.Listener, error) {
+func Listen(address string, m *director.ContainerConnections, d director.Director, p *pushers.Pusher, events pushers.Channel, primitive toml.Primitive) (net.Listener, error) {
 	c := Config{
 		Key:    nil,
 		Port:   ":8022",

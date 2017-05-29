@@ -43,7 +43,7 @@ var log = logging.MustGetLogger("Honeytrap")
 type Honeytrap struct {
 	config    *config.Config
 	pusher    *pushers.Pusher
-	events    pushers.Events
+	events    pushers.Channel
 	honeycast *Honeycast
 	director  director.Director
 	manager   *director.ContainerConnections
@@ -55,28 +55,26 @@ type ServeFunc func() error
 // New returns a new instance of a Honeytrap struct.
 func New(conf *config.Config) *Honeytrap {
 	pusher := pushers.New(conf)
-	pushChannel := pushers.NewProxyPusher(pusher)
 
 	bus := pushers.NewEventBus()
-	channels := pushers.ChannelStream{pushChannel, bus}
-	events := pushers.NewTokenedEventDelivery(conf.Token, channels)
+	bus.Subscribe(pusher)
 
-	var dr director.Director
+	var dir director.Director
 
 	switch conf.Director {
 	case cowriedirector.DirectorKey:
-		dr = cowriedirector.New(conf, events)
+		dir = cowriedirector.New(conf, bus)
 	case iodirector.DirectorKey:
-		dr = iodirector.New(conf, events)
+		dir = iodirector.New(conf, bus)
 	case lxcdirector.DirectorKey:
-		dr = lxcdirector.New(conf, events)
+		dir = lxcdirector.New(conf, bus)
 	default:
 		panic(fmt.Sprintf("Unknown director type: %q", conf.Director))
 	}
 
 	manager := director.NewContainerConnections()
 
-	honeycast := NewHoneycast(conf, manager, dr, HoneycastAssets(&assetfs.AssetFS{
+	honeycast := NewHoneycast(conf, manager, dir, HoneycastAssets(&assetfs.AssetFS{
 		Asset:     web.Asset,
 		AssetDir:  web.AssetDir,
 		AssetInfo: web.AssetInfo,
@@ -87,9 +85,9 @@ func New(conf *config.Config) *Honeytrap {
 
 	return &Honeytrap{
 		config:    conf,
-		director:  dr,
+		director:  dir,
 		pusher:    pusher,
-		events:    events,
+		events:    bus,
 		honeycast: honeycast,
 		manager:   manager,
 	}
@@ -102,7 +100,7 @@ func (hc *Honeytrap) startAgentServer() {
 
 // ListenFunc defines a function type which returns a net.Listener specific for the
 // use of its argument and for the reception of net connections.
-type ListenFunc func(string, director.Director, *pushers.Pusher, *pushers.EventDelivery, *config.Config) (net.Listener, error)
+type ListenFunc func(string, director.Director, *pushers.Pusher, pushers.Channel, *config.Config) (net.Listener, error)
 
 // ListenerConfig defines a struct for holding configuration fields for a Listener
 // builder.
@@ -146,7 +144,7 @@ func (hc *Honeytrap) startProxies() {
 			if err != nil {
 				log.Errorf("Error in service: %s: %s", st.Service, err.Error())
 
-				hc.events.Deliver(message.Event{
+				hc.events.Send(message.Event{
 					Sensor: st.Service,
 					Type:   message.ServiceStarted,
 					Details: map[string]interface{}{
@@ -158,7 +156,7 @@ func (hc *Honeytrap) startProxies() {
 				continue
 			}
 
-			hc.events.Deliver(message.Event{
+			hc.events.Send(message.Event{
 				Sensor: st.Service,
 				Type:   message.ServiceStarted,
 				Details: map[string]interface{}{

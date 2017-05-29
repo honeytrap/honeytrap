@@ -15,37 +15,17 @@ var log = logging.MustGetLogger("honeytrap:channels")
 
 //================================================================================
 
-// ChannelStream defines a type for a slice of Channels implementing objects.
-type ChannelStream []Channel
-
-// Send delivers the provided PushMessages to all underline set of Channel implementing
-// objects.
-func (channels ChannelStream) Send(msg []message.PushMessage) {
-	for _, channel := range channels {
-		channel.Send(msg)
-	}
-}
-
-//=================================================================================================
-
-// BackendRegistry defines an interface which prvides a registery of backend Channel
-// retrievable through a string key.
-type BackendRegistry interface {
-	GetBackend(string) (Channel, error)
-}
-
-// MasterChannel defines a struct which handles the delivery of giving
+// FilteringChannel defines a struct which handles the delivery of giving
 // messages to a specific sets of backend channels based on specific criterias.
-type MasterChannel struct {
+type FilteringChannel struct {
 	config   *config.Config
 	backends []Channel
 	filters  []Filters
-	registry BackendRegistry
 }
 
-// NewMasterChannel returns a new instance of the MasterChannel.
-func NewMasterChannel(config *config.Config, filters ...Filters) *MasterChannel {
-	var mc MasterChannel
+// NewFilteringChannel returns a new instance of the FilteringChannel.
+func NewFilteringChannel(config *config.Config, filters ...Filters) *FilteringChannel {
+	var mc FilteringChannel
 	mc.config = config
 	mc.filters = filters
 
@@ -53,8 +33,8 @@ func NewMasterChannel(config *config.Config, filters ...Filters) *MasterChannel 
 }
 
 // UnmarshalConfig attempts to unmarshal the provided value into the target
-// MasterChannel.
-func (mc *MasterChannel) UnmarshalConfig(m interface{}) error {
+// FilteringChannel.
+func (mc *FilteringChannel) UnmarshalConfig(m interface{}) error {
 	conf, ok := m.(config.ChannelConfig)
 	if !ok {
 		return errors.New("Expected to receive a ChannelConfig type")
@@ -96,7 +76,7 @@ func (mc *MasterChannel) UnmarshalConfig(m interface{}) error {
 
 // Send delivers the slice of PushMessages and using the internal filters
 // to filter out the desired messages allowed for all registered backends.
-func (mc *MasterChannel) Send(msgs []message.PushMessage) {
+func (mc *FilteringChannel) Send(msgs ...message.Event) {
 
 	// filter messages with all filters.
 	for _, filter := range mc.filters {
@@ -110,6 +90,6 @@ func (mc *MasterChannel) Send(msgs []message.PushMessage) {
 	}
 
 	for _, backend := range mc.backends {
-		backend.Send(msgs)
+		backend.Send(msgs...)
 	}
 }

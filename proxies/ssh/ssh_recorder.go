@@ -33,7 +33,7 @@ type SSHAction struct {
 }
 
 // NewSSHRecorder returns a new instance of the SSHRecorder.
-func NewSSHRecorder(p *pushers.Pusher, e pushers.Events) *SSHRecorder {
+func NewSSHRecorder(p *pushers.Pusher, e pushers.Channel) *SSHRecorder {
 	// contains info about the container
 	return &SSHRecorder{p, e}
 }
@@ -41,7 +41,7 @@ func NewSSHRecorder(p *pushers.Pusher, e pushers.Events) *SSHRecorder {
 // SSHRecorder defines a recorder for handling ssh connections.
 type SSHRecorder struct {
 	*pushers.Pusher
-	events pushers.Events
+	events pushers.Channel
 }
 
 // SSHRecorderSession defines a struct to use the underline SSHRecorder for a giving
@@ -55,7 +55,7 @@ type SSHRecorderSession struct {
 	conn      *proxies.ProxyConn
 	username  string
 	password  string
-	events    pushers.Events
+	events    pushers.Channel
 }
 
 // NewSession creates a new session session recorder.

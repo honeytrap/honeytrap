@@ -68,7 +68,7 @@ func init() {
 }
 
 // Send delivers the giving push messages into the internal elastic search endpoint.
-func (hc SearchChannel) Send(messages []message.PushMessage) {
+func (hc SearchChannel) Send(messages ...message.Event) {
 	for _, message := range messages {
 		buf := new(bytes.Buffer)
 

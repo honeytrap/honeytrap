@@ -72,7 +72,7 @@ func init() {
 
 // Send delivers the giving push messages to the required slack channel.
 // TODO: Ask if Send shouldnt return an error to allow proper delivery validation.
-func (mc MessageChannel) Send(messages []message.PushMessage) {
+func (mc MessageChannel) Send(messages ...message.Event) {
 	for _, message := range messages {
 
 		//Attempt to encode message body first and if failed, log and continue.

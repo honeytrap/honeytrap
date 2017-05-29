@@ -60,7 +60,7 @@ type Canary struct {
 
 	networkInterfaces []net.Interface
 
-	events pushers.Events
+	events pushers.Channel
 }
 
 // KnockGroup groups multiple knocks
@@ -281,7 +281,7 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 
 // New will return a Canary for specified interfaces. Events will be delivered through
 // events
-func New(interfaces []net.Interface, events pushers.Events) (*Canary, error) {
+func New(interfaces []net.Interface, events pushers.Channel) (*Canary, error) {
 	epfd, err := syscall.EpollCreate1(0)
 	if err != nil {
 		return nil, fmt.Errorf("epoll_create1: %s", err.Error())
@@ -368,7 +368,7 @@ func (c *Canary) knockDetector() {
 					}
 				})
 
-				c.events.Deliver(EventPortscan(k.SourceIP, k.Last.Sub(k.Start), k.Count, ports))
+				c.events.Send(EventPortscan(k.SourceIP, k.Last.Sub(k.Start), k.Count, ports))
 			})
 		}
 	}
