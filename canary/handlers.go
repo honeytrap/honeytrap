@@ -11,6 +11,58 @@ import (
 )
 
 const (
+	// EventCategorySSDP contains events for ssdp traffic
+	EventCategorySSDP = message.EventCategory("ssdp")
+)
+
+// DecodeSSDP will decode NTP packets
+func (c *Canary) DecodeSSDP(iph *ipv4.Header, udph *udp.Header) error {
+	// add specific detections, reflection attack detection etc
+	c.events.Deliver(EventSSDP(iph.Src, string(udph.Payload)))
+
+	return nil
+}
+
+// EventSSDP will return a snmp event struct
+func EventSSDP(sourceIP net.IP, payload string) message.Event {
+	// TODO: message should go into String() / Message, where message.Event will become interface
+	return message.Event{
+		Sensor:   "Canary",
+		Category: EventCategorySSDP,
+		Type:     message.ServiceStarted,
+		Details: map[string]interface{}{
+			"message": payload,
+		},
+	}
+}
+
+const (
+	// EventCategorySIP contains events for ntp traffic
+	EventCategorySIP = message.EventCategory("ntp")
+)
+
+// DecodeSIP will decode NTP packets
+func (c *Canary) DecodeSIP(iph *ipv4.Header, udph *udp.Header) error {
+	// add specific detections, reflection attack detection etc
+	c.events.Deliver(EventSIP(iph.Src, string(udph.Payload)))
+
+	return nil
+}
+
+// EventSIP will return a snmp event struct
+func EventSIP(sourceIP net.IP, payload string) message.Event {
+	// TODO: message should go into String() / Message, where message.Event will become interface
+	return message.Event{
+		Sensor:   "Canary",
+		Category: EventCategorySIP,
+		Type:     message.ServiceStarted,
+		Details: map[string]interface{}{
+			"message": payload,
+		},
+	}
+}
+
+const (
 	// EventCategorySNMPTrap contains events for ntp traffic
 	EventCategorySNMPTrap = message.EventCategory("snmp-trap")
 )
@@ -81,13 +133,30 @@ func (c *Canary) DecodeNTP(iph *ipv4.Header, udph *udp.Header) error {
 
 // EventNTP will return a ntp query event struct
 func EventNTP(sourceIP net.IP, ntp layers.NTP) message.Event {
+	// what to do with other modes?
+	modes := map[layers.NTPMode]string{
+		layers.NTPMode(0): "reserved",
+		layers.NTPMode(1): "Symmetric active",
+		layers.NTPMode(2): "Symmetric passive",
+		layers.NTPMode(3): "Client",
+		layers.NTPMode(4): "Server",
+		layers.NTPMode(5): "Broadcast",
+		layers.NTPMode(6): "NTP control message",
+		layers.NTPMode(7): "private",
+	}
+
 	// TODO: message should go into String() / Message, where message.Event will become interface
+	mode := fmt.Sprintf("%q", ntp.Mode)
+	if m, ok := modes[ntp.Mode]; ok {
+		mode = m
+	}
+
 	return message.Event{
 		Sensor:   "Canary",
 		Category: EventCategoryNTP,
 		Type:     message.ServiceStarted,
 		Details: map[string]interface{}{
-			"message": fmt.Sprintf("NTP packet received, mode=%q\n", ntp.Mode),
+			"message": fmt.Sprintf("NTP packet received, version=%d, mode=%s\n", ntp.Version, mode),
 		},
 	}
 }

@@ -202,6 +202,18 @@ func (c *Canary) handleUDP(iph *ipv4.Header, data []byte) error {
 		}
 
 		return nil
+	} else if hdr.Destination == 1900 {
+		if err := c.DecodeSSDP(iph, hdr); err != nil {
+			fmt.Printf("Could not decode ssdp packet: %s\n", err)
+		}
+
+		return nil
+	} else if hdr.Destination == 5060 {
+		if err := c.DecodeSIP(iph, hdr); err != nil {
+			fmt.Printf("Could not decode sip packet: %s\n", err)
+		}
+
+		return nil
 	} else if hdr.Destination == 161 {
 		if err := c.DecodeSNMP(iph, hdr); err != nil {
 			fmt.Printf("Could not decode snmp packet: %s\n", err)
@@ -300,6 +312,8 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 	} else if hdr.Ctrl&tcp.ACK != 0 {
 		return nil
 	}
+
+	// do handhake
 
 	if !c.isMe(iph.Dst) {
 		return nil
