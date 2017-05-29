@@ -33,7 +33,7 @@ token = "b0b6e462-ef0b-11e6-abc7-0fb6247f5820"
 
 [backends."backup.file"]
 backend = "file"
-file = "/store/files/pushers.pub"
+file = "pushers.pub.db"
 ms = "50s"
 max_size = 3000
 

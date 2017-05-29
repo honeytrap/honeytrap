@@ -8,10 +8,26 @@ import (
 
 //==========================================================================================
 
-// Filters defines an interface which exposes a method for filtering specific
+// Filter defines an interface which exposes a method for filtering specific
 // messages by specific boundaries.
-type Filters interface {
+type Filter interface {
 	Filter(...message.Event) []message.Event
+}
+
+//==========================================================================================
+
+// FilterGroup defines a slice of Filter object which used together to filter
+// a series of events.
+type FilterGroup []Filter
+
+// Filter returns a slice of messages that match the giving criterias from the
+// provided events.
+func (fg FilterGroup) Filter(events ...message.Event) []message.Event {
+	for _, filter := range fg {
+		events = filter.Filter(events...)
+	}
+
+	return events
 }
 
 //==========================================================================================

@@ -68,13 +68,13 @@ func New(conf *config.Config) *Pusher {
 	}
 
 	for _, cb := range conf.Channels {
-		master := NewFilteringChannel(conf)
-		if err := master.UnmarshalConfig(cb); err != nil {
-			log.Errorf("Failed to create channel for config [%#q]: %+q", cb, err)
+		channels, err := MakeFilter(conf, cb)
+		if err != nil {
+			log.Info("honeytrap.Pusher : Failed creating Filter channels : %#q", cb)
 			continue
 		}
 
-		p.channels = append(p.channels, master)
+		p.channels = append(p.channels, channels...)
 	}
 
 	return p
