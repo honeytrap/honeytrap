@@ -20,6 +20,10 @@ import (
 	"github.com/honeytrap/honeytrap/pushers/message"
 )
 
+// first dns
+// ntp
+// send reset?
+
 const (
 	// MaxEpollEvents defines maximum number of poll events to retrieve at once
 	MaxEpollEvents = 2048
@@ -182,6 +186,36 @@ func (c *Canary) handleUDP(iph *ipv4.Header, data []byte) error {
 		return nil
 	}
 
+	// check if we have udp listeners on specified port, and answer otherwise
+	// parse udp
+	// we should check if the received packet is a response or request
+
+	if hdr.Destination == 53 {
+		if err := c.DecodeDNS(iph, hdr); err != nil {
+			fmt.Printf("Could not decode dns packet: %s\n", err)
+		}
+
+		return nil
+	} else if hdr.Destination == 123 {
+		if err := c.DecodeNTP(iph, hdr); err != nil {
+			fmt.Printf("Could not decode ntp packet: %s\n", err)
+		}
+
+		return nil
+	} else if hdr.Destination == 161 {
+		if err := c.DecodeSNMP(iph, hdr); err != nil {
+			fmt.Printf("Could not decode snmp packet: %s\n", err)
+		}
+
+		return nil
+	} else if hdr.Destination == 162 {
+		if err := c.DecodeSNMPTrap(iph, hdr); err != nil {
+			fmt.Printf("Could not decode snmp trap packet: %s\n", err)
+		}
+
+		return nil
+	}
+
 	// detect if our interface initiated or portscan
 	c.knockChan <- KnockUDPPort{
 		SourceIP:        iph.Src,
@@ -191,7 +225,7 @@ func (c *Canary) handleUDP(iph *ipv4.Header, data []byte) error {
 	return nil
 }
 
-// handleTCP will handle tcp packets
+// handleICMP will handle tcp packets
 func (c *Canary) handleICMP(iph *ipv4.Header, data []byte) error {
 	_, err := icmp.Parse(data)
 	if err != nil {
@@ -276,6 +310,7 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 		DestinationPort: hdr.Destination,
 	}
 
+	// check if we have tcp listeners on specified port, and answer otherwise
 	return nil
 }
 
