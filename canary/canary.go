@@ -189,49 +189,28 @@ func (c *Canary) handleUDP(iph *ipv4.Header, data []byte) error {
 	// check if we have udp listeners on specified port, and answer otherwise
 	// parse udp
 	// we should check if the received packet is a response or request
-
-	if hdr.Destination == 53 {
-		if err := c.DecodeDNS(iph, hdr); err != nil {
-			fmt.Printf("Could not decode dns packet: %s\n", err)
-		}
-
-		return nil
-	} else if hdr.Destination == 123 {
-		if err := c.DecodeNTP(iph, hdr); err != nil {
-			fmt.Printf("Could not decode ntp packet: %s\n", err)
-		}
-
-		return nil
-	} else if hdr.Destination == 1900 {
-		if err := c.DecodeSSDP(iph, hdr); err != nil {
-			fmt.Printf("Could not decode ssdp packet: %s\n", err)
-		}
-
-		return nil
-	} else if hdr.Destination == 5060 {
-		if err := c.DecodeSIP(iph, hdr); err != nil {
-			fmt.Printf("Could not decode sip packet: %s\n", err)
-		}
-
-		return nil
-	} else if hdr.Destination == 161 {
-		if err := c.DecodeSNMP(iph, hdr); err != nil {
-			fmt.Printf("Could not decode snmp packet: %s\n", err)
-		}
-
-		return nil
-	} else if hdr.Destination == 162 {
-		if err := c.DecodeSNMPTrap(iph, hdr); err != nil {
-			fmt.Printf("Could not decode snmp trap packet: %s\n", err)
-		}
-
-		return nil
-	}
-
 	// detect if our interface initiated or portscan
-	c.knockChan <- KnockUDPPort{
-		SourceIP:        iph.Src,
-		DestinationPort: hdr.Destination,
+
+	handlers := map[uint16]func(iph *ipv4.Header, udph *udp.Header) error{
+		53:   c.DecodeDNS(iph, hdr),
+		123:  c.DecodeNTP(iph, hdr),
+		1900: c.DecodeSSDP(iph, hdr),
+		5060: c.DecodeSIP(iph, hdr),
+		161:  c.DecodeSNMP(iph, hdr),
+		162:  c.DecodeSNMPTrap(iph, hdr),
+	}()
+
+	if fn, ok := handlers[hdr.Destination]; !ok {
+		// default handler
+		c.knockChan <- KnockUDPPort{
+			SourceIP:        iph.Src,
+			DestinationPort: hdr.Destination,
+		}
+
+		// do we only want to detect scans? Or also detect payloads?
+		c.events.Deliver(EventUDP(iph.Src, string(hdr.Payload)))
+	} else if err := fn(iph, hdr); err != nil {
+		fmt.Printf("Could not decode udp packet: %s\n", err)
 	}
 
 	return nil

@@ -15,23 +15,15 @@ import (
 
 const (
 	// EventCategorySSDP contains events for ssdp traffic
-	EventCategorySSDP = message.EventCategory("ssdp")
+	EventCategoryUDP = message.EventCategory("udp")
 )
 
-// DecodeSSDP will decode NTP packets
-func (c *Canary) DecodeSSDP(iph *ipv4.Header, udph *udp.Header) error {
-	// add specific detections, reflection attack detection etc
-	c.events.Deliver(EventSSDP(iph.Src, string(udph.Payload)))
-
-	return nil
-}
-
 // EventSSDP will return a snmp event struct
-func EventSSDP(sourceIP net.IP, payload string) message.Event {
+func EventUDP(sourceIP net.IP, payload string) message.Event {
 	// TODO: message should go into String() / Message, where message.Event will become interface
 	return message.Event{
 		Sensor:   "Canary",
-		Category: EventCategorySSDP,
+		Category: EventCategoryUDP,
 		Type:     message.ServiceStarted,
 		Details: map[string]interface{}{
 			"message": payload,
@@ -40,8 +32,52 @@ func EventSSDP(sourceIP net.IP, payload string) message.Event {
 }
 
 const (
+	// EventCategorySSDP contains events for ssdp traffic
+	EventCategorySSDP = message.EventCategory("ssdp")
+)
+
+// DecodeSSDP will decode NTP packets
+func (c *Canary) DecodeSSDP(iph *ipv4.Header, udph *udp.Header) error {
+	request, err := http.ReadRequest(
+		bufio.NewReader(
+			bytes.NewReader(udph.Payload),
+		),
+	)
+	if err != nil {
+		// log error / send error channel
+		return nil
+	}
+
+	// add specific detections, reflection attack detection etc
+	c.events.Deliver(EventSSDP(iph.Src, request.Method, request.RequestURI, request.Proto, request.Header))
+	return nil
+}
+
+// EventSSDP will return a snmp event struct
+func EventSIP(sourceIP net.IP, method, uri, proto string, headers http.Header) message.Event {
+	// TODO: message should go into String() / Message, where message.Event will become interface
+	return message.Event{
+		Sensor:   "Canary",
+		Category: EventCategorySSDP,
+		Type:     message.ServiceStarted,
+		Details: map[string]interface{}{
+			"message": payload,
+			"method":  method,
+			"uri":     uri,
+			"proto":   proto,
+			"headers": headers,
+
+			"HOST": headers.Get("HOST"),
+			"MAN":  headers.Get("MAN"),
+			"MX":   headers.Get("MX"),
+			"ST":   headers.Get("ST"),
+		},
+	}
+}
+
+const (
 	// EventCategorySIP contains events for ntp traffic
-	EventCategorySIP = message.EventCategory("ntp")
+	EventCategorySIP = message.EventCategory("sip")
 )
 
 // DecodeSIP will decode NTP packets
