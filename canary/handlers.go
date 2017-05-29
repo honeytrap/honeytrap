@@ -1,8 +1,11 @@
 package canary
 
 import (
+	"bufio"
+	"bytes"
 	"fmt"
 	"net"
+	"net/http"
 
 	"github.com/google/gopacket/layers"
 	"github.com/honeytrap/honeytrap/canary/ipv4"
@@ -43,21 +46,40 @@ const (
 
 // DecodeSIP will decode NTP packets
 func (c *Canary) DecodeSIP(iph *ipv4.Header, udph *udp.Header) error {
+	request, err := http.ReadRequest(
+		bufio.NewReader(
+			bytes.NewReader(udph.Payload),
+		),
+	)
+	if err != nil {
+		// log error / send error channel
+		return nil
+	}
+
 	// add specific detections, reflection attack detection etc
-	c.events.Deliver(EventSIP(iph.Src, string(udph.Payload)))
+	c.events.Deliver(EventSIP(iph.Src, request.Method, request.RequestURI, request.Proto, request.Header))
 
 	return nil
 }
 
 // EventSIP will return a snmp event struct
-func EventSIP(sourceIP net.IP, payload string) message.Event {
+func EventSIP(sourceIP net.IP, method, uri, proto string, headers http.Header) message.Event {
 	// TODO: message should go into String() / Message, where message.Event will become interface
 	return message.Event{
 		Sensor:   "Canary",
 		Category: EventCategorySIP,
 		Type:     message.ServiceStarted,
 		Details: map[string]interface{}{
-			"message": payload,
+			"method":     method,
+			"uri":        uri,
+			"proto":      proto,
+			"headers":    headers,
+			"from":       headers.Get("From"),
+			"to":         headers.Get("To"),
+			"via":        headers.Get("Via"),
+			"contact":    headers.Get("Contact"),
+			"call-id":    headers.Get("Call-ID"),
+			"user-agent": headers.Get("User-Agent"),
 		},
 	}
 }
