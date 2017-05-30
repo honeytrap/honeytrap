@@ -191,14 +191,14 @@ func (c *Canary) handleUDP(iph *ipv4.Header, data []byte) error {
 	// we should check if the received packet is a response or request
 	// detect if our interface initiated or portscan
 
-	handlers := map[uint16]func(iph *ipv4.Header, udph *udp.Header) error{
-		53:   c.DecodeDNS(iph, hdr),
-		123:  c.DecodeNTP(iph, hdr),
-		1900: c.DecodeSSDP(iph, hdr),
-		5060: c.DecodeSIP(iph, hdr),
-		161:  c.DecodeSNMP(iph, hdr),
-		162:  c.DecodeSNMPTrap(iph, hdr),
-	}()
+	handlers := map[uint16]func(*ipv4.Header, *udp.Header) error{
+		53:   c.DecodeDNS,
+		123:  c.DecodeNTP,
+		1900: c.DecodeSSDP,
+		5060: c.DecodeSIP,
+		161:  c.DecodeSNMP,
+		162:  c.DecodeSNMPTrap,
+	}
 
 	if fn, ok := handlers[hdr.Destination]; !ok {
 		// default handler
