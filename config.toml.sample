@@ -39,8 +39,7 @@ max_size = 3000
 
 [backend."alerts"]
 backend = "slack"
-host = "https://hooks.slack.com/services/"
-token = "{fillmein}"
+webhook_url = "https://hooks.slack.com/services/{fillmein}"
 
 [[channel]]
 backends = ["alerts", "file"]

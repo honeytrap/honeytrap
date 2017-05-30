@@ -41,6 +41,7 @@ const (
 	ContainerStarted     EventType = "CONTAINER:STARTED"
 	ContainerFrozen      EventType = "CONTAINER:FROZEN"
 	ContainerDial        EventType = "CONTAINER:DIAL"
+	ContainerError       EventType = "CONTAINER:ERROR"
 	ContainerUnfrozen    EventType = "CONTAINER:UNFROZEN"
 	ContainerCloned      EventType = "CONTAINER:CLONED"
 	ContainerStopped     EventType = "CONTAINER:STOPPED"
@@ -89,8 +90,8 @@ type Event struct {
 	ContainerID string                 `json:"container_id,omitempty"`
 }
 
-// Message returns a the default Event message associated with the Event
-func (e Event) String() string {
+// EventMessage returns a the default Event message associated with the Event
+func (e Event) EventMessage() string {
 	return e.Message
 }
 

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -25,8 +24,10 @@ var (
 // APIConfig defines a struct which holds configuration field values used by the
 // SlackBackend for it's message delivery to the slack channel API.
 type APIConfig struct {
-	Host  string `toml:"host"`
-	Token string `toml:"token"`
+	WebhookURL string `toml:"webhook_url"`
+	Username   string `toml:"username"`
+	IconURL    string `toml:"icon_url"`
+	IconEmoji  string `toml:"icon_emoji"`
 }
 
 // SlackBackend provides a struct which holds the configured means by which
@@ -59,12 +60,8 @@ func NewWith(meta toml.MetaData, data toml.Primitive) (pushers.Channel, error) {
 		return nil, err
 	}
 
-	if config.Host == "" {
-		return nil, errors.New("slack.APIConfig Invalid: Host can not be empty")
-	}
-
-	if config.Token == "" {
-		return nil, errors.New("slack.APIConfig Invalid: Token can not be empty")
+	if config.WebhookURL == "" {
+		return nil, errors.New("Invalid Config: WebhookURL can not be empty")
 	}
 
 	return New(config), nil
@@ -76,55 +73,77 @@ func (mc SlackBackend) Send(message message.Event) {
 	//Attempt to encode message body first and if failed, log and continue.
 	messageBuffer := new(bytes.Buffer)
 	if err := json.NewEncoder(messageBuffer).Encode(message.Data); err != nil {
-		log.Errorf("SlackMessageBackend: Error encoding data: %q", err.Error())
+		log.Errorf("SlackBackend: Error encoding data: %q", err.Error())
 		return
 	}
 
 	// Create the appropriate fields for the giving slack message.
-	var fields []newSlackField
+	var fields []Field
 
-	fields = append(fields, newSlackField{
+	fields = append(fields, Field{
 		Title: "Sensor",
 		Value: message.Sensor,
 		Short: true,
 	})
 
-	fields = append(fields, newSlackField{
+	fields = append(fields, Field{
+		Title: "Date",
+		Value: message.Date.UTC().String(),
+		Short: true,
+	})
+
+	fields = append(fields, Field{
+		Title: "Start Time",
+		Value: message.Started.UTC().String(),
+		Short: true,
+	})
+
+	fields = append(fields, Field{
+		Title: "Location",
+		Value: message.Location,
+		Short: true,
+	})
+
+	fields = append(fields, Field{
 		Title: "Category",
 		Value: string(message.Category),
 		Short: true,
 	})
 
-	fields = append(fields, newSlackField{
+	fields = append(fields, Field{
 		Title: "Session ID",
 		Value: message.SessionID,
 		Short: true,
 	})
 
-	fields = append(fields, newSlackField{
+	fields = append(fields, Field{
 		Title: "Container ID",
 		Value: message.ContainerID,
 		Short: true,
 	})
 
-	var slackMessage newSlackMessage
-	slackMessage.Text = fmt.Sprintf("New Sensor Message from %q with Category %q", message.Sensor, message.Category)
-	slackMessage.Attachments = append(slackMessage.Attachments, newSlackAttachment{
+	var newMessage Message
+
+	newMessage.IconURL = mc.config.IconURL
+	newMessage.IconEmoji = mc.config.IconEmoji
+	newMessage.Username = mc.config.Username
+	newMessage.Text = message.EventMessage()
+
+	newMessage.Attachments = append(newMessage.Attachments, Attachment{
 		Title:    "Sensor Data",
 		Author:   "HoneyTrap",
 		Fields:   fields,
+		Fallback: string(messageBuffer.Bytes()),
 		Text:     string(messageBuffer.Bytes()),
-		Fallback: fmt.Sprintf("New SensorMessage (Sensor: %q, Category: %q, Session: %q, Container: %q). Check Slack for more", message.Sensor, message.Category, message.SessionID, message.ContainerID),
 	})
 
-	slackMessageBuffer := new(bytes.Buffer)
-	if err := json.NewEncoder(slackMessageBuffer).Encode(slackMessage); err != nil {
+	data := new(bytes.Buffer)
+	if err := json.NewEncoder(data).Encode(newMessage); err != nil {
 		log.Errorf("Error encoding new SlackMessage: %+q", err)
 		return
 	}
 
-	reqURL := fmt.Sprintf("%s/%s", mc.config.Host, mc.config.Token)
-	req, err := http.NewRequest("POST", reqURL, slackMessageBuffer)
+	req, err := http.NewRequest("POST", mc.config.WebhookURL, data)
 	if err != nil {
 		log.Errorf("Error while creating new request object: %+q", err)
 		return
@@ -134,7 +153,7 @@ func (mc SlackBackend) Send(message message.Event) {
 
 	res, err := mc.Do(req)
 	if err != nil {
-		log.Errorf("Error while making request to endpoint(%q): %q", reqURL, err.Error())
+		log.Errorf("Error while making request to endpoint(%q): %q", mc.config.WebhookURL, err.Error())
 		return
 	}
 
@@ -147,27 +166,32 @@ func (mc SlackBackend) Send(message message.Event) {
 	if res.StatusCode == http.StatusOK {
 	} else if res.StatusCode == http.StatusCreated {
 	} else {
-		log.Errorf("SlackMessageBackend: API Response with unexpected Status Code[%d] to endpoint: %q", res.StatusCode, reqURL)
+		log.Errorf("SlackMessageBackend: API Response with unexpected Status Code[%d] to endpoint: %q", res.StatusCode, mc.config.WebhookURL)
 	}
 }
 
-type newSlackMessage struct {
-	Text        string               `json:"text"`
-	Backend     string               `json:"channel"`
-	Attachments []newSlackAttachment `json:"attachments"`
+// Message defines the base message to be included sent to a slack endpoint.
+type Message struct {
+	Text        string       `json:"text"`
+	IconEmoji   string       `json:"icon_emoji"`
+	IconURL     string       `json:"icon_url"`
+	Username    string       `json:"username"`
+	Attachments []Attachment `json:"attachments"`
 }
 
-type newSlackField struct {
+// Attachment defines a struct to define an attachment to be included with a message.
+type Attachment struct {
+	Title     string  `json:"title"`
+	Author    string  `json:"author_name,omitempty"`
+	Fallback  string  `json:"fallback,omitempty"`
+	Fields    []Field `json:"fields"`
+	Text      string  `json:"text"`
+	Timestamp int64   `json:"ts"`
+}
+
+// Field defines a field item to be shown on a Message.
+type Field struct {
 	Title string `json:"title"`
 	Value string `json:"value"`
 	Short bool   `json:"short"`
-}
-
-type newSlackAttachment struct {
-	Title     string          `json:"title"`
-	Author    string          `json:"author_name,omitempty"`
-	Fallback  string          `json:"fallback,omitempty"`
-	Fields    []newSlackField `json:"fields"`
-	Text      string          `json:"text"`
-	Timestamp int64           `json:"ts"`
 }
