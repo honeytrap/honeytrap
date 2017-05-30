@@ -66,7 +66,7 @@ func tcpipChecksum(data []byte, csum uint32) uint16 {
 	for csum > 0xffff {
 		csum = (csum >> 16) + (csum & 0xffff)
 	}
-	return ^uint16(csum)
+	return ^uint16(csum + (csum >> 16))
 }
 
 // computeChecksum computes a TCP or UDP checksum.  headerAndPayload is the

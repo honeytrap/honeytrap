@@ -19,12 +19,8 @@ import (
 	"net"
 	"runtime"
 	"sync"
-	"sync/atomic"
 	"time"
 	"unsafe"
-
-	"golang.org/x/net/bpf"
-	"golang.org/x/sys/unix"
 
 	"github.com/google/gopacket"
 )
@@ -40,14 +36,8 @@ import (
 */
 import "C"
 
-var pageSize = unix.Getpagesize()
+var pageSize = int(C.getpagesize())
 var tpacketAlignment = uint(C.TPACKET_ALIGNMENT)
-
-// ErrPoll returned by poll
-var ErrPoll = errors.New("packet poll failed")
-
-// ErrTimeout returned on poll timeout
-var ErrTimeout = errors.New("packet poll timeout expired")
 
 func tpacketAlign(v int) int {
 	return int((uint(v) + tpacketAlignment - 1) & ((^tpacketAlignment) - 1))
@@ -72,11 +62,9 @@ type SocketStatsV3 C.struct_tpacket_stats_v3
 // TPacket implements packet receiving for Linux AF_PACKET versions 1, 2, and 3.
 type TPacket struct {
 	// fd is the C file descriptor.
-	fd int
+	fd C.int
 	// ring points to the memory space of the ring buffer shared by tpacket and the kernel.
-	ring []byte
-	// rawring is the unsafe pointer that we use to poll for packets
-	rawring unsafe.Pointer
+	ring unsafe.Pointer
 	// opts contains read-only options for the TPacket object.
 	opts options
 	mu   sync.Mutex // guards below
@@ -85,28 +73,22 @@ type TPacket struct {
 	// current is the current header.
 	current header
 	// pollset is used by TPacket for its poll() call.
-	pollset unix.PollFd
+	pollset C.struct_pollfd
 	// shouldReleasePacket is set to true whenever we return packet data, to make sure we remember to release that data back to the kernel.
 	shouldReleasePacket bool
-	// headerNextNeeded is set to true when header need to move to the next packet. No need to move it case of poll error.
-	headerNextNeeded bool
-	// tpVersion is the version of TPacket actually in use, set by setRequestedTPacketVersion.
-	tpVersion OptTPacketVersion
-	// Hackity hack hack hack.  We need to return a pointer to the header with
-	// getTPacketHeader, and we don't want to allocate a v3wrapper every time,
-	// so we leave it in the TPacket object and return a pointer to it.
-	v3 v3wrapper
-
-	statsMu sync.Mutex // guards stats below
 	// stats is simple statistics on TPacket's run.
 	stats Stats
 	// socketStats contains stats from the socket
 	socketStats SocketStats
 	// same as socketStats, but with an extra field freeze_q_cnt
 	socketStatsV3 SocketStatsV3
+	// tpVersion is the version of TPacket actually in use, set by setRequestedTPacketVersion.
+	tpVersion OptTPacketVersion
+	// Hackity hack hack hack.  We need to return a pointer to the header with
+	// getTPacketHeader, and we don't want to allocate a v3wrapper every time,
+	// so we leave it in the TPacket object and return a pointer to it.
+	v3 v3wrapper
 }
-
-var _ gopacket.ZeroCopyPacketDataSource = &TPacket{}
 
 // bindToInterface binds the TPacket socket to a particular named interface.
 func (h *TPacket) bindToInterface(ifaceName string) error {
@@ -119,16 +101,22 @@ func (h *TPacket) bindToInterface(ifaceName string) error {
 		}
 		ifIndex = iface.Index
 	}
-	s := &unix.SockaddrLinklayer{
-		Protocol: htons(uint16(unix.ETH_P_ALL)),
-		Ifindex:  ifIndex,
+
+	var ll C.struct_sockaddr_ll
+	ll.sll_family = C.AF_PACKET
+	ll.sll_protocol = C.__be16(C.htons(C.ETH_P_ALL))
+	ll.sll_ifindex = C.int(ifIndex)
+	if _, err := C.bind(h.fd, (*C.struct_sockaddr)(unsafe.Pointer(&ll)), C.socklen_t(unsafe.Sizeof(ll))); err != nil {
+		return fmt.Errorf("bindToInterface: %v", err)
 	}
-	return unix.Bind(h.fd, s)
+	return nil
 }
 
 // setTPacketVersion asks the kernel to set TPacket to a particular version, and returns an error on failure.
 func (h *TPacket) setTPacketVersion(version OptTPacketVersion) error {
-	if err := unix.SetsockoptInt(h.fd, unix.SOL_PACKET, unix.PACKET_VERSION, int(version)); err != nil {
+	val := C.int(version)
+	_, err := C.setsockopt(h.fd, C.SOL_PACKET, C.PACKET_VERSION, unsafe.Pointer(&val), C.socklen_t(unsafe.Sizeof(val)))
+	if err != nil {
 		return fmt.Errorf("setsockopt packet_version: %v", err)
 	}
 	return nil
@@ -151,7 +139,7 @@ func (h *TPacket) setRequestedTPacketVersion() error {
 
 // setUpRing sets up the shared-memory ring buffer between the user process and the kernel.
 func (h *TPacket) setUpRing() (err error) {
-	totalSize := int(h.opts.framesPerBlock * h.opts.numBlocks * h.opts.frameSize)
+	totalSize := C.uint(h.opts.framesPerBlock * h.opts.numBlocks * h.opts.frameSize)
 	switch h.tpVersion {
 	case TPacketVersion1, TPacketVersion2:
 		var tp C.struct_tpacket_req
@@ -159,7 +147,7 @@ func (h *TPacket) setUpRing() (err error) {
 		tp.tp_block_nr = C.uint(h.opts.numBlocks)
 		tp.tp_frame_size = C.uint(h.opts.frameSize)
 		tp.tp_frame_nr = C.uint(h.opts.framesPerBlock * h.opts.numBlocks)
-		if err := setsockopt(h.fd, unix.SOL_PACKET, unix.PACKET_RX_RING, unsafe.Pointer(&tp), unsafe.Sizeof(tp)); err != nil {
+		if _, err := C.setsockopt(h.fd, C.SOL_PACKET, C.PACKET_RX_RING, unsafe.Pointer(&tp), C.socklen_t(unsafe.Sizeof(tp))); err != nil {
 			return fmt.Errorf("setsockopt packet_rx_ring: %v", err)
 		}
 	case TPacketVersion3:
@@ -169,20 +157,18 @@ func (h *TPacket) setUpRing() (err error) {
 		tp.tp_frame_size = C.uint(h.opts.frameSize)
 		tp.tp_frame_nr = C.uint(h.opts.framesPerBlock * h.opts.numBlocks)
 		tp.tp_retire_blk_tov = C.uint(h.opts.blockTimeout / time.Millisecond)
-		if err := setsockopt(h.fd, unix.SOL_PACKET, unix.PACKET_RX_RING, unsafe.Pointer(&tp), unsafe.Sizeof(tp)); err != nil {
+		if _, err := C.setsockopt(h.fd, C.SOL_PACKET, C.PACKET_RX_RING, unsafe.Pointer(&tp), C.socklen_t(unsafe.Sizeof(tp))); err != nil {
 			return fmt.Errorf("setsockopt packet_rx_ring v3: %v", err)
 		}
 	default:
 		return errors.New("invalid tpVersion")
 	}
-	h.ring, err = unix.Mmap(h.fd, 0, totalSize, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_SHARED)
-	if err != nil {
-		return err
+	if h.ring, err = C.mmap(nil, C.size_t(totalSize), C.PROT_READ|C.PROT_WRITE, C.MAP_SHARED, C.int(h.fd), 0); err != nil {
+		return
 	}
 	if h.ring == nil {
 		return errors.New("no ring")
 	}
-	h.rawring = unsafe.Pointer(&h.ring[0])
 	return nil
 }
 
@@ -192,10 +178,10 @@ func (h *TPacket) Close() {
 		return // already closed.
 	}
 	if h.ring != nil {
-		unix.Munmap(h.ring)
+		C.munmap(h.ring, C.size_t(h.opts.blockSize*h.opts.numBlocks))
 	}
 	h.ring = nil
-	unix.Close(h.fd)
+	C.close(h.fd)
 	h.fd = -1
 	runtime.SetFinalizer(h, nil)
 }
@@ -210,7 +196,7 @@ func NewTPacket(opts ...interface{}) (h *TPacket, err error) {
 	if h.opts, err = parseOptions(opts...); err != nil {
 		return nil, err
 	}
-	fd, err := unix.Socket(unix.AF_PACKET, int(h.opts.socktype), int(htons(unix.ETH_P_ALL)))
+	fd, err := C.socket(C.AF_PACKET, C.int(h.opts.socktype), C.int(C.htons(C.ETH_P_ALL)))
 	if err != nil {
 		return nil, err
 	}
@@ -235,18 +221,6 @@ errlbl:
 	return nil, err
 }
 
-// SetBPF attaches a BPF filter to the underlying socket
-func (h *TPacket) SetBPF(filter []bpf.RawInstruction) error {
-	var p unix.SockFprog
-	if len(filter) > int(^uint16(0)) {
-		return errors.New("filter too large")
-	}
-	p.Len = uint16(len(filter))
-	p.Filter = (*unix.SockFilter)(unsafe.Pointer(&filter[0]))
-
-	return setsockopt(h.fd, unix.SOL_SOCKET, unix.SO_ATTACH_FILTER, unsafe.Pointer(&p), unix.SizeofSockFprog)
-}
-
 func (h *TPacket) releaseCurrentPacket() error {
 	h.current.clearStatus()
 	h.offset++
@@ -259,7 +233,7 @@ func (h *TPacket) releaseCurrentPacket() error {
 // TPacket.  Each call to ZeroCopyReadPacketData invalidates any data previously
 // returned by ZeroCopyReadPacketData.  Care must be taken not to keep pointers
 // to old bytes when using ZeroCopyReadPacketData... if you need to keep data past
-// the next time you call ZeroCopyReadPacketData, use ReadPacketData, which copies
+// the next time you call ZeroCopyReadPacketData, use ReadPacketDataData, which copies
 // the bytes into a new buffer for you.
 //  tp, _ := NewTPacket(...)
 //  data1, _, _ := tp.ZeroCopyReadPacketData()
@@ -267,20 +241,14 @@ func (h *TPacket) releaseCurrentPacket() error {
 //  data2, _, _ := tp.ZeroCopyReadPacketData()  // invalidates bytes in data1
 func (h *TPacket) ZeroCopyReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {
 	h.mu.Lock()
-retry:
-	if h.current == nil || !h.headerNextNeeded || !h.current.next() {
+	if h.current == nil || !h.current.next() {
 		if h.shouldReleasePacket {
 			h.releaseCurrentPacket()
 		}
 		h.current = h.getTPacketHeader()
 		if err = h.pollForFirstPacket(h.current); err != nil {
-			h.headerNextNeeded = false
 			h.mu.Unlock()
 			return
-		}
-		// We received an empty block
-		if h.current.getLength() == 0 {
-			goto retry
 		}
 	}
 	data = h.current.getData()
@@ -288,19 +256,16 @@ retry:
 	ci.CaptureLength = len(data)
 	ci.Length = h.current.getLength()
 	ci.InterfaceIndex = h.current.getIfaceIndex()
-	atomic.AddInt64(&h.stats.Packets, 1)
-	h.headerNextNeeded = true
+	h.stats.Packets++
 	h.mu.Unlock()
-
 	return
 }
 
 // Stats returns statistics on the packets the TPacket has seen so far.
 func (h *TPacket) Stats() (Stats, error) {
-	return Stats{
-		Polls:   atomic.LoadInt64(&h.stats.Polls),
-		Packets: atomic.LoadInt64(&h.stats.Packets),
-	}, nil
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.stats, nil
 }
 
 // InitSocketStats clears socket counters and return empty stats.
@@ -310,7 +275,7 @@ func (h *TPacket) InitSocketStats() error {
 		slt := C.socklen_t(socklen)
 		var ssv3 SocketStatsV3
 
-		err := getsockopt(h.fd, unix.SOL_PACKET, unix.PACKET_STATISTICS, unsafe.Pointer(&ssv3), uintptr(unsafe.Pointer(&slt)))
+		_, err := C.getsockopt(h.fd, C.SOL_PACKET, C.PACKET_STATISTICS, unsafe.Pointer(&ssv3), &slt)
 		if err != nil {
 			return err
 		}
@@ -320,7 +285,7 @@ func (h *TPacket) InitSocketStats() error {
 		slt := C.socklen_t(socklen)
 		var ss SocketStats
 
-		err := getsockopt(h.fd, unix.SOL_PACKET, unix.PACKET_STATISTICS, unsafe.Pointer(&ss), uintptr(unsafe.Pointer(&slt)))
+		_, err := C.getsockopt(h.fd, C.SOL_PACKET, C.PACKET_STATISTICS, unsafe.Pointer(&ss), &slt)
 		if err != nil {
 			return err
 		}
@@ -331,15 +296,15 @@ func (h *TPacket) InitSocketStats() error {
 
 // SocketStats saves stats from the socket to the TPacket instance.
 func (h *TPacket) SocketStats() (SocketStats, SocketStatsV3, error) {
-	h.statsMu.Lock()
-	defer h.statsMu.Unlock()
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	// We need to save the counters since asking for the stats will clear them
 	if h.tpVersion == TPacketVersion3 {
 		socklen := unsafe.Sizeof(h.socketStatsV3)
 		slt := C.socklen_t(socklen)
 		var ssv3 SocketStatsV3
 
-		err := getsockopt(h.fd, unix.SOL_PACKET, unix.PACKET_STATISTICS, unsafe.Pointer(&ssv3), uintptr(unsafe.Pointer(&slt)))
+		_, err := C.getsockopt(h.fd, C.SOL_PACKET, C.PACKET_STATISTICS, unsafe.Pointer(&ssv3), &slt)
 		if err != nil {
 			return SocketStats{}, SocketStatsV3{}, err
 		}
@@ -353,7 +318,7 @@ func (h *TPacket) SocketStats() (SocketStats, SocketStatsV3, error) {
 	slt := C.socklen_t(socklen)
 	var ss SocketStats
 
-	err := getsockopt(h.fd, unix.SOL_PACKET, unix.PACKET_STATISTICS, unsafe.Pointer(&ss), uintptr(unsafe.Pointer(&slt)))
+	_, err := C.getsockopt(h.fd, C.SOL_PACKET, C.PACKET_STATISTICS, unsafe.Pointer(&ss), &slt)
 	if err != nil {
 		return SocketStats{}, SocketStatsV3{}, err
 	}
@@ -398,20 +363,20 @@ func (h *TPacket) getTPacketHeader() header {
 		if h.offset >= h.opts.framesPerBlock*h.opts.numBlocks {
 			h.offset = 0
 		}
-		position := uintptr(h.rawring) + uintptr(h.opts.frameSize*h.offset)
+		position := uintptr(h.ring) + uintptr(h.opts.frameSize*h.offset)
 		return (*v1header)(unsafe.Pointer(position))
 	case TPacketVersion2:
 		if h.offset >= h.opts.framesPerBlock*h.opts.numBlocks {
 			h.offset = 0
 		}
-		position := uintptr(h.rawring) + uintptr(h.opts.frameSize*h.offset)
+		position := uintptr(h.ring) + uintptr(h.opts.frameSize*h.offset)
 		return (*v2header)(unsafe.Pointer(position))
 	case TPacketVersion3:
 		// TPacket3 uses each block to return values, instead of each frame.  Hence we need to rotate when we hit #blocks, not #frames.
 		if h.offset >= h.opts.numBlocks {
 			h.offset = 0
 		}
-		position := uintptr(h.rawring) + uintptr(h.opts.frameSize*h.offset*h.opts.framesPerBlock)
+		position := uintptr(h.ring) + uintptr(h.opts.frameSize*h.offset*h.opts.framesPerBlock)
 		h.v3 = initV3Wrapper(unsafe.Pointer(position))
 		return &h.v3
 	}
@@ -419,25 +384,19 @@ func (h *TPacket) getTPacketHeader() header {
 }
 
 func (h *TPacket) pollForFirstPacket(hdr header) error {
-	tm := int(h.opts.pollTimeout / time.Millisecond)
 	for hdr.getStatus()&C.TP_STATUS_USER == 0 {
-		h.pollset.Fd = int32(h.fd)
-		h.pollset.Events = unix.POLLIN
-		h.pollset.Revents = 0
-		n, err := unix.Poll([]unix.PollFd{h.pollset}, tm)
-		if n == 0 {
-			return ErrTimeout
-		}
-
-		atomic.AddInt64(&h.stats.Polls, 1)
-		if h.pollset.Revents&unix.POLLERR > 0 {
-			return ErrPoll
+		h.pollset.fd = h.fd
+		h.pollset.events = C.POLLIN
+		h.pollset.revents = 0
+		_, err := C.poll(&h.pollset, 1, -1)
+		h.stats.Polls++
+		if h.pollset.revents&C.POLLERR > 0 {
+			return errors.New("poll error condition")
 		}
 		if err != nil {
 			return err
 		}
 	}
-
 	h.shouldReleasePacket = true
 	return nil
 }
@@ -466,11 +425,12 @@ func (h *TPacket) SetFanout(t FanoutType, id uint16) error {
 	defer h.mu.Unlock()
 	arg := C.int(t) << 16
 	arg |= C.int(id)
-	return setsockopt(h.fd, unix.SOL_PACKET, unix.PACKET_FANOUT, unsafe.Pointer(&arg), unsafe.Sizeof(arg))
+	_, err := C.setsockopt(h.fd, C.SOL_PACKET, C.PACKET_FANOUT, unsafe.Pointer(&arg), C.socklen_t(unsafe.Sizeof(arg)))
+	return err
 }
 
 // WritePacketData transmits a raw packet.
 func (h *TPacket) WritePacketData(pkt []byte) error {
-	_, err := unix.Write(h.fd, pkt)
+	_, err := C.write(h.fd, unsafe.Pointer(&pkt[0]), C.size_t(len(pkt)))
 	return err
 }

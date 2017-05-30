@@ -26,14 +26,6 @@
             ]
         },
         {
-            "name": "github.com/elazarl/go-bindata-assetfs",
-            "branch": "master",
-            "revision": "30f82fa23fd844bd5bb1e5f216db87fd77b5eb43",
-            "packages": [
-                "."
-            ]
-        },
-        {
             "name": "github.com/fatih/color",
             "version": "v1.4.1",
             "revision": "9131ab34cf20d2f6d83fdc67168a5430d1c7dc23",

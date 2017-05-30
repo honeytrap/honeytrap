@@ -63,8 +63,6 @@ type PacketBuilder interface {
 	// data will be dumped to stderr so you can create a test.  This should never
 	// be called from a production decoder.
 	DumpPacketData()
-	// DecodeOptions returns the decode options
-	DecodeOptions() *DecodeOptions
 }
 
 // Decoder is an interface for logic to decode a packet layer.  Users may

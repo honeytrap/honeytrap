@@ -161,12 +161,7 @@ func (d *DHCPv4) DecodeFromBytes(data []byte, df gopacket.DecodeFeedback) error 
 			break
 		}
 		d.Options = append(d.Options, o)
-		// Check if the option is a single byte pad
-		if o.Type == DHCPOptPad {
-			start++
-		} else {
-			start += int(o.Length) + 2
-		}
+		start += int(o.Length) + 2
 	}
 	return nil
 }
@@ -175,11 +170,7 @@ func (d *DHCPv4) DecodeFromBytes(data []byte, df gopacket.DecodeFeedback) error 
 func (d *DHCPv4) Len() uint16 {
 	n := uint16(240)
 	for _, o := range d.Options {
-		if o.Type == DHCPOptPad {
-			n++
-		} else {
-			n += uint16(o.Length) + 2
-		}
+		n += uint16(o.Length) + 2
 	}
 	n++ // for opt end
 	return n
@@ -190,6 +181,9 @@ func (d *DHCPv4) Len() uint16 {
 // See the docs for gopacket.SerializableLayer for more info.
 func (d *DHCPv4) SerializeTo(b gopacket.SerializeBuffer, opts gopacket.SerializeOptions) error {
 	plen := int(d.Len())
+	if plen < 300 {
+		plen = 300
+	}
 
 	data, err := b.PrependBytes(plen)
 	if err != nil {
@@ -221,12 +215,7 @@ func (d *DHCPv4) SerializeTo(b gopacket.SerializeBuffer, opts gopacket.Serialize
 			if err := o.encode(data[offset:]); err != nil {
 				return err
 			}
-			// A pad option is only a single byte
-			if o.Type == DHCPOptPad {
-				offset++
-			} else {
-				offset += 2 + len(o.Data)
-			}
+			offset += 2 + len(o.Data)
 		}
 		optend := NewDHCPOption(DHCPOptEnd, nil)
 		if err := optend.encode(data[offset:]); err != nil {
