@@ -32,18 +32,18 @@ const (
 var ErrAgentUnsupportedProtocol = fmt.Errorf("Unsupported agent protocol")
 
 // NewAgentServer returns a new AgentServer instance.
-func NewAgentServer(manager *director.ContainerConnections, director director.Director, pusher *pushers.Pusher, events pushers.Events, cfg *config.Config) *AgentServer {
-	return &AgentServer{director, pusher, events, cfg, manager}
+func NewAgentServer(manager *director.ContainerConnections, director director.Director, events pushers.Channel, cfg *config.Config) *AgentServer {
+	return &AgentServer{director, events, cfg, manager}
 }
 
 // AgentServer defines an a struct which implements a server to handle agent based
 // connections.
 type AgentServer struct {
 	director director.Director
-	pusher   *pushers.Pusher
-	events   pushers.Events
-	config   *config.Config
-	manager  *director.ContainerConnections
+
+	events  pushers.Channel
+	config  *config.Config
+	manager *director.ContainerConnections
 }
 
 // AgentConn defines the a struct which holds the underline net.Conn.
@@ -115,7 +115,7 @@ func (ac *AgentConn) Ping() error {
 
 	log.Debug("Received ping from agent: %s with token: %s", *msg.LocalAddress, *msg.Token)
 
-	ac.as.events.Deliver(PingEvent(ac.Conn, AgentPing{
+	ac.as.events.Send(PingEvent(ac.Conn, AgentPing{
 		Date:      time.Now(),
 		Token:     *msg.Token,
 		Host:      ac.Conn.RemoteAddr().String(),
@@ -147,7 +147,7 @@ func (ac *AgentConn) Forward() error {
 	ac.remoteAddr = *payload.RemoteAddress
 	ac.token = *payload.Token
 
-	ac.as.events.Deliver(ServiceStartedEvent(ac.Conn, AgentRequest{
+	ac.as.events.Send(ServiceStartedEvent(ac.Conn, AgentRequest{
 		Date:       time.Now(),
 		LocalAddr:  ac.localAddr,
 		RemoteAddr: ac.remoteAddr,
@@ -161,7 +161,7 @@ func (ac *AgentConn) Forward() error {
 		return err
 	}
 
-	ac.as.events.Deliver(AgentRequestEvent(ac.Conn, sessionID, AgentRequest{
+	ac.as.events.Send(AgentRequestEvent(ac.Conn, sessionID, AgentRequest{
 		Date:       time.Now(),
 		LocalAddr:  ac.localAddr,
 		RemoteAddr: ac.remoteAddr,
@@ -186,7 +186,7 @@ func (ac *AgentConn) Forward() error {
 	// default:
 	// 	log.Errorf("Unsupported agent protocol: %s", *payload.Protocol)
 
-	// 	ac.as.events.Deliver(ServiceEndedEvent(ac.Conn, ErrAgentUnsupportedProtocol, nil))
+	// 	ac.as.events.Send(ServiceEndedEvent(ac.Conn, ErrAgentUnsupportedProtocol, nil))
 
 	// 	return ErrAgentUnsupportedProtocol
 	// }
@@ -196,7 +196,7 @@ func (ac *AgentConn) Forward() error {
 	var c2 net.Conn
 	c2, err = container.Dial(context.Background())
 	if err != nil {
-		ac.as.events.Deliver(ServiceEndedEvent(ac.Conn, err, nil))
+		ac.as.events.Send(ServiceEndedEvent(ac.Conn, err, nil))
 
 		return err
 	}
@@ -217,7 +217,7 @@ func (ac *AgentConn) Forward() error {
 	case "smtp":
 		forwarder, err := NewSMTPForwarder(ac.as.config)
 		if err != nil {
-			ac.as.events.Deliver(ServiceEndedEvent(ac.Conn, err, nil))
+			ac.as.events.Send(ServiceEndedEvent(ac.Conn, err, nil))
 			return err
 		}
 
@@ -225,22 +225,22 @@ func (ac *AgentConn) Forward() error {
 	default:
 		log.Errorf("Unsupported agent protocol: %s", *payload.Protocol)
 
-		ac.as.events.Deliver(ServiceEndedEvent(ac.Conn, ErrAgentUnsupportedProtocol, nil))
+		ac.as.events.Send(ServiceEndedEvent(ac.Conn, ErrAgentUnsupportedProtocol, nil))
 
 		return ErrAgentUnsupportedProtocol
 	}
 
-	defer ac.as.events.Deliver(ServiceEndedEvent(ac.Conn, nil, nil))
+	defer ac.as.events.Send(ServiceEndedEvent(ac.Conn, nil, nil))
 
 	return sp.Proxy()
 }
 
 // Serve initializes the AgentConn and it's operations.
 func (ac *AgentConn) Serve() error {
-	defer ac.as.events.Deliver(ConnectionClosedEvent(ac.Conn))
+	defer ac.as.events.Send(ConnectionClosedEvent(ac.Conn))
 	defer ac.Close()
 
-	ac.as.events.Deliver(ConnectionOpenedEvent(ac.Conn))
+	ac.as.events.Send(ConnectionOpenedEvent(ac.Conn))
 
 	if ac.as.config.Agent.TLS.Enabled {
 		ac.Conn = tls.Server(ac.Conn, &tls.Config{})
@@ -269,9 +269,9 @@ func (as *AgentServer) newConn(conn net.Conn) *AgentConn {
 
 // Serve initializes the AgentServer and it's operations.
 func (as AgentServer) Serve(l net.Listener) error {
-	as.events.Deliver(ListenerOpenedEvent(l, nil, nil))
+	as.events.Send(ListenerOpenedEvent(l, nil, nil))
 
-	defer as.events.Deliver(ListenerClosedEvent(l))
+	defer as.events.Send(ListenerClosedEvent(l))
 
 	for {
 		conn, err := l.Accept()

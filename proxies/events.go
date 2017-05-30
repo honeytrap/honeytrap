@@ -143,6 +143,30 @@ func DataRequest(c net.Conn, data interface{}, detail map[string]interface{}) me
 	}
 }
 
+// OperationEvent returns a connection open event object giving the associated data values.
+func OperationEvent(c net.Conn, data interface{}, detail map[string]interface{}) message.Event {
+	return message.Event{
+		Data:      data,
+		Details:   detail,
+		Sensor:    message.EventSensor,
+		Type:      message.Operational,
+		HostAddr:  c.RemoteAddr().String(),
+		LocalAddr: c.LocalAddr().String(),
+	}
+}
+
+// AuthEvent returns a connection open event object giving the associated data values.
+func AuthEvent(c net.Conn, data interface{}, detail map[string]interface{}) message.Event {
+	return message.Event{
+		Data:      data,
+		Details:   detail,
+		Sensor:    message.EventSensor,
+		Type:      message.OperationalAuth,
+		HostAddr:  c.RemoteAddr().String(),
+		LocalAddr: c.LocalAddr().String(),
+	}
+}
+
 // DataReadEvent returns a connection open event object giving the associated data values.
 func DataReadEvent(c net.Conn, data interface{}, detail map[string]interface{}) message.Event {
 	return message.Event{

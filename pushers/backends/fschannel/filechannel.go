@@ -24,39 +24,41 @@ var (
 	log             = logging.MustGetLogger("honeytrap:channels:filechannel")
 )
 
-// FileConfig defines the config used to setup the FileChannel.
+// FileConfig defines the config used to setup the FileBackend.
 type FileConfig struct {
 	MaxSize int    `toml:"maxsize"`
 	File    string `toml:"file"`
 	Timeout string `toml:"timeout"`
 }
 
-// FileChannel defines a struct which implements the pushers.Pusher interface
+// FileBackend defines a struct which implements the pushers.Pusher interface
 // and allows us to write PushMessage updates into a giving file path. Mainly for
 // the need to sync PushMessage to local files for persistence.
 // File paths provided are either created with a append mode if they already
-// exists else will be created. FileChannel will also restrict filesize to a max of 1gb by default else if
+// exists else will be created. FileBackend will also restrict filesize to a max of 1gb by default else if
 // there exists a max size set in configuration, then that will be used instead,
 // also the old file will be renamed with the current timestamp and a new file created.
-type FileChannel struct {
+type FileBackend struct {
 	config  FileConfig
 	timeout time.Duration
 	dest    *os.File
-	request chan message.PushMessage
+	request chan message.Event
+	closer  chan struct{}
 	wg      sync.WaitGroup
 }
 
-// New returns a new instance of a FileChannel.
-func New(c FileConfig) *FileChannel {
-	var fc FileChannel
+// New returns a new instance of a FileBackend.
+func New(c FileConfig) *FileBackend {
+	var fc FileBackend
 	fc.config = c
-	fc.request = make(chan message.PushMessage)
+	fc.request = make(chan message.Event)
+	fc.closer = make(chan struct{})
 	fc.timeout = config.MakeDuration(c.Timeout, int(defaultWaitTime))
 
 	return &fc
 }
 
-// NewWith defines a function to return a pushers.Channel which delivers
+// NewWith defines a function to return a pushers.Backend which delivers
 // new messages to a giving underline system file, defined by the configuration
 // retrieved from the giving toml.Primitive.
 func NewWith(meta toml.MetaData, data toml.Primitive) (pushers.Channel, error) {
@@ -78,54 +80,60 @@ func init() {
 }
 
 // Wait calls the internal waiter.
-func (f *FileChannel) Wait() {
+func (f *FileBackend) Wait() {
 	f.wg.Wait()
 }
 
 // Send delivers the giving if it passes all filtering criteria into the
-// FileChannel write queue.
-func (f *FileChannel) Send(messages []message.PushMessage) {
-	log.Info("FileChannel.Send : Started")
+// FileBackend write queue.
+func (f *FileBackend) Send(message message.Event) {
+	log.Info("FileBackend.Send : Started")
 
 	if err := f.syncWrites(); err != nil {
-		log.Errorf("FileChannel.Send : Completed : %+q", err)
+		log.Errorf("FileBackend.Send : Completed : %+q", err)
 		return
 	}
 
-	// Close channel.
-	close(f.request)
+	f.request <- message
 }
 
 // syncWrites startups the channel procedure to listen for new writes to giving file.
-func (f *FileChannel) syncWrites() error {
-	log.Info("FileChannel.syncWrites : Started")
+func (f *FileBackend) syncWrites() error {
+	log.Info("FileBackend.syncWrites : Started")
 
-	if f.dest != nil {
-		log.Info("FileChannel.syncWrites : Completed : Already Running")
+	if f.dest != nil && f.request != nil {
+		log.Info("FileBackend.syncWrites : Completed : Already Running")
 		return nil
 	}
 
+	// If the request channel has been niled but file is still opened,
+	// close it.
+	if f.dest != nil {
+		f.dest.Sync()
+		f.dest.Close()
+	}
+
 	if f.request == nil {
-		f.request = make(chan message.PushMessage)
+		f.request = make(chan message.Event)
 	}
 
 	var err error
 
 	f.dest, err = newFile(f.config.File, f.config.MaxSize)
 	if err != nil {
-		log.Info("FileChannel.syncWrites : Completed : Failed create destination file")
+		log.Info("FileBackend.syncWrites : Completed : Failed create destination file")
 		return err
 	}
 
 	f.wg.Add(1)
 	go f.syncLoop()
 
-	log.Info("FileChannel.syncWrites : Completed")
+	log.Info("FileBackend.syncWrites : Completed")
 	return nil
 }
 
 // syncLoop handles configuration of the giving loop for writing to file.
-func (f *FileChannel) syncLoop() {
+func (f *FileBackend) syncLoop() {
 	defer f.wg.Done()
 
 	ticker := time.NewTimer(f.timeout)
@@ -140,7 +148,6 @@ func (f *FileChannel) syncLoop() {
 				f.dest = nil
 
 				// Close request channel and nil it.
-				close(f.request)
 				f.request = nil
 
 				break writeSync
@@ -148,13 +155,13 @@ func (f *FileChannel) syncLoop() {
 			case req, ok := <-f.request:
 				if !ok {
 					f.dest.Close()
-					f.request = nil
 					f.dest = nil
+					f.request = nil
 					break writeSync
 				}
 
 				if err := json.NewEncoder(&buf).Encode(req); err != nil {
-					log.Errorf("FileChannel.syncWrites : Failed to marshal PushMessage to JSON : %+q", err)
+					log.Errorf("FileBackend.syncWrites : Failed to marshal PushMessage to JSON : %+q", err)
 					continue writeSync
 				}
 
@@ -162,11 +169,11 @@ func (f *FileChannel) syncLoop() {
 				buf.Write(crtlline)
 
 				if _, err := io.Copy(f.dest, &buf); err != nil && err != io.EOF {
-					log.Errorf("FileChannel.syncWrites : Failed to copy data to File : %+q", err)
+					log.Errorf("FileBackend.syncWrites : Failed to copy data to File : %+q", err)
 				}
 
 				if err := f.dest.Sync(); err != nil {
-					log.Errorf("FileChannel.syncWrites : Failed to sync Write to File : %+q", err)
+					log.Errorf("FileBackend.syncWrites : Failed to sync Write to File : %+q", err)
 				}
 
 				// Reset the buffer for reuse.

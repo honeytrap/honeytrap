@@ -17,19 +17,18 @@ type ProxyConn struct {
 
 	Container director.Container
 
-	Pusher *pushers.Pusher
-	Event  pushers.Events
+	Event pushers.Channel
 }
 
 // Write calls the internal connection write method and submits a method for such a data.
 func (cw *ProxyConn) Write(p []byte) (int, error) {
-	defer cw.Event.Deliver(DataWriteEvent(cw.Conn, p, map[string]interface{}{
+	defer cw.Event.Send(DataWriteEvent(cw.Conn, p, map[string]interface{}{
 		"container": cw.Container.Detail(),
 	}))
 
 	n, err := cw.Conn.Write(p)
 	if err != nil {
-		cw.Event.Deliver(ConnectionWriteErrorEvent(cw.Conn, err))
+		cw.Event.Send(ConnectionWriteErrorEvent(cw.Conn, err))
 		return n, err
 	}
 
@@ -41,13 +40,13 @@ func (cw *ProxyConn) Read(p []byte) (int, error) {
 	var n int
 	var err error
 
-	defer cw.Event.Deliver(DataReadEvent(cw.Conn, p[:n], map[string]interface{}{
+	defer cw.Event.Send(DataReadEvent(cw.Conn, p[:n], map[string]interface{}{
 		"container": cw.Container.Detail(),
 	}))
 
 	n, err = cw.Conn.Read(p)
 	if err != nil {
-		cw.Event.Deliver(ConnectionReadErrorEvent(cw.Conn, err))
+		cw.Event.Send(ConnectionReadErrorEvent(cw.Conn, err))
 		return n, err
 	}
 
@@ -63,13 +62,13 @@ func (cw *ProxyConn) RemoteHost() string {
 // Close closes the ProxyConn internal net.Conn.
 func (cw *ProxyConn) Close() error {
 	if cw.Server != nil {
-		cw.Event.Deliver(ConnectionClosedEvent(cw.Server))
+		cw.Event.Send(ConnectionClosedEvent(cw.Server))
 
 		cw.Server.Close()
 	}
 
 	if cw.Conn != nil {
-		cw.Event.Deliver(ConnectionClosedEvent(cw.Conn))
+		cw.Event.Send(ConnectionClosedEvent(cw.Conn))
 
 		return cw.Conn.Close()
 	}

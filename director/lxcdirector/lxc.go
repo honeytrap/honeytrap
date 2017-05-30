@@ -39,13 +39,13 @@ type LxcConfig struct {
 // lxc based containers.
 type LxcProvider struct {
 	config         *config.Config
-	events         pushers.Events
+	events         pushers.Channel
 	globalCommands process.SyncProcess
 	globalScripts  process.SyncScripts
 }
 
 // NewLxcProvider returns a new instance of a LxcProvider as a Provider.
-func NewLxcProvider(config *config.Config, events pushers.Events) *LxcProvider {
+func NewLxcProvider(config *config.Config, events pushers.Channel) *LxcProvider {
 	return &LxcProvider{
 		config:         config,
 		events:         events,
@@ -120,11 +120,7 @@ func (c *LxcContainer) clone() error {
 
 	defer lxc.Release(c1)
 
-	c.provider.events.Deliver(director.ContainerClonedEvent(c, map[string]interface{}{
-		"name":     c.name,
-		"template": c.template,
-		"ip":       c.ip,
-	}))
+	c.provider.events.Send(director.ContainerClonedEvent(c, c.name, c.template, c.ip))
 
 	// http://developerblog.redhat.com/2014/09/30/overview-storage-scalability-docker/
 	// TODO: use overlayfs / make it configurable
@@ -165,7 +161,7 @@ func (c *LxcContainer) start() error {
 		}
 	}
 
-	c.provider.events.Deliver(director.ContainerStartedEvent(c, map[string]interface{}{
+	c.provider.events.Send(director.ContainerStartedEvent(c, map[string]interface{}{
 		"name":     c.name,
 		"template": c.template,
 		"ip":       c.ip,
@@ -238,7 +234,7 @@ func (c *LxcContainer) unfreeze() error {
 		return err
 	}
 
-	c.provider.events.Deliver(director.ContainerUnfrozenEvent(c, map[string]interface{}{
+	c.provider.events.Send(director.ContainerUnfrozenEvent(c, map[string]interface{}{
 		"name":     c.name,
 		"template": c.template,
 		"ip":       c.ip,
@@ -441,7 +437,7 @@ func (c *LxcContainer) freeze() error {
 		return nil
 	}
 
-	c.provider.events.Deliver(director.ContainerFrozenEvent(c, map[string]interface{}{
+	c.provider.events.Send(director.ContainerFrozenEvent(c, map[string]interface{}{
 		"name":     c.name,
 		"template": c.template,
 		"ip":       c.ip,
@@ -476,7 +472,7 @@ func (c *LxcContainer) freeze() error {
 
 		endpoint := fmt.Sprintf("http://api.honeytrap.io/v1/container/%s/checkpoint", c.name)
 
-		c.provider.events.Deliver(director.ContainerCheckpointEvent(c, buff, map[string]interface{}{
+		c.provider.events.Send(director.ContainerCheckpointEvent(c, buff, map[string]interface{}{
 			"name":     c.name,
 			"template": c.template,
 			"ip":       c.ip,
@@ -509,7 +505,7 @@ func (c *LxcContainer) freeze() error {
 
 		log.Debugf("Pushing packets")
 
-		c.provider.events.Deliver(director.ContainerPcappedEvent(c, buff, map[string]interface{}{
+		c.provider.events.Send(director.ContainerPcappedEvent(c, buff, map[string]interface{}{
 			"name":     c.name,
 			"template": c.template,
 			"ip":       c.ip,
@@ -546,7 +542,7 @@ func (c *LxcContainer) freeze() error {
 
 		endpoint := fmt.Sprintf("http://api.honeytrap.io/v1/container/%s/data", c.name)
 
-		c.provider.events.Deliver(director.ContainerTarredEvent(c, buff, map[string]interface{}{
+		c.provider.events.Send(director.ContainerTarredEvent(c, buff, map[string]interface{}{
 			"name":     c.name,
 			"template": c.template,
 			"ip":       c.ip,
@@ -571,7 +567,7 @@ func (c *LxcContainer) stop() error {
 		return err
 	}
 
-	c.provider.events.Deliver(director.ContainerStoppedEvent(c, map[string]interface{}{
+	c.provider.events.Send(director.ContainerStoppedEvent(c, map[string]interface{}{
 		"name":     c.name,
 		"template": c.template,
 		"ip":       c.ip,

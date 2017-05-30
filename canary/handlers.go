@@ -15,7 +15,7 @@ import (
 
 const (
 	// EventCategorySSDP contains events for ssdp traffic
-	EventCategoryUDP = message.EventCategory("udp")
+	EventCategoryUDP = message.EventCategory1("udp")
 )
 
 // EventSSDP will return a snmp event struct
@@ -33,7 +33,7 @@ func EventUDP(sourceIP net.IP, payload string) message.Event {
 
 const (
 	// EventCategorySSDP contains events for ssdp traffic
-	EventCategorySSDP = message.EventCategory("ssdp")
+	EventCategorySSDP = message.EventCategory1("ssdp")
 )
 
 // DecodeSSDP will decode NTP packets
@@ -49,7 +49,7 @@ func (c *Canary) DecodeSSDP(iph *ipv4.Header, udph *udp.Header) error {
 	}
 
 	// add specific detections, reflection attack detection etc
-	c.events.Deliver(EventSSDP(iph.Src, request.Method, request.RequestURI, request.Proto, request.Header))
+	c.events.Send(EventSSDP(iph.Src, request.Method, request.RequestURI, request.Proto, request.Header))
 	return nil
 }
 
@@ -76,7 +76,7 @@ func EventSSDP(sourceIP net.IP, method, uri, proto string, headers http.Header) 
 
 const (
 	// EventCategorySIP contains events for ntp traffic
-	EventCategorySIP = message.EventCategory("sip")
+	EventCategorySIP = message.EventCategory1("sip")
 )
 
 // DecodeSIP will decode NTP packets
@@ -92,7 +92,7 @@ func (c *Canary) DecodeSIP(iph *ipv4.Header, udph *udp.Header) error {
 	}
 
 	// add specific detections, reflection attack detection etc
-	c.events.Deliver(EventSIP(iph.Src, request.Method, request.RequestURI, request.Proto, request.Header))
+	c.events.Send(EventSIP(iph.Src, request.Method, request.RequestURI, request.Proto, request.Header))
 
 	return nil
 }
@@ -121,13 +121,13 @@ func EventSIP(sourceIP net.IP, method, uri, proto string, headers http.Header) m
 
 const (
 	// EventCategorySNMPTrap contains events for ntp traffic
-	EventCategorySNMPTrap = message.EventCategory("snmp-trap")
+	EventCategorySNMPTrap = message.EventCategory1("snmp-trap")
 )
 
 // DecodeSNMPTrap will decode NTP packets
 func (c *Canary) DecodeSNMPTrap(iph *ipv4.Header, udph *udp.Header) error {
 	// add specific detections, reflection attack detection etc
-	c.events.Deliver(EventSNMPTrap(iph.Src))
+	c.events.Send(EventSNMPTrap(iph.Src))
 
 	return nil
 }
@@ -145,13 +145,13 @@ func EventSNMPTrap(sourceIP net.IP) message.Event {
 
 const (
 	// EventCategorySNMP contains events for ntp traffic
-	EventCategorySNMP = message.EventCategory("snmp")
+	EventCategorySNMP = message.EventCategory1("snmp")
 )
 
 // DecodeSNMP will decode NTP packets
 func (c *Canary) DecodeSNMP(iph *ipv4.Header, udph *udp.Header) error {
 	// add specific detections, reflection attack detection etc
-	c.events.Deliver(EventSNMP(iph.Src))
+	c.events.Send(EventSNMP(iph.Src))
 
 	return nil
 }
@@ -169,7 +169,7 @@ func EventSNMP(sourceIP net.IP) message.Event {
 
 const (
 	// EventCategoryNTP contains events for ntp traffic
-	EventCategoryNTP = message.EventCategory("ntp")
+	EventCategoryNTP = message.EventCategory1("ntp")
 )
 
 // DecodeNTP will decode NTP packets
@@ -183,7 +183,7 @@ func (c *Canary) DecodeNTP(iph *ipv4.Header, udph *udp.Header) error {
 	}
 
 	// add specific detections, reflection attack detection etc
-	c.events.Deliver(EventNTP(iph.Src, *layer))
+	c.events.Send(EventNTP(iph.Src, *layer))
 
 	return nil
 }
@@ -220,9 +220,9 @@ func EventNTP(sourceIP net.IP, ntp layers.NTP) message.Event {
 
 const (
 	// EventCategoryDNSQuery contains the category for dns query events
-	EventCategoryDNSQuery = message.EventCategory("dns-query")
+	EventCategoryDNSQuery = message.EventCategory1("dns-query")
 	// EventCategoryDNSOther contains the category for dns other events
-	EventCategoryDNSOther = message.EventCategory("dns-other")
+	EventCategoryDNSOther = message.EventCategory1("dns-other")
 )
 
 // DecodeDNS will decode DNS packets
@@ -237,10 +237,10 @@ func (c *Canary) DecodeDNS(iph *ipv4.Header, udph *udp.Header) error {
 
 	switch layer.OpCode {
 	case layers.DNSOpCodeQuery:
-		c.events.Deliver(EventDNSQuery(iph.Src, *layer))
+		c.events.Send(EventDNSQuery(iph.Src, *layer))
 
 	default:
-		c.events.Deliver(EventDNSOther(iph.Src, *layer))
+		c.events.Send(EventDNSOther(iph.Src, *layer))
 	}
 
 	// add specific detections, reflection attack detection etc

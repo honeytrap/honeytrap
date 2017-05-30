@@ -100,8 +100,8 @@ type (
 		HouseKeeper HouseKeeper    `toml:"housekeeper"`
 		Directors   DirectorConfig `toml:"directors"`
 
-		Backends map[string]toml.Primitive `toml:"backends"`
-		Channels []ChannelConfig           `toml:"channels"`
+		Backends map[string]toml.Primitive `toml:"backend"`
+		Channels []ChannelConfig           `toml:"channel"`
 
 		Services []toml.Primitive `toml:"services"`
 

@@ -5,9 +5,8 @@ import (
 	"net"
 	"net/http"
 
-	_ "net/http/pprof"
+	_ "net/http/pprof" // TODO(alex): Add comment, govet complains.
 
-	"github.com/elazarl/go-bindata-assetfs"
 	"github.com/fatih/color"
 	web "github.com/honeytrap/honeytrap-web"
 
@@ -19,6 +18,8 @@ import (
 	"github.com/honeytrap/honeytrap/director/cowriedirector"
 	"github.com/honeytrap/honeytrap/director/iodirector"
 	"github.com/honeytrap/honeytrap/director/lxcdirector"
+
+	assetfs "github.com/elazarl/go-bindata-assetfs"
 
 	proxies "github.com/honeytrap/honeytrap/proxies"
 	_ "github.com/honeytrap/honeytrap/proxies/ssh" // TODO: Add comment
@@ -41,9 +42,9 @@ var log = logging.MustGetLogger("Honeytrap")
 // Honeytrap defines a struct which coordinates the internal logic for the honeytrap
 // container infrastructure.
 type Honeytrap struct {
-	config    *config.Config
-	pusher    *pushers.Pusher
-	events    pushers.Events
+	config *config.Config
+
+	events    pushers.Channel
 	honeycast *Honeycast
 	director  director.Director
 	manager   *director.ContainerConnections
@@ -54,29 +55,27 @@ type ServeFunc func() error
 
 // New returns a new instance of a Honeytrap struct.
 func New(conf *config.Config) *Honeytrap {
-	pusher := pushers.New(conf)
-	pushChannel := pushers.NewProxyPusher(pusher)
-
 	bus := pushers.NewEventBus()
-	channels := pushers.ChannelStream{pushChannel, bus}
-	events := pushers.NewTokenedEventDelivery(conf.Token, channels)
 
-	var dr director.Director
+	// Initialize all channels within the provided config.
+	pushers.ChannelsFrom(conf, bus)
+
+	var dir director.Director
 
 	switch conf.Director {
 	case cowriedirector.DirectorKey:
-		dr = cowriedirector.New(conf, events)
+		dir = cowriedirector.New(conf, bus)
 	case iodirector.DirectorKey:
-		dr = iodirector.New(conf, events)
+		dir = iodirector.New(conf, bus)
 	case lxcdirector.DirectorKey:
-		dr = lxcdirector.New(conf, events)
+		dir = lxcdirector.New(conf, bus)
 	default:
 		panic(fmt.Sprintf("Unknown director type: %q", conf.Director))
 	}
 
 	manager := director.NewContainerConnections()
 
-	honeycast := NewHoneycast(conf, manager, dr, HoneycastAssets(&assetfs.AssetFS{
+	honeycast := NewHoneycast(conf, manager, dir, HoneycastAssets(&assetfs.AssetFS{
 		Asset:     web.Asset,
 		AssetDir:  web.AssetDir,
 		AssetInfo: web.AssetInfo,
@@ -87,9 +86,8 @@ func New(conf *config.Config) *Honeytrap {
 
 	return &Honeytrap{
 		config:    conf,
-		director:  dr,
-		pusher:    pusher,
-		events:    events,
+		director:  dir,
+		events:    bus,
 		honeycast: honeycast,
 		manager:   manager,
 	}
@@ -102,17 +100,13 @@ func (hc *Honeytrap) startAgentServer() {
 
 // ListenFunc defines a function type which returns a net.Listener specific for the
 // use of its argument and for the reception of net connections.
-type ListenFunc func(string, director.Director, *pushers.Pusher, *pushers.EventDelivery, *config.Config) (net.Listener, error)
+type ListenFunc func(string, director.Director, pushers.Channel, *config.Config) (net.Listener, error)
 
 // ListenerConfig defines a struct for holding configuration fields for a Listener
 // builder.
 type ListenerConfig struct {
 	fn      ListenFunc
 	address string
-}
-
-func (hc *Honeytrap) startPusher() {
-	hc.pusher.Start()
 }
 
 // EventServiceStarted will return a service started Event struct
@@ -142,11 +136,11 @@ func (hc *Honeytrap) startProxies() {
 		if serviceFn, ok := proxies.Get(st.Service); ok {
 			log.Debugf("Listener starting: %s", st.Port)
 
-			service, err := serviceFn(st.Port, hc.manager, hc.director, hc.pusher, hc.events, primitive)
+			service, err := serviceFn(st.Port, hc.manager, hc.director, hc.events, primitive)
 			if err != nil {
 				log.Errorf("Error in service: %s: %s", st.Service, err.Error())
 
-				hc.events.Deliver(message.Event{
+				hc.events.Send(message.Event{
 					Sensor: st.Service,
 					Type:   message.ServiceStarted,
 					Details: map[string]interface{}{
@@ -158,7 +152,7 @@ func (hc *Honeytrap) startProxies() {
 				continue
 			}
 
-			hc.events.Deliver(message.Event{
+			hc.events.Send(message.Event{
 				Sensor: st.Service,
 				Type:   message.ServiceStarted,
 				Details: map[string]interface{}{
@@ -288,7 +282,6 @@ func (hc *Honeytrap) startCanary() error {
 func (hc *Honeytrap) Serve() {
 
 	hc.startCanary()
-	hc.startPusher()
 	hc.startProxies()
 	hc.startStatsServer()
 

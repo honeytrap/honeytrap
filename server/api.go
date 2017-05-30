@@ -180,38 +180,26 @@ func (h *Honeycast) Containers(w http.ResponseWriter, r *http.Request, params ma
 
 // Send delivers the underline provided messages and stores them into the underline
 // Honeycast database for retrieval through the API.
-func (h *Honeycast) Send(msgs []message.PushMessage) {
+func (h *Honeycast) Send(event message.Event) {
 	var containers, connections, data, services, pings, serrors, sessions, events []message.Event
 
-	// Seperate out the event types appropriately.
-	for _, msg := range msgs {
-		if !msg.Event {
-			continue
-		}
+	events = append(events, event)
 
-		event, ok := msg.Data.(message.Event)
-		if !ok {
-			continue
-		}
-
-		events = append(events, event)
-
-		switch event.Sensor {
-		case message.SessionSensor:
-			sessions = append(sessions, event)
-		case message.PingSensor:
-			pings = append(pings, event)
-		case message.DataSensor:
-			data = append(data, event)
-		case message.ServiceSensor:
-			services = append(services, event)
-		case message.ContainersSensor:
-			containers = append(containers, event)
-		case message.ConnectionSensor:
-			connections = append(connections, event)
-		case message.ConnectionErrorSensor, message.DataErrorSensor:
-			serrors = append(serrors, event)
-		}
+	switch event.Sensor {
+	case message.SessionSensor:
+		sessions = append(sessions, event)
+	case message.PingSensor:
+		pings = append(pings, event)
+	case message.DataSensor:
+		data = append(data, event)
+	case message.ServiceSensor:
+		services = append(services, event)
+	case message.ContainersSensor:
+		containers = append(containers, event)
+	case message.ConnectionSensor:
+		connections = append(connections, event)
+	case message.ConnectionErrorSensor, message.DataErrorSensor:
+		serrors = append(serrors, event)
 	}
 
 	// Batch deliver both sessions and events data to all connected

@@ -12,7 +12,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/pushers/backends/slack"
 	"github.com/honeytrap/honeytrap/pushers/message"
-	"github.com/honeytrap/tests"
+	"github.com/honeytrap/honeytrap/utils/tests"
 )
 
 const (
@@ -21,7 +21,7 @@ const (
 )
 
 var (
-	blueChip = message.PushMessage{
+	blueChip = message.Event{
 		Sensor:      "BlueChip",
 		Category:    "Chip Integrated",
 		SessionID:   "4334334-3433434-34343-FUD",
@@ -29,7 +29,7 @@ var (
 		Data:        "Hello World!",
 	}
 
-	ping = message.PushMessage{
+	ping = message.Event{
 		Sensor:      "Ping",
 		Category:    "Ping Notificiation",
 		SessionID:   "4334334-3433434-34343-FUD",
@@ -37,7 +37,7 @@ var (
 		Data:        "Hello World!",
 	}
 
-	crum = message.PushMessage{
+	crum = message.Event{
 		Sensor:      "Crum Stream",
 		Category:    "WebRTC Crum Stream",
 		SessionID:   "4334334-3433434-34343-FUD",
@@ -86,7 +86,7 @@ func (s *anySlackService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // as describe from the provided configuration.
 func TestSlackPusher(t *testing.T) {
 
-	t.Logf("Given the need to post messages to Slack Channels ")
+	t.Logf("Given the need to post messages to Slack Backends ")
 	{
 
 		t.Logf("\tWhen provided the correct Slack Webhook credentials")
@@ -103,7 +103,7 @@ func TestSlackPusher(t *testing.T) {
 				Token: "343HJUYFHGT/B4545IO/VOOepdacxW9HG60eDfoFBiMF",
 			})
 
-			channel.Send([]message.PushMessage{blueChip})
+			channel.Send(blueChip)
 
 			response := make(map[string]interface{})
 			if err := json.NewDecoder(&service.Body).Decode(&response); err != nil {
