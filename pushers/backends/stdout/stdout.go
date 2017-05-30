@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
+	"unicode"
 
 	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/pushers"
@@ -56,8 +58,32 @@ func NewWith(meta toml.MetaData, data toml.Primitive) (pushers.Channel, error) {
 	return New(config), nil
 }
 
+func printify(s string) string {
+	o := ""
+	for _, rune := range s {
+		if !unicode.IsPrint(rune) {
+			o += "\xa4"
+			continue
+		}
+
+		o += string(rune)
+	}
+
+	return o
+}
+
 // Send delivers the giving if it passes all filtering criteria into the
 // FileBackend write queue.
 func (f *StdoutBackend) Send(message message.Event) {
-	fmt.Fprint(f.Writer, message)
+	params := []string{}
+	for k, v := range message.Details {
+		switch v.(type) {
+		case string:
+			params = append(params, fmt.Sprintf("%s=%s", k, printify(v.(string))))
+		default:
+			params = append(params, fmt.Sprintf("%s=%#v", k, v))
+		}
+	}
+
+	fmt.Fprintf(f.Writer, "%s > %s > %s\n", message.Sensor, message.Category, strings.Join(params, ", "))
 }
