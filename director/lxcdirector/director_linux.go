@@ -19,6 +19,7 @@ import (
 const (
 	// DirectorKey defines the key used to choose this giving director.
 	DirectorKey = "lxc"
+	_           = director.RegisterDirector("lxc", NewWith)
 )
 
 // Director defines a struct which handles the management of registered containers.
@@ -28,6 +29,11 @@ type Director struct {
 	namer      namecon.Namer
 	m          sync.Mutex
 	containers map[string]director.Container
+}
+
+// NewWith returns a new instance of the Director.
+func NewWith(config *config.Config, events pushers.Channel) director.Director {
+	return New(config, events)
 }
 
 // New returns a new instance of a Director.
