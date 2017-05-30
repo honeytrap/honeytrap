@@ -31,6 +31,7 @@ import (
 	_ "github.com/honeytrap/honeytrap/pushers/backends/fschannel"     // Registers file backend.
 	_ "github.com/honeytrap/honeytrap/pushers/backends/honeytrap"     // Registers honeytrap backend.
 	_ "github.com/honeytrap/honeytrap/pushers/backends/slack"         // Registers slack backend.
+	_ "github.com/honeytrap/honeytrap/pushers/backends/stdout"        // Registers stdout backend.
 
 	utils "github.com/honeytrap/honeytrap/utils"
 
