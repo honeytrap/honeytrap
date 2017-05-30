@@ -18,6 +18,10 @@ import (
 )
 
 var (
+	_ = pushers.RegisterBackend("file", NewWith)
+)
+
+var (
 	defaultMaxSize  = 1024 * 1024 * 1024
 	defaultWaitTime = 5 * time.Second
 	crtlline        = []byte("\r\n")
@@ -75,10 +79,6 @@ func NewWith(meta toml.MetaData, data toml.Primitive) (pushers.Channel, error) {
 	return New(apiconfig), nil
 }
 
-func init() {
-	pushers.RegisterBackend("file", NewWith)
-}
-
 // Wait calls the internal waiter.
 func (f *FileBackend) Wait() {
 	f.wg.Wait()
@@ -87,10 +87,10 @@ func (f *FileBackend) Wait() {
 // Send delivers the giving if it passes all filtering criteria into the
 // FileBackend write queue.
 func (f *FileBackend) Send(message message.Event) {
-	log.Info("FileBackend.Send : Started")
+	log.Debug("FileBackend.Send : Started")
 
 	if err := f.syncWrites(); err != nil {
-		log.Errorf("FileBackend.Send : Completed : %+q", err)
+		log.Errorf("Error syncing writes: %+q", err)
 		return
 	}
 
@@ -99,10 +99,10 @@ func (f *FileBackend) Send(message message.Event) {
 
 // syncWrites startups the channel procedure to listen for new writes to giving file.
 func (f *FileBackend) syncWrites() error {
-	log.Info("FileBackend.syncWrites : Started")
+	log.Debug("FileBackend.syncWrites : Started")
 
 	if f.dest != nil && f.request != nil {
-		log.Info("FileBackend.syncWrites : Completed : Already Running")
+		log.Debug("FileBackend.syncWrites : Completed : Already Running")
 		return nil
 	}
 
@@ -121,14 +121,14 @@ func (f *FileBackend) syncWrites() error {
 
 	f.dest, err = newFile(f.config.File, f.config.MaxSize)
 	if err != nil {
-		log.Info("FileBackend.syncWrites : Completed : Failed create destination file")
+		log.Debug("FileBackend.syncWrites : Completed : Failed create destination file")
 		return err
 	}
 
 	f.wg.Add(1)
 	go f.syncLoop()
 
-	log.Info("FileBackend.syncWrites : Completed")
+	log.Debug("FileBackend.syncWrites : Completed")
 	return nil
 }
 
@@ -164,9 +164,6 @@ func (f *FileBackend) syncLoop() {
 					log.Errorf("FileBackend.syncWrites : Failed to marshal PushMessage to JSON : %+q", err)
 					continue writeSync
 				}
-
-				// Add the line control to each jsonified message.
-				buf.Write(crtlline)
 
 				if _, err := io.Copy(f.dest, &buf); err != nil && err != io.EOF {
 					log.Errorf("FileBackend.syncWrites : Failed to copy data to File : %+q", err)

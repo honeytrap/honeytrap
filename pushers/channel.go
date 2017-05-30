@@ -43,11 +43,11 @@ func RegisterBackend(name string, generator ChannelGenerator) ChannelGenerator {
 
 // NewBackend returns a new Channel of the giving name with the provided toml.Primitive.
 func NewBackend(name string, meta toml.MetaData, primi toml.Primitive) (Channel, error) {
-	log.Info("honeytrap.Pusher : Creating %q Backend : %#q", name, primi)
+	log.Debug("Initializing backend : %#q", name)
 
 	maker, ok := backends.b[name]
 	if !ok {
-		return nil, fmt.Errorf("Backend %q maker not found", name)
+		return nil, fmt.Errorf("Backend %q not found", name)
 	}
 
 	return maker(meta, primi)
@@ -60,7 +60,7 @@ func NewBackend(name string, meta toml.MetaData, primi toml.Primitive) (Channel,
 func ChannelsFrom(conf *config.Config, bus *EventBus) {
 	for _, cb := range conf.Channels {
 		if err := MakeFilter(bus, conf, cb); err != nil {
-			log.Errorf("Failed creating filter channels : %#q", cb)
+			log.Errorf("Failed creating filter channels : %#q: %#v", cb, err)
 			continue
 		}
 	}
