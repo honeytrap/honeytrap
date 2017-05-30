@@ -5,7 +5,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/pushers/backends/honeytrap"
-	"github.com/honeytrap/tests"
+	"github.com/honeytrap/honeytrap/utils/tests"
 )
 
 func TestHoneytrapGenerator(t *testing.T) {
