@@ -27,6 +27,10 @@ func (fg *FilterGroup) Add(filters Filter) {
 // Filter returns a slice of messages that match the giving criterias from the
 // provided events.
 func (fg FilterGroup) Filter(events ...message.Event) []message.Event {
+	if len(fg) == 0 {
+		return events
+	}
+
 	for _, filter := range fg {
 		events = filter.Filter(events...)
 	}
