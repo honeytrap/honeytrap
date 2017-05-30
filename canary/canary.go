@@ -208,9 +208,9 @@ func (c *Canary) handleUDP(iph *ipv4.Header, data []byte) error {
 		}
 
 		// do we only want to detect scans? Or also detect payloads?
-		c.events.Send(EventUDP(iph.Src, string(hdr.Payload)))
+		c.events.Send(EventUDP(iph.Src, hdr.Destination, string(hdr.Payload)))
 	} else if err := fn(iph, hdr); err != nil {
-		fmt.Printf("Could not decode udp packet: %s\n", err)
+		fmt.Printf("Could not decode udp packet: %s", err)
 	}
 
 	return nil
@@ -246,11 +246,11 @@ func (c *Canary) handleARP(data []byte) error {
 	/*
 		if bytes.Compare(arp.TargetMAC[:], []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}) == 0 {
 			if arp.Opcode == 0x01 {
-				fmt.Printf("ARP: Who has %s? tell %s.\n", net.IPv4(arp.TargetIP[0], arp.TargetIP[1], arp.TargetIP[2], arp.TargetIP[3]).String(), net.IPv4(arp.SenderIP[0], arp.SenderIP[1], arp.SenderIP[2], arp.SenderIP[3]).String())
+				fmt.Printf("ARP: Who has %s? tell %s.", net.IPv4(arp.TargetIP[0], arp.TargetIP[1], arp.TargetIP[2], arp.TargetIP[3]).String(), net.IPv4(arp.SenderIP[0], arp.SenderIP[1], arp.SenderIP[2], arp.SenderIP[3]).String())
 			}
 		} else if bytes.Compare(arp.TargetMAC[:], c.networkInterface.HardwareAddr) == 0 {
 			if arp.Opcode == 0x01 {
-				fmt.Printf("ARP: Who has %s? tell %s.\n", net.IPv4(arp.TargetIP[0], arp.TargetIP[1], arp.TargetIP[2], arp.TargetIP[3]).String(), net.IPv4(arp.SenderIP[0], arp.SenderIP[1], arp.SenderIP[2], arp.SenderIP[3]).String())
+				fmt.Printf("ARP: Who has %s? tell %s.", net.IPv4(arp.TargetIP[0], arp.TargetIP[1], arp.TargetIP[2], arp.TargetIP[3]).String(), net.IPv4(arp.SenderIP[0], arp.SenderIP[1], arp.SenderIP[2], arp.SenderIP[3]).String())
 			} else {
 			}
 		} else {
@@ -409,7 +409,7 @@ func EventPortscan(sourceIP net.IP, duration time.Duration, count int, ports []s
 		Category: "Portscan",
 		Type:     message.ServiceStarted,
 		Details: map[string]interface{}{
-			"message": fmt.Sprintf("Port %d touch(es) detected from %s with duration %+v: %s\n", count, sourceIP, duration, strings.Join(ports, ", ")),
+			"message": fmt.Sprintf("Port %d touch(es) detected from %s with duration %+v: %s", count, sourceIP, duration, strings.Join(ports, ", ")),
 		},
 	}
 }
@@ -454,7 +454,7 @@ func (c *Canary) Run() error {
 		for ev := 0; ev < nevents; ev++ {
 			if events[ev].Events&syscall.EPOLLIN == syscall.EPOLLIN {
 				if n, _, err := syscall.Recvfrom(int(events[ev].Fd), buffer[:], 0); err != nil {
-					fmt.Printf("Could not receive from descriptor: %s\n", err.Error())
+					fmt.Printf("Could not receive from descriptor: %s", err.Error())
 					return err
 				} else if n == 0 {
 					// no packets received
@@ -463,7 +463,7 @@ func (c *Canary) Run() error {
 					c.handleARP(eh.Payload[:])
 				} else if eh.Type == EthernetTypeIPv4 {
 					if iph, err := ipv4.Parse(eh.Payload[:]); err != nil {
-						fmt.Printf("Error parsing ip header: %s\n", err.Error())
+						fmt.Printf("Error parsing ip header: %s", err.Error())
 					} else {
 						data := iph.Payload[:]
 
@@ -475,7 +475,7 @@ func (c *Canary) Run() error {
 						case 17 /* udp */ :
 							c.handleUDP(iph, data)
 						default:
-							fmt.Printf("Unknown protocol: %x\n", iph.Protocol)
+							fmt.Printf("Unknown protocol: %x", iph.Protocol)
 						}
 					}
 				}

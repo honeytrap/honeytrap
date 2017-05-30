@@ -19,14 +19,15 @@ const (
 )
 
 // EventSSDP will return a snmp event struct
-func EventUDP(sourceIP net.IP, payload string) message.Event {
+func EventUDP(sourceIP net.IP, port uint16, payload string) message.Event {
 	// TODO: message should go into String() / Message, where message.Event will become interface
 	return message.Event{
 		Sensor:   "Canary",
 		Category: EventCategoryUDP,
 		Type:     message.ServiceStarted,
 		Details: map[string]interface{}{
-			"message": payload,
+			"port":    port,
+			"payload": payload,
 		},
 	}
 }
@@ -213,7 +214,7 @@ func EventNTP(sourceIP net.IP, ntp layers.NTP) message.Event {
 		Category: EventCategoryNTP,
 		Type:     message.ServiceStarted,
 		Details: map[string]interface{}{
-			"message": fmt.Sprintf("NTP packet received, version=%d, mode=%s\n", ntp.Version, mode),
+			"message": fmt.Sprintf("NTP packet received, version=%d, mode=%s", ntp.Version, mode),
 		},
 	}
 }
@@ -255,7 +256,7 @@ func EventDNSQuery(sourceIP net.IP, dns layers.DNS) message.Event {
 		Category: EventCategoryDNSQuery,
 		Type:     message.ServiceStarted,
 		Details: map[string]interface{}{
-			"message":   fmt.Sprintf("Querying for: %s\n", dns.Questions),
+			"message":   fmt.Sprintf("Querying for: %s", dns.Questions),
 			"questions": dns.Questions,
 		},
 	}
@@ -268,7 +269,7 @@ func EventDNSOther(sourceIP net.IP, dns layers.DNS) message.Event {
 		Category: EventCategoryDNSOther,
 		Type:     message.ServiceStarted,
 		Details: map[string]interface{}{
-			"message":   fmt.Sprintf("opcode=%s questions=%s\n", dns.OpCode, dns.Questions),
+			"message":   fmt.Sprintf("opcode=%s questions=%s", dns.OpCode, dns.Questions),
 			"opcode":    dns.OpCode,
 			"questions": dns.Questions,
 		},
