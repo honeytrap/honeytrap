@@ -1,7 +1,6 @@
 package message
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -90,26 +89,32 @@ type Event struct {
 	ContainerID string                 `json:"container_id,omitempty"`
 }
 
-// String returns a stringified version of the event.
+// Message returns a the default Event message associated with the Event
 func (e Event) String() string {
-	return fmt.Sprintf("Event %q occured with for Sensor[%q], Data[%#q] - Detail[%#q]", e.Type, e.Sensor, e.Data, e.Details)
+	return e.Message
 }
 
 //====================================================================================
 
-// EventCategoryType is created to allow setting the category of a custom event.
+// EventCategoryType is created to allow setting the category of a event.
 func EventCategoryType(ev Event, category string) Event {
 	ev.Category = EventCategory(category)
 	return ev
 }
 
-// EventDetail is created to allow setting the data of a custom event.
+// EventMessage is created to allow setting the message of a event.
+func EventMessage(ev Event, message string) Event {
+	ev.Message = message
+	return ev
+}
+
+// EventDetail is created to allow setting the data of a event.
 func EventDetail(ev Event, details map[string]interface{}) Event {
 	ev.Details = details
 	return ev
 }
 
-// EventData is created to allow setting the data of a custom event.
+// EventData is created to allow setting the data of a event.
 func EventData(ev Event, data interface{}) Event {
 	ev.Data = data
 	return ev
