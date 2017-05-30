@@ -170,14 +170,21 @@ func (mc SlackBackend) Send(message message.Event) {
 		Title:    "Event Identification",
 		Author:   "HoneyTrap",
 		Fields:   sensors,
-		Fallback: string(messageBuffer.Bytes()),
-		Text:     string(messageBuffer.Bytes()),
+		Text:     "Event Sensor and Category",
+		Fallback: "Event Sensor and Category",
 	})
 
 	newMessage.Attachments = append(newMessage.Attachments, Attachment{
-		Title:    "Sensor Data",
+		Title:    "Event Fields",
 		Author:   "HoneyTrap",
 		Fields:   fields,
+		Text:     "Fields for events",
+		Fallback: "Fields for events",
+	})
+
+	newMessage.Attachments = append(newMessage.Attachments, Attachment{
+		Title:    "Event Data",
+		Author:   "HoneyTrap",
 		Fallback: string(messageBuffer.Bytes()),
 		Text:     string(messageBuffer.Bytes()),
 	})
