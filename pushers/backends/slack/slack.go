@@ -79,6 +79,19 @@ func (mc SlackBackend) Send(message message.Event) {
 
 	// Create the appropriate fields for the giving slack message.
 	var fields []Field
+	var sensors []Field
+
+	sensors = append(sensors, Field{
+		Title: "Sensor",
+		Value: message.Sensor,
+		Short: true,
+	})
+
+	sensors = append(sensors, Field{
+		Title: "Category",
+		Value: string(message.Category),
+		Short: true,
+	})
 
 	fields = append(fields, Field{
 		Title: "Sensor",
@@ -89,6 +102,30 @@ func (mc SlackBackend) Send(message message.Event) {
 	fields = append(fields, Field{
 		Title: "Date",
 		Value: message.Date.UTC().String(),
+		Short: true,
+	})
+
+	fields = append(fields, Field{
+		Title: "HostAddr",
+		Value: message.HostAddr,
+		Short: true,
+	})
+
+	fields = append(fields, Field{
+		Title: "LocalAddr",
+		Value: message.LocalAddr,
+		Short: true,
+	})
+
+	fields = append(fields, Field{
+		Title: "Token",
+		Value: message.Token,
+		Short: true,
+	})
+
+	fields = append(fields, Field{
+		Title: "End Time",
+		Value: message.Ended.UTC().String(),
 		Short: true,
 	})
 
@@ -128,6 +165,14 @@ func (mc SlackBackend) Send(message message.Event) {
 	newMessage.IconEmoji = mc.config.IconEmoji
 	newMessage.Username = mc.config.Username
 	newMessage.Text = message.EventMessage()
+
+	newMessage.Attachments = append(newMessage.Attachments, Attachment{
+		Title:    "Event Identification",
+		Author:   "HoneyTrap",
+		Fields:   sensors,
+		Fallback: string(messageBuffer.Bytes()),
+		Text:     string(messageBuffer.Bytes()),
+	})
 
 	newMessage.Attachments = append(newMessage.Attachments, Attachment{
 		Title:    "Sensor Data",
