@@ -96,6 +96,30 @@ func (e Event) String() string {
 
 //====================================================================================
 
+// EventSession is created to allow setting the sessionID of a event.
+func EventSession(ev Event, sessionID string) Event {
+	ev.SessionID = sessionID
+	return ev
+}
+
+// EventContainer is created to allow setting the container of a event.
+func EventContainer(ev Event, container string) Event {
+	ev.ContainerID = container
+	return ev
+}
+
+// EventLocation is created to allow setting the location of a event.
+func EventLocation(ev Event, location string) Event {
+	ev.Location = location
+	return ev
+}
+
+// EventToken is created to allow setting the token of a event.
+func EventToken(ev Event, token string) Event {
+	ev.Token = token
+	return ev
+}
+
 // EventCategoryType is created to allow setting the category of a event.
 func EventCategoryType(ev Event, category string) Event {
 	ev.Category = EventCategory(category)
