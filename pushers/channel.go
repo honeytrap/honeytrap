@@ -36,8 +36,9 @@ var backends = struct {
 }
 
 // RegisterBackend adds the giving generator to the global generator lists.
-func RegisterBackend(name string, generator ChannelGenerator) {
+func RegisterBackend(name string, generator ChannelGenerator) ChannelGenerator {
 	backends.b[name] = generator
+	return generator
 }
 
 // NewBackend returns a new Channel of the giving name with the provided toml.Primitive.

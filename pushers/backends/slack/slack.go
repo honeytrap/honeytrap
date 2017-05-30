@@ -18,6 +18,10 @@ import (
 
 var log = logging.MustGetLogger("honeytrap:channels:slack")
 
+var (
+	_ = pushers.RegisterBackend("slack", NewWith)
+)
+
 // APIConfig defines a struct which holds configuration field values used by the
 // SlackBackend for it's message delivery to the slack channel API.
 type APIConfig struct {
@@ -64,10 +68,6 @@ func NewWith(meta toml.MetaData, data toml.Primitive) (pushers.Channel, error) {
 	}
 
 	return New(config), nil
-}
-
-func init() {
-	pushers.RegisterBackend("slack", NewWith)
 }
 
 // Send delivers the giving push messages to the required slack channel.
