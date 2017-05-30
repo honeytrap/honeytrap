@@ -66,16 +66,18 @@ const (
 	ConnectionErrorSensor = "CONNECTION:ERROR"
 )
 
-type EventCategory1 string
+// EventCategory defines a string type for for which is used to defined event category
+// for different types.
+type EventCategory string
 
 // Event defines a struct which contains definitive details about the operation of
 // a giving event.
 type Event struct {
-	Date time.Time   `json:"date"`
-	Data interface{} `json:"data"`
-	// Category string      `json:"category"`
-	Category    EventCategory1         `json:"category"`
+	Date        time.Time              `json:"date"`
+	Data        interface{}            `json:"data"`
+	Category    EventCategory          `json:"category"`
 	Sensor      string                 `json:"sensor"`
+	Message     string                 `json:"message"`
 	Details     map[string]interface{} `json:"details"`
 	HostAddr    string                 `json:"host_addr"`
 	LocalAddr   string                 `json:"local_addr"`
@@ -95,9 +97,9 @@ func (e Event) String() string {
 
 //====================================================================================
 
-// EventCategory is created to allow setting the category of a custom event.
-func EventCategory(ev Event, category string) Event {
-	ev.Category = EventCategory1(category)
+// EventCategoryType is created to allow setting the category of a custom event.
+func EventCategoryType(ev Event, category string) Event {
+	ev.Category = EventCategory(category)
 	return ev
 }
 

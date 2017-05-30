@@ -15,7 +15,7 @@ import (
 
 const (
 	// EventCategorySSDP contains events for ssdp traffic
-	EventCategoryUDP = message.EventCategory1("udp")
+	EventCategoryUDP = message.EventCategory("udp")
 )
 
 // EventSSDP will return a snmp event struct
@@ -33,7 +33,7 @@ func EventUDP(sourceIP net.IP, payload string) message.Event {
 
 const (
 	// EventCategorySSDP contains events for ssdp traffic
-	EventCategorySSDP = message.EventCategory1("ssdp")
+	EventCategorySSDP = message.EventCategory("ssdp")
 )
 
 // DecodeSSDP will decode NTP packets
@@ -76,7 +76,7 @@ func EventSSDP(sourceIP net.IP, method, uri, proto string, headers http.Header) 
 
 const (
 	// EventCategorySIP contains events for ntp traffic
-	EventCategorySIP = message.EventCategory1("sip")
+	EventCategorySIP = message.EventCategory("sip")
 )
 
 // DecodeSIP will decode NTP packets
@@ -121,7 +121,7 @@ func EventSIP(sourceIP net.IP, method, uri, proto string, headers http.Header) m
 
 const (
 	// EventCategorySNMPTrap contains events for ntp traffic
-	EventCategorySNMPTrap = message.EventCategory1("snmp-trap")
+	EventCategorySNMPTrap = message.EventCategory("snmp-trap")
 )
 
 // DecodeSNMPTrap will decode NTP packets
@@ -145,7 +145,7 @@ func EventSNMPTrap(sourceIP net.IP) message.Event {
 
 const (
 	// EventCategorySNMP contains events for ntp traffic
-	EventCategorySNMP = message.EventCategory1("snmp")
+	EventCategorySNMP = message.EventCategory("snmp")
 )
 
 // DecodeSNMP will decode NTP packets
@@ -169,7 +169,7 @@ func EventSNMP(sourceIP net.IP) message.Event {
 
 const (
 	// EventCategoryNTP contains events for ntp traffic
-	EventCategoryNTP = message.EventCategory1("ntp")
+	EventCategoryNTP = message.EventCategory("ntp")
 )
 
 // DecodeNTP will decode NTP packets
@@ -220,9 +220,9 @@ func EventNTP(sourceIP net.IP, ntp layers.NTP) message.Event {
 
 const (
 	// EventCategoryDNSQuery contains the category for dns query events
-	EventCategoryDNSQuery = message.EventCategory1("dns-query")
+	EventCategoryDNSQuery = message.EventCategory("dns-query")
 	// EventCategoryDNSOther contains the category for dns other events
-	EventCategoryDNSOther = message.EventCategory1("dns-other")
+	EventCategoryDNSOther = message.EventCategory("dns-other")
 )
 
 // DecodeDNS will decode DNS packets

@@ -68,7 +68,7 @@ func (r *SSHRecorder) NewSession(c *proxies.ProxyConn) *SSHRecorderSession {
 // Connect records the connect operation for the underline ssh connection.
 func (rs *SSHRecorderSession) Connect() {
 	rs.r.Channel.Send(
-		message.EventCategory(
+		message.EventCategoryType(
 			proxies.ServiceStartedEvent(
 				rs.conn.RemoteAddr(),
 				&SSHAction{
@@ -104,7 +104,7 @@ func (rs *SSHRecorderSession) Start() {
 	}
 
 	rs.r.Channel.Send(
-		message.EventCategory(
+		message.EventCategoryType(
 			proxies.UserSessionOpenedEvent(
 				rs.conn,
 				action,
@@ -135,7 +135,7 @@ func (rs *SSHRecorderSession) AuthorizationPublicKey(username, keyType string, k
 	}
 
 	rs.r.Channel.Send(
-		message.EventCategory(
+		message.EventCategoryType(
 			proxies.AuthEvent(
 				rs.conn,
 				action,
@@ -153,7 +153,7 @@ func (rs *SSHRecorderSession) AuthorizationSuccess(username, password, client st
 	action := &SSHAction{ContainerID: rs.conn.Container.Name(), ChannelID: "", Username: username, Password: password, RemoteAddr: rs.conn.RemoteHost(), SessionID: rs.sessionID.String(), Sequence: rs.seq, Sensor: "Session-Authentication-Success", Time: time.Now(), StartDate: rs.startDate, Client: client, Payload: nil}
 
 	rs.r.Channel.Send(
-		message.EventCategory(
+		message.EventCategoryType(
 			proxies.AuthEvent(
 				rs.conn,
 				action,
@@ -173,7 +173,7 @@ func (rs *SSHRecorderSession) AuthorizationFailed(username, password, client str
 	action := &SSHAction{ContainerID: rs.conn.Container.Name(), ChannelID: "", Username: username, Password: password, RemoteAddr: rs.conn.RemoteHost(), SessionID: rs.sessionID.String(), Sequence: rs.seq, Sensor: "Session-Authentication-Failed", Time: time.Now(), StartDate: rs.startDate, Client: client, Payload: nil}
 
 	rs.r.Channel.Send(
-		message.EventCategory(
+		message.EventCategoryType(
 			proxies.AuthEvent(
 				rs.conn,
 				action,
@@ -193,7 +193,7 @@ func (rs *SSHRecorderSession) Data(sensor string, channelID uuid.UUID, payload [
 	action := &SSHAction{ContainerID: rs.conn.Container.Name(), ChannelID: channelID.String(), Username: rs.username, Password: rs.password, RemoteAddr: rs.conn.RemoteHost(), SessionID: rs.sessionID.String(), Sequence: rs.seq, Sensor: sensor, Time: time.Now(), StartDate: rs.startDate, Payload: data}
 
 	rs.r.Channel.Send(
-		message.EventCategory(
+		message.EventCategoryType(
 			proxies.DataReadEvent(
 				rs.conn,
 				action,
@@ -210,7 +210,7 @@ func (rs *SSHRecorderSession) CustomData(tag string, payload []byte) {
 	action := &SSHAction{ContainerID: rs.conn.Container.Name(), RemoteAddr: rs.conn.RemoteHost(), Username: rs.username, Password: rs.password, SessionID: rs.sessionID.String(), Sequence: 0, Sensor: tag, Time: time.Now(), StartDate: rs.startDate, Payload: payload}
 
 	rs.r.Channel.Send(
-		message.EventCategory(
+		message.EventCategoryType(
 			proxies.DataReadEvent(
 				rs.conn,
 				action,
@@ -226,7 +226,7 @@ func (rs *SSHRecorderSession) Stop() {
 	action := &SSHAction{ContainerID: rs.conn.Container.Name(), RemoteAddr: rs.conn.RemoteHost(), Username: rs.username, Password: rs.password, SessionID: rs.sessionID.String(), Sequence: rs.seq, Sensor: "Session-Closed-packet", Time: time.Now(), StartDate: rs.startDate, EndDate: time.Now(), Payload: nil}
 
 	rs.r.Channel.Send(
-		message.EventCategory(
+		message.EventCategoryType(
 			proxies.ServiceStartedEvent(
 				rs.conn.RemoteAddr(),
 				action,
