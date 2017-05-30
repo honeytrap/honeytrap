@@ -158,6 +158,14 @@ func (ac *AgentConn) Forward() error {
 
 	container, err := ac.as.director.GetContainer(ac)
 	if err != nil {
+		ac.as.events.Send(ServiceEndedEvent(ac.Conn, AgentRequest{
+			Date:       time.Now(),
+			LocalAddr:  ac.localAddr,
+			RemoteAddr: ac.remoteAddr,
+			Host:       ac.Conn.RemoteAddr().String(),
+			Protocol:   *payload.Protocol,
+			Token:      ac.token,
+		}, nil))
 		return err
 	}
 

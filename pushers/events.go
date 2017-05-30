@@ -1,6 +1,8 @@
 package pushers
 
-import "github.com/honeytrap/honeytrap/pushers/message"
+import (
+	"github.com/honeytrap/honeytrap/pushers/message"
+)
 
 // EventBus defines a structure which provides a pubsub bus where message.Events
 // are sent along it's wires for delivery
