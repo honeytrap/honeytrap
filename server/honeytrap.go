@@ -15,6 +15,9 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/config"
 	"github.com/honeytrap/honeytrap/director"
+	_ "github.com/honeytrap/honeytrap/director/cowriedirector" // Registers slack backend.
+	_ "github.com/honeytrap/honeytrap/director/iodirector"     // Registers stdout backend.
+	_ "github.com/honeytrap/honeytrap/director/lxcdirector"    // Registers honeytrap backend.
 
 	assetfs "github.com/elazarl/go-bindata-assetfs"
 

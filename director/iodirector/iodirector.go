@@ -43,8 +43,8 @@ type Director struct {
 }
 
 // NewWith returns a new instance of the Director.
-func NewWith(config *config.Config, events pushers.Channel) director.Director {
-	return New(config, events)
+func NewWith(config *config.Config, events pushers.Channel) (director.Director, error) {
+	return New(config, events), nil
 }
 
 // New returns a new instance of the Director.
