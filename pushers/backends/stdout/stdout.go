@@ -78,6 +78,10 @@ func (f *StdoutBackend) Send(message message.Event) {
 	params := []string{}
 	for k, v := range message.Details {
 		switch v.(type) {
+		case uint:
+			params = append(params, fmt.Sprintf("%s=%d", k, v))
+		case int:
+			params = append(params, fmt.Sprintf("%s=%d", k, v))
 		case string:
 			params = append(params, fmt.Sprintf("%s=%s", k, printify(v.(string))))
 		default:
