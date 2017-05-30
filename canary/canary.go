@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/glycerine/rbuf"
 	"github.com/honeytrap/honeytrap/canary/arp"
 	"github.com/honeytrap/honeytrap/canary/ethernet"
 	"github.com/honeytrap/honeytrap/canary/icmp"
@@ -65,6 +66,10 @@ type Canary struct {
 	networkInterfaces []net.Interface
 
 	events pushers.Channel
+
+	descriptors map[string]int32
+
+	buffer *rbuf.FixedSizeRingBuf
 }
 
 // KnockGroup groups multiple knocks
@@ -286,17 +291,29 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 		return err
 	}
 
-	if hdr.Ctrl&tcp.SYN != tcp.SYN {
-		return nil
-	} else if hdr.Ctrl&tcp.ACK != 0 {
-		return nil
-	}
-
-	// do handhake
-
 	if !c.isMe(iph.Dst) {
 		return nil
 	}
+
+	if hdr.Source == 22 || hdr.Destination == 22 {
+		return nil
+	}
+
+	// USE PUSH?
+	// ACK THE PAYLOAD ALWAYS
+
+	if hdr.Ctrl&tcp.SYN != tcp.SYN {
+		fmt.Println(string(hdr.Payload))
+		return nil
+	} else if hdr.Ctrl&tcp.ACK != 0 {
+		fmt.Println(string(data))
+		return nil
+	} else {
+		// payload
+	}
+
+	// do handshake, send ACK to SYN to wait for the beep
+	c.ack(iph, hdr)
 
 	c.knockChan <- KnockTCPPort{
 		SourceIP:        iph.Src,
@@ -304,6 +321,139 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 	}
 
 	// check if we have tcp listeners on specified port, and answer otherwise
+	return nil
+}
+
+func (c *Canary) ack(iph *ipv4.Header, tcph *tcp.Header) error {
+	th := &tcp.Header{
+		Source:      tcph.Destination,
+		Destination: tcph.Source,
+		SeqNum:      0,
+		AckNum:      tcph.SeqNum + 1,
+		Reserved:    0,
+		ECN:         0,
+		Ctrl:        tcp.SYN | tcp.ACK,
+		Window:      65531,
+		Checksum:    0,
+		Urgent:      0,
+		Options:     []tcp.Option{},
+		Payload:     []byte{},
+	}
+
+	data1, err := th.Marshal()
+	if err != nil {
+		return err
+	}
+
+	// ack the received packet
+	iph2 := &ipv4.Header{
+		Version:  4,
+		Len:      20,
+		TOS:      0,
+		Flags:    0,
+		FragOff:  0,
+		TTL:      128,
+		Src:      iph.Dst,
+		Dst:      iph.Src,
+		ID:       0,
+		Protocol: 6,
+		TotalLen: 20 + len(data1),
+	}
+
+	data, err := iph2.Marshal()
+	if err != nil {
+		return err
+	}
+
+	updateTCPChecksum(iph2, data1)
+
+	data = append(data, data1...)
+
+	// Src := net.IPv4(data1[12], data1[13], data1[14], data1[15])
+	Dst := net.IPv4(data[16], data[17], data[18], data[19])
+
+	fmt.Printf("interfaces %#v\n", c.networkInterfaces)
+
+	// create ethernet frame with correct dest mac address
+	ef := ethernet.EthernetFrame{
+		Source:      c.networkInterfaces[1].HardwareAddr,
+		Destination: []byte{0x00, 0x50, 0x56, 0xee, 0xc6, 0x2c},
+		Type:        0x0800,
+	}
+
+	if Dst.String() == "172.16.84.1" {
+		ef.Destination = []byte{0x00, 0x50, 0x56, 0xc0, 0x00, 0x08}
+	} else if Dst.String() == "172.16.84.2" {
+		ef.Destination = []byte{0x00, 0x50, 0x56, 0xee, 0xc6, 0x2c}
+	} else if Dst.String() == "172.16.84.128" {
+		ef.Destination = []byte{0x00, 0x0c, 0x29, 0xaa, 0xee, 0x37}
+	} else if Dst.String() == "217.196.36.3" {
+		ef.Destination = []byte{0x00, 0x50, 0x56, 0xee, 0xc6, 0x2c}
+	} else {
+		fmt.Printf("Unknown IP: %s forwarding traffic to router.\n", Dst.String())
+		ef.Destination = []byte{0x00, 0x0c, 0x29, 0xaa, 0xee, 0x37}
+	}
+
+	data2, err := ef.Marshal()
+	if err != nil {
+		fmt.Println("Error marshalling ethernet frame: ", err)
+	}
+
+	csum := uint32(0)
+
+	// calculate correct ip header length here.
+	length := 20 // len(data1) - 1
+
+	// calculate options?
+
+	/*
+		i := length
+
+		for {
+			if i > len(data) {
+				break
+			}
+
+			if data[i] == 0x00 {
+				break
+			}
+
+			fmt.Println("Got option")
+
+			length += int(data[i+1])
+			i += int(data[i+1])
+		}
+	*/
+
+	for i := 0; i < length; i += 2 {
+		if i == 10 {
+			continue
+		}
+
+		csum += uint32(data[i]) << 8
+		csum += uint32(data[i+1])
+	}
+
+	for {
+		// Break when sum is less or equals to 0xFFFF
+		if csum <= 65535 {
+			break
+		}
+		// Add carry to the sum
+		csum = (csum >> 16) + uint32(uint16(csum))
+	}
+
+	csum = uint32(^uint16(csum))
+
+	data[10] = uint8((csum >> 8) & 0xFF)
+	data[11] = uint8(csum & 0xFF)
+
+	data = append(data2, data...)
+
+	fmt.Println("Packet queued", Dst.String())
+
+	c.send(data)
+
 	return nil
 }
 
@@ -316,6 +466,7 @@ func New(interfaces []net.Interface, events pushers.Channel) (*Canary, error) {
 	}
 
 	networkInterfaces := []net.Interface{}
+	descriptors := map[string]int32{}
 
 	for _, intf := range interfaces {
 		if fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(htons(syscall.ETH_P_ALL))); err != nil {
@@ -327,19 +478,23 @@ func New(interfaces []net.Interface, events pushers.Channel) (*Canary, error) {
 			Fd:     int32(fd),
 		}); err != nil {
 			return nil, fmt.Errorf("epollctl: %s", err.Error())
+		} else {
+			descriptors[intf.Name] = int32(fd)
+			networkInterfaces = append(networkInterfaces, intf)
 		}
-
-		networkInterfaces = append(networkInterfaces, intf)
 	}
 
 	r := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
 
 	return &Canary{
 		epfd:              epfd,
+		descriptors:       descriptors,
 		networkInterfaces: networkInterfaces,
 		r:                 r,
 		knockChan:         make(chan interface{}, 100),
 		events:            events,
+
+		buffer: rbuf.NewFixedSizeRingBuf(65535),
 	}, nil
 }
 
@@ -419,11 +574,77 @@ func (c *Canary) send(data []byte) error {
 	c.m.Lock()
 	defer c.m.Unlock()
 
-	return nil
+	// add to send queue
+	// ring buffer?
+
+	// how does the buffer play nice with retransmits
+
+	fmt.Println("data")
+	c.buffer.Write(data)
+
+	// enable poll out
+	// find interface
+
+	for _, intf := range c.networkInterfaces {
+		// send network frame
+		// find gateway
+		//
+
+		_ = intf
+	}
+
+	fd := c.descriptors["ens160"]
+
+	err := syscall.EpollCtl(c.epfd, syscall.EPOLL_CTL_MOD, int(fd), &syscall.EpollEvent{
+		Events: syscall.EPOLLIN | syscall.EPOLLOUT,
+		Fd:     int32(fd),
+	})
+
+	return err
+}
+
+func updateTCPChecksum(iph *ipv4.Header, data []byte) {
+	length := len(data)
+
+	csum := uint32(0)
+
+	csum += (uint32(iph.Src[12]) + uint32(iph.Src[14])) << 8
+	csum += uint32(iph.Src[13]) + uint32(iph.Src[15])
+	csum += (uint32(iph.Dst[12]) + uint32(iph.Dst[14])) << 8
+	csum += uint32(iph.Dst[13]) + uint32(iph.Dst[15])
+
+	csum += uint32(6)
+	csum += uint32(length) & 0xffff
+	csum += uint32(length) >> 16
+
+	length = len(data) - 1
+
+	// calculate correct ip header length here.
+	for i := 0; i < length; i += 2 {
+		if i == 16 {
+			continue
+		}
+
+		csum += uint32(data[i]) << 8
+		csum += uint32(data[i+1])
+	}
+
+	if len(data)%2 == 1 {
+		csum += uint32(data[length]) << 8
+	}
+
+	for csum > 0xffff {
+		csum = (csum >> 16) + (csum & 0xffff)
+	}
+
+	csum = uint32(^uint16(csum + (csum >> 16)))
+
+	data[16] = uint8((csum >> 8) & 0xFF)
+	data[17] = uint8(csum & 0xFF)
 }
 
 // send will queue a packet for sending
-func (c *Canary) transmit(fd int32) {
+func (c *Canary) transmit(fd int32) error {
 	// os specific transmitter
 	// protocol implementation specific
 
@@ -434,6 +655,25 @@ func (c *Canary) transmit(fd int32) {
 
 	c.m.Lock()
 	defer c.m.Unlock()
+
+	buffer := make([]byte, 65535)
+	n, err := c.buffer.Read(buffer)
+	if err != nil {
+		fmt.Println("BLA", err)
+	}
+
+	to := &syscall.SockaddrLinklayer{
+		Protocol: htons(syscall.ETH_P_ALL),
+		Ifindex:  c.networkInterfaces[1].Index,
+	}
+
+	err = syscall.Sendto((int(fd)), buffer[:n], 0, to)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Bytes %d delivered", n)
+	return nil
 }
 
 // Run will start Canary
@@ -471,6 +711,7 @@ func (c *Canary) Run() error {
 						case 1 /* icmp */ :
 							c.handleICMP(iph, data)
 						case 6 /* tcp */ :
+							// what interface?
 							c.handleTCP(iph, data)
 						case 17 /* udp */ :
 							c.handleUDP(iph, data)
@@ -482,6 +723,8 @@ func (c *Canary) Run() error {
 			}
 
 			if events[ev].Events&syscall.EPOLLOUT == syscall.EPOLLOUT {
+				fmt.Println("GOT EPOLLOUT")
+				fmt.Println("BLA", c.buffer.Avail())
 				// should we use the network interface fd, or just events[ev]Fd?
 				c.transmit(events[ev].Fd)
 
