@@ -70,6 +70,8 @@ func NewWith(meta toml.MetaData, data toml.Primitive) (pushers.Channel, error) {
 // Send delivers the giving push messages to the required slack channel.
 // TODO: Ask if Send shouldnt return an error to allow proper delivery validation.
 func (mc SlackBackend) Send(message message.Event) {
+	log.Infof("SlackBackend: Sending Message: %#v", message)
+
 	//Attempt to encode message body first and if failed, log and continue.
 	messageBuffer := new(bytes.Buffer)
 	if err := json.NewEncoder(messageBuffer).Encode(message.Data); err != nil {
@@ -219,7 +221,10 @@ func (mc SlackBackend) Send(message message.Event) {
 	} else if res.StatusCode == http.StatusCreated {
 	} else {
 		log.Errorf("SlackMessageBackend: API Response with unexpected Status Code[%d] to endpoint: %q", res.StatusCode, mc.config.WebhookURL)
+		return
 	}
+
+	log.Infof("SlackBackend: Delivered Message: %#v", message)
 }
 
 // Message defines the base message to be included sent to a slack endpoint.
