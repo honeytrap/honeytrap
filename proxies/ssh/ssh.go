@@ -120,7 +120,7 @@ func (t *PrivateKey) UnmarshalText(data []byte) (err error) {
 // that we can swap. So we can use for emxapl cowrie as well, but also our raw stack
 //
 // TODO: Change amount of params.
-func Listen(address string, m *director.ContainerConnections, d director.Director, p *pushers.Pusher, events pushers.Channel, primitive toml.Primitive) (net.Listener, error) {
+func Listen(address string, m *director.ContainerConnections, d director.Director, events pushers.Channel, primitive toml.Primitive) (net.Listener, error) {
 	c := Config{
 		Key:    nil,
 		Port:   ":8022",
@@ -144,7 +144,7 @@ func Listen(address string, m *director.ContainerConnections, d director.Directo
 	}
 
 	return &Listener{
-		proxies.NewProxyListener(l, m, d, p, events),
+		proxies.NewProxyListener(l, m, d, events),
 		&c,
 	}, nil
 }
@@ -176,7 +176,7 @@ type Conn struct {
 
 // Proxy setsup the needed recorders to record ssh connection details.
 func (p *Conn) Proxy() error {
-	recorder := NewSSHRecorder(p.Pusher, p.Event)
+	recorder := NewSSHRecorder(p.Event)
 
 	rs := recorder.NewSession(p.ProxyConn)
 

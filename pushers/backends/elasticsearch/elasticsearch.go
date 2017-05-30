@@ -21,21 +21,21 @@ import (
 
 var log = logging.MustGetLogger("honeytrap:channels:elasticsearch")
 
-// SearchConfig defines a struct which holds configuration values for a SearchChannel.
+// SearchConfig defines a struct which holds configuration values for a SearchBackend.
 type SearchConfig struct {
 	Host string
 }
 
-// SearchChannel defines a struct which provides a channel for delivery
+// SearchBackend defines a struct which provides a channel for delivery
 // push messages to an elasticsearch api.
-type SearchChannel struct {
+type SearchBackend struct {
 	client *http.Client
 	config SearchConfig
 }
 
-// New returns a new instance of a SearchChannel.
-func New(conf SearchConfig) SearchChannel {
-	return SearchChannel{
+// New returns a new instance of a SearchBackend.
+func New(conf SearchConfig) SearchBackend {
+	return SearchBackend{
 		config: conf,
 		client: &http.Client{
 			Transport: &http.Transport{
@@ -46,7 +46,7 @@ func New(conf SearchConfig) SearchChannel {
 	}
 }
 
-// NewWith defines a function to return a pushers.Channel which delivers
+// NewWith defines a function to return a pushers.Backend which delivers
 // new messages to a giving underline ElasticSearch API defined by the configuration
 // retrieved from the giving toml.Primitive.
 func NewWith(meta toml.MetaData, data toml.Primitive) (pushers.Channel, error) {
@@ -68,45 +68,44 @@ func init() {
 }
 
 // Send delivers the giving push messages into the internal elastic search endpoint.
-func (hc SearchChannel) Send(messages ...message.Event) {
-	for _, message := range messages {
-		buf := new(bytes.Buffer)
+func (hc SearchBackend) Send(message message.Event) {
+	log.Infof("ElasticSearchBackend: Sending %d actions.", message)
 
-		if message.Sensor == "honeytrap" && message.Category == "ping" {
-			// ignore
-			continue
-		}
+	buf := new(bytes.Buffer)
 
-		if err := json.NewEncoder(buf).Encode(message.Data); err != nil {
-			log.Errorf("ElasticSearchChannel: Error encoding data: %s", err.Error())
-			continue
-		}
-
-		messageID := uuid.NewV4()
-		req, err := http.NewRequest("PUT", fmt.Sprintf("%s/%s/%s/%s", hc.config.Host, message.Sensor, message.Category, messageID.String()), buf)
-		if err != nil {
-			log.Errorf("ElasticSearchChannel: Error while preparing request: %s", err.Error())
-			continue
-		}
-
-		req.Header.Set("Content-Type", "application/json")
-
-		var resp *http.Response
-		if resp, err = hc.client.Do(req); err != nil {
-			log.Errorf("ElasticSearchChannel: Error while sending messages: %s", err.Error())
-			continue
-		}
-
-		// for keep-alive
-		io.Copy(ioutil.Discard, resp.Body)
-		resp.Body.Close()
-
-		if resp.StatusCode != http.StatusCreated {
-			log.Errorf("ElasticSearchChannel: Unexpected status code: %d", resp.StatusCode)
-			continue
-		}
-
+	if message.Sensor == "honeytrap" && message.Category == "ping" {
+		// ignore
+		return
 	}
 
-	log.Infof("ElasticSearchChannel: Sent %d actions.", len(messages))
+	if err := json.NewEncoder(buf).Encode(message.Data); err != nil {
+		log.Errorf("ElasticSearchBackend: Error encoding data: %s", err.Error())
+		return
+	}
+
+	messageID := uuid.NewV4()
+	req, err := http.NewRequest("PUT", fmt.Sprintf("%s/%s/%s/%s", hc.config.Host, message.Sensor, message.Category, messageID.String()), buf)
+	if err != nil {
+		log.Errorf("ElasticSearchBackend: Error while preparing request: %s", err.Error())
+		return
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	var resp *http.Response
+	if resp, err = hc.client.Do(req); err != nil {
+		log.Errorf("ElasticSearchBackend: Error while sending messages: %s", err.Error())
+		return
+	}
+
+	// for keep-alive
+	io.Copy(ioutil.Discard, resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		log.Errorf("ElasticSearchBackend: Unexpected status code: %d", resp.StatusCode)
+		return
+	}
+
+	log.Infof("ElasticSearchBackend: Sent %d actions.", message)
 }

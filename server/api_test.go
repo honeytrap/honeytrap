@@ -25,64 +25,44 @@ const (
 )
 
 var (
-	conso = message.PushMessage{
-		Sensor:      "Zu",
-		Event:       true,
+	conso = message.Event{
 		Category:    "Chip Integrated",
 		SessionID:   "4334334-3433434-34343-FUD",
 		ContainerID: "56454-5454UDF-2232UI-34FGHU",
-		Data: message.Event{
-			Sensor: message.ServiceSensor,
-			Type:   message.ServiceStarted,
-		},
+		Sensor:      message.ServiceSensor,
+		Type:        message.ServiceStarted,
 	}
 
-	conlo = message.PushMessage{
-		Sensor:      "Chip",
-		Event:       true,
+	conlo = message.Event{
 		Category:    "Chip Integrated",
 		SessionID:   "4334334-3433434-34343-FUD",
 		ContainerID: "56454-5454UDF-2232UI-34FGHU",
-		Data: message.Event{
-			Sensor: message.ConnectionSensor,
-			Type:   message.ContainerCloned,
-		},
+		Sensor:      message.ConnectionSensor,
+		Type:        message.ContainerCloned,
 	}
 
-	conco = message.PushMessage{
-		Sensor:      "Cuj",
-		Event:       true,
+	conco = message.Event{
 		Category:    "Chip Integrated",
 		SessionID:   "4334334-3433434-34343-FUD",
 		ContainerID: "56454-5454UDF-2232UI-34FGHU",
-		Data: message.Event{
-			Sensor: message.PingSensor,
-			Type:   message.PingEvent,
-		},
+		Sensor:      message.PingSensor,
+		Type:        message.PingEvent,
 	}
 
-	conzip = message.PushMessage{
-		Sensor:      "Cuj Sip",
-		Event:       true,
+	conzip = message.Event{
 		Category:    "Integrated OS",
 		SessionID:   "4334334-3433434-34343-FUD",
 		ContainerID: "56454-5454UDF-2232UI-34FGHU",
-		Data: message.Event{
-			Sensor: message.SessionSensor,
-			Type:   message.ServiceStarted,
-		},
+		Sensor:      message.SessionSensor,
+		Type:        message.ServiceStarted,
 	}
 
-	contar = message.PushMessage{
-		Sensor:      "Cuj Hul",
-		Event:       true,
+	contar = message.Event{
+		Sensor:      message.SessionSensor,
+		Type:        message.ContainerCheckpoint,
 		Category:    "Integrated OS",
 		SessionID:   "4334334-3433434-34343-FUD",
 		ContainerID: "56454-5454UDF-2232UI-34FGHU",
-		Data: message.Event{
-			Sensor: message.SessionSensor,
-			Type:   message.ContainerCheckpoint,
-		},
 	}
 )
 
@@ -96,7 +76,11 @@ func TestHoneycast(t *testing.T) {
 
 	sm := httptest.NewServer(cast)
 
-	cast.Send([]message.PushMessage{conso, conco, conlo, contar, conzip})
+	cast.Send(contar)
+	cast.Send(conzip)
+	cast.Send(conso)
+	cast.Send(conco)
+	cast.Send(conlo)
 
 	t.Logf("Given the an instance of a Honeycast API ")
 	{
@@ -231,7 +215,11 @@ func TestHoneycastWebsocket(t *testing.T) {
 
 	sm := httptest.NewServer(cast)
 
-	cast.Send([]message.PushMessage{conso, conco, conlo, conzip, contar})
+	cast.Send(contar)
+	cast.Send(conzip)
+	cast.Send(conso)
+	cast.Send(conco)
+	cast.Send(conlo)
 
 	t.Logf("Given the an instance of a Honeycast API ")
 	{

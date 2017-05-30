@@ -20,7 +20,7 @@ const (
 var (
 	splitter = []byte("\r\n")
 
-	blueChip = message.PushMessage{
+	blueChip = message.Event{
 		Sensor:      "BlueChip",
 		Category:    "Chip Integrated",
 		SessionID:   "4334334-3433434-34343-FUD",
@@ -28,7 +28,7 @@ var (
 		Data:        "Hello World!",
 	}
 
-	ping = message.PushMessage{
+	ping = message.Event{
 		Sensor:      "Ping",
 		Category:    "Ping Notificiation",
 		SessionID:   "4334334-3433434-34343-FUD",
@@ -36,7 +36,7 @@ var (
 		Data:        "Hello World!",
 	}
 
-	crum = message.PushMessage{
+	crum = message.Event{
 		Sensor:      "Crum Stream",
 		Category:    "WebRTC Crum Stream",
 		SessionID:   "4334334-3433434-34343-FUD",
@@ -45,8 +45,8 @@ var (
 	}
 )
 
-// TestFileChannel validates the behaviour of the FileChannel.
-func TestFileChannel(t *testing.T) {
+// TestFileBackend validates the behaviour of the FileBackend.
+func TestFileBackend(t *testing.T) {
 	t.Logf("Given the need to sync PushMessages to files")
 	{
 		t.Logf("When giving a file[%q] and a good configuration with no filters", tmpFile)
@@ -54,11 +54,13 @@ func TestFileChannel(t *testing.T) {
 
 			fc := fschannel.New(fschannel.FileConfig{
 				MaxSize: 5,
-				Timeout: "40s",
+				Timeout: "2s",
 				File:    tmpFile,
 			})
 
-			fc.Send([]message.PushMessage{blueChip, crum, ping})
+			fc.Send(crum)
+			fc.Send(ping)
+			fc.Send(blueChip)
 
 			fc.Wait()
 
@@ -78,6 +80,7 @@ func TestFileChannel(t *testing.T) {
 
 func TestFileGenerator(t *testing.T) {
 	tomlConfig := `
+	backend = "file"
 	file = "/store/files/pushers.pub"
 	ms = "50s"
 	max_size = 3000`
@@ -100,7 +103,7 @@ func TestFileGenerator(t *testing.T) {
 	tests.Passed("Should have successfully parsed backend name.")
 
 	if backend.Backend != "file" {
-		tests.Failed("Should have properly unmarshalled value of config.Backend.")
+		tests.Failed("Should have properly unmarshalled value of config.Backend : %q.", backend.Backend)
 	}
 	tests.Passed("Should have properly unmarshalled value of config.Backend.")
 

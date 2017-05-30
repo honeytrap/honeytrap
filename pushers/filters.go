@@ -33,7 +33,7 @@ func (fg FilterGroup) Filter(events ...message.Event) []message.Event {
 //==========================================================================================
 
 // RegExpFilterFunction defines the function used by the RegExpFilter
-// to provide custom filtering validation for each provided message.PushMessage.
+// to provide custom filtering validation for each provided message.Event.
 type RegExpFilterFunction func(*regexp.Regexp, message.Event) bool
 
 // SensorFilterFunc defines a function to validate a PushMessage.Sensor value

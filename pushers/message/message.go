@@ -26,6 +26,8 @@ type EventType string
 // contains different sets of possible events type.
 const (
 	PingEvent            EventType = "PING"
+	Operational          EventType = "OPERATIONAL:Event"
+	OperationalAuth      EventType = "OPERATIONAL:AUTH"
 	DataRequest          EventType = "DATA:REQUEST"
 	DataRead             EventType = "DATA:READ"
 	DataWrite            EventType = "DATA:WRITE"
@@ -89,3 +91,21 @@ func (e Event) String() string {
 }
 
 //====================================================================================
+
+// EventCategory is created to allow setting the category of a custom event.
+func EventCategory(ev Event, category string) Event {
+	ev.Category = category
+	return ev
+}
+
+// EventDetail is created to allow setting the data of a custom event.
+func EventDetail(ev Event, details map[string]interface{}) Event {
+	ev.Details = details
+	return ev
+}
+
+// EventData is created to allow setting the data of a custom event.
+func EventData(ev Event, data interface{}) Event {
+	ev.Data = data
+	return ev
+}

@@ -16,7 +16,7 @@ var log = logging.MustGetLogger("honeytrap:proxy")
 
 // ProxyFn defines a function which delivers the needed listener for using the
 // underline proxy connection.
-type ProxyFn func(address string, m *director.ContainerConnections, d director.Director, p *pushers.Pusher, el pushers.Channel, c toml.Primitive) (net.Listener, error)
+type ProxyFn func(address string, m *director.ContainerConnections, d director.Director, el pushers.Channel, c toml.Primitive) (net.Listener, error)
 
 var proxies = map[string]ProxyFn{}
 
@@ -34,8 +34,6 @@ func Get(service string) (ProxyFn, bool) {
 
 // ProxyConfig defines the configuration object delivered to a proxy creator.
 type ProxyConfig struct {
-	pusher *pushers.Pusher
-
 	Config *config.Config
 }
 

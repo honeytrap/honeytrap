@@ -30,7 +30,7 @@ var log = logging.MustGetLogger("honeytrap:proxy:smtp")
 // ListenSMTP returns a new proxy handler for the smtp provider.
 // TODO: Change amount of params.
 // combine listensmtp, smtpforwarder
-func ListenSMTP(address string,m *director.ContainerConnections, d director.Director, p *pushers.Pusher, e pushers.Channel, c *config.Config) (net.Listener, error) {
+func ListenSMTP(address string,m *director.ContainerConnections, d director.Director,  e pushers.Channel, c *config.Config) (net.Listener, error) {
 	l, err := net.Listen("tcp", address)
 	if err != nil {
 		log.Fatal(err)
@@ -55,7 +55,6 @@ func ListenSMTP(address string,m *director.ContainerConnections, d director.Dire
 			l,
 			m,
 			d,
-			p,
 			e,
 		},
 		&tlsconfig,

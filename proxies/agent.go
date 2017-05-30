@@ -32,18 +32,18 @@ const (
 var ErrAgentUnsupportedProtocol = fmt.Errorf("Unsupported agent protocol")
 
 // NewAgentServer returns a new AgentServer instance.
-func NewAgentServer(manager *director.ContainerConnections, director director.Director, pusher *pushers.Pusher, events pushers.Channel, cfg *config.Config) *AgentServer {
-	return &AgentServer{director, pusher, events, cfg, manager}
+func NewAgentServer(manager *director.ContainerConnections, director director.Director, events pushers.Channel, cfg *config.Config) *AgentServer {
+	return &AgentServer{director, events, cfg, manager}
 }
 
 // AgentServer defines an a struct which implements a server to handle agent based
 // connections.
 type AgentServer struct {
 	director director.Director
-	pusher   *pushers.Pusher
-	events   pushers.Channel
-	config   *config.Config
-	manager  *director.ContainerConnections
+
+	events  pushers.Channel
+	config  *config.Config
+	manager *director.ContainerConnections
 }
 
 // AgentConn defines the a struct which holds the underline net.Conn.

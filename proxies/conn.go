@@ -17,8 +17,7 @@ type ProxyConn struct {
 
 	Container director.Container
 
-	Pusher *pushers.Pusher
-	Event  pushers.Channel
+	Event pushers.Channel
 }
 
 // Write calls the internal connection write method and submits a method for such a data.

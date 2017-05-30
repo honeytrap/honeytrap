@@ -5,7 +5,7 @@ import (
 	"net"
 	"net/http"
 
-	_ "net/http/pprof"
+	_ "net/http/pprof" // TODO(alex): Add comment, govet complains.
 
 	"github.com/elazarl/go-bindata-assetfs"
 	"github.com/fatih/color"
@@ -41,8 +41,8 @@ var log = logging.MustGetLogger("Honeytrap")
 // Honeytrap defines a struct which coordinates the internal logic for the honeytrap
 // container infrastructure.
 type Honeytrap struct {
-	config    *config.Config
-	pusher    *pushers.Pusher
+	config *config.Config
+
 	events    pushers.Channel
 	honeycast *Honeycast
 	director  director.Director
@@ -54,10 +54,10 @@ type ServeFunc func() error
 
 // New returns a new instance of a Honeytrap struct.
 func New(conf *config.Config) *Honeytrap {
-	pusher := pushers.New(conf)
-
 	bus := pushers.NewEventBus()
-	bus.Subscribe(pusher)
+
+	// Initialize all channels within the provided config.
+	pushers.ChannelsFrom(conf, bus)
 
 	var dir director.Director
 
@@ -86,7 +86,6 @@ func New(conf *config.Config) *Honeytrap {
 	return &Honeytrap{
 		config:    conf,
 		director:  dir,
-		pusher:    pusher,
 		events:    bus,
 		honeycast: honeycast,
 		manager:   manager,
@@ -100,17 +99,13 @@ func (hc *Honeytrap) startAgentServer() {
 
 // ListenFunc defines a function type which returns a net.Listener specific for the
 // use of its argument and for the reception of net connections.
-type ListenFunc func(string, director.Director, *pushers.Pusher, pushers.Channel, *config.Config) (net.Listener, error)
+type ListenFunc func(string, director.Director, pushers.Channel, *config.Config) (net.Listener, error)
 
 // ListenerConfig defines a struct for holding configuration fields for a Listener
 // builder.
 type ListenerConfig struct {
 	fn      ListenFunc
 	address string
-}
-
-func (hc *Honeytrap) startPusher() {
-	hc.pusher.Start()
 }
 
 // EventServiceStarted will return a service started Event struct
@@ -140,7 +135,7 @@ func (hc *Honeytrap) startProxies() {
 		if serviceFn, ok := proxies.Get(st.Service); ok {
 			log.Debugf("Listener starting: %s", st.Port)
 
-			service, err := serviceFn(st.Port, hc.manager, hc.director, hc.pusher, hc.events, primitive)
+			service, err := serviceFn(st.Port, hc.manager, hc.director, hc.events, primitive)
 			if err != nil {
 				log.Errorf("Error in service: %s: %s", st.Service, err.Error())
 
@@ -286,7 +281,6 @@ func (hc *Honeytrap) startCanary() error {
 func (hc *Honeytrap) Serve() {
 
 	hc.startCanary()
-	hc.startPusher()
 	hc.startProxies()
 	hc.startStatsServer()
 
