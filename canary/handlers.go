@@ -54,14 +54,13 @@ func (c *Canary) DecodeSSDP(iph *ipv4.Header, udph *udp.Header) error {
 }
 
 // EventSSDP will return a snmp event struct
-func EventSIP(sourceIP net.IP, method, uri, proto string, headers http.Header) message.Event {
+func EventSSDP(sourceIP net.IP, method, uri, proto string, headers http.Header) message.Event {
 	// TODO: message should go into String() / Message, where message.Event will become interface
 	return message.Event{
 		Sensor:   "Canary",
 		Category: EventCategorySSDP,
 		Type:     message.ServiceStarted,
 		Details: map[string]interface{}{
-			"message": payload,
 			"method":  method,
 			"uri":     uri,
 			"proto":   proto,
