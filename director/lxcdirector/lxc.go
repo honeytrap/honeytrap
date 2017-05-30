@@ -120,11 +120,7 @@ func (c *LxcContainer) clone() error {
 
 	defer lxc.Release(c1)
 
-	c.provider.events.Send(director.ContainerClonedEvent(c, map[string]interface{}{
-		"name":     c.name,
-		"template": c.template,
-		"ip":       c.ip,
-	}))
+	c.provider.events.Send(director.ContainerClonedEvent(c, c.name, c.template, c.ip))
 
 	// http://developerblog.redhat.com/2014/09/30/overview-storage-scalability-docker/
 	// TODO: use overlayfs / make it configurable

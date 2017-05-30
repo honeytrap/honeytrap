@@ -71,12 +71,16 @@ func ContainerTarredEvent(c Container, data []byte, detail map[string]interface{
 }
 
 // ContainerClonedEvent returns a connection open event object giving the associated data values.
-func ContainerClonedEvent(c Container, detail map[string]interface{}) message.Event {
+func ContainerClonedEvent(c Container, name string, template string, ip string) message.Event {
 	return message.Event{
-		Details: detail,
-		Data:    c.Detail(),
-		Sensor:  message.ContainersSensor,
-		Type:    message.ContainerPaused,
+		Data:   c.Detail(),
+		Sensor: message.ContainersSensor,
+		Type:   message.ContainerPaused,
+		Details: map[string]interface{}{
+			"container-ip":       ip,
+			"container-name":     name,
+			"container-template": template,
+		},
 	}
 }
 
