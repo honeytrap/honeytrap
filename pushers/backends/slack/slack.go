@@ -19,29 +19,29 @@ import (
 var log = logging.MustGetLogger("honeytrap:channels:slack")
 
 // APIConfig defines a struct which holds configuration field values used by the
-// MessageBackend for it's message delivery to the slack channel API.
+// SlackBackend for it's message delivery to the slack channel API.
 type APIConfig struct {
 	Host  string `toml:"host"`
 	Token string `toml:"token"`
 }
 
-// MessageBackend provides a struct which holds the configured means by which
+// SlackBackend provides a struct which holds the configured means by which
 // slack notifications are sent into giving slack groups and channels.
-type MessageBackend struct {
-	client    *http.Client
-	apiconfig APIConfig
+type SlackBackend struct {
+	*http.Client
+	config APIConfig
 }
 
-// New returns a new instance of a MessageBackend.
-func New(api APIConfig) MessageBackend {
-	return MessageBackend{
-		apiconfig: api,
-		client: &http.Client{
+// New returns a new instance of a SlackBackend.
+func New(config APIConfig) SlackBackend {
+	return SlackBackend{
+		Client: &http.Client{
 			Transport: &http.Transport{
 				MaxIdleConnsPerHost: 5,
 			},
 			Timeout: time.Duration(20) * time.Second,
 		},
+		config: config,
 	}
 }
 
@@ -49,21 +49,21 @@ func New(api APIConfig) MessageBackend {
 // new messages to a giving underline slack channel defined by the configuration
 // retrieved from the giving toml.Primitive.
 func NewWith(meta toml.MetaData, data toml.Primitive) (pushers.Channel, error) {
-	var apiconfig APIConfig
+	var config APIConfig
 
-	if err := meta.PrimitiveDecode(data, &apiconfig); err != nil {
+	if err := meta.PrimitiveDecode(data, &config); err != nil {
 		return nil, err
 	}
 
-	if apiconfig.Host == "" {
+	if config.Host == "" {
 		return nil, errors.New("slack.APIConfig Invalid: Host can not be empty")
 	}
 
-	if apiconfig.Token == "" {
+	if config.Token == "" {
 		return nil, errors.New("slack.APIConfig Invalid: Token can not be empty")
 	}
 
-	return New(apiconfig), nil
+	return New(config), nil
 }
 
 func init() {
@@ -72,7 +72,7 @@ func init() {
 
 // Send delivers the giving push messages to the required slack channel.
 // TODO: Ask if Send shouldnt return an error to allow proper delivery validation.
-func (mc MessageBackend) Send(message message.Event) {
+func (mc SlackBackend) Send(message message.Event) {
 	//Attempt to encode message body first and if failed, log and continue.
 	messageBuffer := new(bytes.Buffer)
 	if err := json.NewEncoder(messageBuffer).Encode(message.Data); err != nil {
@@ -119,31 +119,34 @@ func (mc MessageBackend) Send(message message.Event) {
 
 	slackMessageBuffer := new(bytes.Buffer)
 	if err := json.NewEncoder(slackMessageBuffer).Encode(slackMessage); err != nil {
-		log.Errorf("SlackMessageBackend: Error encoding new SlackMessage: %+q", err)
+		log.Errorf("Error encoding new SlackMessage: %+q", err)
 		return
 	}
 
-	reqURL := fmt.Sprintf("%s/%s", mc.apiconfig.Host, mc.apiconfig.Token)
+	reqURL := fmt.Sprintf("%s/%s", mc.config.Host, mc.config.Token)
 	req, err := http.NewRequest("POST", reqURL, slackMessageBuffer)
 	if err != nil {
-		log.Errorf("SlackMessageBackend: Error while creating new request object: %+q", err)
+		log.Errorf("Error while creating new request object: %+q", err)
 		return
 	}
 
 	req.Header.Set("Content-Type", "application/json")
 
-	res, err := mc.client.Do(req)
+	res, err := mc.Do(req)
 	if err != nil {
-		log.Errorf("SlackMessageBackend: Error while making request to endpoint(%q): %q", reqURL, err.Error())
+		log.Errorf("Error while making request to endpoint(%q): %q", reqURL, err.Error())
 		return
 	}
+
+	defer res.Body.Close()
 
 	// Though we expect slack not to deliver any messages to us but to be safe
 	// discard and close body.
 	io.Copy(ioutil.Discard, res.Body)
-	res.Body.Close()
 
-	if res.StatusCode != http.StatusCreated {
+	if res.StatusCode == http.StatusOK {
+	} else if res.StatusCode == http.StatusCreated {
+	} else {
 		log.Errorf("SlackMessageBackend: API Response with unexpected Status Code[%d] to endpoint: %q", res.StatusCode, reqURL)
 	}
 }
