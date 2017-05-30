@@ -5,10 +5,46 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/honeytrap/honeytrap/config"
+	"github.com/honeytrap/honeytrap/pushers"
 	logging "github.com/op/go-logging"
 )
 
 var log = logging.MustGetLogger("honeytrap:director")
+
+//=======================================================================================================
+
+// Generator defines a function type which returns a Channel created
+// from the config and channel.
+type Generator func(*config.Config, pushers.Channel) (Director, error)
+
+// directors define a variable which allows is provide a central registry of
+// all Director providers.
+var directors = struct {
+	b map[string]Generator
+}{
+	b: make(map[string]Generator),
+}
+
+// RegisterDirector adds the giving director generator to the global director lists.
+func RegisterDirector(name string, generator Generator) Generator {
+	directors.b[name] = generator
+	return generator
+}
+
+// NewDirector returns a new Channel of the giving name with the provided arguments.
+func NewDirector(name string, config *config.Config, channel pushers.Channel) (Director, error) {
+	log.Debug("Initializing director : %#q", name)
+
+	generator, ok := directors.b[name]
+	if !ok {
+		return nil, fmt.Errorf("Directors %q not found", name)
+	}
+
+	return generator(config, channel)
+}
+
+//=======================================================================================================
 
 // Director defines an interface which exposes an interface to allow structures that
 // implement this interface allow us to control containers which they provide.

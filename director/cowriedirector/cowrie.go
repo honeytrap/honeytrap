@@ -28,6 +28,7 @@ const (
 var (
 	dailTimeout = 5 * time.Second
 	log         = logging.MustGetLogger("honeytrap:director:cowrie")
+	_           = director.RegisterDirector("cowrie", NewWith)
 )
 
 // Director defines a central structure which creates/retrieves Container
@@ -40,6 +41,11 @@ type Director struct {
 	containers     map[string]director.Container
 	globalCommands process.SyncProcess
 	globalScripts  process.SyncScripts
+}
+
+// NewWith returns a new instance of the Director.
+func NewWith(config *config.Config, events pushers.Channel) director.Director {
+	return New(config, events)
 }
 
 // New returns a new instance of the Director.
