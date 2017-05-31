@@ -1,10 +1,13 @@
 package canary
 
 import (
+	"bufio"
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"math/rand"
 	"net"
+	"os"
 	"strings"
 	"sync"
 	"syscall"
@@ -55,6 +58,10 @@ const (
 
 // Canary contains the canary struct
 type Canary struct {
+	rt RouteTable
+
+	ac ARPCache
+
 	epfd int
 
 	m sync.Mutex
@@ -250,12 +257,15 @@ func (c *Canary) handleARP(data []byte) error {
 	_ = arp
 
 	// check if it is my hardware address or broadcast
-	/*
-		if bytes.Compare(arp.TargetMAC[:], []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}) == 0 {
-			if arp.Opcode == 0x01 {
-				fmt.Printf("ARP: Who has %s? tell %s.", net.IPv4(arp.TargetIP[0], arp.TargetIP[1], arp.TargetIP[2], arp.TargetIP[3]).String(), net.IPv4(arp.SenderIP[0], arp.SenderIP[1], arp.SenderIP[2], arp.SenderIP[3]).String())
-			}
-		} else if bytes.Compare(arp.TargetMAC[:], c.networkInterface.HardwareAddr) == 0 {
+	if bytes.Compare(arp.TargetMAC[:], []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}) == 0 {
+		if arp.Opcode == 0x01 {
+			fmt.Printf("ARP: Who has %s? tell %s.", net.IPv4(arp.TargetIP[0], arp.TargetIP[1], arp.TargetIP[2], arp.TargetIP[3]).String(), net.IPv4(arp.SenderIP[0], arp.SenderIP[1], arp.SenderIP[2], arp.SenderIP[3]).String())
+		}
+		return nil
+	}
+
+	for _, networkInterface := range c.networkInterfaces {
+		if bytes.Compare(arp.TargetMAC[:], networkInterface.HardwareAddr) == 0 {
 			if arp.Opcode == 0x01 {
 				fmt.Printf("ARP: Who has %s? tell %s.", net.IPv4(arp.TargetIP[0], arp.TargetIP[1], arp.TargetIP[2], arp.TargetIP[3]).String(), net.IPv4(arp.SenderIP[0], arp.SenderIP[1], arp.SenderIP[2], arp.SenderIP[3]).String())
 			} else {
@@ -263,7 +273,7 @@ func (c *Canary) handleARP(data []byte) error {
 		} else {
 			fmt.Println("ARP: not for me")
 		}
-	*/
+	}
 
 	return nil
 }
@@ -365,8 +375,6 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 		return nil
 	}
 
-	fmt.Println(iph.Src, iph.Dst, hdr.Source, hdr.Destination, hdr.SeqNum, hdr.AckNum)
-
 	state := c.stateTable.Get(iph.Src, iph.Dst, hdr.Source, hdr.Destination)
 	if state != nil {
 	} else if !hdr.HasFlag(tcp.SYN) {
@@ -399,7 +407,7 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 			DestinationPort: hdr.Destination,
 		}
 	} else if hdr.Ctrl&tcp.PSH == tcp.PSH {
-		fmt.Println(string(data))
+		c.events.Send(EventTCPPayload(iph.Src, hdr.Destination, string(hdr.Payload)))
 		return nil
 	} else {
 		// FIN / RST
@@ -410,9 +418,23 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 	return nil
 }
 
-func (c *Canary) ack(state *State, iph *ipv4.Header, tcph *tcp.Header) error {
-	fmt.Println("Ack'in ", tcph.SeqNum)
+// EventSSDP will return a snmp event struct
+func EventTCPPayload(sourceIP net.IP, port uint16, payload string) message.Event {
+	// TODO: message should go into String() / Message, where message.Event will become interface
+	return message.Event{
+		Sensor:   "Canary",
+		Category: EventCategoryUDP,
+		Type:     message.ServiceStarted,
+		Details: map[string]interface{}{
+			"source-ip": sourceIP,
+			"port":      port,
+			"payload":   payload,
+			"length":    len(payload),
+		},
+	}
+}
 
+func (c *Canary) ack(state *State, iph *ipv4.Header, tcph *tcp.Header) error {
 	seqNum := tcph.SeqNum + uint32(len(tcph.Payload))
 	flags := tcp.Flag(tcp.ACK)
 
@@ -490,26 +512,41 @@ func (c *Canary) ack(state *State, iph *ipv4.Header, tcph *tcp.Header) error {
 	// Src := net.IPv4(data1[12], data1[13], data1[14], data1[15])
 	Dst := net.IPv4(data[16], data[17], data[18], data[19])
 
-	fmt.Printf("interfaces %#v\n", c.networkInterfaces)
-
+	// c.networkInterfaces[0].Addrs()
+	// check if dst in mask current
+	// lookup route table
+	// find gateway
 	// create ethernet frame with correct dest mac address
 	ef := ethernet.EthernetFrame{
 		Source:      c.networkInterfaces[0].HardwareAddr,
-		Destination: []byte{0x00, 0x50, 0x56, 0xee, 0xc6, 0x2c},
+		Destination: []byte{0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
 		Type:        0x0800,
 	}
 
-	if Dst.String() == "172.16.84.1" {
-		ef.Destination = []byte{0x00, 0x50, 0x56, 0xc0, 0x00, 0x08}
-	} else if Dst.String() == "172.16.84.2" {
-		ef.Destination = []byte{0x00, 0x50, 0x56, 0xee, 0xc6, 0x2c}
-	} else if Dst.String() == "172.16.84.128" {
-		ef.Destination = []byte{0x00, 0x0c, 0x29, 0xaa, 0xee, 0x37}
-	} else if Dst.String() == "217.196.36.3" {
-		ef.Destination = []byte{0x00, 0x50, 0x56, 0xee, 0xc6, 0x2c}
+	intf := ""
+
+	ae := c.ac.Get(Dst)
+	if ae != nil {
+		ef.Destination = ae.HardwareAddress
+		intf = ae.Interface
 	} else {
-		fmt.Printf("Unknown IP: %s forwarding traffic to router.\n", Dst.String())
-		ef.Destination = []byte{0x00, 0x0c, 0x29, 0xaa, 0xee, 0x37}
+		for _, route := range c.rt {
+			// find shortest route
+			if !route.Destination.Contains(Dst) {
+				continue
+			}
+
+			for _, a := range c.ac {
+				if !a.IP.Equal(a.IP) {
+					continue
+				}
+
+				intf = a.Interface
+				ef.Destination = a.HardwareAddress
+				break
+			}
+		}
+
 	}
 
 	data2, err := ef.Marshal()
@@ -568,16 +605,170 @@ func (c *Canary) ack(state *State, iph *ipv4.Header, tcph *tcp.Header) error {
 
 	data = append(data2, data...)
 
-	fmt.Println("Packet queued", Dst.String(), len(data))
-
-	c.send(data)
+	c.send(intf, data)
 
 	return nil
+}
+
+// Count occurrences in s of any bytes in t.
+func countAnyByte(s string, t string) int {
+	n := 0
+	for i := 0; i < len(s); i++ {
+		if strings.IndexByte(t, s[i]) >= 0 {
+			n++
+		}
+	}
+	return n
+}
+
+// Split s at any bytes in t.
+func splitAtBytes(s string, t string) []string {
+	a := make([]string, 1+countAnyByte(s, t))
+	n := 0
+	last := 0
+	for i := 0; i < len(s); i++ {
+		if strings.IndexByte(t, s[i]) >= 0 {
+			if last < i {
+				a[n] = s[last:i]
+				n++
+			}
+			last = i + 1
+		}
+	}
+	if last < len(s) {
+		a[n] = s[last:]
+		n++
+	}
+	return a[0:n]
+}
+
+type ARPCache []ARPEntry
+
+func (ac ARPCache) Get(ip net.IP) *ARPEntry {
+	for _, a := range ac {
+		if !a.IP.Equal(ip) {
+			continue
+		}
+
+		return &a
+	}
+
+	return nil
+}
+
+type ARPEntry struct {
+	IP              net.IP
+	HardwareAddress net.HardwareAddr
+	Interface       string
+}
+
+func parseARPCache(path string) (ARPCache, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+
+	defer f.Close()
+
+	entries := []ARPEntry{}
+
+	r := bufio.NewReader(f)
+
+	// skip first line
+	r.ReadLine()
+
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		text := scanner.Text()
+		parts := splitAtBytes(text, " \r\t\n")
+		if len(parts) < 6 {
+			continue
+		}
+
+		ip := net.ParseIP(parts[0])
+		hwaddress, _ := net.ParseMAC(parts[3])
+
+		entries = append(entries, ARPEntry{
+			Interface:       parts[5],
+			IP:              ip,
+			HardwareAddress: hwaddress,
+		})
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return ARPCache(entries), nil
+}
+
+type RouteTable []Route
+
+type Route struct {
+	Interface string
+
+	Gateway     net.IP
+	Destination net.IPNet
+}
+
+func parseRouteTable(path string) (RouteTable, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+
+	defer f.Close()
+
+	routes := []Route{}
+
+	r := bufio.NewReader(f)
+
+	// skip first line
+	r.ReadLine()
+
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		text := scanner.Text()
+		parts := splitAtBytes(text, " :\r\t\n")
+		if len(parts) < 11 {
+			continue
+		}
+
+		destination, _ := hex.DecodeString(parts[1])
+		mask, _ := hex.DecodeString(parts[7])
+
+		gateway, _ := hex.DecodeString(parts[2])
+
+		routes = append(routes, Route{
+			Interface: parts[0],
+			Gateway:   net.IPv4(gateway[3], gateway[2], gateway[1], gateway[0]),
+			Destination: net.IPNet{
+				IP:   net.IPv4(destination[0], destination[1], destination[2], destination[3]),
+				Mask: net.IPv4Mask(mask[0], mask[1], mask[2], mask[3]),
+			},
+		})
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return RouteTable(routes), nil
 }
 
 // New will return a Canary for specified interfaces. Events will be delivered through
 // events
 func New(interfaces []net.Interface, events pushers.Channel) (*Canary, error) {
+	rt, err := parseRouteTable("/proc/net/route")
+	if err != nil {
+		return nil, fmt.Errorf("Could not parse route table: %s", err.Error())
+	}
+
+	ac, err := parseARPCache("/proc/net/arp")
+	if err != nil {
+		return nil, fmt.Errorf("Could not parse arp cache: %s", err.Error())
+	}
+
 	epfd, err := syscall.EpollCreate1(0)
 	if err != nil {
 		return nil, fmt.Errorf("epoll_create1: %s", err.Error())
@@ -587,7 +778,7 @@ func New(interfaces []net.Interface, events pushers.Channel) (*Canary, error) {
 	descriptors := map[string]int32{}
 
 	for _, intf := range interfaces {
-		if intf.Name != "ens160" {
+		if intf.Name != "ens160" && intf.Name != "eth0" {
 			continue
 		}
 
@@ -609,6 +800,8 @@ func New(interfaces []net.Interface, events pushers.Channel) (*Canary, error) {
 	r := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
 
 	return &Canary{
+		ac:                ac,
+		rt:                rt,
 		epfd:              epfd,
 		descriptors:       descriptors,
 		networkInterfaces: networkInterfaces,
@@ -692,7 +885,7 @@ func EventPortscan(sourceIP net.IP, duration time.Duration, count int, ports []s
 }
 
 // send will queue a packet for sending
-func (c *Canary) send(data []byte) error {
+func (c *Canary) send(intf string, data []byte) error {
 	c.m.Lock()
 	defer c.m.Unlock()
 
@@ -701,7 +894,6 @@ func (c *Canary) send(data []byte) error {
 
 	// how does the buffer play nice with retransmits
 
-	fmt.Println("data", len(data))
 	c.buffer.Write(data)
 
 	// enable poll out
@@ -715,7 +907,7 @@ func (c *Canary) send(data []byte) error {
 		_ = intf
 	}
 
-	fd := c.descriptors["ens160"]
+	fd := c.descriptors[intf]
 
 	err := syscall.EpollCtl(c.epfd, syscall.EPOLL_CTL_MOD, int(fd), &syscall.EpollEvent{
 		Events: syscall.EPOLLIN | syscall.EPOLLOUT,
@@ -794,7 +986,6 @@ func (c *Canary) transmit(fd int32) error {
 		panic(err)
 	}
 
-	fmt.Println("Bytes %d delivered", n)
 	return nil
 }
 
@@ -845,9 +1036,6 @@ func (c *Canary) Run() error {
 			}
 
 			if events[ev].Events&syscall.EPOLLOUT == syscall.EPOLLOUT {
-				fmt.Println("GOT EPOLLOUT")
-				fmt.Println("BLA", c.buffer.Avail())
-				// should we use the network interface fd, or just events[ev]Fd?
 				c.transmit(events[ev].Fd)
 
 				// disable epollout again
