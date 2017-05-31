@@ -259,7 +259,7 @@ func (c *Canary) handleARP(data []byte) error {
 	// check if it is my hardware address or broadcast
 	if bytes.Compare(arp.TargetMAC[:], []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}) == 0 {
 		if arp.Opcode == 0x01 {
-			fmt.Printf("ARP: Who has %s? tell %s.", net.IPv4(arp.TargetIP[0], arp.TargetIP[1], arp.TargetIP[2], arp.TargetIP[3]).String(), net.IPv4(arp.SenderIP[0], arp.SenderIP[1], arp.SenderIP[2], arp.SenderIP[3]).String())
+			// fmt.Printf("ARP: Who has %s? tell %s.", net.IPv4(arp.TargetIP[0], arp.TargetIP[1], arp.TargetIP[2], arp.TargetIP[3]).String(), net.IPv4(arp.SenderIP[0], arp.SenderIP[1], arp.SenderIP[2], arp.SenderIP[3]).String())
 		}
 		return nil
 	}
@@ -267,11 +267,11 @@ func (c *Canary) handleARP(data []byte) error {
 	for _, networkInterface := range c.networkInterfaces {
 		if bytes.Compare(arp.TargetMAC[:], networkInterface.HardwareAddr) == 0 {
 			if arp.Opcode == 0x01 {
-				fmt.Printf("ARP: Who has %s? tell %s.", net.IPv4(arp.TargetIP[0], arp.TargetIP[1], arp.TargetIP[2], arp.TargetIP[3]).String(), net.IPv4(arp.SenderIP[0], arp.SenderIP[1], arp.SenderIP[2], arp.SenderIP[3]).String())
+				// fmt.Printf("ARP: Who has %s? tell %s.", net.IPv4(arp.TargetIP[0], arp.TargetIP[1], arp.TargetIP[2], arp.TargetIP[3]).String(), net.IPv4(arp.SenderIP[0], arp.SenderIP[1], arp.SenderIP[2], arp.SenderIP[3]).String())
 			} else {
 			}
 		} else {
-			fmt.Println("ARP: not for me")
+			// 			fmt.Println("ARP: not for me")
 		}
 	}
 
