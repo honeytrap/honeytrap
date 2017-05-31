@@ -27,6 +27,8 @@ import (
 // first dns
 // ntp
 // send reset?
+// udp check connect or answer
+// test elasticsearch
 
 const (
 	// MaxEpollEvents defines maximum number of poll events to retrieve at once
@@ -407,7 +409,16 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 			DestinationPort: hdr.Destination,
 		}
 	} else if hdr.Ctrl&tcp.PSH == tcp.PSH {
-		c.events.Send(EventTCPPayload(iph.Src, hdr.Destination, string(hdr.Payload)))
+		handlers := map[uint16]func(*ipv4.Header, *tcp.Header) error{
+			80: c.DecodeHTTP,
+		}
+
+		if fn, ok := handlers[hdr.Destination]; !ok {
+			c.events.Send(EventTCPPayload(iph.Src, hdr.Destination, string(hdr.Payload)))
+		} else if err := fn(iph, hdr); err != nil {
+			fmt.Printf("Could not decode tcp packet: %s", err)
+		}
+
 		return nil
 	} else {
 		// FIN / RST
