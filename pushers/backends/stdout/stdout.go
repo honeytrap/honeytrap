@@ -1,12 +1,14 @@
 package stdout
 
 import (
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/pushers"
@@ -63,7 +65,10 @@ func printify(s string) string {
 	o := ""
 	for _, rune := range s {
 		if !unicode.IsPrint(rune) {
-			o += "\xa4"
+			buf := make([]byte, 4)
+
+			n := utf8.EncodeRune(buf, rune)
+			o += fmt.Sprintf("\\x%s", hex.EncodeToString(buf[:n]))
 			continue
 		}
 
