@@ -7,6 +7,14 @@ import (
 
 //====================================================================================
 
+// Messager defines an interface that exposes a single method
+// that returns a custom message.
+type Messager interface {
+	Message() string
+}
+
+//====================================================================================
+
 // PushMessage defines a struct which contains specific data relating to
 // different messages to provide Push notifications for the pusher api.
 type PushMessage struct {
@@ -42,6 +50,7 @@ const (
 	ContainerStarted     EventType = "CONTAINER:STARTED"
 	ContainerFrozen      EventType = "CONTAINER:FROZEN"
 	ContainerDial        EventType = "CONTAINER:DIAL"
+	ContainerError       EventType = "CONTAINER:ERROR"
 	ContainerUnfrozen    EventType = "CONTAINER:UNFROZEN"
 	ContainerCloned      EventType = "CONTAINER:CLONED"
 	ContainerStopped     EventType = "CONTAINER:STOPPED"
@@ -66,15 +75,16 @@ const (
 	ConnectionErrorSensor = "CONNECTION:ERROR"
 )
 
-type EventCategory1 string
+// EventCategory defines a string type for for which is used to defined event category
+// for different types.
+type EventCategory string
 
 // Event defines a struct which contains definitive details about the operation of
 // a giving event.
 type Event struct {
-	Date time.Time   `json:"date"`
-	Data interface{} `json:"data"`
-	// Category string      `json:"category"`
-	Category    EventCategory1         `json:"category"`
+	Date        time.Time              `json:"date"`
+	Data        interface{}            `json:"data"`
+	Category    EventCategory          `json:"category"`
 	Sensor      string                 `json:"sensor"`
 	Details     map[string]interface{} `json:"details"`
 	HostAddr    string                 `json:"host_addr"`
@@ -88,26 +98,50 @@ type Event struct {
 	ContainerID string                 `json:"container_id,omitempty"`
 }
 
-// String returns a stringified version of the event.
+// String returns a the default Event message associated with the Event
 func (e Event) String() string {
-	return fmt.Sprintf("Event %q occured with for Sensor[%q], Data[%#q] - Detail[%#q]", e.Type, e.Sensor, e.Data, e.Details)
+	return fmt.Sprintf("Event occured with Sensor %q and Category %+q", e.Sensor, e.Category)
 }
 
 //====================================================================================
 
-// EventCategory is created to allow setting the category of a custom event.
-func EventCategory(ev Event, category string) Event {
-	ev.Category = EventCategory1(category)
+// EventSession is created to allow setting the sessionID of a event.
+func EventSession(ev Event, sessionID string) Event {
+	ev.SessionID = sessionID
 	return ev
 }
 
-// EventDetail is created to allow setting the data of a custom event.
+// EventContainer is created to allow setting the container of a event.
+func EventContainer(ev Event, container string) Event {
+	ev.ContainerID = container
+	return ev
+}
+
+// EventLocation is created to allow setting the location of a event.
+func EventLocation(ev Event, location string) Event {
+	ev.Location = location
+	return ev
+}
+
+// EventToken is created to allow setting the token of a event.
+func EventToken(ev Event, token string) Event {
+	ev.Token = token
+	return ev
+}
+
+// EventCategoryType is created to allow setting the category of a event.
+func EventCategoryType(ev Event, category string) Event {
+	ev.Category = EventCategory(category)
+	return ev
+}
+
+// EventDetail is created to allow setting the data of a event.
 func EventDetail(ev Event, details map[string]interface{}) Event {
 	ev.Details = details
 	return ev
 }
 
-// EventData is created to allow setting the data of a custom event.
+// EventData is created to allow setting the data of a event.
 func EventData(ev Event, data interface{}) Event {
 	ev.Data = data
 	return ev

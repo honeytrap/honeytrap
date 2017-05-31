@@ -108,12 +108,12 @@ func ListenerClosedEvent(c net.Listener) message.Event {
 // ListenerOpenedEvent returns a connection open event object giving the associated data values.
 func ListenerOpenedEvent(c net.Listener, data interface{}, meta map[string]interface{}) message.Event {
 	return message.Event{
+		Details:   meta,
 		Data:      data,
 		Sensor:    message.ConnectionSensor,
 		Type:      message.ConnectionOpened,
 		HostAddr:  c.Addr().String(),
 		LocalAddr: c.Addr().String(),
-		Details:   meta,
 	}
 }
 

@@ -138,8 +138,8 @@ func ContainerStartedEvent(c Container, detail map[string]interface{}) message.E
 func ContainerErrorEvent(c Container, data error) message.Event {
 	return message.Event{
 		Data:   data,
-		Sensor: message.ContainersSensor,
-		Type:   message.PingEvent,
+		Sensor: message.ErrorsSensor,
+		Type:   message.ContainerError,
 	}
 }
 

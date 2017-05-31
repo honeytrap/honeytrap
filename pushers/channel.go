@@ -98,9 +98,17 @@ func FilterChannel(channel Channel, filter FilterGroup) Channel {
 func MakeFilter(bus *EventBus, config *config.Config, conf config.ChannelConfig) error {
 	var filters FilterGroup
 
-	filters.Add(NewRegExpFilter(CategoryFilterFunc, MakeMatchers(conf.Categories...)...))
-	filters.Add(NewRegExpFilter(CategoryFilterFunc, MakeMatchers(conf.Sensors...)...))
-	filters.Add(NewRegExpFilter(CategoryFilterFunc, MakeMatchers(conf.Events...)...))
+	if len(conf.Categories) != 0 {
+		filters.Add(NewRegExpFilter(CategoryFilterFunc, MakeMatchers(conf.Categories...)...))
+	}
+
+	if len(conf.Sensors) != 0 {
+		filters.Add(NewRegExpFilter(CategoryFilterFunc, MakeMatchers(conf.Sensors...)...))
+	}
+
+	if len(conf.Events) != 0 {
+		filters.Add(NewRegExpFilter(CategoryFilterFunc, MakeMatchers(conf.Events...)...))
+	}
 
 	// Generate all filters for the channel's backends
 	for _, backend := range conf.Backends {
