@@ -1,8 +1,17 @@
 package message
 
 import (
+	"fmt"
 	"time"
 )
+
+//====================================================================================
+
+// Messager defines an interface that exposes a single method
+// that returns a custom message.
+type Messager interface {
+	Message() string
+}
 
 //====================================================================================
 
@@ -77,7 +86,6 @@ type Event struct {
 	Data        interface{}            `json:"data"`
 	Category    EventCategory          `json:"category"`
 	Sensor      string                 `json:"sensor"`
-	Message     string                 `json:"message"`
 	Details     map[string]interface{} `json:"details"`
 	HostAddr    string                 `json:"host_addr"`
 	LocalAddr   string                 `json:"local_addr"`
@@ -90,9 +98,9 @@ type Event struct {
 	ContainerID string                 `json:"container_id,omitempty"`
 }
 
-// EventMessage returns a the default Event message associated with the Event
-func (e Event) EventMessage() string {
-	return e.Message
+// String returns a the default Event message associated with the Event
+func (e Event) String() string {
+	return fmt.Sprintf("Event occured with Sensor %q and Category %+q", e.Sensor, e.Category)
 }
 
 //====================================================================================
@@ -124,12 +132,6 @@ func EventToken(ev Event, token string) Event {
 // EventCategoryType is created to allow setting the category of a event.
 func EventCategoryType(ev Event, category string) Event {
 	ev.Category = EventCategory(category)
-	return ev
-}
-
-// EventMessage is created to allow setting the message of a event.
-func EventMessage(ev Event, message string) Event {
-	ev.Message = message
 	return ev
 }
 

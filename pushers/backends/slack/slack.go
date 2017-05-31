@@ -21,9 +21,9 @@ var (
 	_ = pushers.RegisterBackend("slack", NewWith)
 )
 
-// APIConfig defines a struct which holds configuration field values used by the
+// Config defines a struct which holds configuration field values used by the
 // SlackBackend for it's message delivery to the slack channel API.
-type APIConfig struct {
+type Config struct {
 	WebhookURL string `toml:"webhook_url"`
 	Username   string `toml:"username"`
 	IconURL    string `toml:"icon_url"`
@@ -34,11 +34,11 @@ type APIConfig struct {
 // slack notifications are sent into giving slack groups and channels.
 type SlackBackend struct {
 	*http.Client
-	config APIConfig
+	config Config
 }
 
 // New returns a new instance of a SlackBackend.
-func New(config APIConfig) SlackBackend {
+func New(config Config) SlackBackend {
 	return SlackBackend{
 		Client: &http.Client{
 			Transport: &http.Transport{
@@ -54,7 +54,7 @@ func New(config APIConfig) SlackBackend {
 // new messages to a giving underline slack channel defined by the configuration
 // retrieved from the giving toml.Primitive.
 func NewWith(meta toml.MetaData, data toml.Primitive) (pushers.Channel, error) {
-	var config APIConfig
+	var config Config
 
 	if err := meta.PrimitiveDecode(data, &config); err != nil {
 		return nil, err
@@ -69,122 +69,73 @@ func NewWith(meta toml.MetaData, data toml.Primitive) (pushers.Channel, error) {
 
 // Send delivers the giving push messages to the required slack channel.
 // TODO: Ask if Send shouldnt return an error to allow proper delivery validation.
-func (mc SlackBackend) Send(message message.Event) {
-	log.Infof("SlackBackend: Sending Message: %#v", message)
+func (mc SlackBackend) Send(mesg message.Event) {
+	log.Infof("Sending Message: %#v", mesg)
 
 	//Attempt to encode message body first and if failed, log and continue.
 	messageBuffer := new(bytes.Buffer)
-	if err := json.NewEncoder(messageBuffer).Encode(message.Data); err != nil {
-		log.Errorf("SlackBackend: Error encoding data: %q", err.Error())
+	if err := json.NewEncoder(messageBuffer).Encode(mesg.Data); err != nil {
+		log.Errorf("Error encoding data: %q", err.Error())
 		return
 	}
 
-	// Create the appropriate fields for the giving slack message.
-	var fields []Field
-	var sensors []Field
+	var newmesg Message
 
-	sensors = append(sensors, Field{
-		Title: "Sensor",
-		Value: message.Sensor,
-		Short: true,
-	})
+	newmesg.IconURL = mc.config.IconURL
+	newmesg.IconEmoji = mc.config.IconEmoji
+	newmesg.Username = mc.config.Username
 
-	sensors = append(sensors, Field{
-		Title: "Category",
-		Value: string(message.Category),
-		Short: true,
-	})
+	mo, ok := interface{}(mesg).(message.Messager)
 
-	fields = append(fields, Field{
-		Title: "Sensor",
-		Value: message.Sensor,
-		Short: true,
-	})
+	if ok {
+		newmesg.Text = mo.Message()
+	} else if mesg.Details != nil {
 
-	fields = append(fields, Field{
-		Title: "Date",
-		Value: message.Date.UTC().String(),
-		Short: true,
-	})
+		if detailMessage, ok := mesg.Details["message"].(string); ok {
+			newmesg.Text = detailMessage
+		} else {
+			newmesg.Text = mesg.String()
+		}
 
-	fields = append(fields, Field{
-		Title: "HostAddr",
-		Value: message.HostAddr,
-		Short: true,
-	})
+	} else {
+		newmesg.Text = mesg.String()
+	}
 
-	fields = append(fields, Field{
-		Title: "LocalAddr",
-		Value: message.LocalAddr,
-		Short: true,
-	})
-
-	fields = append(fields, Field{
-		Title: "Token",
-		Value: message.Token,
-		Short: true,
-	})
-
-	fields = append(fields, Field{
-		Title: "End Time",
-		Value: message.Ended.UTC().String(),
-		Short: true,
-	})
-
-	fields = append(fields, Field{
-		Title: "Start Time",
-		Value: message.Started.UTC().String(),
-		Short: true,
-	})
-
-	fields = append(fields, Field{
-		Title: "Location",
-		Value: message.Location,
-		Short: true,
-	})
-
-	fields = append(fields, Field{
-		Title: "Category",
-		Value: string(message.Category),
-		Short: true,
-	})
-
-	fields = append(fields, Field{
-		Title: "Session ID",
-		Value: message.SessionID,
-		Short: true,
-	})
-
-	fields = append(fields, Field{
-		Title: "Container ID",
-		Value: message.ContainerID,
-		Short: true,
-	})
-
-	var newMessage Message
-
-	newMessage.IconURL = mc.config.IconURL
-	newMessage.IconEmoji = mc.config.IconEmoji
-	newMessage.Username = mc.config.Username
-	newMessage.Text = message.EventMessage()
-
-	newMessage.Attachments = append(newMessage.Attachments, Attachment{
+	idAttachment := Attachment{
 		Title:    "Event Identification",
 		Author:   "HoneyTrap",
-		Fields:   sensors,
 		Text:     "Event Sensor and Category",
 		Fallback: "Event Sensor and Category",
-	})
+	}
 
-	newMessage.Attachments = append(newMessage.Attachments, Attachment{
+	idAttachment.AddField("Sensor", mesg.Sensor).
+		AddField("Category", string(mesg.Category)).
+		AddField("Type", string(mesg.Type))
+
+	fieldAttachment := Attachment{
 		Title:    "Event Fields",
 		Author:   "HoneyTrap",
-		Fields:   fields,
 		Text:     "Fields for events",
 		Fallback: "Fields for events",
-	})
+	}
 
-	newMessage.Attachments = append(newMessage.Attachments, Attachment{
+	fieldAttachment.AddField("Sensor", mesg.Sensor).
+		AddField("Category", string(mesg.Category)).
+		AddField("HostAddr", mesg.HostAddr).
+		AddField("LocalAddr", mesg.LocalAddr).
+		AddField("Token", mesg.Token).
+		AddField("Type", string(mesg.Type)).
+		AddField("Location", mesg.Location).
+		AddField("Session ID", mesg.SessionID).
+		AddField("Container ID", mesg.ContainerID).
+		AddField("Date", mesg.Date.UTC().String()).
+		AddField("Start Time", mesg.Started.UTC().String()).
+		AddField("End Time", mesg.Ended.UTC().String())
+
+	newmesg.AddAttachment(idAttachment)
+	newmesg.AddAttachment(fieldAttachment)
+
+	newmesg.AddAttachment(Attachment{
 		Title:    "Event Data",
 		Author:   "HoneyTrap",
 		Fallback: string(messageBuffer.Bytes()),
@@ -192,7 +143,7 @@ func (mc SlackBackend) Send(message message.Event) {
 	})
 
 	data := new(bytes.Buffer)
-	if err := json.NewEncoder(data).Encode(newMessage); err != nil {
+	if err := json.NewEncoder(data).Encode(newmesg); err != nil {
 		log.Errorf("Error encoding new SlackMessage: %+q", err)
 		return
 	}
@@ -220,11 +171,11 @@ func (mc SlackBackend) Send(message message.Event) {
 	if res.StatusCode == http.StatusOK {
 	} else if res.StatusCode == http.StatusCreated {
 	} else {
-		log.Errorf("SlackMessageBackend: API Response with unexpected Status Code[%d] to endpoint: %q", res.StatusCode, mc.config.WebhookURL)
+		log.Errorf("API Response with unexpected Status Code[%d] to endpoint: %q", res.StatusCode, mc.config.WebhookURL)
 		return
 	}
 
-	log.Infof("SlackBackend: Delivered Message: %#v", message)
+	log.Infof("Delivered Message: %#v", mesg)
 }
 
 // Message defines the base message to be included sent to a slack endpoint.
@@ -236,7 +187,12 @@ type Message struct {
 	Attachments []Attachment `json:"attachments"`
 }
 
-// Attachment defines a struct to define an attachment to be included with a message.
+// AddAttachment adds a field into the slice for the given attachment.
+func (a *Message) AddAttachment(attachment Attachment) {
+	a.Attachments = append(a.Attachments, attachment)
+}
+
+// Attachment defines a struct to define an attachment to be included with a mesg.
 type Attachment struct {
 	Title     string  `json:"title"`
 	Author    string  `json:"author_name,omitempty"`
@@ -246,7 +202,13 @@ type Attachment struct {
 	Timestamp int64   `json:"ts"`
 }
 
-// Field defines a field item to be shown on a Message.
+// AddField adds a field into the slice for the given attachment.
+func (a *Attachment) AddField(title string, value string) *Attachment {
+	a.Fields = append(a.Fields, Field{Title: title, Value: value, Short: true})
+	return a
+}
+
+// Field defines a field item to be shown on a mesg.
 type Field struct {
 	Title string `json:"title"`
 	Value string `json:"value"`

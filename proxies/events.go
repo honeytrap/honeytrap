@@ -15,7 +15,6 @@ func ServiceStartedEvent(addr net.Addr, data interface{}, meta map[string]interf
 		Type:      message.ServiceStarted,
 		HostAddr:  addr.String(),
 		LocalAddr: addr.String(),
-		Message:   "Service has started",
 	}
 }
 
@@ -28,7 +27,6 @@ func ServiceEndedEvent(addr net.Addr, data interface{}, meta map[string]interfac
 		Type:      message.ServiceStarted,
 		HostAddr:  addr.String(),
 		LocalAddr: addr.String(),
-		Message:   "Service has ended",
 	}
 }
 
@@ -40,7 +38,6 @@ func UserSessionClosedEvent(c net.Conn, data interface{}) message.Event {
 		Type:      message.UserSessionOpened,
 		HostAddr:  c.RemoteAddr().String(),
 		LocalAddr: c.LocalAddr().String(),
-		Message:   "Session has closed",
 	}
 }
 
@@ -53,7 +50,6 @@ func UserSessionOpenedEvent(c net.Conn, data interface{}, meta map[string]interf
 		HostAddr:  c.RemoteAddr().String(),
 		LocalAddr: c.LocalAddr().String(),
 		Details:   meta,
-		Message:   "New Session has begun",
 	}
 }
 
@@ -64,7 +60,6 @@ func ConnectionOpenedEvent(c net.Conn) message.Event {
 		Type:      message.ConnectionOpened,
 		HostAddr:  c.RemoteAddr().String(),
 		LocalAddr: c.LocalAddr().String(),
-		Message:   "New connection has started",
 	}
 }
 
@@ -75,7 +70,6 @@ func ConnectionClosedEvent(c net.Conn) message.Event {
 		Type:      message.ConnectionClosed,
 		HostAddr:  c.RemoteAddr().String(),
 		LocalAddr: c.LocalAddr().String(),
-		Message:   "Connection has closed",
 	}
 }
 
@@ -87,7 +81,6 @@ func ConnectionWriteErrorEvent(c net.Conn, data error) message.Event {
 		Type:      message.ConnectionWriteError,
 		HostAddr:  c.RemoteAddr().String(),
 		LocalAddr: c.LocalAddr().String(),
-		Message:   "Connection has faced write error",
 	}
 }
 
@@ -99,7 +92,6 @@ func ConnectionReadErrorEvent(c net.Conn, data error) message.Event {
 		Type:      message.ConnectionReadError,
 		HostAddr:  c.RemoteAddr().String(),
 		LocalAddr: c.LocalAddr().String(),
-		Message:   "Connection has faced read error",
 	}
 }
 
@@ -110,7 +102,6 @@ func ListenerClosedEvent(c net.Listener) message.Event {
 		Type:      message.ConnectionClosed,
 		HostAddr:  c.Addr().String(),
 		LocalAddr: c.Addr().String(),
-		Message:   "Listener has being closed",
 	}
 }
 
@@ -123,7 +114,6 @@ func ListenerOpenedEvent(c net.Listener, data interface{}, meta map[string]inter
 		Type:      message.ConnectionOpened,
 		HostAddr:  c.Addr().String(),
 		LocalAddr: c.Addr().String(),
-		Message:   "Listener has being open",
 	}
 }
 
@@ -138,7 +128,6 @@ func AgentRequestEvent(addr net.Addr, session string, data interface{}, detail m
 		HostAddr:  addr.String(),
 		LocalAddr: addr.String(),
 		Details:   detail,
-		Message:   "Service Agent has report an event",
 	}
 }
 
@@ -151,7 +140,6 @@ func DataRequest(c net.Conn, data interface{}, detail map[string]interface{}) me
 		Type:      message.DataRequest,
 		HostAddr:  c.RemoteAddr().String(),
 		LocalAddr: c.LocalAddr().String(),
-		Message:   "Data request has initiated",
 	}
 }
 
@@ -164,7 +152,6 @@ func OperationEvent(c net.Conn, data interface{}, detail map[string]interface{})
 		Type:      message.Operational,
 		HostAddr:  c.RemoteAddr().String(),
 		LocalAddr: c.LocalAddr().String(),
-		Message:   "Operation request has occured",
 	}
 }
 
@@ -177,7 +164,6 @@ func AuthEvent(c net.Conn, data interface{}, detail map[string]interface{}) mess
 		Type:      message.OperationalAuth,
 		HostAddr:  c.RemoteAddr().String(),
 		LocalAddr: c.LocalAddr().String(),
-		Message:   "Authentication request has occured",
 	}
 }
 
@@ -190,7 +176,6 @@ func DataReadEvent(c net.Conn, data interface{}, detail map[string]interface{}) 
 		Type:      message.DataRead,
 		HostAddr:  c.RemoteAddr().String(),
 		LocalAddr: c.LocalAddr().String(),
-		Message:   "Data read request has occured",
 	}
 }
 
@@ -203,7 +188,6 @@ func DataWriteEvent(c net.Conn, data interface{}, detail map[string]interface{})
 		Type:      message.DataWrite,
 		HostAddr:  c.RemoteAddr().String(),
 		LocalAddr: c.LocalAddr().String(),
-		Message:   "Data write request has occured",
 	}
 }
 
@@ -215,6 +199,5 @@ func PingEvent(c net.Conn, data interface{}) message.Event {
 		Type:      message.PingEvent,
 		HostAddr:  c.RemoteAddr().String(),
 		LocalAddr: c.LocalAddr().String(),
-		Message:   "Ping has being sent",
 	}
 }

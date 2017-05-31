@@ -7,7 +7,6 @@ func ContainerStoppedEvent(c Container, detail map[string]interface{}) message.E
 	return message.Event{
 		Details: detail,
 		Data:    c.Detail(),
-		Message: "Container has been stopped",
 		Sensor:  message.ContainersSensor,
 		Type:    message.ContainerStopped,
 	}
@@ -18,7 +17,6 @@ func ContainerDialEvent(c Container, detail map[string]interface{}) message.Even
 	return message.Event{
 		Details: detail,
 		Data:    c.Detail(),
-		Message: "New Container net.Conn created",
 		Sensor:  message.ContainersSensor,
 		Type:    message.ContainerDial,
 	}
@@ -37,7 +35,6 @@ func ContainerPcappedEvent(c Container, data []byte, detail map[string]interface
 		Data:    data,
 		Sensor:  message.ContainersSensor,
 		Type:    message.ContainerPcaped,
-		Message: "Container network data stored",
 	}
 }
 
@@ -54,7 +51,6 @@ func ContainerCheckpointEvent(c Container, data []byte, detail map[string]interf
 		Data:    data,
 		Sensor:  message.ContainersSensor,
 		Type:    message.ContainerCheckpoint,
-		Message: "Container is getting checkpoint to save history",
 	}
 }
 
@@ -71,17 +67,15 @@ func ContainerTarredEvent(c Container, data []byte, detail map[string]interface{
 		Data:    data,
 		Sensor:  message.ContainersSensor,
 		Type:    message.ContainerTarred,
-		Message: "Container data is getting tarred",
 	}
 }
 
 // ContainerClonedEvent returns a connection open event object giving the associated data values.
 func ContainerClonedEvent(c Container, name string, template string, ip string) message.Event {
 	return message.Event{
-		Data:    c.Detail(),
-		Sensor:  message.ContainersSensor,
-		Type:    message.ContainerPaused,
-		Message: "Container is cloned",
+		Data:   c.Detail(),
+		Sensor: message.ContainersSensor,
+		Type:   message.ContainerPaused,
 		Details: map[string]interface{}{
 			"container-ip":       ip,
 			"container-name":     name,
@@ -97,7 +91,6 @@ func ContainerPausedEvent(c Container, detail map[string]interface{}) message.Ev
 		Data:    c.Detail(),
 		Sensor:  message.ContainersSensor,
 		Type:    message.ContainerPaused,
-		Message: "Container has just being paused",
 	}
 }
 
@@ -108,7 +101,6 @@ func ContainerResumedEvent(c Container, detail map[string]interface{}) message.E
 		Data:    c.Detail(),
 		Sensor:  message.ContainersSensor,
 		Type:    message.ContainerResumed,
-		Message: "Container has just being resumed",
 	}
 }
 
@@ -119,7 +111,6 @@ func ContainerUnfrozenEvent(c Container, detail map[string]interface{}) message.
 		Data:    c.Detail(),
 		Sensor:  message.ContainersSensor,
 		Type:    message.ContainerUnfrozen,
-		Message: "Container has just being unfrozen",
 	}
 }
 
@@ -130,7 +121,6 @@ func ContainerFrozenEvent(c Container, detail map[string]interface{}) message.Ev
 		Data:    c.Detail(),
 		Sensor:  message.ContainersSensor,
 		Type:    message.ContainerFrozen,
-		Message: "Container has just being frozen",
 	}
 }
 
@@ -141,17 +131,15 @@ func ContainerStartedEvent(c Container, detail map[string]interface{}) message.E
 		Data:    c.Detail(),
 		Sensor:  message.ContainersSensor,
 		Type:    message.ContainerStarted,
-		Message: "Container has just being started",
 	}
 }
 
 // ContainerErrorEvent returns a connection open event object giving the associated data values.
 func ContainerErrorEvent(c Container, data error) message.Event {
 	return message.Event{
-		Data:    data,
-		Sensor:  message.ErrorsSensor,
-		Type:    message.ContainerError,
-		Message: "Container has just faced an error",
+		Data:   data,
+		Sensor: message.ErrorsSensor,
+		Type:   message.ContainerError,
 	}
 }
 
@@ -162,16 +150,14 @@ func ContainerDataWriteEvent(c Container, data interface{}, meta map[string]inte
 		Details: meta,
 		Sensor:  message.ContainersSensor,
 		Type:    message.DataWrite,
-		Message: "Container has just written new data",
 	}
 }
 
 // ContainerDataReadEvent returns a connection open event object giving the associated data values.
 func ContainerDataReadEvent(c Container, data interface{}) message.Event {
 	return message.Event{
-		Data:    data,
-		Sensor:  message.ContainersSensor,
-		Type:    message.DataRead,
-		Message: "Container has just read more data",
+		Data:   data,
+		Sensor: message.ContainersSensor,
+		Type:   message.DataRead,
 	}
 }
