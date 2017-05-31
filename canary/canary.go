@@ -70,6 +70,8 @@ type Canary struct {
 	descriptors map[string]int32
 
 	buffer *rbuf.FixedSizeRingBuf
+
+	stateTable StateTable
 }
 
 // KnockGroup groups multiple knocks
@@ -282,6 +284,70 @@ func (c *Canary) isMe(ip net.IP) bool {
 	return false
 }
 
+func NewState(src net.IP, srcPort uint16, dest net.IP, dstPort uint16) *State {
+	return &State{
+		SrcIP:   src,
+		SrcPort: srcPort,
+
+		DestIP:   dest,
+		DestPort: dstPort,
+
+		ID: rand.Uint32(),
+
+		RecvNext: 0,
+		SendNext: rand.Uint32(),
+	}
+}
+
+type State struct {
+	// interface?
+
+	SrcIP   net.IP
+	SrcPort uint16
+
+	DestIP   net.IP
+	DestPort uint16
+
+	ID uint32
+
+	RecvNext uint32
+	SendNext uint32
+
+	LastAcked uint32
+}
+
+type StateTable []*State
+
+func (st *StateTable) Add(state *State) {
+	*st = append(*st, state)
+}
+
+// GetState will return the state for the ip, port combination
+func (st *StateTable) Get(SrcIP, DestIP net.IP, SrcPort, DestPort uint16) *State {
+	for _, state := range *st {
+		if state.SrcPort != SrcPort && state.DestPort != SrcPort {
+			continue
+		}
+
+		if state.DestPort != DestPort && state.SrcPort != DestPort {
+			continue
+		}
+
+		// comparing ipv6 with ipv4 now
+		if !state.SrcIP.Equal(SrcIP) && !state.DestIP.Equal(SrcIP) {
+			continue
+		}
+
+		if !state.DestIP.Equal(DestIP) && !state.SrcIP.Equal(DestIP) {
+			continue
+		}
+
+		return state
+	}
+
+	return nil // state
+}
+
 // handleTCP will handle tcp packets
 func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 	hdr, err := tcp.UnmarshalWithChecksum(data, iph.Dst, iph.Src)
@@ -299,40 +365,80 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 		return nil
 	}
 
+	fmt.Println(iph.Src, iph.Dst, hdr.Source, hdr.Destination, hdr.SeqNum, hdr.AckNum)
+
+	state := c.stateTable.Get(iph.Src, iph.Dst, hdr.Source, hdr.Destination)
+	if state != nil {
+	} else if !hdr.HasFlag(tcp.SYN) {
+		// no existing state found, returning
+		return nil // ErrNoExistingStateFound()
+	} else {
+		// no state found
+		state = NewState(iph.Src, hdr.Source, iph.Dst, hdr.Destination)
+		c.stateTable.Add(state)
+	}
+
 	// USE PUSH?
 	// ACK THE PAYLOAD ALWAYS
 
-	if hdr.Ctrl&tcp.SYN != tcp.SYN {
-		fmt.Println(string(hdr.Payload))
-		return nil
-	} else if hdr.Ctrl&tcp.ACK != 0 {
+	// ACK EACH SYN, PSH, FIN AND RST
+	switch {
+	case hdr.HasFlag(tcp.SYN):
+		fallthrough
+	case hdr.HasFlag(tcp.RST):
+		fallthrough
+	case hdr.HasFlag(tcp.FIN):
+		fallthrough
+	case hdr.HasFlag(tcp.PSH):
+		c.ack(state, iph, hdr)
+	}
+
+	if hdr.Ctrl&tcp.SYN == tcp.SYN {
+		c.knockChan <- KnockTCPPort{
+			SourceIP:        iph.Src,
+			DestinationPort: hdr.Destination,
+		}
+	} else if hdr.Ctrl&tcp.PSH == tcp.PSH {
 		fmt.Println(string(data))
 		return nil
 	} else {
-		// payload
-	}
-
-	// do handshake, send ACK to SYN to wait for the beep
-	c.ack(iph, hdr)
-
-	c.knockChan <- KnockTCPPort{
-		SourceIP:        iph.Src,
-		DestinationPort: hdr.Destination,
+		// FIN / RST
+		return nil
 	}
 
 	// check if we have tcp listeners on specified port, and answer otherwise
 	return nil
 }
 
-func (c *Canary) ack(iph *ipv4.Header, tcph *tcp.Header) error {
+func (c *Canary) ack(state *State, iph *ipv4.Header, tcph *tcp.Header) error {
+	fmt.Println("Ack'in ", tcph.SeqNum)
+
+	seqNum := tcph.SeqNum + uint32(len(tcph.Payload))
+	flags := tcp.Flag(tcp.ACK)
+
+	if tcph.HasFlag(tcp.SYN) {
+		seqNum++
+		flags |= tcp.Flag(tcp.SYN)
+	} else if tcph.HasFlag(tcp.RST) {
+		seqNum++
+		flags |= tcp.Flag(tcp.RST)
+	} else if tcph.HasFlag(tcp.FIN) {
+		seqNum++
+		flags |= tcp.Flag(tcp.FIN)
+	}
+
+	// TODO: keep state....
+	// SeqNum
+	// ID
+
 	th := &tcp.Header{
 		Source:      tcph.Destination,
 		Destination: tcph.Source,
-		SeqNum:      0,
-		AckNum:      tcph.SeqNum + 1,
+		SeqNum:      state.SendNext,
+		AckNum:      seqNum,
 		Reserved:    0,
 		ECN:         0,
-		Ctrl:        tcp.SYN | tcp.ACK,
+		Ctrl:        flags,
 		Window:      65531,
 		Checksum:    0,
 		Urgent:      0,
@@ -355,7 +461,7 @@ func (c *Canary) ack(iph *ipv4.Header, tcph *tcp.Header) error {
 		TTL:      128,
 		Src:      iph.Dst,
 		Dst:      iph.Src,
-		ID:       0,
+		ID:       int(state.ID), // state.ID() which will increment automatically
 		Protocol: 6,
 		TotalLen: 20 + len(data1),
 	}
@@ -363,6 +469,18 @@ func (c *Canary) ack(iph *ipv4.Header, tcph *tcp.Header) error {
 	data, err := iph2.Marshal()
 	if err != nil {
 		return err
+	}
+
+	state.ID++
+	// we don't have to increate sendNext for ACK
+	// state.SendNext++
+
+	if tcph.HasFlag(tcp.SYN) {
+		state.SendNext++
+	} else if tcph.HasFlag(tcp.RST) {
+		state.SendNext++
+	} else if tcph.HasFlag(tcp.FIN) {
+		state.SendNext++
 	}
 
 	updateTCPChecksum(iph2, data1)
@@ -376,7 +494,7 @@ func (c *Canary) ack(iph *ipv4.Header, tcph *tcp.Header) error {
 
 	// create ethernet frame with correct dest mac address
 	ef := ethernet.EthernetFrame{
-		Source:      c.networkInterfaces[1].HardwareAddr,
+		Source:      c.networkInterfaces[0].HardwareAddr,
 		Destination: []byte{0x00, 0x50, 0x56, 0xee, 0xc6, 0x2c},
 		Type:        0x0800,
 	}
@@ -450,7 +568,7 @@ func (c *Canary) ack(iph *ipv4.Header, tcph *tcp.Header) error {
 
 	data = append(data2, data...)
 
-	fmt.Println("Packet queued", Dst.String())
+	fmt.Println("Packet queued", Dst.String(), len(data))
 
 	c.send(data)
 
@@ -469,6 +587,10 @@ func New(interfaces []net.Interface, events pushers.Channel) (*Canary, error) {
 	descriptors := map[string]int32{}
 
 	for _, intf := range interfaces {
+		if intf.Name != "ens160" {
+			continue
+		}
+
 		if fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(htons(syscall.ETH_P_ALL))); err != nil {
 			return nil, fmt.Errorf("Could not create socket: %s", err.Error())
 		} else if fd < 0 {
@@ -579,7 +701,7 @@ func (c *Canary) send(data []byte) error {
 
 	// how does the buffer play nice with retransmits
 
-	fmt.Println("data")
+	fmt.Println("data", len(data))
 	c.buffer.Write(data)
 
 	// enable poll out
@@ -664,7 +786,7 @@ func (c *Canary) transmit(fd int32) error {
 
 	to := &syscall.SockaddrLinklayer{
 		Protocol: htons(syscall.ETH_P_ALL),
-		Ifindex:  c.networkInterfaces[1].Index,
+		Ifindex:  c.networkInterfaces[0].Index,
 	}
 
 	err = syscall.Sendto((int(fd)), buffer[:n], 0, to)
