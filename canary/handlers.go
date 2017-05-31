@@ -26,8 +26,9 @@ func EventUDP(sourceIP net.IP, port uint16, payload string) message.Event {
 		Category: EventCategoryUDP,
 		Type:     message.ServiceStarted,
 		Details: map[string]interface{}{
-			"port":    port,
-			"payload": payload,
+			"source-ip": sourceIP.String(),
+			"port":      port,
+			"payload":   payload,
 		},
 	}
 }
@@ -62,6 +63,8 @@ func EventSSDP(sourceIP net.IP, method, uri, proto string, headers http.Header) 
 		Category: EventCategorySSDP,
 		Type:     message.ServiceStarted,
 		Details: map[string]interface{}{
+			"source-ip": sourceIP.String(),
+
 			"method":  method,
 			"uri":     uri,
 			"proto":   proto,
@@ -106,6 +109,7 @@ func EventSIP(sourceIP net.IP, method, uri, proto string, headers http.Header) m
 		Category: EventCategorySIP,
 		Type:     message.ServiceStarted,
 		Details: map[string]interface{}{
+			"source-ip":  sourceIP.String(),
 			"method":     method,
 			"uri":        uri,
 			"proto":      proto,
@@ -214,7 +218,10 @@ func EventNTP(sourceIP net.IP, ntp layers.NTP) message.Event {
 		Category: EventCategoryNTP,
 		Type:     message.ServiceStarted,
 		Details: map[string]interface{}{
-			"message": fmt.Sprintf("NTP packet received, version=%d, mode=%s", ntp.Version, mode),
+			"source-ip": sourceIP.String(),
+			"message":   fmt.Sprintf("NTP packet received, version=%d, mode=%s", ntp.Version, mode),
+			"version":   ntp.Version,
+			"mode":      mode,
 		},
 	}
 }
@@ -269,6 +276,7 @@ func EventDNSOther(sourceIP net.IP, dns layers.DNS) message.Event {
 		Category: EventCategoryDNSOther,
 		Type:     message.ServiceStarted,
 		Details: map[string]interface{}{
+			"source-ip": sourceIP.String(),
 			"message":   fmt.Sprintf("opcode=%s questions=%s", dns.OpCode, dns.Questions),
 			"opcode":    dns.OpCode,
 			"questions": dns.Questions,
