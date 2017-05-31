@@ -1,4 +1,4 @@
-package stdout
+package console
 
 import (
 	"fmt"
@@ -14,33 +14,28 @@ import (
 )
 
 var (
-	_ = pushers.RegisterBackend("stdout", NewWith)
+	_ = pushers.RegisterBackend("console", NewWith)
 )
 
 var (
-	log = logging.MustGetLogger("stdout")
+	log = logging.MustGetLogger("console")
 )
 
-// Config defines the config used to setup the StdoutBackend.
+// Config defines the config used to setup the ConsoleBackend.
 type Config struct {
 }
 
-// FileBackend defines a struct which implements the pushers.Pusher interface
-// and allows us to write PushMessage updates into a giving file path. Mainly for
-// the need to sync PushMessage to local files for persistence.
-// File paths provided are either created with a append mode if they already
-// exists else will be created. FileBackend will also restrict filesize to a max of 1gb by default else if
-// there exists a max size set in configuration, then that will be used instead,
-// also the old file will be renamed with the current timestamp and a new file created.
-type StdoutBackend struct {
+// ConsoleBackend provides a backend for outputing event details directly to
+// the current console.
+type ConsoleBackend struct {
 	io.Writer
 
 	config Config
 }
 
 // New returns a new instance of a FileBackend.
-func New(c Config) *StdoutBackend {
-	return &StdoutBackend{
+func New(c Config) *ConsoleBackend {
+	return &ConsoleBackend{
 		Writer: os.Stdout,
 	}
 }
@@ -74,9 +69,9 @@ func printify(s string) string {
 
 // Send delivers the giving if it passes all filtering criteria into the
 // FileBackend write queue.
-func (f *StdoutBackend) Send(message message.Event) {
+func (f *ConsoleBackend) Send(message message.Event) {
 	params := []string{}
-	for k, v := range message.Details {
+	for k, v := range message.Fields() {
 		switch v.(type) {
 		case string:
 			params = append(params, fmt.Sprintf("%s=%s", k, printify(v.(string))))
@@ -85,5 +80,6 @@ func (f *StdoutBackend) Send(message message.Event) {
 		}
 	}
 
-	fmt.Fprintf(f.Writer, "%s > %s > %s\n", message.Sensor, message.Category, strings.Join(params, ", "))
+	category, _, sensor := message.Identity()
+	fmt.Fprintf(f.Writer, "%s > %s > %s\n", sensor, category, strings.Join(params, ", "))
 }

@@ -27,11 +27,11 @@ import (
 	"github.com/honeytrap/honeytrap/pushers/message"
 
 	pushers "github.com/honeytrap/honeytrap/pushers"
+	_ "github.com/honeytrap/honeytrap/pushers/backends/console"       // Registers stdout backend.
 	_ "github.com/honeytrap/honeytrap/pushers/backends/elasticsearch" // Registers elasticsearch backend.
 	_ "github.com/honeytrap/honeytrap/pushers/backends/fschannel"     // Registers file backend.
 	_ "github.com/honeytrap/honeytrap/pushers/backends/honeytrap"     // Registers honeytrap backend.
 	_ "github.com/honeytrap/honeytrap/pushers/backends/slack"         // Registers slack backend.
-	_ "github.com/honeytrap/honeytrap/pushers/backends/stdout"        // Registers stdout backend.
 
 	utils "github.com/honeytrap/honeytrap/utils"
 
@@ -113,7 +113,7 @@ type ListenerConfig struct {
 // EventServiceStarted will return a service started Event struct
 func EventServiceStarted(service string, primitive toml.Primitive) message.Event {
 	return message.BasicEvent{
-		Sensor:   service,
+		Sensor:   message.EventSensor(service),
 		Category: "Services",
 		Type:     message.ServiceStarted,
 		Details: map[string]interface{}{
@@ -142,7 +142,7 @@ func (hc *Honeytrap) startProxies() {
 				log.Errorf("Error in service: %s: %s", st.Service, err.Error())
 
 				hc.events.Send(message.BasicEvent{
-					Sensor: st.Service,
+					Sensor: message.EventSensor(st.Service),
 					Type:   message.ServiceStarted,
 					Details: map[string]interface{}{
 						"primitive": primitive,
@@ -154,7 +154,7 @@ func (hc *Honeytrap) startProxies() {
 			}
 
 			hc.events.Send(message.BasicEvent{
-				Sensor: st.Service,
+				Sensor: message.EventSensor(st.Service),
 				Type:   message.ServiceStarted,
 				Details: map[string]interface{}{
 					"primitive": primitive,

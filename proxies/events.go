@@ -7,7 +7,7 @@ import (
 )
 
 // ServiceStartedEvent returns a connection open event object giving the associated data values.
-func ServiceStartedEvent(addr net.Addr, data interface{}, meta map[string]interface{}) message.Event {
+func ServiceStartedEvent(addr net.Addr, data interface{}, meta map[string]interface{}) message.BasicEvent {
 	return message.BasicEvent{
 		Data:      data,
 		Details:   meta,
@@ -19,7 +19,7 @@ func ServiceStartedEvent(addr net.Addr, data interface{}, meta map[string]interf
 }
 
 // ServiceEndedEvent returns a connection open event object giving the associated data values.
-func ServiceEndedEvent(addr net.Addr, data interface{}, meta map[string]interface{}) message.Event {
+func ServiceEndedEvent(addr net.Addr, data interface{}, meta map[string]interface{}) message.BasicEvent {
 	return message.BasicEvent{
 		Data:      data,
 		Details:   meta,
@@ -31,7 +31,7 @@ func ServiceEndedEvent(addr net.Addr, data interface{}, meta map[string]interfac
 }
 
 // UserSessionClosedEvent returns a connection open event object giving the associated data values.
-func UserSessionClosedEvent(c net.Conn, data interface{}) message.Event {
+func UserSessionClosedEvent(c net.Conn, data interface{}) message.BasicEvent {
 	return message.BasicEvent{
 		Data:      data,
 		Sensor:    message.SessionSensor,
@@ -42,7 +42,7 @@ func UserSessionClosedEvent(c net.Conn, data interface{}) message.Event {
 }
 
 // UserSessionOpenedEvent returns a connection open event object giving the associated data values.
-func UserSessionOpenedEvent(c net.Conn, data interface{}, meta map[string]interface{}) message.Event {
+func UserSessionOpenedEvent(c net.Conn, data interface{}, meta map[string]interface{}) message.BasicEvent {
 	return message.BasicEvent{
 		Data:      data,
 		Sensor:    message.SessionSensor,
@@ -54,7 +54,7 @@ func UserSessionOpenedEvent(c net.Conn, data interface{}, meta map[string]interf
 }
 
 // ConnectionOpenedEvent returns a connection open event object giving the associated data values.
-func ConnectionOpenedEvent(c net.Conn) message.Event {
+func ConnectionOpenedEvent(c net.Conn) message.BasicEvent {
 	return message.BasicEvent{
 		Sensor:    message.ConnectionSensor,
 		Type:      message.ConnectionOpened,
@@ -64,7 +64,7 @@ func ConnectionOpenedEvent(c net.Conn) message.Event {
 }
 
 // ConnectionClosedEvent returns a connection open event object giving the associated data values.
-func ConnectionClosedEvent(c net.Conn) message.Event {
+func ConnectionClosedEvent(c net.Conn) message.BasicEvent {
 	return message.BasicEvent{
 		Sensor:    message.ConnectionSensor,
 		Type:      message.ConnectionClosed,
@@ -74,7 +74,7 @@ func ConnectionClosedEvent(c net.Conn) message.Event {
 }
 
 // ConnectionWriteErrorEvent returns a connection open event object giving the associated data values.
-func ConnectionWriteErrorEvent(c net.Conn, data error) message.Event {
+func ConnectionWriteErrorEvent(c net.Conn, data error) message.BasicEvent {
 	return message.BasicEvent{
 		Data:      data,
 		Sensor:    message.ConnectionErrorSensor,
@@ -85,7 +85,7 @@ func ConnectionWriteErrorEvent(c net.Conn, data error) message.Event {
 }
 
 // ConnectionReadErrorEvent returns a connection open event object giving the associated data values.
-func ConnectionReadErrorEvent(c net.Conn, data error) message.Event {
+func ConnectionReadErrorEvent(c net.Conn, data error) message.BasicEvent {
 	return message.BasicEvent{
 		Data:      data,
 		Sensor:    message.ConnectionErrorSensor,
@@ -96,7 +96,7 @@ func ConnectionReadErrorEvent(c net.Conn, data error) message.Event {
 }
 
 // ListenerClosedEvent returns a connection open event object giving the associated data values.
-func ListenerClosedEvent(c net.Listener) message.Event {
+func ListenerClosedEvent(c net.Listener) message.BasicEvent {
 	return message.BasicEvent{
 		Sensor:    message.ConnectionSensor,
 		Type:      message.ConnectionClosed,
@@ -106,7 +106,7 @@ func ListenerClosedEvent(c net.Listener) message.Event {
 }
 
 // ListenerOpenedEvent returns a connection open event object giving the associated data values.
-func ListenerOpenedEvent(c net.Listener, data interface{}, meta map[string]interface{}) message.Event {
+func ListenerOpenedEvent(c net.Listener, data interface{}, meta map[string]interface{}) message.BasicEvent {
 	return message.BasicEvent{
 		Details:   meta,
 		Data:      data,
@@ -119,7 +119,7 @@ func ListenerOpenedEvent(c net.Listener, data interface{}, meta map[string]inter
 
 // AgentRequestEvent defines a function which returns a event object for a
 // request connection.
-func AgentRequestEvent(addr net.Addr, session string, data interface{}, detail map[string]interface{}) message.Event {
+func AgentRequestEvent(addr net.Addr, session string, data interface{}, detail map[string]interface{}) message.BasicEvent {
 	return message.BasicEvent{
 		Data:      data,
 		SessionID: session,
@@ -132,7 +132,7 @@ func AgentRequestEvent(addr net.Addr, session string, data interface{}, detail m
 }
 
 // DataRequest returns a connection open event object giving the associated data values.
-func DataRequest(c net.Conn, data interface{}, detail map[string]interface{}) message.Event {
+func DataRequest(c net.Conn, data interface{}, detail map[string]interface{}) message.BasicEvent {
 	return message.BasicEvent{
 		Data:      data,
 		Details:   detail,
@@ -144,11 +144,11 @@ func DataRequest(c net.Conn, data interface{}, detail map[string]interface{}) me
 }
 
 // OperationEvent returns a connection open event object giving the associated data values.
-func OperationEvent(c net.Conn, data interface{}, detail map[string]interface{}) message.Event {
+func OperationEvent(c net.Conn, data interface{}, detail map[string]interface{}) message.BasicEvent {
 	return message.BasicEvent{
 		Data:      data,
 		Details:   detail,
-		Sensor:    message.EventSensor,
+		Sensor:    message.BasicSensor,
 		Type:      message.Operational,
 		HostAddr:  c.RemoteAddr().String(),
 		LocalAddr: c.LocalAddr().String(),
@@ -156,11 +156,11 @@ func OperationEvent(c net.Conn, data interface{}, detail map[string]interface{})
 }
 
 // AuthEvent returns a connection open event object giving the associated data values.
-func AuthEvent(c net.Conn, data interface{}, detail map[string]interface{}) message.Event {
+func AuthEvent(c net.Conn, data interface{}, detail map[string]interface{}) message.BasicEvent {
 	return message.BasicEvent{
 		Data:      data,
 		Details:   detail,
-		Sensor:    message.EventSensor,
+		Sensor:    message.BasicSensor,
 		Type:      message.OperationalAuth,
 		HostAddr:  c.RemoteAddr().String(),
 		LocalAddr: c.LocalAddr().String(),
@@ -168,7 +168,7 @@ func AuthEvent(c net.Conn, data interface{}, detail map[string]interface{}) mess
 }
 
 // DataReadEvent returns a connection open event object giving the associated data values.
-func DataReadEvent(c net.Conn, data interface{}, detail map[string]interface{}) message.Event {
+func DataReadEvent(c net.Conn, data interface{}, detail map[string]interface{}) message.BasicEvent {
 	return message.BasicEvent{
 		Data:      data,
 		Details:   detail,
@@ -180,7 +180,7 @@ func DataReadEvent(c net.Conn, data interface{}, detail map[string]interface{}) 
 }
 
 // DataWriteEvent returns a connection open event object giving the associated data values.
-func DataWriteEvent(c net.Conn, data interface{}, detail map[string]interface{}) message.Event {
+func DataWriteEvent(c net.Conn, data interface{}, detail map[string]interface{}) message.BasicEvent {
 	return message.BasicEvent{
 		Data:      data,
 		Details:   detail,
@@ -192,7 +192,7 @@ func DataWriteEvent(c net.Conn, data interface{}, detail map[string]interface{})
 }
 
 // PingEvent returns a connection open event object giving the associated data values.
-func PingEvent(c net.Conn, data interface{}) message.Event {
+func PingEvent(c net.Conn, data interface{}) message.BasicEvent {
 	return message.BasicEvent{
 		Data:      data,
 		Sensor:    message.PingSensor,

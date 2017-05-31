@@ -73,33 +73,17 @@ func (mc SlackBackend) Send(mesg message.Event) {
 	log.Infof("Sending Message: %#v", mesg)
 
 	//Attempt to encode message body first and if failed, log and continue.
-	messageBuffer := new(bytes.Buffer)
-	if err := json.NewEncoder(messageBuffer).Encode(mesg.Data); err != nil {
-		log.Errorf("Error encoding data: %q", err.Error())
-		return
+	var messageBuffer bytes.Buffer
+
+	if data := mesg.DataReader(); data != nil {
+		io.Copy(&messageBuffer, data)
 	}
 
 	var newmesg Message
-
 	newmesg.IconURL = mc.config.IconURL
 	newmesg.IconEmoji = mc.config.IconEmoji
 	newmesg.Username = mc.config.Username
-
-	mo, ok := interface{}(mesg).(message.Messager)
-
-	if ok {
-		newmesg.Text = mo.Message()
-	} else if mesg.Details != nil {
-
-		if detailMessage, ok := mesg.Details["message"].(string); ok {
-			newmesg.Text = detailMessage
-		} else {
-			newmesg.Text = mesg.String()
-		}
-
-	} else {
-		newmesg.Text = mesg.String()
-	}
+	newmesg.Text = mesg.Message()
 
 	idAttachment := Attachment{
 		Title:    "Event Identification",
@@ -108,9 +92,11 @@ func (mc SlackBackend) Send(mesg message.Event) {
 		Fallback: "Event Sensor and Category",
 	}
 
-	idAttachment.AddField("Sensor", mesg.Sensor).
-		AddField("Category", string(mesg.Category)).
-		AddField("Type", string(mesg.Type))
+	category, etype, sensor := mesg.Identity()
+
+	idAttachment.AddField("Sensor", string(sensor)).
+		AddField("Category", string(category)).
+		AddField("Type", string(etype))
 
 	fieldAttachment := Attachment{
 		Title:    "Event Fields",
@@ -119,18 +105,25 @@ func (mc SlackBackend) Send(mesg message.Event) {
 		Fallback: "Fields for events",
 	}
 
-	fieldAttachment.AddField("Sensor", mesg.Sensor).
-		AddField("Category", string(mesg.Category)).
-		AddField("HostAddr", mesg.HostAddr).
-		AddField("LocalAddr", mesg.LocalAddr).
-		AddField("Token", mesg.Token).
-		AddField("Type", string(mesg.Type)).
-		AddField("Location", mesg.Location).
-		AddField("Session ID", mesg.SessionID).
-		AddField("Container ID", mesg.ContainerID).
-		AddField("Date", mesg.Date.UTC().String()).
-		AddField("Start Time", mesg.Started.UTC().String()).
-		AddField("End Time", mesg.Ended.UTC().String())
+	fieldAttachment.AddField("Sensor", string(sensor)).
+		AddField("Category", string(category)).
+		AddField("Type", string(etype))
+
+	for name, value := range mesg.Fields() {
+		switch vo := value.(type) {
+		case string:
+			fieldAttachment.AddField(name, vo)
+			break
+
+		default:
+			data, err := json.Marshal(value)
+			if err != nil {
+				continue
+			}
+
+			fieldAttachment.AddField(name, string(data))
+		}
+	}
 
 	newmesg.AddAttachment(idAttachment)
 	newmesg.AddAttachment(fieldAttachment)

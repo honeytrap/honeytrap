@@ -1,8 +1,6 @@
 package elasticsearch
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -71,20 +69,15 @@ func init() {
 func (hc SearchBackend) Send(message message.Event) {
 	log.Infof("ElasticSearchBackend: Sending %d actions.", message)
 
-	buf := new(bytes.Buffer)
+	category, _, sensor := message.Identity()
 
-	if message.Sensor == "honeytrap" && message.Category == "ping" {
+	if string(sensor) == "honeytrap" && string(category) == "ping" {
 		// ignore
 		return
 	}
 
-	if err := json.NewEncoder(buf).Encode(message.Data); err != nil {
-		log.Errorf("ElasticSearchBackend: Error encoding data: %s", err.Error())
-		return
-	}
-
 	messageID := uuid.NewV4()
-	req, err := http.NewRequest("PUT", fmt.Sprintf("%s/%s/%s/%s", hc.config.Host, message.Sensor, message.Category, messageID.String()), buf)
+	req, err := http.NewRequest("PUT", fmt.Sprintf("%s/%+s/%+s/%s", hc.config.Host, sensor, category, messageID.String()), message.DataReader())
 	if err != nil {
 		log.Errorf("ElasticSearchBackend: Error while preparing request: %s", err.Error())
 		return
