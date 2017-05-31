@@ -112,7 +112,7 @@ type ListenerConfig struct {
 
 // EventServiceStarted will return a service started Event struct
 func EventServiceStarted(service string, primitive toml.Primitive) message.Event {
-	return message.Event{
+	return message.BasicEvent{
 		Sensor:   service,
 		Category: "Services",
 		Type:     message.ServiceStarted,
@@ -141,7 +141,7 @@ func (hc *Honeytrap) startProxies() {
 			if err != nil {
 				log.Errorf("Error in service: %s: %s", st.Service, err.Error())
 
-				hc.events.Send(message.Event{
+				hc.events.Send(message.BasicEvent{
 					Sensor: st.Service,
 					Type:   message.ServiceStarted,
 					Details: map[string]interface{}{
@@ -153,7 +153,7 @@ func (hc *Honeytrap) startProxies() {
 				continue
 			}
 
-			hc.events.Send(message.Event{
+			hc.events.Send(message.BasicEvent{
 				Sensor: st.Service,
 				Type:   message.ServiceStarted,
 				Details: map[string]interface{}{

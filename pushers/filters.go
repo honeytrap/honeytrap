@@ -20,8 +20,9 @@ type Filter interface {
 // a series of events.
 type FilterGroup []Filter
 
-func (fg *FilterGroup) Add(filters Filter) {
-	*fg = append(*fg, filters)
+// Add adds the underline filter into the group.
+func (fg *FilterGroup) Add(filter Filter) {
+	*fg = append(*fg, filter)
 }
 
 // Filter returns a slice of messages that match the giving criterias from the
@@ -47,25 +48,22 @@ type RegExpFilterFunction func(*regexp.Regexp, message.Event) bool
 // SensorFilterFunc defines a function to validate a PushMessage.Sensor value
 // based on a provided regular expression.
 func SensorFilterFunc(rx *regexp.Regexp, message message.Event) bool {
-	return rx.MatchString(message.Sensor)
+	_, _, sensor := message.Identity()
+	return rx.MatchString(string(sensor))
+}
+
+// TypeFilterFunc defines a function to validate a PushMessage.Category value
+// based on a provided regular expression.
+func TypeFilterFunc(rx *regexp.Regexp, message message.Event) bool {
+	_, etype, _ := message.Identity()
+	return rx.MatchString(string(etype))
 }
 
 // CategoryFilterFunc defines a function to validate a PushMessage.Category value
 // based on a provided regular expression.
 func CategoryFilterFunc(rx *regexp.Regexp, message message.Event) bool {
-	return rx.MatchString(string(message.Category))
-}
-
-// EventFilterFunc defines a function to validate a PushMessage.Category value
-// based on a provided regular expression.
-func EventFilterFunc(rx *regexp.Regexp, m message.Event) bool {
-	if event, ok := m.Data.(message.Event); ok {
-		return rx.MatchString(event.Sensor)
-	}
-
-	// TODO: Decide if we should return false when this is called for messages
-	// not containing event objects.
-	return true
+	category, _, _ := message.Identity()
+	return rx.MatchString(string(category))
 }
 
 //==========================================================================================

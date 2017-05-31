@@ -404,7 +404,7 @@ func (c *Canary) knockDetector() {
 
 // EventPortscan will return a portscan event struct
 func EventPortscan(sourceIP net.IP, duration time.Duration, count int, ports []string) message.Event {
-	return message.Event{
+	return message.BasicEvent{
 		Sensor:   "Canary",
 		Category: "Portscan",
 		Type:     message.ServiceStarted,

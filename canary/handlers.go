@@ -14,14 +14,14 @@ import (
 )
 
 const (
-	// EventCategorySSDP contains events for ssdp traffic
+	// EventCategoryUDP contains events for ssdp traffic
 	EventCategoryUDP = message.EventCategory("udp")
 )
 
-// EventSSDP will return a snmp event struct
+// EventUDP will return a snmp event struct
 func EventUDP(sourceIP net.IP, payload string) message.Event {
 	// TODO: message should go into String() / Message, where message.Event will become interface
-	return message.Event{
+	return message.BasicEvent{
 		Sensor:   "Canary",
 		Category: EventCategoryUDP,
 		Type:     message.ServiceStarted,
@@ -56,7 +56,7 @@ func (c *Canary) DecodeSSDP(iph *ipv4.Header, udph *udp.Header) error {
 // EventSSDP will return a snmp event struct
 func EventSSDP(sourceIP net.IP, method, uri, proto string, headers http.Header) message.Event {
 	// TODO: message should go into String() / Message, where message.Event will become interface
-	return message.Event{
+	return message.BasicEvent{
 		Sensor:   "Canary",
 		Category: EventCategorySSDP,
 		Type:     message.ServiceStarted,
@@ -100,7 +100,7 @@ func (c *Canary) DecodeSIP(iph *ipv4.Header, udph *udp.Header) error {
 // EventSIP will return a snmp event struct
 func EventSIP(sourceIP net.IP, method, uri, proto string, headers http.Header) message.Event {
 	// TODO: message should go into String() / Message, where message.Event will become interface
-	return message.Event{
+	return message.BasicEvent{
 		Sensor:   "Canary",
 		Category: EventCategorySIP,
 		Type:     message.ServiceStarted,
@@ -135,7 +135,7 @@ func (c *Canary) DecodeSNMPTrap(iph *ipv4.Header, udph *udp.Header) error {
 // EventSNMPTrap will return a snmp event struct
 func EventSNMPTrap(sourceIP net.IP) message.Event {
 	// TODO: message should go into String() / Message, where message.Event will become interface
-	return message.Event{
+	return message.BasicEvent{
 		Sensor:   "Canary",
 		Category: EventCategorySNMPTrap,
 		Type:     message.ServiceStarted,
@@ -159,7 +159,7 @@ func (c *Canary) DecodeSNMP(iph *ipv4.Header, udph *udp.Header) error {
 // EventSNMP will return a snmp event struct
 func EventSNMP(sourceIP net.IP) message.Event {
 	// TODO: message should go into String() / Message, where message.Event will become interface
-	return message.Event{
+	return message.BasicEvent{
 		Sensor:   "Canary",
 		Category: EventCategorySNMP,
 		Type:     message.ServiceStarted,
@@ -208,7 +208,7 @@ func EventNTP(sourceIP net.IP, ntp layers.NTP) message.Event {
 		mode = m
 	}
 
-	return message.Event{
+	return message.BasicEvent{
 		Sensor:   "Canary",
 		Category: EventCategoryNTP,
 		Type:     message.ServiceStarted,
@@ -250,7 +250,7 @@ func (c *Canary) DecodeDNS(iph *ipv4.Header, udph *udp.Header) error {
 
 // EventDNSQuery will return a dns query event struct
 func EventDNSQuery(sourceIP net.IP, dns layers.DNS) message.Event {
-	return message.Event{
+	return message.BasicEvent{
 		Sensor:   "Canary",
 		Category: EventCategoryDNSQuery,
 		Type:     message.ServiceStarted,
@@ -263,7 +263,7 @@ func EventDNSQuery(sourceIP net.IP, dns layers.DNS) message.Event {
 
 // EventDNSOther will return a dns query event struct
 func EventDNSOther(sourceIP net.IP, dns layers.DNS) message.Event {
-	return message.Event{
+	return message.BasicEvent{
 		Sensor:   "Canary",
 		Category: EventCategoryDNSOther,
 		Type:     message.ServiceStarted,
