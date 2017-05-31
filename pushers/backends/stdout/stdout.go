@@ -3,6 +3,7 @@ package stdout
 import (
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"strings"
 	"unicode"
@@ -78,7 +79,21 @@ func (f *StdoutBackend) Send(message message.Event) {
 	params := []string{}
 	for k, v := range message.Details {
 		switch v.(type) {
+		case net.IP:
+			params = append(params, fmt.Sprintf("%s=%s", k, v.(net.IP).String()))
+		case uint32:
+			params = append(params, fmt.Sprintf("%s=%d", k, v))
+		case uint16:
+			params = append(params, fmt.Sprintf("%s=%d", k, v))
+		case uint8:
+			params = append(params, fmt.Sprintf("%s=%d", k, v))
 		case uint:
+			params = append(params, fmt.Sprintf("%s=%d", k, v))
+		case int32:
+			params = append(params, fmt.Sprintf("%s=%d", k, v))
+		case int16:
+			params = append(params, fmt.Sprintf("%s=%d", k, v))
+		case int8:
 			params = append(params, fmt.Sprintf("%s=%d", k, v))
 		case int:
 			params = append(params, fmt.Sprintf("%s=%d", k, v))
