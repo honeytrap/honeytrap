@@ -29,6 +29,8 @@ import (
 // send reset?
 // udp check connect or answer
 // test elasticsearch
+// clean up old states
+// check ring buffer
 
 const (
 	// MaxEpollEvents defines maximum number of poll events to retrieve at once
