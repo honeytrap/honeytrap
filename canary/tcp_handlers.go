@@ -13,12 +13,12 @@ import (
 
 const (
 	// EventCategorySSDP contains events for ssdp traffic
-	EventCategoryTCP = message.EventCategory1("tcp")
+	EventCategoryTCP = message.EventCategory("tcp")
 )
 
 const (
 	// EventCategoryHTTP contains events for ssdp traffic
-	EventCategoryHTTP = message.EventCategory1("http")
+	EventCategoryHTTP = message.EventCategory("http")
 )
 
 // DecodeHTTP will decode NTP packets
