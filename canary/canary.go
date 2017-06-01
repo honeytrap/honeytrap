@@ -1,13 +1,10 @@
 package canary
 
 import (
-	"bufio"
 	"bytes"
-	"encoding/hex"
 	"fmt"
 	"math/rand"
 	"net"
-	"os"
 	"strings"
 	"sync"
 	"syscall"
@@ -22,15 +19,21 @@ import (
 	"github.com/honeytrap/honeytrap/canary/udp"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/pushers/message"
+	logging "github.com/op/go-logging"
 )
+
+var log = logging.MustGetLogger("canary")
 
 // first dns
 // ntp
 // send reset?
 // udp check connect or answer
-// test elasticsearch
+// parameters
 // clean up old states
 // check ring buffer
+// use sockets and io.Reader
+// parameters: ports to include exclude/ filter (or do we want to filter the events)
+// interface to listen on
 
 const (
 	// MaxEpollEvents defines maximum number of poll events to retrieve at once
@@ -226,7 +229,7 @@ func (c *Canary) handleUDP(iph *ipv4.Header, data []byte) error {
 		}
 
 		// do we only want to detect scans? Or also detect payloads?
-		c.events.Send(EventUDP(iph.Src, hdr.Destination, string(hdr.Payload)))
+		c.events.Send(EventUDP(iph.Src, iph.Dst, hdr.Source, hdr.Destination, hdr.Payload))
 	} else if err := fn(iph, hdr); err != nil {
 		fmt.Printf("Could not decode udp packet: %s", err)
 	}
@@ -298,70 +301,6 @@ func (c *Canary) isMe(ip net.IP) bool {
 	return false
 }
 
-func NewState(src net.IP, srcPort uint16, dest net.IP, dstPort uint16) *State {
-	return &State{
-		SrcIP:   src,
-		SrcPort: srcPort,
-
-		DestIP:   dest,
-		DestPort: dstPort,
-
-		ID: rand.Uint32(),
-
-		RecvNext: 0,
-		SendNext: rand.Uint32(),
-	}
-}
-
-type State struct {
-	// interface?
-
-	SrcIP   net.IP
-	SrcPort uint16
-
-	DestIP   net.IP
-	DestPort uint16
-
-	ID uint32
-
-	RecvNext uint32
-	SendNext uint32
-
-	LastAcked uint32
-}
-
-type StateTable []*State
-
-func (st *StateTable) Add(state *State) {
-	*st = append(*st, state)
-}
-
-// GetState will return the state for the ip, port combination
-func (st *StateTable) Get(SrcIP, DestIP net.IP, SrcPort, DestPort uint16) *State {
-	for _, state := range *st {
-		if state.SrcPort != SrcPort && state.DestPort != SrcPort {
-			continue
-		}
-
-		if state.DestPort != DestPort && state.SrcPort != DestPort {
-			continue
-		}
-
-		// comparing ipv6 with ipv4 now
-		if !state.SrcIP.Equal(SrcIP) && !state.DestIP.Equal(SrcIP) {
-			continue
-		}
-
-		if !state.DestIP.Equal(DestIP) && !state.SrcIP.Equal(DestIP) {
-			continue
-		}
-
-		return state
-	}
-
-	return nil // state
-}
-
 // handleTCP will handle tcp packets
 func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 	hdr, err := tcp.UnmarshalWithChecksum(data, iph.Dst, iph.Src)
@@ -381,13 +320,13 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 
 	state := c.stateTable.Get(iph.Src, iph.Dst, hdr.Source, hdr.Destination)
 	if state != nil {
-	} else if !hdr.HasFlag(tcp.SYN) {
-		// no existing state found, returning
-		return nil // ErrNoExistingStateFound()
-	} else {
+	} else if hdr.HasFlag(tcp.SYN) && !hdr.HasFlag(tcp.ACK) {
 		// no state found
 		state = NewState(iph.Src, hdr.Source, iph.Dst, hdr.Destination)
 		c.stateTable.Add(state)
+	} else {
+		// no existing state found, returning
+		return nil // ErrNoExistingStateFound()
 	}
 
 	// USE PUSH?
@@ -430,23 +369,6 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 	// check if we have tcp listeners on specified port, and answer otherwise
 	return nil
 }
-
-// EventSSDP will return a snmp event struct
-func EventTCPPayload(sourceIP net.IP, port uint16, payload string) message.Event {
-	// TODO: message should go into String() / Message, where message.Event will become interface
-	return message.Event{
-		Sensor:   "Canary",
-		Category: EventCategoryTCP,
-		Type:     message.ServiceStarted,
-		Details: map[string]interface{}{
-			"source-ip": sourceIP,
-			"port":      port,
-			"payload":   payload,
-			"length":    len(payload),
-		},
-	}
-}
-
 func (c *Canary) ack(state *State, iph *ipv4.Header, tcph *tcp.Header) error {
 	seqNum := tcph.SeqNum + uint32(len(tcph.Payload))
 	flags := tcp.Flag(tcp.ACK)
@@ -525,11 +447,6 @@ func (c *Canary) ack(state *State, iph *ipv4.Header, tcph *tcp.Header) error {
 	// Src := net.IPv4(data1[12], data1[13], data1[14], data1[15])
 	Dst := net.IPv4(data[16], data[17], data[18], data[19])
 
-	// c.networkInterfaces[0].Addrs()
-	// check if dst in mask current
-	// lookup route table
-	// find gateway
-	// create ethernet frame with correct dest mac address
 	ef := ethernet.EthernetFrame{
 		Source:      c.networkInterfaces[0].HardwareAddr,
 		Destination: []byte{0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
@@ -543,21 +460,18 @@ func (c *Canary) ack(state *State, iph *ipv4.Header, tcph *tcp.Header) error {
 		ef.Destination = ae.HardwareAddress
 		intf = ae.Interface
 	} else {
+		// TODO(make function)
 		for _, route := range c.rt {
 			// find shortest route
 			if !route.Destination.Contains(Dst) {
 				continue
 			}
 
-			for _, a := range c.ac {
-				if !a.IP.Equal(a.IP) {
-					continue
-				}
+			a := c.ac.Get(route.Gateway)
 
-				intf = a.Interface
-				ef.Destination = a.HardwareAddress
-				break
-			}
+			intf = a.Interface
+			ef.Destination = a.HardwareAddress
+			break
 		}
 
 	}
@@ -655,120 +569,6 @@ func splitAtBytes(s string, t string) []string {
 	return a[0:n]
 }
 
-type ARPCache []ARPEntry
-
-func (ac ARPCache) Get(ip net.IP) *ARPEntry {
-	for _, a := range ac {
-		if !a.IP.Equal(ip) {
-			continue
-		}
-
-		return &a
-	}
-
-	return nil
-}
-
-type ARPEntry struct {
-	IP              net.IP
-	HardwareAddress net.HardwareAddr
-	Interface       string
-}
-
-func parseARPCache(path string) (ARPCache, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-
-	defer f.Close()
-
-	entries := []ARPEntry{}
-
-	r := bufio.NewReader(f)
-
-	// skip first line
-	r.ReadLine()
-
-	scanner := bufio.NewScanner(r)
-	for scanner.Scan() {
-		text := scanner.Text()
-		parts := splitAtBytes(text, " \r\t\n")
-		if len(parts) < 6 {
-			continue
-		}
-
-		ip := net.ParseIP(parts[0])
-		hwaddress, _ := net.ParseMAC(parts[3])
-
-		entries = append(entries, ARPEntry{
-			Interface:       parts[5],
-			IP:              ip,
-			HardwareAddress: hwaddress,
-		})
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-
-	return ARPCache(entries), nil
-}
-
-type RouteTable []Route
-
-type Route struct {
-	Interface string
-
-	Gateway     net.IP
-	Destination net.IPNet
-}
-
-func parseRouteTable(path string) (RouteTable, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-
-	defer f.Close()
-
-	routes := []Route{}
-
-	r := bufio.NewReader(f)
-
-	// skip first line
-	r.ReadLine()
-
-	scanner := bufio.NewScanner(r)
-	for scanner.Scan() {
-		text := scanner.Text()
-		parts := splitAtBytes(text, " :\r\t\n")
-		if len(parts) < 11 {
-			continue
-		}
-
-		destination, _ := hex.DecodeString(parts[1])
-		mask, _ := hex.DecodeString(parts[7])
-
-		gateway, _ := hex.DecodeString(parts[2])
-
-		routes = append(routes, Route{
-			Interface: parts[0],
-			Gateway:   net.IPv4(gateway[3], gateway[2], gateway[1], gateway[0]),
-			Destination: net.IPNet{
-				IP:   net.IPv4(destination[0], destination[1], destination[2], destination[3]),
-				Mask: net.IPv4Mask(mask[0], mask[1], mask[2], mask[3]),
-			},
-		})
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-
-	return RouteTable(routes), nil
-}
-
 // New will return a Canary for specified interfaces. Events will be delivered through
 // events
 func New(interfaces []net.Interface, events pushers.Channel) (*Canary, error) {
@@ -791,7 +591,7 @@ func New(interfaces []net.Interface, events pushers.Channel) (*Canary, error) {
 	descriptors := map[string]int32{}
 
 	for _, intf := range interfaces {
-		if intf.Name != "ens160" && intf.Name != "eth0" {
+		if intf.Name != "ens160" && intf.Name != "eth0" && intf.Name != "ens3" {
 			continue
 		}
 
@@ -831,70 +631,20 @@ func (c *Canary) Close() {
 	syscall.Close(c.epfd)
 }
 
-func (c *Canary) knockDetector() {
-	knocks := NewUniqueSet(func(v1, v2 interface{}) bool {
-		k1, k2 := v1.(*KnockGroup), v2.(*KnockGroup)
-		if k1.Protocol != k2.Protocol {
-			return false
-		}
-
-		return bytes.Compare(k1.SourceIP, k2.SourceIP) == 0
-	})
-
-	for {
-		select {
-		case sk := <-c.knockChan:
-			grouper := sk.(KnockGrouper)
-			knock := knocks.Add(grouper.NewGroup()).(*KnockGroup)
-
-			knock.Count++
-			knock.Last = time.Now()
-
-			knock.Knocks.Add(sk)
-
-		case <-time.After(time.Second * 5):
-			// TODO: make time configurable
-
-			now := time.Now()
-
-			knocks.Each(func(i int, v interface{}) {
-				k := v.(*KnockGroup)
-
-				if k.Count > 100 {
-				} else if k.Last.Add(time.Second * 5).After(now) {
-					return
-				}
-
-				defer knocks.Remove(k)
-
-				ports := make([]string, k.Knocks.Count())
-
-				k.Knocks.Each(func(i int, v interface{}) {
-					if k, ok := v.(KnockTCPPort); ok {
-						ports[i] = fmt.Sprintf("tcp/%d", k.DestinationPort)
-					} else if k, ok := v.(KnockUDPPort); ok {
-						ports[i] = fmt.Sprintf("udp/%d", k.DestinationPort)
-					} else if _, ok := v.(KnockICMP); ok {
-						ports[i] = fmt.Sprintf("icmp")
-					}
-				})
-
-				c.events.Send(EventPortscan(k.SourceIP, k.Last.Sub(k.Start), k.Count, ports))
-			})
-		}
-	}
-}
+const (
+	// EventCategorySSDP contains events for ssdp traffic
+	EventCategoryPortscan = message.EventCategory("portscan")
+)
 
 // EventPortscan will return a portscan event struct
 func EventPortscan(sourceIP net.IP, duration time.Duration, count int, ports []string) message.Event {
-	return message.Event{
-		Sensor:   "Canary",
-		Category: "Portscan",
-		Type:     message.ServiceStarted,
-		Details: map[string]interface{}{
-			"message": fmt.Sprintf("Port %d touch(es) detected from %s with duration %+v: %s", count, sourceIP, duration, strings.Join(ports, ", ")),
-		},
-	}
+	// TODO: do something different with message
+	return message.NewEvent("Canary", EventCategoryPortscan, message.ServiceStarted, map[string]interface{}{
+		"source-ip":         sourceIP.String(),
+		"portscan.ports":    ports,
+		"portscan.duration": duration,
+		"message":           fmt.Sprintf("Port %d touch(es) detected from %s with duration %+v: %s", count, sourceIP, duration, strings.Join(ports, ", ")),
+	})
 }
 
 // send will queue a packet for sending
@@ -1029,20 +779,22 @@ func (c *Canary) Run() error {
 					c.handleARP(eh.Payload[:])
 				} else if eh.Type == EthernetTypeIPv4 {
 					if iph, err := ipv4.Parse(eh.Payload[:]); err != nil {
-						fmt.Printf("Error parsing ip header: %s", err.Error())
+						log.Debugf("Error parsing ip header: %s", err.Error())
 					} else {
 						data := iph.Payload[:]
 
 						switch iph.Protocol {
 						case 1 /* icmp */ :
 							c.handleICMP(iph, data)
+						case 2 /* IGMP */ :
+
 						case 6 /* tcp */ :
 							// what interface?
 							c.handleTCP(iph, data)
 						case 17 /* udp */ :
 							c.handleUDP(iph, data)
 						default:
-							fmt.Printf("Unknown protocol: %x", iph.Protocol)
+							log.Debugf("Ignoring protocol: %x", iph.Protocol)
 						}
 					}
 				}
@@ -1060,9 +812,9 @@ func (c *Canary) Run() error {
 
 			if events[ev].Events&syscall.EPOLLERR == syscall.EPOLLERR {
 				if v, err := syscall.GetsockoptInt(int(events[ev].Fd), syscall.SOL_SOCKET, syscall.SO_ERROR); err != nil {
-					fmt.Println("Error", err)
+					log.Errorf("Error while retrieving polling error: %s", err)
 				} else {
-					fmt.Println("Error val", v)
+					log.Errorf("Polling error: %s", v)
 				}
 			}
 		}

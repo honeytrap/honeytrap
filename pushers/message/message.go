@@ -92,7 +92,6 @@ type Event struct {
 	Details     map[string]interface{} `json:"details,omitempty"`
 	HostAddr    string                 `json:"host_addr,omitempty"`
 	LocalAddr   string                 `json:"local_addr,omitempty"`
-	LocalAddr   string                 `json:"local_addr,omitempty"`
 	Type        EventType              `json:"event_type,omitempty"`
 	Ended       time.Time              `json:"ended,omitempty"`
 	Token       string                 `json:"token,omitempty"`
