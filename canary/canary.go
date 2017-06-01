@@ -436,7 +436,7 @@ func EventTCPPayload(sourceIP net.IP, port uint16, payload string) message.Event
 	// TODO: message should go into String() / Message, where message.Event will become interface
 	return message.Event{
 		Sensor:   "Canary",
-		Category: EventCategoryUDP,
+		Category: EventCategoryTCP,
 		Type:     message.ServiceStarted,
 		Details: map[string]interface{}{
 			"source-ip": sourceIP,

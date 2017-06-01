@@ -70,18 +70,30 @@ const (
 // for different types.
 type EventCategory string
 
+func NewEvent(sensor string, category EventCategory, type_ EventType, details map[string]interface{}) Event {
+	return Event{
+		Date:     time.Now(),
+		Sensor:   sensor,
+		Category: category,
+		Type:     type_,
+		Details:  details,
+	}
+}
+
 // Event defines a struct which contains definitive details about the operation of
 // a giving event.
 type Event struct {
+	// TODO: we want details do be embedded in the main struct
 	Date        time.Time              `json:"date"`
-	Data        interface{}            `json:"data"`
-	Category    EventCategory          `json:"category"`
-	Sensor      string                 `json:"sensor"`
-	Message     string                 `json:"message"`
-	Details     map[string]interface{} `json:"details"`
-	HostAddr    string                 `json:"host_addr"`
-	LocalAddr   string                 `json:"local_addr"`
-	Type        EventType              `json:"event_type"`
+	Data        interface{}            `json:"data,omitempty"`
+	Category    EventCategory          `json:"category,omitempty"`
+	Sensor      string                 `json:"sensor,omitempty"`
+	Message     string                 `json:"message,omitempty"`
+	Details     map[string]interface{} `json:"details,omitempty"`
+	HostAddr    string                 `json:"host_addr,omitempty"`
+	LocalAddr   string                 `json:"local_addr,omitempty"`
+	LocalAddr   string                 `json:"local_addr,omitempty"`
+	Type        EventType              `json:"event_type,omitempty"`
 	Ended       time.Time              `json:"ended,omitempty"`
 	Token       string                 `json:"token,omitempty"`
 	Started     time.Time              `json:"started,omitempty"`

@@ -41,21 +41,16 @@ func (c *Canary) DecodeHTTP(iph *ipv4.Header, tcph *tcp.Header) error {
 // EventHTTP will return a snmp event struct
 func EventHTTP(sourceIP net.IP, method, uri, proto string, headers http.Header) message.Event {
 	// TODO: message should go into String() / Message, where message.Event will become interface
-	return message.Event{
-		Sensor:   "Canary",
-		Category: EventCategoryHTTP,
-		Type:     message.ServiceStarted,
-		Details: map[string]interface{}{
-			"source-ip": sourceIP.String(),
+	return message.NewEvent("canary", EventCategoryHTTP, message.ServiceStarted, map[string]interface{}{
+		"source-ip": sourceIP.String(),
 
-			"method":  method,
-			"uri":     uri,
-			"proto":   proto,
-			"headers": headers,
+		"http.method":  method,
+		"http.uri":     uri,
+		"http.proto":   proto,
+		"http.headers": headers,
 
-			"host":         headers.Get("Host"),
-			"content-type": headers.Get("Content-Type"),
-			"user-agent":   headers.Get("User-Agent"),
-		},
-	}
+		"http.host":         headers.Get("Host"),
+		"http.content-type": headers.Get("Content-Type"),
+		"http.user-agent":   headers.Get("User-Agent"),
+	})
 }

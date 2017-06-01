@@ -104,6 +104,12 @@
   version = "v1"
 
 [[projects]]
+  name = "github.com/pkg/errors"
+  packages = ["."]
+  revision = "645ef00459ed84a119197bfb8d8205042c6df63d"
+  version = "v0.8.0"
+
+[[projects]]
   name = "github.com/pkg/profile"
   packages = ["."]
   revision = "5b67d428864e92711fcbd2f8629456121a56d91f"
@@ -127,9 +133,15 @@
   packages = ["unix"]
   revision = "b90f89a1e7a9c1f6b918820b3daa7f08488c8594"
 
+[[projects]]
+  name = "gopkg.in/olivere/elastic.v5"
+  packages = [".","uritemplates"]
+  revision = "f1fd7305d0b6270192b27010fe1193568b18e4b6"
+  version = "v5.0.39"
+
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "66f4128f7f188cb66af98a2d4e639687688a7cc5068579231f72e1b692627e95"
+  inputs-digest = "89ab5022d01fe8c07bf03b5e9a6a047b8cde303be3f021647137df1afa5b27a3"
   solver-name = "gps-cdcl"
   solver-version = 1
