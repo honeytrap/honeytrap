@@ -16,6 +16,17 @@ const (
 	EventCategoryTCP = message.EventCategory("tcp")
 )
 
+// EventTCPPayload will return a snmp event struct
+func EventTCPPayload(sourceIP net.IP, port uint16, payload string) message.Event {
+	// TODO: message should go into String() / Message, where message.Event will become interface
+	return message.NewEvent("canary", EventCategoryTCP, message.ServiceStarted, map[string]interface{}{
+		"source-ip":   sourceIP,
+		"tcp.port":    port,
+		"tcp.payload": payload,
+		"tcp.length":  len(payload),
+	})
+}
+
 const (
 	// EventCategoryHTTP contains events for ssdp traffic
 	EventCategoryHTTP = message.EventCategory("http")
