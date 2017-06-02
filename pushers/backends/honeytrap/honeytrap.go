@@ -1,6 +1,8 @@
 package honeytrap
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"io/ioutil"
@@ -9,8 +11,8 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/pushers/api"
+	"github.com/honeytrap/honeytrap/pushers/event"
 
-	"github.com/honeytrap/honeytrap/pushers/message"
 	"github.com/op/go-logging"
 )
 
@@ -64,17 +66,25 @@ func init() {
 }
 
 // Send delivers all messages to the underline connection.
-func (hc TrapBackend) Send(message message.Event) {
+func (hc TrapBackend) Send(message event.Event) {
 	var err error
 	var req *http.Request
 
-	category, _, sensor := message.Identity()
+	category := message["cateory"]
+	sensor := message["sensor"]
 
-	if string(sensor) == "honeytrap" && string(category) == "ping" {
+	var jsData bytes.Buffer
+
+	if err := json.NewEncoder(&jsData).Encode(message); err != nil {
+		log.Errorf("HoneytrapBackend: Error while marshalling to json: %s", err.Error())
+		return
+	}
+
+	if sensor == "honeytrap" && category == "ping" {
 		req, err = hc.client.NewRequest("POST", "v1/ping", nil)
 	} else {
 		// TODO: workaround, need to update api
-		req, err = hc.client.NewRequest("POST", "v1/action", message.DataReader())
+		req, err = hc.client.NewRequest("POST", "v1/action", &jsData)
 	}
 
 	if err != nil {

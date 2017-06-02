@@ -24,7 +24,7 @@ import (
 	proxies "github.com/honeytrap/honeytrap/proxies"
 	_ "github.com/honeytrap/honeytrap/proxies/ssh" // TODO: Add comment
 
-	"github.com/honeytrap/honeytrap/pushers/message"
+	"github.com/honeytrap/honeytrap/pushers/event"
 
 	pushers "github.com/honeytrap/honeytrap/pushers"
 	_ "github.com/honeytrap/honeytrap/pushers/backends/console"       // Registers stdout backend.
@@ -111,15 +111,15 @@ type ListenerConfig struct {
 }
 
 // EventServiceStarted will return a service started Event struct
-func EventServiceStarted(service string, primitive toml.Primitive) message.Event {
-	return message.BasicEvent{
-		Sensor:   message.EventSensor(service),
-		Category: "Services",
-		Type:     message.ServiceStarted,
-		Details: map[string]interface{}{
+func EventServiceStarted(service string, primitive toml.Primitive) event.Event {
+	return event.New(
+		event.Category(service),
+		event.Sensor(event.ServiceSensor),
+		event.Type(event.ServiceStarted),
+		event.CopyFrom(map[string]interface{}{
 			"primitive": primitive,
-		},
-	}
+		}),
+	)
 }
 
 func (hc *Honeytrap) startProxies() {
@@ -141,25 +141,27 @@ func (hc *Honeytrap) startProxies() {
 			if err != nil {
 				log.Errorf("Error in service: %s: %s", st.Service, err.Error())
 
-				hc.events.Send(message.BasicEvent{
-					Sensor: message.EventSensor(st.Service),
-					Type:   message.ServiceStarted,
-					Details: map[string]interface{}{
+				hc.events.Send(event.New(
+					event.Sensor(event.ServiceSensor),
+					event.Category(st.Service),
+					event.Type(event.ServiceStarted),
+					event.CopyFrom(map[string]interface{}{
 						"primitive": primitive,
 						"error":     err.Error(),
-					},
-				})
+					}),
+				))
 
 				continue
 			}
 
-			hc.events.Send(message.BasicEvent{
-				Sensor: message.EventSensor(st.Service),
-				Type:   message.ServiceStarted,
-				Details: map[string]interface{}{
+			hc.events.Send(event.New(
+				event.Sensor(event.ServiceSensor),
+				event.Category(st.Service),
+				event.Type(event.ServiceStarted),
+				event.CopyFrom(map[string]interface{}{
 					"primitive": primitive,
-				},
-			})
+				}),
+			))
 
 			/*
 				if err := toml.PrimitiveDecode(primitive, &service); err != nil {

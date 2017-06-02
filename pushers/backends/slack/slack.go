@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -11,7 +12,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/pushers"
-	"github.com/honeytrap/honeytrap/pushers/message"
+	"github.com/honeytrap/honeytrap/pushers/event"
 	logging "github.com/op/go-logging"
 )
 
@@ -69,21 +70,26 @@ func NewWith(meta toml.MetaData, data toml.Primitive) (pushers.Channel, error) {
 
 // Send delivers the giving push messages to the required slack channel.
 // TODO: Ask if Send shouldnt return an error to allow proper delivery validation.
-func (mc SlackBackend) Send(mesg message.Event) {
+func (mc SlackBackend) Send(mesg event.Event) {
 	log.Infof("Sending Message: %#v", mesg)
 
 	//Attempt to encode message body first and if failed, log and continue.
 	var messageBuffer bytes.Buffer
 
-	if data := mesg.DataReader(); data != nil {
-		io.Copy(&messageBuffer, data)
+	category := mesg["cateory"].(string)
+	sensor := mesg["sensor"].(string)
+	etype := mesg["type"].(string)
+	txmessage := mesg["message"].(string)
+
+	if txmessage == "" {
+		txmessage = fmt.Sprintf("Event with Category %q of Type %q for Sensor %q occured", category, etype, sensor)
 	}
 
 	var newmesg Message
 	newmesg.IconURL = mc.config.IconURL
 	newmesg.IconEmoji = mc.config.IconEmoji
 	newmesg.Username = mc.config.Username
-	newmesg.Text = mesg.Message()
+	newmesg.Text = txmessage
 
 	idAttachment := Attachment{
 		Title:    "Event Identification",
@@ -91,8 +97,6 @@ func (mc SlackBackend) Send(mesg message.Event) {
 		Text:     "Event Sensor and Category",
 		Fallback: "Event Sensor and Category",
 	}
-
-	category, etype, sensor := mesg.Identity()
 
 	idAttachment.AddField("Sensor", string(sensor)).
 		AddField("Category", string(category)).
@@ -109,7 +113,7 @@ func (mc SlackBackend) Send(mesg message.Event) {
 		AddField("Category", string(category)).
 		AddField("Type", string(etype))
 
-	for name, value := range mesg.Fields() {
+	for name, value := range mesg {
 		switch vo := value.(type) {
 		case string:
 			fieldAttachment.AddField(name, vo)

@@ -15,7 +15,7 @@ Expects to recieve a `GET` request to retrieve stored events, with the following
 {
     "response_per_page": 10,
     "page":1,
-    "types": [1,5,20], 
+    "types": ["DataWrite", "DataError"], 
     "sensors": ["ping", "^connect"] 
 }
 ```
@@ -78,7 +78,7 @@ Expects to recieve a `GET` request to retrieve stored session events, with the f
 {
     "response_per_page": 10,
     "page":1,
-    "types": [1], 
+    "types": ["DataWrite", "DataError"], 
     "sensors": ["^ssh_"] 
 }
 ```

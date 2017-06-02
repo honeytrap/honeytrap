@@ -12,7 +12,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/pushers"
-	"github.com/honeytrap/honeytrap/pushers/message"
+	"github.com/honeytrap/honeytrap/pushers/event"
 	"github.com/op/go-logging"
 )
 
@@ -44,7 +44,7 @@ func New(c Config) *ConsoleBackend {
 }
 
 // NewWith defines a function to return a pushers.Backend which delivers
-// new messages to a giving underline system file, defined by the configuration
+// new event.s to a giving underline system file, defined by the configuration
 // retrieved from the giving toml.Primitive.
 func NewWith(meta toml.MetaData, data toml.Primitive) (pushers.Channel, error) {
 	var config Config
@@ -75,9 +75,9 @@ func printify(s string) string {
 
 // Send delivers the giving if it passes all filtering criteria into the
 // FileBackend write queue.
-func (f *ConsoleBackend) Send(message message.Event) {
+func (f *ConsoleBackend) Send(e event.Event) {
 	params := []string{}
-	for k, v := range message.Fields() {
+	for k, v := range e {
 		switch v.(type) {
 		case net.IP:
 			params = append(params, fmt.Sprintf("%s=%s", k, v.(net.IP).String()))
@@ -104,6 +104,5 @@ func (f *ConsoleBackend) Send(message message.Event) {
 		}
 	}
 
-	category, _, sensor := message.Identity()
-	fmt.Fprintf(f.Writer, "%s > %s > %s\n", sensor, category, strings.Join(params, ", "))
+	fmt.Fprintf(f.Writer, "%s > %s > %s\n", e["sensor"], e["category"], strings.Join(params, ", "))
 }

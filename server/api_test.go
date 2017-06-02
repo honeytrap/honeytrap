@@ -13,7 +13,7 @@ import (
 	"github.com/honeytrap/honeytrap/config"
 	"github.com/honeytrap/honeytrap/director"
 	"github.com/honeytrap/honeytrap/director/iodirector"
-	"github.com/honeytrap/honeytrap/pushers/message"
+	"github.com/honeytrap/honeytrap/pushers/event"
 	"github.com/honeytrap/honeytrap/server"
 	"github.com/honeytrap/honeytrap/utils/tests"
 )
@@ -25,45 +25,20 @@ const (
 )
 
 var (
-	conso = message.BasicEvent{
-		Category:    "Chip Integrated",
-		SessionID:   "4334334-3433434-34343-FUD",
-		ContainerID: "56454-5454UDF-2232UI-34FGHU",
-		Sensor:      message.ServiceSensor,
-		Type:        message.ServiceStarted,
-	}
+	blueChip = event.New(
+		event.Sensor(event.ContainersSensor),
+		event.Category(event.ContainerCheckpoint),
+	)
 
-	conlo = message.BasicEvent{
-		Category:    "Chip Integrated",
-		SessionID:   "4334334-3433434-34343-FUD",
-		ContainerID: "56454-5454UDF-2232UI-34FGHU",
-		Sensor:      message.ConnectionSensor,
-		Type:        message.ContainerCloned,
-	}
+	ping = event.New(
+		event.Sensor(event.ServiceSensor),
+		event.Category(event.ServiceStarted),
+	)
 
-	conco = message.BasicEvent{
-		Category:    "Chip Integrated",
-		SessionID:   "4334334-3433434-34343-FUD",
-		ContainerID: "56454-5454UDF-2232UI-34FGHU",
-		Sensor:      message.PingSensor,
-		Type:        message.PingEvent,
-	}
-
-	conzip = message.BasicEvent{
-		Category:    "Integrated OS",
-		SessionID:   "4334334-3433434-34343-FUD",
-		ContainerID: "56454-5454UDF-2232UI-34FGHU",
-		Sensor:      message.SessionSensor,
-		Type:        message.ServiceStarted,
-	}
-
-	contar = message.BasicEvent{
-		Sensor:      message.SessionSensor,
-		Type:        message.ContainerCheckpoint,
-		Category:    "Integrated OS",
-		SessionID:   "4334334-3433434-34343-FUD",
-		ContainerID: "56454-5454UDF-2232UI-34FGHU",
-	}
+	crum = event.New(
+		event.Sensor(event.DataSensor),
+		event.Category(event.DataWrite),
+	)
 )
 
 func TestHoneycast(t *testing.T) {
@@ -76,11 +51,9 @@ func TestHoneycast(t *testing.T) {
 
 	sm := httptest.NewServer(cast)
 
-	cast.Send(contar)
-	cast.Send(conzip)
-	cast.Send(conso)
-	cast.Send(conco)
-	cast.Send(conlo)
+	cast.Send(blueChip)
+	cast.Send(ping)
+	cast.Send(crum)
 
 	t.Logf("Given the an instance of a Honeycast API ")
 	{
@@ -163,15 +136,15 @@ func TestHoneycast(t *testing.T) {
 			}
 			t.Logf("\t%s\t Should have successfully decoded response.", passed)
 
-			if len(item.Events) != 5 {
-				t.Fatalf("\t%s\t Should have retrieved 5 event for /events: %d.", failed, len(item.Events))
+			if len(item.Events) != 3 {
+				t.Fatalf("\t%s\t Should have retrieved 3 event for /events: %d.", failed, len(item.Events))
 			}
-			t.Logf("\t%s\t Should have retrieved 5 event for /events.", passed)
+			t.Logf("\t%s\t Should have retrieved 3 event for /events.", passed)
 
-			if item.Total != 5 {
-				t.Fatalf("\t%s\t Should have total of 5 events in store: %d.", failed, item.Total)
+			if item.Total != 3 {
+				t.Fatalf("\t%s\t Should have total of 3 events in store: %d.", failed, item.Total)
 			}
-			t.Logf("\t%s\t Should have total of 5 events in store.", passed)
+			t.Logf("\t%s\t Should have total of 3 events in store.", passed)
 		}
 
 		t.Logf("\t When retrieving metric data from the /metrics/containers endpoints")
@@ -215,11 +188,9 @@ func TestHoneycastWebsocket(t *testing.T) {
 
 	sm := httptest.NewServer(cast)
 
-	cast.Send(contar)
-	cast.Send(conzip)
-	cast.Send(conso)
-	cast.Send(conco)
-	cast.Send(conlo)
+	cast.Send(blueChip)
+	cast.Send(ping)
+	cast.Send(crum)
 
 	t.Logf("Given the an instance of a Honeycast API ")
 	{

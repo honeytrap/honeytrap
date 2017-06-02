@@ -83,6 +83,15 @@ func New(opts ...Option) Event {
 	return Event(e)
 }
 
+// Apply applies all options to the Event returning it after it's done.
+func Apply(e Event, opts ...Option) Event {
+	for _, option := range opts {
+		option(e)
+	}
+
+	return e
+}
+
 // NewWith combines the set of option into a single option which
 // applies all the series when called.
 func NewWith(opts ...Option) Option {

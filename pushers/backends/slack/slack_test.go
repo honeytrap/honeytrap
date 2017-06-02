@@ -11,7 +11,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/pushers/backends/slack"
-	"github.com/honeytrap/honeytrap/pushers/message"
+	"github.com/honeytrap/honeytrap/pushers/event"
 	"github.com/honeytrap/honeytrap/utils/tests"
 )
 
@@ -21,29 +21,20 @@ const (
 )
 
 var (
-	blueChip = message.BasicEvent{
-		Sensor:      "BlueChip",
-		Category:    "Chip Integrated",
-		SessionID:   "4334334-3433434-34343-FUD",
-		ContainerID: "56454-5454UDF-2232UI-34FGHU",
-		Data:        "Hello World!",
-	}
+	blueChip = event.New(event.CopyFrom(map[string]interface{}{
+		"sensor":   "BlueChip",
+		"category": "Chip Integrated",
+	}))
 
-	ping = message.BasicEvent{
-		Sensor:      "Ping",
-		Category:    "Ping Notificiation",
-		SessionID:   "4334334-3433434-34343-FUD",
-		ContainerID: "56454-5454UDF-2232UI-34FGHU",
-		Data:        "Hello World!",
-	}
+	ping = event.New(event.CopyFrom(map[string]interface{}{
+		"sensor":   "Ping",
+		"category": "Ping Notificiation",
+	}))
 
-	crum = message.BasicEvent{
-		Sensor:      "Crum Stream",
-		Category:    "WebRTC Crum Stream",
-		SessionID:   "4334334-3433434-34343-FUD",
-		ContainerID: "56454-5454UDF-2232UI-34FGHU",
-		Data:        "Hello World!",
-	}
+	crum = event.New(event.CopyFrom(map[string]interface{}{
+		"senspr":   "Crum Stream",
+		"category": "WebRTC Crum Stream",
+	}))
 )
 
 type slackService struct {
@@ -96,11 +87,9 @@ func TestSlackPusher(t *testing.T) {
 			var service slackService
 
 			server := httptest.NewServer(&service)
-			host := server.URL + "/services"
 
-			channel := slack.New(slack.APIConfig{
-				Host:  host,
-				Token: "343HJUYFHGT/B4545IO/VOOepdacxW9HG60eDfoFBiMF",
+			channel := slack.New(slack.Config{
+				WebhookURL: server.URL + "/services/343HJUYFHGT/B4545IO/VOOepdacxW9HG60eDfoFBiMF",
 			})
 
 			channel.Send(blueChip)
@@ -145,8 +134,7 @@ func TestSlackPusher(t *testing.T) {
 func TestSlackGenerator(t *testing.T) {
 	tomlConfig := `
 	backend = "slack"
-	host = "https://hooks.slack.com/services/"
-	token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"`
+	webhookURL = "https://hooks.slack.com/services/KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"`
 
 	var config toml.Primitive
 

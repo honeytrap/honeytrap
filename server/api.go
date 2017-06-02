@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
-	"strings"
 	"sync"
 	"time"
 
@@ -16,17 +15,16 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/honeytrap/honeytrap/config"
 	"github.com/honeytrap/honeytrap/director"
-	"github.com/honeytrap/honeytrap/pushers/message"
+	"github.com/honeytrap/honeytrap/pushers/event"
 )
 
 //=============================================================================================================
 
 // Contains the different buckets used
 var (
-	eventsBucket  = []byte(message.BasicSensor)
-	sessionBucket = []byte(message.SessionSensor)
-
-	pingEventsBucket = []byte(message.PingEvent)
+	eventsBucket  = []byte(event.EventSensor)
+	sessionBucket = []byte(event.SessionSensor)
+	pingBucket    = []byte(event.PingEvent)
 )
 
 //=============================================================================================================
@@ -65,7 +63,7 @@ func NewHoneycast(config *config.Config, manager *director.ContainerConnections,
 	// Create the database we desire.
 	// TODO: Should we really panic here, it makes sense to do that, since it's the server
 	// right?
-	bolted, err := NewBolted(fmt.Sprintf("%s-bolted", config.Token), string(message.ContainersSensor), string(message.ConnectionSensor), string(message.ServiceSensor), string(message.SessionSensor), string(message.PingSensor), string(message.DataSensor), string(message.ErrorsSensor), string(message.BasicSensor))
+	bolted, err := NewBolted(fmt.Sprintf("%s-bolted", config.Token, event.ContainersSensor, event.ConnectionSensor, event.ServiceSensor, event.SessionSensor, event.PingSensor, event.DataSensor, event.ErrorsSensor, event.EventSensor))
 	if err != nil {
 		log.Errorf("Failed to created BoltDB session: %+q", err)
 		panic(err)
@@ -180,28 +178,32 @@ func (h *Honeycast) Containers(w http.ResponseWriter, r *http.Request, params ma
 
 // Send delivers the underline provided messages and stores them into the underline
 // Honeycast database for retrieval through the API.
-func (h *Honeycast) Send(event message.Event) {
-	var containers, connections, data, services, pings, serrors, sessions, events []message.Event
+func (h *Honeycast) Send(ev event.Event) {
+	var containers, connections, data, services, pings, serrors, sessions, events []event.Event
 
-	events = append(events, event)
+	events = append(events, ev)
 
-	_, _, sensor := event.Identity()
+	sensor, ok := ev["sensor"].(string)
+	if !ok {
+		log.Error("Honeycast API : Event object has non string sensor value : %#q", ev)
+		return
+	}
 
 	switch sensor {
-	case message.SessionSensor:
-		sessions = append(sessions, event)
-	case message.PingSensor:
-		pings = append(pings, event)
-	case message.DataSensor:
-		data = append(data, event)
-	case message.ServiceSensor:
-		services = append(services, event)
-	case message.ContainersSensor:
-		containers = append(containers, event)
-	case message.ConnectionSensor:
-		connections = append(connections, event)
-	case message.ConnectionErrorSensor, message.DataErrorSensor:
-		serrors = append(serrors, event)
+	case event.SessionSensor:
+		sessions = append(sessions, ev)
+	case event.PingSensor:
+		pings = append(pings, ev)
+	case event.DataSensor:
+		data = append(data, ev)
+	case event.ServiceSensor:
+		services = append(services, ev)
+	case event.ContainersSensor:
+		containers = append(containers, ev)
+	case event.ConnectionSensor:
+		connections = append(connections, ev)
+	case event.ConnectionErrorSensor, event.DataErrorSensor:
+		serrors = append(serrors, ev)
 	}
 
 	// Batch deliver both sessions and events data to all connected
@@ -209,35 +211,35 @@ func (h *Honeycast) Send(event message.Event) {
 	h.socket.sessions <- sessions
 
 	//  Batch save all events into individual buckets.
-	if terr := h.bolted.Save([]byte(message.SessionSensor), sessions...); terr != nil {
+	if terr := h.bolted.Save(sessionBucket, sessions...); terr != nil {
 		log.Errorf("Honeycast API : Failed to save session events to db: %+q", terr)
 	}
 
-	if terr := h.bolted.Save([]byte(message.ErrorsSensor), serrors...); terr != nil {
+	if terr := h.bolted.Save([]byte(event.ErrorsSensor), serrors...); terr != nil {
 		log.Errorf("Honeycast API : Failed to save errors events to db: %+q", terr)
 	}
 
-	if terr := h.bolted.Save([]byte(message.ConnectionSensor), connections...); terr != nil {
+	if terr := h.bolted.Save([]byte(event.ConnectionSensor), connections...); terr != nil {
 		log.Errorf("Honeycast API : Failed to save connections events to db: %+q", terr)
 	}
 
-	if terr := h.bolted.Save([]byte(message.ServiceSensor), services...); terr != nil {
+	if terr := h.bolted.Save([]byte(event.ServiceSensor), services...); terr != nil {
 		log.Errorf("Honeycast API : Failed to save service events to db: %+q", terr)
 	}
 
-	if terr := h.bolted.Save([]byte(message.ContainersSensor), containers...); terr != nil {
+	if terr := h.bolted.Save([]byte(event.ContainersSensor), containers...); terr != nil {
 		log.Errorf("Honeycast API : Failed to save data events to db: %+q", terr)
 	}
 
-	if terr := h.bolted.Save([]byte(message.DataSensor), data...); terr != nil {
+	if terr := h.bolted.Save([]byte(event.DataSensor), data...); terr != nil {
 		log.Errorf("Honeycast API : Failed to save data events to db: %+q", terr)
 	}
 
-	if terr := h.bolted.Save([]byte(message.PingSensor), pings...); terr != nil {
+	if terr := h.bolted.Save([]byte(event.PingSensor), pings...); terr != nil {
 		log.Errorf("Honeycast API : Failed to save ping events to db: %+q", terr)
 	}
 
-	if terr := h.bolted.Save([]byte(message.BasicSensor), events...); terr != nil {
+	if terr := h.bolted.Save(eventsBucket, events...); terr != nil {
 		log.Errorf("Honeycast API : Failed to save events to db: %+q", terr)
 	}
 }
@@ -245,123 +247,17 @@ func (h *Honeycast) Send(event message.Event) {
 // Sessions handles response for all `/sessions` target endpoint and returns all giving push
 // messages returns the slice of data.
 func (h *Honeycast) Sessions(w http.ResponseWriter, r *http.Request, params map[string]string) {
-	total, err := h.bolted.GetSize(sessionBucket)
-	if err != nil {
-		log.Error("Honeycast API : Operation Failed : %+q", err)
-		http.Error(w, "Operation Failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	var req EventRequest
-
-	if terr := json.NewDecoder(r.Body).Decode(&req); terr != nil {
-		log.Error("Honeycast API : Invalid Request Object data: %+q", terr)
-		http.Error(w, "Invalid Request Object data: "+terr.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	var res EventResponse
-	res.Total = total
-	res.Page = req.Page
-	res.ResponsePerPage = req.ResponsePerPage
-
-	if req.ResponsePerPage <= 0 || req.Page <= 0 {
-
-		var terr error
-		res.Events, terr = h.bolted.Get(sessionBucket, -1, -1)
-		if terr != nil {
-			log.Error("Honeycast API : Invalid Response received : %+q", err)
-			http.Error(w, "Invalid 'From' parameter: "+terr.Error(), http.StatusInternalServerError)
-			return
-		}
-	} else {
-		length := req.ResponsePerPage * req.Page
-		index := (length / 2)
-
-		if req.Page > 1 {
-			index++
-		}
-
-		var terr error
-		var events, filteredEvents []message.Event
-
-		events, terr = h.bolted.Get(eventsBucket, index, length)
-		if terr != nil {
-			log.Error("Honeycast API : Invalid Response received : %+q", err)
-			http.Error(w, "Invalid 'From' parameter: "+terr.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		{
-			doTypeMatch := len(req.TypeFilters) != 0
-			doSensorMatch := len(req.SensorFilters) != 0
-
-			if doTypeMatch || doSensorMatch {
-				for _, event := range events {
-
-					_, eventType, eventSensor := event.Identity()
-
-					var typeMatched bool
-					var sensorMatched bool
-
-					{
-					typeFilterLoop:
-						for _, tp := range req.TypeFilters {
-							// If we match atleast one type then allow event event.
-							if string(eventType) == tp {
-								typeMatched = true
-								break typeFilterLoop
-							}
-						}
-
-						// If there are type filters and event does not match, skip.
-						if doTypeMatch && !typeMatched {
-							continue
-						}
-					}
-
-					{
-					sensorFilterLoop:
-						for _, tp := range req.SensorFilters {
-							// If we match atleast one type then allow event event.
-							if strings.ToLower(string(eventSensor)) == strings.ToLower(tp) {
-								sensorMatched = true
-								break sensorFilterLoop
-							}
-						}
-
-						// If there are sensor filters and event does not match, skip.
-						if doSensorMatch && !sensorMatched {
-							continue
-						}
-
-					}
-
-					filteredEvents = append(filteredEvents, event)
-				}
-
-				res.Events = filteredEvents
-			} else {
-				res.Events = events
-			}
-		}
-	}
-
-	var bu bytes.Buffer
-	if jserr := json.NewEncoder(&bu).Encode(res); jserr != nil {
-		log.Error("Honeycast API : Invalid 'From' Param: %+q", jserr)
-		http.Error(w, "Invalid 'From' parameter: "+jserr.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	w.Write(bu.Bytes())
+	h.bucketFind(sessionBucket, w, r, params)
 }
 
 // Events handles response for all `/events` target endpoint and returns all giving events
 // and expects a giving filter paramter which will be used to filter out the needed events.
 func (h *Honeycast) Events(w http.ResponseWriter, r *http.Request, params map[string]string) {
-	total, err := h.bolted.GetSize(eventsBucket)
+	h.bucketFind(eventsBucket, w, r, params)
+}
+
+func (h *Honeycast) bucketFind(bucket []byte, w http.ResponseWriter, r *http.Request, params map[string]string) {
+	total, err := h.bolted.GetSize(bucket)
 	if err != nil {
 		log.Error("Honeycast API : Operation Failed : %+q", err)
 		http.Error(w, "Operation Failed: "+err.Error(), http.StatusInternalServerError)
@@ -385,7 +281,7 @@ func (h *Honeycast) Events(w http.ResponseWriter, r *http.Request, params map[st
 
 	if req.ResponsePerPage <= 0 || req.Page <= 0 {
 
-		res.Events, terr = h.bolted.Get(eventsBucket, -1, -1)
+		res.Events, terr = h.bolted.Get(bucket, -1, -1)
 		if terr != nil {
 			log.Error("Honeycast API : Invalid Response received : %+q", err)
 			http.Error(w, "Invalid 'From' parameter: "+terr.Error(), http.StatusInternalServerError)
@@ -400,9 +296,9 @@ func (h *Honeycast) Events(w http.ResponseWriter, r *http.Request, params map[st
 		}
 
 		var terr error
-		var events, filteredEvents []message.Event
+		var events, filteredEvents []event.Event
 
-		events, terr = h.bolted.Get(eventsBucket, index, length)
+		events, terr = h.bolted.Get(bucket, index, length)
 		if terr != nil {
 			log.Error("Honeycast API : Invalid Response received : %+q", err)
 			http.Error(w, "Invalid 'From' parameter: "+terr.Error(), http.StatusInternalServerError)
@@ -415,7 +311,9 @@ func (h *Honeycast) Events(w http.ResponseWriter, r *http.Request, params map[st
 
 			if doTypeMatch || doSensorMatch {
 				for _, event := range events {
-					_, eventType, eventSensor := event.Identity()
+
+					eventType := event["type"].(string)
+					eventSensor := event["sensor"].(string)
 
 					var typeMatched bool
 					var sensorMatched bool
@@ -424,7 +322,7 @@ func (h *Honeycast) Events(w http.ResponseWriter, r *http.Request, params map[st
 					typeFilterLoop:
 						for _, tp := range req.TypeFilters {
 							// If we match atleast one type then allow event event.
-							if string(eventType) == tp {
+							if eventType == tp {
 								typeMatched = true
 								break typeFilterLoop
 							}
@@ -447,7 +345,7 @@ func (h *Honeycast) Events(w http.ResponseWriter, r *http.Request, params map[st
 							}
 
 							// If we match atleast one type then allow event event.
-							if sensorRegExp.MatchString(string(eventSensor)) {
+							if sensorRegExp.MatchString(eventSensor) {
 								sensorMatched = true
 								break sensorFilterLoop
 							}
@@ -514,8 +412,8 @@ type Socketcast struct {
 	clients      map[*websocket.Conn]bool
 	newClients   chan *websocket.Conn
 	closeClients chan *websocket.Conn
-	events       chan []message.Event
-	sessions     chan []message.Event
+	events       chan []event.Event
+	sessions     chan []event.Event
 	close        chan struct{}
 	data         chan targetMessage
 	wg           sync.WaitGroup
@@ -534,9 +432,9 @@ func NewSocketcast(config *config.Config, db *Bolted, origins func(*http.Request
 
 	socket.close = make(chan struct{}, 0)
 	socket.data = make(chan targetMessage, 0)
-	socket.events = make(chan []message.Event, 0)
+	socket.events = make(chan []event.Event, 0)
 	socket.clients = make(map[*websocket.Conn]bool)
-	socket.sessions = make(chan []message.Event, 0)
+	socket.sessions = make(chan []event.Event, 0)
 	socket.newClients = make(chan *websocket.Conn, 0)
 	socket.closeClients = make(chan *websocket.Conn, 0)
 	socket.transport = SocketTransportWithDB(config, db)
@@ -712,7 +610,7 @@ func NewSocketTransport(config *config.Config) (*SocketTransport, error) {
 	socket.config = config
 
 	// Create the database we desire.
-	bolted, err := NewBolted(fmt.Sprintf("%s-bolted", config.Token), string(sessionBucket), string(eventsBucket))
+	bolted, err := NewBolted(fmt.Sprintf("%s-bolted", config.Token, sessionBucket, eventsBucket))
 	if err != nil {
 		log.Errorf("Failed to created BoltDB session: %+q", err)
 		return nil, err
@@ -777,7 +675,7 @@ func (so *SocketTransport) HandleMessage(message []byte, conn *websocket.Conn) e
 }
 
 // DeliverNewSessions delivers new incoming requests to the underline socket transport.
-func (so *SocketTransport) DeliverNewSessions(events []message.Event, conn *websocket.Conn) error {
+func (so *SocketTransport) DeliverNewSessions(events []event.Event, conn *websocket.Conn) error {
 	if events == nil {
 		return nil
 	}
@@ -789,7 +687,7 @@ func (so *SocketTransport) DeliverNewSessions(events []message.Event, conn *webs
 }
 
 // DeliverNewEvents delivers new incoming requests to the underline socket transport.
-func (so *SocketTransport) DeliverNewEvents(events []message.Event, conn *websocket.Conn) error {
+func (so *SocketTransport) DeliverNewEvents(events []event.Event, conn *websocket.Conn) error {
 	if events == nil {
 		return nil
 	}
@@ -824,10 +722,10 @@ const (
 // EventResponse defines a struct which is sent a request type used to respond to
 // given requests.
 type EventResponse struct {
-	ResponsePerPage int             `json:"responser_per_page"`
-	Page            int             `json:"page"`
-	Total           int             `json:"total"`
-	Events          []message.Event `json:"events"`
+	ResponsePerPage int           `json:"responser_per_page"`
+	Page            int           `json:"page"`
+	Total           int           `json:"total"`
+	Events          []event.Event `json:"events"`
 }
 
 // EventRequest defines a struct which receives a request type used to retrieve
