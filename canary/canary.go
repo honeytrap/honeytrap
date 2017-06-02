@@ -33,7 +33,8 @@ var log = logging.MustGetLogger("canary")
 // check ring buffer
 // use sockets and io.Reader
 // parameters: ports to include exclude/ filter (or do we want to filter the events)
-// interface to listen on
+// config: interface to listen on
+// answer with data
 
 const (
 	// MaxEpollEvents defines maximum number of poll events to retrieve at once
@@ -88,104 +89,6 @@ type Canary struct {
 	stateTable StateTable
 }
 
-// KnockGroup groups multiple knocks
-type KnockGroup struct {
-	Start time.Time
-	Last  time.Time
-
-	SourceIP net.IP
-	Protocol Protocol
-
-	Count int
-
-	Knocks *UniqueSet
-}
-
-// KnockGrouper defines the interface for NewGroup function
-type KnockGrouper interface {
-	NewGroup() *KnockGroup
-}
-
-// KnockUDPPort struct contain UDP port knock metadata
-type KnockUDPPort struct {
-	SourceIP        net.IP
-	DestinationPort uint16
-}
-
-// NewGroup will return a new KnockGroup for UDP protocol
-func (k KnockUDPPort) NewGroup() *KnockGroup {
-	return &KnockGroup{
-		Start:    time.Now(),
-		SourceIP: k.SourceIP,
-		Count:    0,
-		Protocol: ProtocolUDP,
-		Knocks: NewUniqueSet(func(v1, v2 interface{}) bool {
-			if _, ok := v1.(KnockUDPPort); !ok {
-				return false
-			}
-			if _, ok := v2.(KnockUDPPort); !ok {
-				return false
-			}
-
-			k1, k2 := v1.(KnockUDPPort), v2.(KnockUDPPort)
-			return k1.DestinationPort == k2.DestinationPort
-		}),
-	}
-}
-
-// KnockTCPPort struct contain TCP port knock metadata
-type KnockTCPPort struct {
-	SourceIP        net.IP
-	DestinationPort uint16
-}
-
-// NewGroup will return a new KnockGroup for TCP protocol
-func (k KnockTCPPort) NewGroup() *KnockGroup {
-	return &KnockGroup{
-		Start:    time.Now(),
-		SourceIP: k.SourceIP,
-		Protocol: ProtocolTCP,
-		Count:    0,
-		Knocks: NewUniqueSet(func(v1, v2 interface{}) bool {
-			if _, ok := v1.(KnockTCPPort); !ok {
-				return false
-			}
-			if _, ok := v2.(KnockTCPPort); !ok {
-				return false
-			}
-
-			k1, k2 := v1.(KnockTCPPort), v2.(KnockTCPPort)
-			return k1.DestinationPort == k2.DestinationPort
-		}),
-	}
-}
-
-// KnockICMP struct contain ICMP knock metadata
-type KnockICMP struct {
-	SourceIP net.IP
-}
-
-// NewGroup will return a new KnockGroup for ICMP protocol
-func (k KnockICMP) NewGroup() *KnockGroup {
-	return &KnockGroup{
-		Start:    time.Now(),
-		SourceIP: k.SourceIP,
-		Count:    0,
-		Protocol: ProtocolICMP,
-		Knocks: NewUniqueSet(func(v1, v2 interface{}) bool {
-			if _, ok := v1.(KnockICMP); !ok {
-				return false
-			}
-			if _, ok := v2.(KnockICMP); !ok {
-				return false
-			}
-
-			_, _ = v1.(KnockICMP), v2.(KnockICMP)
-			return true
-		}),
-	}
-}
-
 // Taken from https://github.com/xiezhenye/harp/blob/master/src/arp/arp.go#L53
 func htons(n uint16) uint16 {
 	var (
@@ -229,7 +132,7 @@ func (c *Canary) handleUDP(iph *ipv4.Header, data []byte) error {
 		}
 
 		// do we only want to detect scans? Or also detect payloads?
-		c.events.Send(EventUDP(iph.Src, iph.Dst, hdr.Source, hdr.Destination, hdr.Payload))
+		// c.events.Send(EventUDP(iph.Src, iph.Dst, hdr.Source, hdr.Destination, hdr.Payload))
 	} else if err := fn(iph, hdr); err != nil {
 		fmt.Printf("Could not decode udp packet: %s", err)
 	}
@@ -251,6 +154,7 @@ func (c *Canary) handleICMP(iph *ipv4.Header, data []byte) error {
 	c.knockChan <- KnockICMP{
 		SourceIP: iph.Src,
 	}
+
 	return nil
 }
 
@@ -324,15 +228,13 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 		// no state found
 		state = NewState(iph.Src, hdr.Source, iph.Dst, hdr.Destination)
 		c.stateTable.Add(state)
+
+		// add Socket{}
 	} else {
 		// no existing state found, returning
 		return nil // ErrNoExistingStateFound()
 	}
 
-	// USE PUSH?
-	// ACK THE PAYLOAD ALWAYS
-
-	// ACK EACH SYN, PSH, FIN AND RST
 	switch {
 	case hdr.HasFlag(tcp.SYN):
 		fallthrough
@@ -362,6 +264,7 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 
 		return nil
 	} else {
+		// remove states
 		// FIN / RST
 		return nil
 	}
@@ -370,9 +273,10 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 	return nil
 }
 func (c *Canary) ack(state *State, iph *ipv4.Header, tcph *tcp.Header) error {
-	seqNum := tcph.SeqNum + uint32(len(tcph.Payload))
-	flags := tcp.Flag(tcp.ACK)
+	seqNum := tcph.SeqNum
+	seqNum += uint32(len(tcph.Payload))
 
+	flags := tcp.Flag(tcp.ACK)
 	if tcph.HasFlag(tcp.SYN) {
 		seqNum++
 		flags |= tcp.Flag(tcp.SYN)
@@ -384,9 +288,7 @@ func (c *Canary) ack(state *State, iph *ipv4.Header, tcph *tcp.Header) error {
 		flags |= tcp.Flag(tcp.FIN)
 	}
 
-	// TODO: keep state....
-	// SeqNum
-	// ID
+	payload := []byte{}
 
 	th := &tcp.Header{
 		Source:      tcph.Destination,
@@ -396,11 +298,11 @@ func (c *Canary) ack(state *State, iph *ipv4.Header, tcph *tcp.Header) error {
 		Reserved:    0,
 		ECN:         0,
 		Ctrl:        flags,
-		Window:      65531,
+		Window:      65535,
 		Checksum:    0,
 		Urgent:      0,
 		Options:     []tcp.Option{},
-		Payload:     []byte{},
+		Payload:     payload,
 	}
 
 	data1, err := th.Marshal()
@@ -429,8 +331,6 @@ func (c *Canary) ack(state *State, iph *ipv4.Header, tcph *tcp.Header) error {
 	}
 
 	state.ID++
-	// we don't have to increate sendNext for ACK
-	// state.SendNext++
 
 	if tcph.HasFlag(tcp.SYN) {
 		state.SendNext++
@@ -440,73 +340,18 @@ func (c *Canary) ack(state *State, iph *ipv4.Header, tcph *tcp.Header) error {
 		state.SendNext++
 	}
 
+	state.SendNext += uint32(len(payload))
+
 	updateTCPChecksum(iph2, data1)
 
 	data = append(data, data1...)
 
-	// Src := net.IPv4(data1[12], data1[13], data1[14], data1[15])
-	Dst := net.IPv4(data[16], data[17], data[18], data[19])
-
-	ef := ethernet.EthernetFrame{
-		Source:      c.networkInterfaces[0].HardwareAddr,
-		Destination: []byte{0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
-		Type:        0x0800,
-	}
-
-	intf := ""
-
-	ae := c.ac.Get(Dst)
-	if ae != nil {
-		ef.Destination = ae.HardwareAddress
-		intf = ae.Interface
-	} else {
-		// TODO(make function)
-		for _, route := range c.rt {
-			// find shortest route
-			if !route.Destination.Contains(Dst) {
-				continue
-			}
-
-			a := c.ac.Get(route.Gateway)
-
-			intf = a.Interface
-			ef.Destination = a.HardwareAddress
-			break
-		}
-
-	}
-
-	data2, err := ef.Marshal()
-	if err != nil {
-		fmt.Println("Error marshalling ethernet frame: ", err)
-	}
-
 	csum := uint32(0)
 
 	// calculate correct ip header length here.
-	length := 20 // len(data1) - 1
+	length := 20
 
 	// calculate options?
-
-	/*
-		i := length
-
-		for {
-			if i > len(data) {
-				break
-			}
-
-			if data[i] == 0x00 {
-				break
-			}
-
-			fmt.Println("Got option")
-
-			length += int(data[i+1])
-			i += int(data[i+1])
-		}
-	*/
-
 	for i := 0; i < length; i += 2 {
 		if i == 10 {
 			continue
@@ -530,9 +375,39 @@ func (c *Canary) ack(state *State, iph *ipv4.Header, tcph *tcp.Header) error {
 	data[10] = uint8((csum >> 8) & 0xFF)
 	data[11] = uint8(csum & 0xFF)
 
+	// Src := net.IPv4(data1[12], data1[13], data1[14], data1[15])
+	dst := net.IPv4(data[16], data[17], data[18], data[19])
+
+	ae := c.ac.Get(dst)
+	if ae == nil {
+		// TODO(make function)
+		for _, route := range c.rt {
+
+			// find shortest route
+			if !route.Destination.Contains(dst) {
+				continue
+			}
+
+			ae = c.ac.Get(route.Gateway)
+			break
+		}
+
+	}
+
+	ef := ethernet.EthernetFrame{
+		Source:      c.networkInterfaces[0].HardwareAddr,
+		Destination: ae.HardwareAddress,
+		Type:        0x0800,
+	}
+
+	data2, err := ef.Marshal()
+	if err != nil {
+		fmt.Println("Error marshalling ethernet frame: ", err)
+	}
+
 	data = append(data2, data...)
 
-	c.send(intf, data)
+	c.send(ae.Interface, data)
 
 	return nil
 }
@@ -649,26 +524,7 @@ func EventPortscan(sourceIP net.IP, duration time.Duration, count int, ports []s
 
 // send will queue a packet for sending
 func (c *Canary) send(intf string, data []byte) error {
-	c.m.Lock()
-	defer c.m.Unlock()
-
-	// add to send queue
-	// ring buffer?
-
-	// how does the buffer play nice with retransmits
-
 	c.buffer.Write(data)
-
-	// enable poll out
-	// find interface
-
-	for _, intf := range c.networkInterfaces {
-		// send network frame
-		// find gateway
-		//
-
-		_ = intf
-	}
 
 	fd := c.descriptors[intf]
 
@@ -722,21 +578,11 @@ func updateTCPChecksum(iph *ipv4.Header, data []byte) {
 
 // send will queue a packet for sending
 func (c *Canary) transmit(fd int32) error {
-	// os specific transmitter
-	// protocol implementation specific
-
-	// simple HTTP
-
-	// record all kind of challenge responses
-	// os fingerprint
-
-	c.m.Lock()
-	defer c.m.Unlock()
-
 	buffer := make([]byte, 65535)
 	n, err := c.buffer.Read(buffer)
 	if err != nil {
-		fmt.Println("BLA", err)
+		log.Error("Error reading buffer: %s", err)
+		return err
 	}
 
 	to := &syscall.SockaddrLinklayer{
@@ -746,7 +592,8 @@ func (c *Canary) transmit(fd int32) error {
 
 	err = syscall.Sendto((int(fd)), buffer[:n], 0, to)
 	if err != nil {
-		panic(err)
+		log.Error("Error sending buffer: %s", err)
+		return err
 	}
 
 	return nil

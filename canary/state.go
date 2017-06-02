@@ -20,6 +20,11 @@ type State struct {
 	SendNext uint32
 
 	LastAcked uint32
+
+	// /proc/net/tcp
+
+	// contains tx_queue
+	// contains rx_queue
 }
 
 type StateTable []*State

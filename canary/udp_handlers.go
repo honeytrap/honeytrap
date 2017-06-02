@@ -225,6 +225,8 @@ func (c *Canary) DecodeDNS(iph *ipv4.Header, udph *udp.Header) error {
 		return err
 	}
 
+	// DNSTypeANY -> Amplification attack (https://www.us-cert.gov/ncas/alerts/TA13-088A)
+
 	switch layer.OpCode {
 	case layers.DNSOpCodeQuery:
 		c.events.Send(EventDNSQuery(iph.Src, *layer))

@@ -342,7 +342,6 @@ func (t *Header) Marshal() ([]byte, error) {
 		binary.BigEndian.PutUint16(bytes[16:], t.Checksum)
 	*/
 	return bytes, nil
-
 }
 
 // TCP Checksum
