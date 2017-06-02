@@ -7,7 +7,12 @@ import (
 	"github.com/honeytrap/honeytrap/proxies"
 	"github.com/honeytrap/honeytrap/pushers"
 
+	"github.com/honeytrap/honeytrap/pushers/event"
 	"github.com/satori/go.uuid"
+)
+
+var (
+	sshCategory = event.NewWith(event.Category("ssh"))
 )
 
 // SSHAction defines a action for the SSH connection stream.
@@ -33,15 +38,14 @@ type SSHAction struct {
 }
 
 // NewSSHRecorder returns a new instance of the SSHRecorder.
-func NewSSHRecorder(p *pushers.Pusher, e pushers.Events) *SSHRecorder {
+func NewSSHRecorder(e pushers.Channel) *SSHRecorder {
 	// contains info about the container
-	return &SSHRecorder{p, e}
+	return &SSHRecorder{e}
 }
 
 // SSHRecorder defines a recorder for handling ssh connections.
 type SSHRecorder struct {
-	*pushers.Pusher
-	events pushers.Events
+	pushers.Channel
 }
 
 // SSHRecorderSession defines a struct to use the underline SSHRecorder for a giving
@@ -55,38 +59,116 @@ type SSHRecorderSession struct {
 	conn      *proxies.ProxyConn
 	username  string
 	password  string
+	events    pushers.Channel
 }
 
 // NewSession creates a new session session recorder.
 func (r *SSHRecorder) NewSession(c *proxies.ProxyConn) *SSHRecorderSession {
 	sessionID := uuid.NewV4()
 	startDate := time.Now()
-	return &SSHRecorderSession{conn: c, sessionID: sessionID, seq: 0, r: r, startDate: startDate}
+	return &SSHRecorderSession{conn: c, sessionID: sessionID, seq: 0, r: r, startDate: startDate, events: r.Channel}
 }
 
 // Connect records the connect operation for the underline ssh connection.
 func (rs *SSHRecorderSession) Connect() {
-	rs.r.Push("ssh", "connect", rs.conn.Container.Name(), rs.sessionID.String(), &SSHAction{ContainerID: rs.conn.Container.Name(), RemoteAddr: rs.conn.RemoteHost(), SessionID: rs.sessionID.String(), Sequence: rs.seq, Sensor: "connect", Time: time.Now(), StartDate: rs.startDate, Payload: nil})
+	rs.r.Channel.Send(
+		event.Apply(
+			proxies.ServiceStartedEvent(
+				rs.conn.RemoteAddr(),
+				&SSHAction{
+					ContainerID: rs.conn.Container.Name(),
+					RemoteAddr:  rs.conn.RemoteHost(),
+					SessionID:   rs.sessionID.String(),
+					Sequence:    rs.seq,
+					Sensor:      "connect",
+					Time:        time.Now(),
+					StartDate:   rs.startDate,
+					Payload:     nil,
+				},
+				nil,
+			),
+			sshCategory,
+		),
+	)
+
 	rs.seq++
 }
 
 // Start records the start operation for the underline ssh connection.
 func (rs *SSHRecorderSession) Start() {
-	rs.r.Push("ssh", "Session-Open-Packet", rs.conn.Container.Name(), rs.sessionID.String(), &SSHAction{ContainerID: rs.conn.Container.Name(), RemoteAddr: rs.conn.RemoteHost(), SessionID: rs.sessionID.String(), Sequence: rs.seq, Sensor: "Session-Open-packet", Time: time.Now(), StartDate: rs.startDate, Payload: nil})
+	action := &SSHAction{
+		ContainerID: rs.conn.Container.Name(),
+		RemoteAddr:  rs.conn.RemoteHost(),
+		SessionID:   rs.sessionID.String(),
+		Sequence:    rs.seq,
+		Sensor:      "Session-Open-packet",
+		Time:        time.Now(),
+		StartDate:   rs.startDate,
+		Payload:     nil,
+	}
+
+	rs.r.Channel.Send(
+		event.Apply(
+			proxies.UserSessionOpenedEvent(
+				rs.conn,
+				action,
+				nil,
+			),
+			sshCategory,
+		),
+	)
+
 	rs.seq++
 }
 
 // AuthorizationPublicKey records the publickey authroization operation for the
 // underline ssh connection.
 func (rs *SSHRecorderSession) AuthorizationPublicKey(username, keyType string, key []byte) {
-	rs.r.Push("ssh", "Session-Authentication-PublicKey", rs.conn.Container.Name(), rs.sessionID.String(), &SSHAction{ContainerID: rs.conn.Container.Name(), ChannelID: "", Username: username, KeyType: keyType, Key: fmt.Sprintf("%x", key), RemoteAddr: rs.conn.RemoteHost(), SessionID: rs.sessionID.String(), Sequence: rs.seq, Sensor: "Session-Authentication-PublicKey", Time: time.Now(), StartDate: rs.startDate, Payload: nil})
+	action := &SSHAction{
+		ContainerID: rs.conn.Container.Name(),
+		ChannelID:   "",
+		Username:    username,
+		KeyType:     keyType,
+		Key:         fmt.Sprintf("%x", key),
+		RemoteAddr:  rs.conn.RemoteHost(),
+		SessionID:   rs.sessionID.String(),
+		Sequence:    rs.seq,
+		Sensor:      "Session-Authentication-PublicKey",
+		Time:        time.Now(),
+		StartDate:   rs.startDate,
+		Payload:     nil,
+	}
+
+	rs.r.Channel.Send(
+		event.Apply(
+			proxies.AuthEvent(
+				rs.conn,
+				action,
+				nil,
+			),
+			sshCategory,
+		),
+	)
+
 	rs.seq++
 }
 
 // AuthorizationSuccess records the publickey authroization success operation for
 // the underline ssh connection.
 func (rs *SSHRecorderSession) AuthorizationSuccess(username, password, client string) {
-	rs.r.Push("ssh", "Session-Authentication-Success", rs.conn.Container.Name(), rs.sessionID.String(), &SSHAction{ContainerID: rs.conn.Container.Name(), ChannelID: "", Username: username, Password: password, RemoteAddr: rs.conn.RemoteHost(), SessionID: rs.sessionID.String(), Sequence: rs.seq, Sensor: "Session-Authentication-Success", Time: time.Now(), StartDate: rs.startDate, Client: client, Payload: nil})
+	action := &SSHAction{ContainerID: rs.conn.Container.Name(), ChannelID: "", Username: username, Password: password, RemoteAddr: rs.conn.RemoteHost(), SessionID: rs.sessionID.String(), Sequence: rs.seq, Sensor: "Session-Authentication-Success", Time: time.Now(), StartDate: rs.startDate, Client: client, Payload: nil}
+
+	rs.r.Channel.Send(
+		event.Apply(
+			proxies.AuthEvent(
+				rs.conn,
+				action,
+				nil,
+			),
+			sshCategory,
+		),
+	)
+
 	rs.seq++
 	rs.username = username
 	rs.password = password
@@ -95,7 +177,19 @@ func (rs *SSHRecorderSession) AuthorizationSuccess(username, password, client st
 // AuthorizationFailed records the publickey authroization failure operation for
 // the underline ssh connection.
 func (rs *SSHRecorderSession) AuthorizationFailed(username, password, client string) {
-	rs.r.Push("ssh", "Session-Authentication-Failed", rs.conn.Container.Name(), rs.sessionID.String(), &SSHAction{ContainerID: rs.conn.Container.Name(), ChannelID: "", Username: username, Password: password, RemoteAddr: rs.conn.RemoteHost(), SessionID: rs.sessionID.String(), Sequence: rs.seq, Sensor: "Session-Authentication-Failed", Time: time.Now(), StartDate: rs.startDate, Client: client, Payload: nil})
+	action := &SSHAction{ContainerID: rs.conn.Container.Name(), ChannelID: "", Username: username, Password: password, RemoteAddr: rs.conn.RemoteHost(), SessionID: rs.sessionID.String(), Sequence: rs.seq, Sensor: "Session-Authentication-Failed", Time: time.Now(), StartDate: rs.startDate, Client: client, Payload: nil}
+
+	rs.r.Channel.Send(
+		event.Apply(
+			proxies.AuthEvent(
+				rs.conn,
+				action,
+				nil,
+			),
+			sshCategory,
+		),
+	)
+
 	rs.seq++
 }
 
@@ -103,18 +197,55 @@ func (rs *SSHRecorderSession) AuthorizationFailed(username, password, client str
 func (rs *SSHRecorderSession) Data(sensor string, channelID uuid.UUID, payload []byte) {
 	data := make([]byte, len(payload))
 	copy(data, payload)
-	rs.r.Push("ssh", sensor, rs.conn.Container.Name(), rs.sessionID.String(), &SSHAction{ContainerID: rs.conn.Container.Name(), ChannelID: channelID.String(), Username: rs.username, Password: rs.password, RemoteAddr: rs.conn.RemoteHost(), SessionID: rs.sessionID.String(), Sequence: rs.seq, Sensor: sensor, Time: time.Now(), StartDate: rs.startDate, Payload: data})
+
+	action := &SSHAction{ContainerID: rs.conn.Container.Name(), ChannelID: channelID.String(), Username: rs.username, Password: rs.password, RemoteAddr: rs.conn.RemoteHost(), SessionID: rs.sessionID.String(), Sequence: rs.seq, Sensor: sensor, Time: time.Now(), StartDate: rs.startDate, Payload: data}
+
+	rs.r.Channel.Send(
+		event.Apply(
+			proxies.DataReadEvent(
+				rs.conn,
+				action,
+				nil,
+			),
+			sshCategory,
+		),
+	)
+
 	rs.seq++
 }
 
 // CustomData records the ssh custom data payload operation for the underline ssh connection.
 func (rs *SSHRecorderSession) CustomData(tag string, payload []byte) {
-	rs.r.Push("ssh", tag, rs.conn.Container.Name(), rs.sessionID.String(), &SSHAction{ContainerID: rs.conn.Container.Name(), RemoteAddr: rs.conn.RemoteHost(), Username: rs.username, Password: rs.password, SessionID: rs.sessionID.String(), Sequence: 0, Sensor: tag, Time: time.Now(), StartDate: rs.startDate, Payload: payload})
+	action := &SSHAction{ContainerID: rs.conn.Container.Name(), RemoteAddr: rs.conn.RemoteHost(), Username: rs.username, Password: rs.password, SessionID: rs.sessionID.String(), Sequence: 0, Sensor: tag, Time: time.Now(), StartDate: rs.startDate, Payload: payload}
+
+	rs.r.Channel.Send(
+		event.Apply(
+			proxies.DataReadEvent(
+				rs.conn,
+				action,
+				nil,
+			),
+			sshCategory,
+		),
+	)
+
 }
 
 // Stop records the stop  call for the underline ssh connection.
 func (rs *SSHRecorderSession) Stop() {
-	rs.r.Push("ssh", "Session-Closed-packet", rs.conn.Container.Name(), rs.sessionID.String(), &SSHAction{ContainerID: rs.conn.Container.Name(), RemoteAddr: rs.conn.RemoteHost(), Username: rs.username, Password: rs.password, SessionID: rs.sessionID.String(), Sequence: rs.seq, Sensor: "Session-Closed-packet", Time: time.Now(), StartDate: rs.startDate, EndDate: time.Now(), Payload: nil})
+	action := &SSHAction{ContainerID: rs.conn.Container.Name(), RemoteAddr: rs.conn.RemoteHost(), Username: rs.username, Password: rs.password, SessionID: rs.sessionID.String(), Sequence: rs.seq, Sensor: "Session-Closed-packet", Time: time.Now(), StartDate: rs.startDate, EndDate: time.Now(), Payload: nil}
+
+	rs.r.Channel.Send(
+		event.Apply(
+			proxies.ServiceStartedEvent(
+				rs.conn.RemoteAddr(),
+				action,
+				nil,
+			),
+			sshCategory,
+		),
+	)
+
 	rs.seq++
 }
 

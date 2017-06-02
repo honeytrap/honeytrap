@@ -1,63 +1,26 @@
 package pushers
 
-import (
-	"time"
+import "github.com/honeytrap/honeytrap/pushers/event"
 
-	"github.com/honeytrap/honeytrap/pushers/message"
-)
-
-// Events defines an interface which exposes a method for the delivery of message.Event
-// object.
-type Events interface {
-	Deliver(message.Event)
+// EventBus defines a structure which provides a pubsub bus where message.Events
+// are sent along it's wires for delivery
+type EventBus struct {
+	subscribers []Channel
 }
 
-// TokenedEventDelivery defines a custom event delivery type which wraps the
-// EventDelivery and sets the internal token value for the events passed in.
-type TokenedEventDelivery struct {
-	*EventDelivery
-	Token string
+// NewEventBus returns a new instance of a EventBus.
+func NewEventBus() *EventBus {
+	return &EventBus{}
 }
 
-// NewTokenedEventDelivery returns a new TokenedEventDelivery instanc.
-func NewTokenedEventDelivery(token string, channel Channel) *TokenedEventDelivery {
-	return &TokenedEventDelivery{
-		EventDelivery: NewEventDelivery(channel),
-		Token:         token,
+// Subscribe adds the giving channel to the list of subscribers for the giving bus.
+func (e *EventBus) Subscribe(channels ...Channel) {
+	e.subscribers = append(e.subscribers, channels...)
+}
+
+// Send deliverers the slice of messages to all subscribers.
+func (e *EventBus) Send(pm event.Event) {
+	for _, subscriber := range e.subscribers {
+		subscriber.Send(pm)
 	}
-}
-
-// Deliver delivers the underline event object to the underline EventDelivery
-// object.
-func (a TokenedEventDelivery) Deliver(ev message.Event) {
-	ev.Token = a.Token
-	a.EventDelivery.Deliver(ev)
-}
-
-// EventDelivery defines a struct which embodies a delivery system which allows
-// events to be piped down to a pusher library.
-type EventDelivery struct {
-	sync Channel
-}
-
-// NewEventDelivery returns a new EventDelivery instance which is used to deliver
-// events.
-func NewEventDelivery(channel Channel) *EventDelivery {
-	return &EventDelivery{sync: channel}
-}
-
-// Deliver adds the giving event into the provided message.Channel for the delivery
-func (d *EventDelivery) Deliver(ev message.Event) {
-	// Set the time for the event
-	ev.Time = time.Now()
-
-	d.sync.Send([]message.PushMessage{
-		{
-			Sensor:      ev.Sensor,
-			Category:    ev.Category,
-			SessionID:   ev.SessionID,
-			ContainerID: ev.ContainerID,
-			Data:        ev,
-		},
-	})
 }

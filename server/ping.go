@@ -3,16 +3,15 @@ package server
 import (
 	"time"
 
-	"github.com/honeytrap/honeytrap/pushers/message"
+	"github.com/honeytrap/honeytrap/pushers/event"
 )
 
 // ping delivers a ping event to the server indicate it's alive.
 func (hc *Honeytrap) ping() error {
-	hc.events.Deliver(message.Event{
-		Sensor:   "Ping",
-		Category: "Server",
-		Type:     message.Ping,
-	})
+	hc.events.Send(event.New(
+		event.Sensor(event.PingSensor),
+		event.Type(event.PingEvent),
+	))
 	return nil
 }
 

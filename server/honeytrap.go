@@ -1,21 +1,37 @@
 package server
 
 import (
+	"fmt"
 	"net"
+	"net/http"
 
-	_ "net/http/pprof" // Add pprof tooling
+	_ "net/http/pprof" // TODO(alex): Add comment, govet complains.
+
+	"github.com/fatih/color"
+	web "github.com/honeytrap/honeytrap-web"
+
+	"github.com/honeytrap/honeytrap/canary"
 
 	"github.com/BurntSushi/toml"
-	config "github.com/honeytrap/honeytrap/config"
-	director "github.com/honeytrap/honeytrap/director"
+	"github.com/honeytrap/honeytrap/config"
+	"github.com/honeytrap/honeytrap/director"
+	"github.com/honeytrap/honeytrap/director/cowriedirector"
+	"github.com/honeytrap/honeytrap/director/iodirector"
+	"github.com/honeytrap/honeytrap/director/lxcdirector"
+
+	assetfs "github.com/elazarl/go-bindata-assetfs"
 
 	proxies "github.com/honeytrap/honeytrap/proxies"
 	_ "github.com/honeytrap/honeytrap/proxies/ssh" // TODO: Add comment
 
+	"github.com/honeytrap/honeytrap/pushers/event"
+
 	pushers "github.com/honeytrap/honeytrap/pushers"
-	// _ "github.com/Honeytrap/Honeytrap/pushers/elasticsearch"
-	// _ "github.com/Honeytrap/Honeytrap/pushers/Honeytrap"
-	"github.com/honeytrap/honeytrap/pushers/message"
+	_ "github.com/honeytrap/honeytrap/pushers/backends/console"       // Registers stdout backend.
+	_ "github.com/honeytrap/honeytrap/pushers/backends/elasticsearch" // Registers elasticsearch backend.
+	_ "github.com/honeytrap/honeytrap/pushers/backends/fschannel"     // Registers file backend.
+	_ "github.com/honeytrap/honeytrap/pushers/backends/honeytrap"     // Registers honeytrap backend.
+	_ "github.com/honeytrap/honeytrap/pushers/backends/slack"         // Registers slack backend.
 
 	utils "github.com/honeytrap/honeytrap/utils"
 
@@ -27,10 +43,12 @@ var log = logging.MustGetLogger("Honeytrap")
 // Honeytrap defines a struct which coordinates the internal logic for the honeytrap
 // container infrastructure.
 type Honeytrap struct {
-	config   *config.Config
-	director *director.Director
-	pusher   *pushers.Pusher
-	events   pushers.Events
+	config *config.Config
+
+	events    pushers.Channel
+	honeycast *Honeycast
+	director  director.Director
+	manager   *director.ContainerConnections
 }
 
 // ServeFunc defines the function called to handle internal server details.
@@ -38,21 +56,52 @@ type ServeFunc func() error
 
 // New returns a new instance of a Honeytrap struct.
 func New(conf *config.Config) *Honeytrap {
-	pusher := pushers.New(conf)
-	events := pushers.NewTokenedEventDelivery(conf.Token, pushers.NewProxyPusher(pusher))
-	director := director.New(conf, events)
+	bus := pushers.NewEventBus()
 
-	return &Honeytrap{conf, director, pusher, events}
+	// Initialize all channels within the provided config.
+	pushers.ChannelsFrom(conf, bus)
+
+	var dir director.Director
+
+	switch conf.Director {
+	case cowriedirector.DirectorKey:
+		dir = cowriedirector.New(conf, bus)
+	case iodirector.DirectorKey:
+		dir = iodirector.New(conf, bus)
+	case lxcdirector.DirectorKey:
+		dir = lxcdirector.New(conf, bus)
+	default:
+		panic(fmt.Sprintf("Unknown director type: %q", conf.Director))
+	}
+
+	manager := director.NewContainerConnections()
+
+	honeycast := NewHoneycast(conf, manager, dir, HoneycastAssets(&assetfs.AssetFS{
+		Asset:     web.Asset,
+		AssetDir:  web.AssetDir,
+		AssetInfo: web.AssetInfo,
+		Prefix:    web.Prefix,
+	}))
+
+	bus.Subscribe(honeycast)
+
+	return &Honeytrap{
+		config:    conf,
+		director:  dir,
+		events:    bus,
+		honeycast: honeycast,
+		manager:   manager,
+	}
 }
 
 func (hc *Honeytrap) startAgentServer() {
-	// as := proxies.NewAgentServer(hc.director, hc.pusher, hc.config)
+	// as := proxies.NewAgentServer(hc.director, hc.pusher, hc.configig)
 	// go as.ListenAndServe()
 }
 
 // ListenFunc defines a function type which returns a net.Listener specific for the
 // use of its argument and for the reception of net connections.
-type ListenFunc func(string, *director.Director, *pushers.Pusher, *pushers.EventDelivery, *config.Config) (net.Listener, error)
+type ListenFunc func(string, director.Director, pushers.Channel, *config.Config) (net.Listener, error)
 
 // ListenerConfig defines a struct for holding configuration fields for a Listener
 // builder.
@@ -61,8 +110,16 @@ type ListenerConfig struct {
 	address string
 }
 
-func (hc *Honeytrap) startPusher() {
-	hc.pusher.Start()
+// EventServiceStarted will return a service started Event struct
+func EventServiceStarted(service string, primitive toml.Primitive) event.Event {
+	return event.New(
+		event.Category(service),
+		event.Sensor(event.ServiceSensor),
+		event.Type(event.ServiceStarted),
+		event.CopyFrom(map[string]interface{}{
+			"primitive": primitive,
+		}),
+	)
 }
 
 func (hc *Honeytrap) startProxies() {
@@ -80,31 +137,31 @@ func (hc *Honeytrap) startProxies() {
 		if serviceFn, ok := proxies.Get(st.Service); ok {
 			log.Debugf("Listener starting: %s", st.Port)
 
-			service, err := serviceFn(st.Port, hc.director, hc.pusher, hc.events, primitive)
+			service, err := serviceFn(st.Port, hc.manager, hc.director, hc.events, primitive)
 			if err != nil {
 				log.Errorf("Error in service: %s: %s", st.Service, err.Error())
 
-				hc.events.Deliver(message.Event{
-					Sensor:   st.Service,
-					Category: "Services",
-					Type:     message.ServiceStarted,
-					Details: map[string]interface{}{
+				hc.events.Send(event.New(
+					event.Sensor(event.ServiceSensor),
+					event.Category(st.Service),
+					event.Type(event.ServiceStarted),
+					event.CopyFrom(map[string]interface{}{
 						"primitive": primitive,
 						"error":     err.Error(),
-					},
-				})
+					}),
+				))
 
 				continue
 			}
 
-			hc.events.Deliver(message.Event{
-				Sensor:   st.Service,
-				Category: "Services",
-				Type:     message.ServiceStarted,
-				Details: map[string]interface{}{
+			hc.events.Send(event.New(
+				event.Sensor(event.ServiceSensor),
+				event.Category(st.Service),
+				event.Type(event.ServiceStarted),
+				event.CopyFrom(map[string]interface{}{
 					"primitive": primitive,
-				},
-			})
+				}),
+			))
 
 			/*
 				if err := toml.PrimitiveDecode(primitive, &service); err != nil {
@@ -185,10 +242,49 @@ func (hc *Honeytrap) startProxies() {
 	*/
 }
 
+// startStatsServer starts the http server for handling request.
+func (hc *Honeytrap) startStatsServer() {
+	log.Debugf("Stats server Listening on port: %s", hc.config.Web.Port)
+
+	// if hc.config.Web.Path != "" {
+	// 	log.Debug("Using static file path: ", hc.config.Web.Path)
+	//
+	// 	// check local css first
+	// 	// TODO: What is this for and why are we assigning here.
+	// 	// staticHandler = http.FileServer(http.Dir(hc.config.Web.Path))
+	// }
+
+	fmt.Println(color.YellowString(fmt.Sprintf("Honeytrap server started, listening on address %s.", hc.config.Web.Port)))
+
+	defer func() {
+		fmt.Println(color.YellowString(fmt.Sprintf("Honeytrap server stopped.")))
+	}()
+
+	if err := http.ListenAndServe(hc.config.Web.Port, hc.honeycast); err != nil {
+		log.Fatal("ListenAndServe: ", err)
+	}
+}
+
+func (hc *Honeytrap) startCanary() error {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return err
+	}
+
+	c, err := canary.New(ifaces, hc.events)
+	if err != nil {
+		return err
+	}
+
+	go c.Run()
+
+	return nil
+}
+
 // Serve initializes and starts the internal logic for the Honeytrap instance.
 func (hc *Honeytrap) Serve() {
 
-	hc.startPusher()
+	hc.startCanary()
 	hc.startProxies()
 	hc.startStatsServer()
 

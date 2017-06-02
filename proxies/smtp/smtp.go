@@ -17,17 +17,20 @@ import (
 	"time"
 
 	"github.com/satori/go.uuid"
-	"github.com/upspin/upspin/log"
+	"github.com/op/go-logging"
 
 	config "github.com/honeytrap/honeytrap/config"
 	director "github.com/honeytrap/honeytrap/director"
 	pushers "github.com/honeytrap/honeytrap/pushers"
+	"github.com/honeytrap/honeytrap/proxies"
 )
+
+var log = logging.MustGetLogger("honeytrap:proxy:smtp")
 
 // ListenSMTP returns a new proxy handler for the smtp provider.
 // TODO: Change amount of params.
 // combine listensmtp, smtpforwarder
-func ListenSMTP(address string, d *director.Director, p *pushers.Pusher, e pushers.Events, c *config.Config) (net.Listener, error) {
+func ListenSMTP(address string,m *director.ContainerConnections, d director.Director,  e pushers.Channel, c *config.Config) (net.Listener, error) {
 	l, err := net.Listen("tcp", address)
 	if err != nil {
 		log.Fatal(err)
@@ -50,8 +53,8 @@ func ListenSMTP(address string, d *director.Director, p *pushers.Pusher, e pushe
 	return &SMTPProxyListener{
 		&ProxyListener{
 			l,
+			m,
 			d,
-			p,
 			e,
 		},
 		&tlsconfig,
@@ -249,14 +252,15 @@ func (s *SMTPProxyConn) dataState() (stateFn, error) {
 	headers := map[string][]string{}
 
 	defer func() {
-		s.ProxyConn.pusher.Push("smtp", "message", s.ProxyConn.container.Name(), s.sessionID.String(), SMTPMessage{
+
+		s.ProxyConn.Event.Send(proxies.DataReadEvent(s.ProxyConn, "SMTP:Message-Part",SMTPMessagePart{
 			Date:       time.Now(),
 			MessageID:  messageID.String(),
 			RemoteAddr: s.ProxyConn.RemoteHost(),
 			From:       s.msg.From,
 			To:         s.msg.To,
 			Headers:    headers,
-		})
+		}))
 
 	}()
 
@@ -265,11 +269,7 @@ func (s *SMTPProxyConn) dataState() (stateFn, error) {
 		log.Error(err.Error())
 
 		// if no mime email.
-		s.ProxyConn.pusher.Push("smtp", "message-body", s.ProxyConn.container.Name(), s.sessionID.String(), SMTPMessageBody{
-			Date:      time.Now(),
-			MessageID: messageID.String(),
-			Body:      buff.String(),
-		})
+		s.ProxyConn.Event.Send(proxies.ConnectionReadErrorEvent(s.ProxyConn, err))
 
 		return s.loopState, nil
 	}
@@ -291,20 +291,22 @@ func (s *SMTPProxyConn) dataState() (stateFn, error) {
 		if err == io.EOF {
 			break
 		} else if err != nil {
+			s.ProxyConn.Event.Send(proxies.ConnectionReadErrorEvent(s.ProxyConn, err))
 			log.Error(err.Error())
 		}
 
 		log.Info("%#v", part.Header)
 
 		body, _ := ioutil.ReadAll(part)
+
 		// TODO: should actually fix this, not in memory
 		defer func() {
-			s.ProxyConn.pusher.Push("smtp", "message-part", s.ProxyConn.container.Name(), s.sessionID.String(), SMTPMessagePart{
+			s.ProxyConn.Event.Send(proxies.DataReadEvent(s.ProxyConn, "SMTP:Message-Part",SMTPMessagePart{
 				Date:      time.Now(),
 				MessageID: messageID.String(),
 				Headers:   part.Header,
 				Body:      string(body),
-			})
+			}))
 		}()
 
 	}
@@ -375,7 +377,7 @@ func (s *SMTPProxyConn) loopState() (stateFn, error) {
 			InsecureSkipVerify: true,
 		})
 		if err := tlsServerConn.Handshake(); err != nil {
-			log.Error("Error during server handshake: %s", err.Error())
+			log.Errorf("Error during server handshake: %s", err.Error())
 			return s.loopState, nil
 		}
 
@@ -386,7 +388,7 @@ func (s *SMTPProxyConn) loopState() (stateFn, error) {
 
 		tlsConn := tls.Server(s.Conn, s.tlsconfig)
 		if err := tlsConn.Handshake(); err != nil {
-			log.Error("Error during client handshake: %s", err.Error())
+			log.Errorf("Error during client handshake: %s", err.Error())
 			return s.loopState, nil
 		}
 
@@ -462,15 +464,6 @@ func (s *SMTPProxyConn) proxy(text1, text2 *textproto.Conn) (string, error) {
 
 // Proxy initializes and proxy the internal connection details for each connection.
 func (s *SMTPProxyConn) Proxy( /*c *ProxyConfig*/ ) error {
-	defer func() {
-		// defer so we can add meta data to the message
-		s.ProxyConn.pusher.Push("smtp", "connect", s.ProxyConn.container.Name(), s.sessionID.String(), SMTPConnect{
-			Date:       time.Now(),
-			RemoteAddr: s.ProxyConn.RemoteHost(),
-			Meta:       s.meta,
-		})
-	}()
-
 	s.sessionID = uuid.NewV4()
 	s.text1 = textproto.NewConn(s.Conn)
 	s.text2 = textproto.NewConn(s.server)

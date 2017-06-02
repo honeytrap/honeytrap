@@ -1,43 +1,60 @@
+director = "lxc"
 template = "honeytrap"
+token = "433UI-56JK-3433NJ-KI954"
+
+[directors]
+
+    [directors.io_config]
+    service_addr = "http://api.honeytrap.com/pixi:4060"
+
+    [[directors.io_config.commands]]
+    name = "echo"
+    level = 2
+    args = ["hello"]
+
+    [[directors.io_config.commands]]
+    name = "echo"
+    level = 3
+    args = ["world!"]
+
+    [directors.cowrie_config]
+    ssh_addr = "localhost"
+    ssh_port = "2222"
 
 [delays]
 push_every = "10s"
 freeze_every = "10s"
 stop_every = "30s"
 
-[[backend.honeytrap]]
+[backend."api"]
+backend = "honeytrap"
 host = "http://api.honeytrap.io/"
-token = "b0b6e462-ef0b-11e6-abc7-0fb6247f5820"
+token = "{fillmein}"
 
-[[backend.file]]
-file = "/store/files/pushers.pub"
+[backend."file"]
+backend = "file"
+file = "honeytrap.log"
 ms = "50s"
 max_size = 3000
 
-[[backend.slack]]
-key = "slack.1"
-host = "https://hooks.slack.com/services/"
-token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
+[backend."alerts"]
+backend = "slack"
+webhook_url = "https://hooks.slack.com/services/{fillmein}"
+username = "{fillmein}"
+icon_url = "{fillmein}"
+icon_emoji = "{fillmein}"
 
-[[backend.slack]]
-key = "slack.1"
-host = "https://hooks.slack.com/services/"
-token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
+[[channel]]
+backends = ["alerts", "file"]
+sensors = ["sessions-start", "containers-open"]
+categories = ["sessions", "containers", "attackers"]
+events = ["new_session", "connection-open", "connection-closed"]
 
-[[backend.slack]]
-key = "slack.2"
-host = "https://hooks.slack.com/services/"
-token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
-
-[[backend.slack]]
-key = "slack.3"
-host = "https://hooks.slack.com/services/"
-token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
-
-[[backend.slack]]
-key = "slack.4"
-host = "https://hooks.slack.com/services/"
-token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
+[[channel]]
+backends = ["api"]
+categories = ["sessions", "containers"]
+sensors = ["sessions-start", "containers-open"]
+events = ["connection-open", "connection-closed"]
 
 [housekeeper]
 every = "10s"

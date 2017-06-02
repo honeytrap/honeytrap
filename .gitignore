@@ -2,6 +2,9 @@
 *.o
 *.a
 *.so
+*.bolted 
+*.db
+config.toml
 
 # Folders
 _obj
