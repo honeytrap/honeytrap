@@ -68,15 +68,13 @@ func (hc TrapBackend) Send(message message.Event) {
 	var err error
 	var req *http.Request
 
-	if message.Sensor == "honeytrap" && message.Category == "ping" {
+	category, _, sensor := message.Identity()
+
+	if string(sensor) == "honeytrap" && string(category) == "ping" {
 		req, err = hc.client.NewRequest("POST", "v1/ping", nil)
 	} else {
 		// TODO: workaround, need to update api
-		req, err = hc.client.NewRequest("POST", "v1/action",
-			[]interface{}{
-				message.Data,
-			},
-		)
+		req, err = hc.client.NewRequest("POST", "v1/action", message.DataReader())
 	}
 
 	if err != nil {

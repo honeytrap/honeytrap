@@ -7,8 +7,10 @@ import (
 	"os"
 )
 
+// RouteTable defines a slice of Route type.
 type RouteTable []Route
 
+// Route defines a Route element detailing given address for a gatewau connection.
 type Route struct {
 	Interface string
 

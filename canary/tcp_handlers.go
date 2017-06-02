@@ -8,28 +8,31 @@ import (
 
 	"github.com/honeytrap/honeytrap/canary/ipv4"
 	"github.com/honeytrap/honeytrap/canary/tcp"
-	"github.com/honeytrap/honeytrap/pushers/message"
+	"github.com/honeytrap/honeytrap/pushers/event"
 )
 
-const (
-	// EventCategorySSDP contains events for ssdp traffic
-	EventCategoryTCP = message.EventCategory("tcp")
+var (
+	// EventCategoryTCP contains events for ssdp traffic
+	EventCategoryTCP = event.Category("tcp")
 )
 
 // EventTCPPayload will return a snmp event struct
-func EventTCPPayload(sourceIP net.IP, port uint16, payload string) message.Event {
-	// TODO: message should go into String() / Message, where message.Event will become interface
-	return message.NewEvent("canary", EventCategoryTCP, message.ServiceStarted, map[string]interface{}{
-		"source-ip":   sourceIP,
-		"tcp.port":    port,
-		"tcp.payload": payload,
-		"tcp.length":  len(payload),
-	})
+func EventTCPPayload(sourceIP net.IP, port uint16, payload string) event.Event {
+	// TODO: message should go into String() / Message, where event.Event will become interface
+	return event.New(
+		CanaryOptions,
+		EventCategoryHTTP,
+		event.Type(event.ServiceStarted),
+		event.Custom("source-ip", sourceIP.String()),
+		event.Custom("tcp.port", port),
+		event.Custom("tcp.payload", payload),
+		event.Custom("tcp.length", len(payload)),
+	)
 }
 
-const (
+var (
 	// EventCategoryHTTP contains events for ssdp traffic
-	EventCategoryHTTP = message.EventCategory("http")
+	EventCategoryHTTP = event.Category("http")
 )
 
 // DecodeHTTP will decode NTP packets
@@ -50,20 +53,22 @@ func (c *Canary) DecodeHTTP(iph *ipv4.Header, tcph *tcp.Header) error {
 }
 
 // EventHTTP will return a snmp event struct
-func EventHTTP(sourceIP net.IP, method, uri, proto string, headers http.Header) message.Event {
-	// TODO: message should go into String() / Message, where message.Event will become interface
-	return message.NewEvent("canary", EventCategoryHTTP, message.ServiceStarted, map[string]interface{}{
-		"source-ip": sourceIP.String(),
+func EventHTTP(sourceIP net.IP, method, uri, proto string, headers http.Header) event.Event {
+	// TODO: message should go into String() / Message, where event.Event will become interface
+	return event.New(
+		CanaryOptions,
+		EventCategoryHTTP,
+		event.Type(event.ServiceStarted),
+		event.Custom("source-ip", sourceIP.String()),
+		event.Custom("http.method", method),
+		event.Custom("http.uri", uri),
+		event.Custom("http.proto", proto),
+		event.Custom("http.headers", headers),
 
-		"http.method":  method,
-		"http.uri":     uri,
-		"http.proto":   proto,
-		"http.headers": headers,
-
-		"http.host":         headers.Get("Host"),
-		"http.content-type": headers.Get("Content-Type"),
-		"http.user-agent":   headers.Get("User-Agent"),
-	})
+		event.Custom("http.host", headers.Get("Host")),
+		event.Custom("http.content-type", headers.Get("Content-Type")),
+		event.Custom("http.user-agent", headers.Get("User-Agent")),
+	)
 }
 
 // port 139 -> http://s11.invisionfree.com/dongsongbang/ar/t170.htm

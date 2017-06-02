@@ -20,7 +20,7 @@ const (
 var (
 	splitter = []byte("\r\n")
 
-	blueChip = message.Event{
+	blueChip = message.BasicEvent{
 		Sensor:      "BlueChip",
 		Category:    "Chip Integrated",
 		SessionID:   "4334334-3433434-34343-FUD",
@@ -28,7 +28,7 @@ var (
 		Data:        "Hello World!",
 	}
 
-	ping = message.Event{
+	ping = message.BasicEvent{
 		Sensor:      "Ping",
 		Category:    "Ping Notificiation",
 		SessionID:   "4334334-3433434-34343-FUD",
@@ -36,7 +36,7 @@ var (
 		Data:        "Hello World!",
 	}
 
-	crum = message.Event{
+	crum = message.BasicEvent{
 		Sensor:      "Crum Stream",
 		Category:    "WebRTC Crum Stream",
 		SessionID:   "4334334-3433434-34343-FUD",

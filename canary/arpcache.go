@@ -6,8 +6,10 @@ import (
 	"os"
 )
 
+// ARPCache defines a slice of ARPEntrys.
 type ARPCache []ARPEntry
 
+// Get retrieves the ARPEntry associated with the giving ip.
 func (ac ARPCache) Get(ip net.IP) *ARPEntry {
 	for _, a := range ac {
 		if !a.IP.Equal(ip) {
@@ -20,6 +22,7 @@ func (ac ARPCache) Get(ip net.IP) *ARPEntry {
 	return nil
 }
 
+// ARPEntry defines a type for containg address and interface detail.
 type ARPEntry struct {
 	IP              net.IP
 	HardwareAddress net.HardwareAddr

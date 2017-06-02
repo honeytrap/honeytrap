@@ -18,7 +18,7 @@ import (
 	"github.com/honeytrap/honeytrap/canary/tcp"
 	"github.com/honeytrap/honeytrap/canary/udp"
 	"github.com/honeytrap/honeytrap/pushers"
-	"github.com/honeytrap/honeytrap/pushers/message"
+	"github.com/honeytrap/honeytrap/pushers/event"
 	logging "github.com/op/go-logging"
 )
 
@@ -595,19 +595,24 @@ func New(interfaces []net.Interface, events pushers.Channel) (*Canary, error) {
 			continue
 		}
 
-		if fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(htons(syscall.ETH_P_ALL))); err != nil {
+		fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(htons(syscall.ETH_P_ALL)))
+		if err != nil {
 			return nil, fmt.Errorf("Could not create socket: %s", err.Error())
-		} else if fd < 0 {
+		}
+
+		if fd < 0 {
 			return nil, fmt.Errorf("Socket error: return < 0")
-		} else if err = syscall.EpollCtl(epfd, syscall.EPOLL_CTL_ADD, fd, &syscall.EpollEvent{
+		}
+
+		if err = syscall.EpollCtl(epfd, syscall.EPOLL_CTL_ADD, fd, &syscall.EpollEvent{
 			Events: syscall.EPOLLIN | syscall.EPOLLERR | syscall.EPOLL_NONBLOCK,
 			Fd:     int32(fd),
 		}); err != nil {
 			return nil, fmt.Errorf("epollctl: %s", err.Error())
-		} else {
-			descriptors[intf.Name] = int32(fd)
-			networkInterfaces = append(networkInterfaces, intf)
 		}
+
+		descriptors[intf.Name] = int32(fd)
+		networkInterfaces = append(networkInterfaces, intf)
 	}
 
 	r := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
@@ -631,20 +636,23 @@ func (c *Canary) Close() {
 	syscall.Close(c.epfd)
 }
 
-const (
-	// EventCategorySSDP contains events for ssdp traffic
-	EventCategoryPortscan = message.EventCategory("portscan")
+var (
+	// EventCategoryPortscan contains events for ssdp traffic
+	EventCategoryPortscan = event.Category("portscan")
 )
 
 // EventPortscan will return a portscan event struct
-func EventPortscan(sourceIP net.IP, duration time.Duration, count int, ports []string) message.Event {
+func EventPortscan(sourceIP net.IP, duration time.Duration, count int, ports []string) event.Event {
 	// TODO: do something different with message
-	return message.NewEvent("Canary", EventCategoryPortscan, message.ServiceStarted, map[string]interface{}{
-		"source-ip":         sourceIP.String(),
-		"portscan.ports":    ports,
-		"portscan.duration": duration,
-		"message":           fmt.Sprintf("Port %d touch(es) detected from %s with duration %+v: %s", count, sourceIP, duration, strings.Join(ports, ", ")),
-	})
+	return event.New(
+		CanaryOptions,
+		EventCategoryPortscan,
+		event.Type(event.ServiceStarted),
+		event.Custom("source-ip", sourceIP.String()),
+		event.Custom("portscan.ports", ports),
+		event.Custom("portscan.duration", duration),
+		event.Custom("message", fmt.Sprintf("Port %d touch(es) detected from %s with duration %+v: %s", count, sourceIP, duration, strings.Join(ports, ", "))),
+	)
 }
 
 // send will queue a packet for sending
@@ -814,7 +822,7 @@ func (c *Canary) Run() error {
 				if v, err := syscall.GetsockoptInt(int(events[ev].Fd), syscall.SOL_SOCKET, syscall.SO_ERROR); err != nil {
 					log.Errorf("Error while retrieving polling error: %s", err)
 				} else {
-					log.Errorf("Polling error: %s", v)
+					log.Errorf("Polling error: %#q", v)
 				}
 			}
 		}

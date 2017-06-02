@@ -25,7 +25,7 @@ const (
 )
 
 var (
-	conso = message.Event{
+	conso = message.BasicEvent{
 		Category:    "Chip Integrated",
 		SessionID:   "4334334-3433434-34343-FUD",
 		ContainerID: "56454-5454UDF-2232UI-34FGHU",
@@ -33,7 +33,7 @@ var (
 		Type:        message.ServiceStarted,
 	}
 
-	conlo = message.Event{
+	conlo = message.BasicEvent{
 		Category:    "Chip Integrated",
 		SessionID:   "4334334-3433434-34343-FUD",
 		ContainerID: "56454-5454UDF-2232UI-34FGHU",
@@ -41,7 +41,7 @@ var (
 		Type:        message.ContainerCloned,
 	}
 
-	conco = message.Event{
+	conco = message.BasicEvent{
 		Category:    "Chip Integrated",
 		SessionID:   "4334334-3433434-34343-FUD",
 		ContainerID: "56454-5454UDF-2232UI-34FGHU",
@@ -49,7 +49,7 @@ var (
 		Type:        message.PingEvent,
 	}
 
-	conzip = message.Event{
+	conzip = message.BasicEvent{
 		Category:    "Integrated OS",
 		SessionID:   "4334334-3433434-34343-FUD",
 		ContainerID: "56454-5454UDF-2232UI-34FGHU",
@@ -57,7 +57,7 @@ var (
 		Type:        message.ServiceStarted,
 	}
 
-	contar = message.Event{
+	contar = message.BasicEvent{
 		Sensor:      message.SessionSensor,
 		Type:        message.ContainerCheckpoint,
 		Category:    "Integrated OS",

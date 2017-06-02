@@ -23,7 +23,7 @@ import (
 
 // Contains the different buckets used
 var (
-	eventsBucket  = []byte(message.EventSensor)
+	eventsBucket  = []byte(message.BasicSensor)
 	sessionBucket = []byte(message.SessionSensor)
 
 	pingEventsBucket = []byte(message.PingEvent)
@@ -65,7 +65,7 @@ func NewHoneycast(config *config.Config, manager *director.ContainerConnections,
 	// Create the database we desire.
 	// TODO: Should we really panic here, it makes sense to do that, since it's the server
 	// right?
-	bolted, err := NewBolted(fmt.Sprintf("%s-bolted", config.Token), message.ContainersSensor, message.ConnectionSensor, message.ServiceSensor, message.SessionSensor, message.PingSensor, message.DataSensor, message.ErrorsSensor, message.EventSensor)
+	bolted, err := NewBolted(fmt.Sprintf("%s-bolted", config.Token), string(message.ContainersSensor), string(message.ConnectionSensor), string(message.ServiceSensor), string(message.SessionSensor), string(message.PingSensor), string(message.DataSensor), string(message.ErrorsSensor), string(message.BasicSensor))
 	if err != nil {
 		log.Errorf("Failed to created BoltDB session: %+q", err)
 		panic(err)
@@ -185,7 +185,9 @@ func (h *Honeycast) Send(event message.Event) {
 
 	events = append(events, event)
 
-	switch event.Sensor {
+	_, _, sensor := event.Identity()
+
+	switch sensor {
 	case message.SessionSensor:
 		sessions = append(sessions, event)
 	case message.PingSensor:
@@ -235,7 +237,7 @@ func (h *Honeycast) Send(event message.Event) {
 		log.Errorf("Honeycast API : Failed to save ping events to db: %+q", terr)
 	}
 
-	if terr := h.bolted.Save([]byte(message.EventSensor), events...); terr != nil {
+	if terr := h.bolted.Save([]byte(message.BasicSensor), events...); terr != nil {
 		log.Errorf("Honeycast API : Failed to save events to db: %+q", terr)
 	}
 }
@@ -297,6 +299,8 @@ func (h *Honeycast) Sessions(w http.ResponseWriter, r *http.Request, params map[
 			if doTypeMatch || doSensorMatch {
 				for _, event := range events {
 
+					_, eventType, eventSensor := event.Identity()
+
 					var typeMatched bool
 					var sensorMatched bool
 
@@ -304,7 +308,7 @@ func (h *Honeycast) Sessions(w http.ResponseWriter, r *http.Request, params map[
 					typeFilterLoop:
 						for _, tp := range req.TypeFilters {
 							// If we match atleast one type then allow event event.
-							if string(event.Type) == tp {
+							if string(eventType) == tp {
 								typeMatched = true
 								break typeFilterLoop
 							}
@@ -320,7 +324,7 @@ func (h *Honeycast) Sessions(w http.ResponseWriter, r *http.Request, params map[
 					sensorFilterLoop:
 						for _, tp := range req.SensorFilters {
 							// If we match atleast one type then allow event event.
-							if strings.ToLower(event.Sensor) == strings.ToLower(tp) {
+							if strings.ToLower(string(eventSensor)) == strings.ToLower(tp) {
 								sensorMatched = true
 								break sensorFilterLoop
 							}
@@ -411,6 +415,7 @@ func (h *Honeycast) Events(w http.ResponseWriter, r *http.Request, params map[st
 
 			if doTypeMatch || doSensorMatch {
 				for _, event := range events {
+					_, eventType, eventSensor := event.Identity()
 
 					var typeMatched bool
 					var sensorMatched bool
@@ -419,7 +424,7 @@ func (h *Honeycast) Events(w http.ResponseWriter, r *http.Request, params map[st
 					typeFilterLoop:
 						for _, tp := range req.TypeFilters {
 							// If we match atleast one type then allow event event.
-							if string(event.Type) == tp {
+							if string(eventType) == tp {
 								typeMatched = true
 								break typeFilterLoop
 							}
@@ -442,7 +447,7 @@ func (h *Honeycast) Events(w http.ResponseWriter, r *http.Request, params map[st
 							}
 
 							// If we match atleast one type then allow event event.
-							if sensorRegExp.MatchString(event.Sensor) {
+							if sensorRegExp.MatchString(string(eventSensor)) {
 								sensorMatched = true
 								break sensorFilterLoop
 							}

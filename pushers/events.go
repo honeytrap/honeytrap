@@ -1,8 +1,6 @@
 package pushers
 
-import (
-	"github.com/honeytrap/honeytrap/pushers/message"
-)
+import "github.com/honeytrap/honeytrap/pushers/event"
 
 // EventBus defines a structure which provides a pubsub bus where message.Events
 // are sent along it's wires for delivery
@@ -21,7 +19,7 @@ func (e *EventBus) Subscribe(channels ...Channel) {
 }
 
 // Send deliverers the slice of messages to all subscribers.
-func (e *EventBus) Send(pm message.Event) {
+func (e *EventBus) Send(pm event.Event) {
 	for _, subscriber := range e.subscribers {
 		subscriber.Send(pm)
 	}
