@@ -9,8 +9,8 @@ import (
 // ServiceStartedEvent returns a connection open event object giving the associated data values.
 func ServiceStartedEvent(addr net.Addr, data interface{}, meta map[string]interface{}) event.Event {
 	return event.New(
-		event.Type(event.ServiceStarted),
-		event.Sensor(event.ServiceSensor),
+		event.ServiceStarted,
+		event.ServiceSensor,
 		event.Custom("data", data),
 		event.HostAddr(addr.String()),
 		event.CopyFrom(meta),
@@ -20,8 +20,8 @@ func ServiceStartedEvent(addr net.Addr, data interface{}, meta map[string]interf
 // ServiceEndedEvent returns a connection open event object giving the associated data values.
 func ServiceEndedEvent(addr net.Addr, data interface{}, meta map[string]interface{}) event.Event {
 	return event.New(
-		event.Type(event.ServiceEnded),
-		event.Sensor(event.ServiceSensor),
+		event.ServiceEnded,
+		event.ServiceSensor,
 		event.Custom("data", data),
 		event.HostAddr(addr.String()),
 		event.CopyFrom(meta),
@@ -31,8 +31,8 @@ func ServiceEndedEvent(addr net.Addr, data interface{}, meta map[string]interfac
 // UserSessionClosedEvent returns a connection open event object giving the associated data values.
 func UserSessionClosedEvent(c net.Conn, data interface{}) event.Event {
 	return event.New(
-		event.Type(event.UserSessionOpened),
-		event.Sensor(event.SessionSensor),
+		event.UserSessionOpened,
+		event.SessionSensor,
 		event.Custom("data", data),
 		event.HostAddrFrom(c.LocalAddr()),
 		event.RemoteAddrFrom(c.RemoteAddr()),
@@ -42,8 +42,8 @@ func UserSessionClosedEvent(c net.Conn, data interface{}) event.Event {
 // UserSessionOpenedEvent returns a connection open event object giving the associated data values.
 func UserSessionOpenedEvent(c net.Conn, data interface{}, meta map[string]interface{}) event.Event {
 	return event.New(
-		event.Type(event.UserSessionClosed),
-		event.Sensor(event.SessionSensor),
+		event.UserSessionClosed,
+		event.SessionSensor,
 		event.Custom("data", data),
 		event.HostAddrFrom(c.LocalAddr()),
 		event.RemoteAddrFrom(c.RemoteAddr()),
@@ -54,8 +54,8 @@ func UserSessionOpenedEvent(c net.Conn, data interface{}, meta map[string]interf
 // ConnectionOpenedEvent returns a connection open event object giving the associated data values.
 func ConnectionOpenedEvent(c net.Conn) event.Event {
 	return event.New(
-		event.Type(event.ConnectionOpened),
-		event.Sensor(event.ConnectionSensor),
+		event.ConnectionOpened,
+		event.ConnectionSensor,
 		event.HostAddrFrom(c.LocalAddr()),
 		event.RemoteAddrFrom(c.RemoteAddr()),
 		// event.CopyFrom(meta),
@@ -65,8 +65,8 @@ func ConnectionOpenedEvent(c net.Conn) event.Event {
 // ConnectionClosedEvent returns a connection open event object giving the associated data values.
 func ConnectionClosedEvent(c net.Conn) event.Event {
 	return event.New(
-		event.Type(event.ConnectionClosed),
-		event.Sensor(event.ConnectionSensor),
+		event.ConnectionClosed,
+		event.ConnectionSensor,
 		event.HostAddrFrom(c.LocalAddr()),
 		event.RemoteAddrFrom(c.RemoteAddr()),
 		// event.CopyFrom(meta),
@@ -76,8 +76,8 @@ func ConnectionClosedEvent(c net.Conn) event.Event {
 // ConnectionWriteErrorEvent returns a connection open event object giving the associated data values.
 func ConnectionWriteErrorEvent(c net.Conn, data error) event.Event {
 	return event.New(
-		event.Type(event.ConnectionWriteError),
-		event.Sensor(event.ConnectionErrorSensor),
+		event.ConnectionWriteError,
+		event.ConnectionErrorSensor,
 		event.HostAddrFrom(c.LocalAddr()),
 		event.RemoteAddrFrom(c.RemoteAddr()),
 		event.Custom("error", data),
@@ -87,8 +87,8 @@ func ConnectionWriteErrorEvent(c net.Conn, data error) event.Event {
 // ConnectionReadErrorEvent returns a connection open event object giving the associated data values.
 func ConnectionReadErrorEvent(c net.Conn, data error) event.Event {
 	return event.New(
-		event.Type(event.ConnectionReadError),
-		event.Sensor(event.ConnectionErrorSensor),
+		event.ConnectionReadError,
+		event.ConnectionErrorSensor,
 		event.HostAddrFrom(c.LocalAddr()),
 		event.RemoteAddrFrom(c.RemoteAddr()),
 		event.Custom("error", data),
@@ -98,8 +98,8 @@ func ConnectionReadErrorEvent(c net.Conn, data error) event.Event {
 // ListenerClosedEvent returns a connection open event object giving the associated data values.
 func ListenerClosedEvent(c net.Listener) event.Event {
 	return event.New(
-		event.Type(event.ConnectionClosed),
-		event.Sensor(event.ConnectionSensor),
+		event.ConnectionClosed,
+		event.ConnectionSensor,
 		event.HostAddrFrom(c.Addr()),
 	)
 }
@@ -108,8 +108,8 @@ func ListenerClosedEvent(c net.Listener) event.Event {
 func ListenerOpenedEvent(c net.Listener, data interface{}, meta map[string]interface{}) event.Event {
 	return event.New(
 		event.CopyFrom(meta),
-		event.Type(event.ConnectionOpened),
-		event.Sensor(event.ConnectionSensor),
+		event.ConnectionOpened,
+		event.ConnectionSensor,
 		event.HostAddrFrom(c.Addr()),
 		event.Custom("data", data),
 	)
@@ -120,8 +120,8 @@ func ListenerOpenedEvent(c net.Listener, data interface{}, meta map[string]inter
 func AgentRequestEvent(addr net.Addr, session string, data interface{}, detail map[string]interface{}) event.Event {
 	return event.New(
 		event.CopyFrom(detail),
-		event.Type(event.DataRequest),
-		event.Sensor(event.DataSensor),
+		event.DataRequest,
+		event.DataSensor,
 		event.HostAddrFrom(addr),
 		event.Custom("data", data),
 		event.Custom("session-id", session),
@@ -133,8 +133,8 @@ func DataRequest(c net.Conn, data interface{}, detail map[string]interface{}) ev
 	return event.New(
 		event.CopyFrom(detail),
 		event.Custom("data", data),
-		event.Type(event.DataRequest),
-		event.Sensor(event.DataSensor),
+		event.DataRequest,
+		event.DataSensor,
 		event.HostAddrFrom(c.LocalAddr()),
 		event.RemoteAddrFrom(c.RemoteAddr()),
 	)
@@ -145,8 +145,8 @@ func OperationEvent(c net.Conn, data interface{}, detail map[string]interface{})
 	return event.New(
 		event.CopyFrom(detail),
 		event.Custom("data", data),
-		event.Type(event.Operational),
-		event.Sensor(event.EventSensor),
+		event.Operational,
+		event.EventSensor,
 		event.HostAddrFrom(c.LocalAddr()),
 		event.RemoteAddrFrom(c.RemoteAddr()),
 	)
@@ -157,8 +157,8 @@ func AuthEvent(c net.Conn, data interface{}, detail map[string]interface{}) even
 	return event.New(
 		event.CopyFrom(detail),
 		event.Custom("data", data),
-		event.Type(event.OperationalAuth),
-		event.Sensor(event.EventSensor),
+		event.OperationalAuth,
+		event.EventSensor,
 		event.HostAddrFrom(c.LocalAddr()),
 		event.RemoteAddrFrom(c.RemoteAddr()),
 	)
@@ -169,8 +169,8 @@ func DataReadEvent(c net.Conn, data interface{}, detail map[string]interface{}) 
 	return event.New(
 		event.CopyFrom(detail),
 		event.Custom("data", data),
-		event.Type(event.DataRead),
-		event.Sensor(event.DataSensor),
+		event.DataRead,
+		event.DataSensor,
 		event.HostAddrFrom(c.LocalAddr()),
 		event.RemoteAddrFrom(c.RemoteAddr()),
 	)
@@ -181,8 +181,8 @@ func DataWriteEvent(c net.Conn, data interface{}, detail map[string]interface{})
 	return event.New(
 		event.CopyFrom(detail),
 		event.Custom("data", data),
-		event.Type(event.DataWrite),
-		event.Sensor(event.DataSensor),
+		event.DataWrite,
+		event.DataSensor,
 		event.HostAddrFrom(c.LocalAddr()),
 		event.RemoteAddrFrom(c.RemoteAddr()),
 	)
@@ -192,8 +192,8 @@ func DataWriteEvent(c net.Conn, data interface{}, detail map[string]interface{})
 func PingEvent(c net.Conn, data interface{}) event.Event {
 	return event.New(
 		event.Custom("data", data),
-		event.Type(event.PingEvent),
-		event.Sensor(event.PingSensor),
+		event.PingEvent,
+		event.PingSensor,
 		event.HostAddrFrom(c.LocalAddr()),
 		event.RemoteAddrFrom(c.RemoteAddr()),
 	)

@@ -70,26 +70,26 @@ func NewWith(meta toml.MetaData, data toml.Primitive) (pushers.Channel, error) {
 
 // Send delivers the giving push messages to the required slack channel.
 // TODO: Ask if Send shouldnt return an error to allow proper delivery validation.
-func (mc SlackBackend) Send(mesg event.Event) {
-	log.Infof("Sending Message: %#v", mesg)
+func (mc SlackBackend) Send(event event.Event) {
+	log.Infof("Sending Message: %#v", event)
 
 	//Attempt to encode message body first and if failed, log and continue.
 	var messageBuffer bytes.Buffer
 
-	category := mesg["cateory"].(string)
-	sensor := mesg["sensor"].(string)
-	etype := mesg["type"].(string)
-	txmessage := mesg["message"].(string)
+	category := event["cateory"].(string)
+	sensor := event["sensor"].(string)
+	etype := event["type"].(string)
 
-	if txmessage == "" {
-		txmessage = fmt.Sprintf("Event with Category %q of Type %q for Sensor %q occured", category, etype, sensor)
+	var newMessage Message
+	newMessage.Text = fmt.Sprintf("Event with Category %q of Type %q for Sensor %q occured", category, etype, sensor)
+
+	if m, ok := event["message"].(string); ok {
+		newMessage.Text = m
 	}
 
-	var newmesg Message
-	newmesg.IconURL = mc.config.IconURL
-	newmesg.IconEmoji = mc.config.IconEmoji
-	newmesg.Username = mc.config.Username
-	newmesg.Text = txmessage
+	newMessage.IconURL = mc.config.IconURL
+	newMessage.IconEmoji = mc.config.IconEmoji
+	newMessage.Username = mc.config.Username
 
 	idAttachment := Attachment{
 		Title:    "Event Identification",
@@ -113,7 +113,7 @@ func (mc SlackBackend) Send(mesg event.Event) {
 		AddField("Category", string(category)).
 		AddField("Type", string(etype))
 
-	for name, value := range mesg {
+	for name, value := range event {
 		switch vo := value.(type) {
 		case string:
 			fieldAttachment.AddField(name, vo)
@@ -129,10 +129,10 @@ func (mc SlackBackend) Send(mesg event.Event) {
 		}
 	}
 
-	newmesg.AddAttachment(idAttachment)
-	newmesg.AddAttachment(fieldAttachment)
+	newMessage.AddAttachment(idAttachment)
+	newMessage.AddAttachment(fieldAttachment)
 
-	newmesg.AddAttachment(Attachment{
+	newMessage.AddAttachment(Attachment{
 		Title:    "Event Data",
 		Author:   "HoneyTrap",
 		Fallback: string(messageBuffer.Bytes()),
@@ -140,7 +140,7 @@ func (mc SlackBackend) Send(mesg event.Event) {
 	})
 
 	data := new(bytes.Buffer)
-	if err := json.NewEncoder(data).Encode(newmesg); err != nil {
+	if err := json.NewEncoder(data).Encode(newMessage); err != nil {
 		log.Errorf("Error encoding new SlackMessage: %+q", err)
 		return
 	}
@@ -172,7 +172,7 @@ func (mc SlackBackend) Send(mesg event.Event) {
 		return
 	}
 
-	log.Infof("Delivered Message: %#v", mesg)
+	log.Infof("Delivered Message: %#v", event)
 }
 
 // Message defines the base message to be included sent to a slack endpoint.
@@ -189,7 +189,7 @@ func (a *Message) AddAttachment(attachment Attachment) {
 	a.Attachments = append(a.Attachments, attachment)
 }
 
-// Attachment defines a struct to define an attachment to be included with a mesg.
+// Attachment defines a struct to define an attachment to be included with a event.
 type Attachment struct {
 	Title     string  `json:"title"`
 	Author    string  `json:"author_name,omitempty"`
@@ -205,7 +205,7 @@ func (a *Attachment) AddField(title string, value string) *Attachment {
 	return a
 }
 
-// Field defines a field item to be shown on a mesg.
+// Field defines a field item to be shown on a event.
 type Field struct {
 	Title string `json:"title"`
 	Value string `json:"value"`

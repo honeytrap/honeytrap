@@ -70,7 +70,7 @@ func EventSSDP(sourceIP net.IP, method, uri, proto string, headers http.Header) 
 	return event.New(
 		CanaryOptions,
 		EventCategorySSDP,
-		event.Type(event.ServiceStarted),
+		event.ServiceStarted,
 
 		event.Custom("source-ip", sourceIP.String()),
 		event.Custom("ssdp.method", method),
@@ -115,7 +115,7 @@ func EventSIP(sourceIP net.IP, method, uri, proto string, headers http.Header) e
 	return event.New(
 		CanaryOptions,
 		EventCategorySNMPTrap,
-		event.Type(event.ServiceStarted),
+		event.ServiceStarted,
 		event.Custom("source-ip", sourceIP.String()),
 		event.Custom("sip.method", method),
 		event.Custom("sip.uri", uri),
@@ -150,7 +150,7 @@ func EventSNMPTrap(sourceIP net.IP) event.Event {
 	return event.New(
 		CanaryOptions,
 		EventCategorySNMPTrap,
-		event.Type(event.ServiceStarted),
+		event.ServiceStarted,
 		event.Custom("source-ip", sourceIP.String()),
 	)
 }
@@ -174,7 +174,7 @@ func EventSNMP(sourceIP net.IP) event.Event {
 	return event.New(
 		CanaryOptions,
 		EventCategorySNMP,
-		event.Type(event.ServiceStarted),
+		event.ServiceStarted,
 		event.Custom("source-ip", sourceIP.String()),
 	)
 }
@@ -223,7 +223,7 @@ func EventNTP(sourceIP net.IP, ntp layers.NTP) event.Event {
 	return event.New(
 		CanaryOptions,
 		EventCategoryNTP,
-		event.Type(event.ServiceStarted),
+		event.ServiceStarted,
 		event.Custom("source-ip", sourceIP.String()),
 		event.Custom("ntp.message", fmt.Sprintf("NTP packet received, version=%d, mode=%s", ntp.Version, mode)),
 		event.Custom("ntp.version", ntp.Version),
@@ -266,7 +266,7 @@ func EventDNSQuery(sourceIP net.IP, dns layers.DNS) event.Event {
 	return event.New(
 		CanaryOptions,
 		EventCategoryDNSQuery,
-		event.Type(event.ServiceStarted),
+		event.ServiceStarted,
 		event.Custom("dns.message", fmt.Sprintf("Querying for: %#q", dns.Questions)),
 		event.Custom("dns.questions", dns.Questions),
 	)
@@ -277,7 +277,7 @@ func EventDNSOther(sourceIP net.IP, dns layers.DNS) event.Event {
 	return event.New(
 		CanaryOptions,
 		EventCategoryDNSOther,
-		event.Type(event.ServiceStarted),
+		event.ServiceStarted,
 		event.Custom("source-ip", sourceIP.String()),
 		event.Custom("dns.message", fmt.Sprintf("opcode=%+q questions=%#q", dns.OpCode, dns.Questions)),
 		event.Custom("dns.opcode", dns.OpCode),

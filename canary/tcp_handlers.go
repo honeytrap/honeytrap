@@ -22,7 +22,7 @@ func EventTCPPayload(sourceIP net.IP, port uint16, payload string) event.Event {
 	return event.New(
 		CanaryOptions,
 		EventCategoryHTTP,
-		event.Type(event.ServiceStarted),
+		event.ServiceStarted,
 		event.Custom("source-ip", sourceIP.String()),
 		event.Custom("tcp.port", port),
 		event.Custom("tcp.payload", payload),
@@ -58,7 +58,7 @@ func EventHTTP(sourceIP net.IP, method, uri, proto string, headers http.Header) 
 	return event.New(
 		CanaryOptions,
 		EventCategoryHTTP,
-		event.Type(event.ServiceStarted),
+		event.ServiceStarted,
 		event.Custom("source-ip", sourceIP.String()),
 		event.Custom("http.method", method),
 		event.Custom("http.uri", uri),

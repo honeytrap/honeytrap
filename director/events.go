@@ -5,8 +5,8 @@ import "github.com/honeytrap/honeytrap/pushers/event"
 // ContainerStoppedEvent returns a connection open event object giving the associated data values.
 func ContainerStoppedEvent(c Container, detail map[string]interface{}) event.Event {
 	return event.New(
-		event.Type(event.ContainerStopped),
-		event.Sensor(event.ContainersSensor),
+		event.ContainerStopped,
+		event.ContainersSensor,
 		event.Custom("container", c.Detail()),
 		event.CopyFrom(detail),
 	)
@@ -15,8 +15,8 @@ func ContainerStoppedEvent(c Container, detail map[string]interface{}) event.Eve
 // ContainerDialEvent returns a connection open event object giving the associated data values.
 func ContainerDialEvent(c Container, detail map[string]interface{}) event.Event {
 	return event.New(
-		event.Type(event.ContainerDial),
-		event.Sensor(event.ContainersSensor),
+		event.ContainerDial,
+		event.ContainersSensor,
 		event.Custom("container", c.Detail()),
 		event.CopyFrom(detail),
 	)
@@ -26,8 +26,8 @@ func ContainerDialEvent(c Container, detail map[string]interface{}) event.Event 
 // ContainerPcappedEvent returns a connection open event object giving the associated data values.
 func ContainerPcappedEvent(c Container, data []byte, detail map[string]interface{}) event.Event {
 	return event.New(
-		event.Type(event.ContainerPcaped),
-		event.Sensor(event.ContainersSensor),
+		event.ContainerPcaped,
+		event.ContainersSensor,
 		event.Custom("container", c.Detail()),
 		event.CopyFrom(detail),
 	)
@@ -36,8 +36,8 @@ func ContainerPcappedEvent(c Container, data []byte, detail map[string]interface
 // ContainerCheckpointEvent returns a connection open event object giving the associated data values.
 func ContainerCheckpointEvent(c Container, data []byte, detail map[string]interface{}) event.Event {
 	return event.New(
-		event.Type(event.ContainerCheckpoint),
-		event.Sensor(event.ContainersSensor),
+		event.ContainerCheckpoint,
+		event.ContainersSensor,
 		event.Custom("container", c.Detail()),
 		event.CopyFrom(detail),
 	)
@@ -46,8 +46,8 @@ func ContainerCheckpointEvent(c Container, data []byte, detail map[string]interf
 // ContainerTarredEvent returns a connection open event object giving the associated data values.
 func ContainerTarredEvent(c Container, data []byte, detail map[string]interface{}) event.Event {
 	return event.New(
-		event.Type(event.ContainerTarred),
-		event.Sensor(event.ContainersSensor),
+		event.ContainerTarred,
+		event.ContainersSensor,
 		event.Custom("container", c.Detail()),
 		event.CopyFrom(detail),
 	)
@@ -56,8 +56,8 @@ func ContainerTarredEvent(c Container, data []byte, detail map[string]interface{
 // ContainerClonedEvent returns a connection open event object giving the associated data values.
 func ContainerClonedEvent(c Container, name string, template string, ip string) event.Event {
 	return event.New(
-		event.Type(event.ContainerCloned),
-		event.Sensor(event.ContainersSensor),
+		event.ContainerCloned,
+		event.ContainersSensor,
 		event.Custom("container", c.Detail()),
 		event.CopyFrom(map[string]interface{}{
 			"container-ip":       ip,
@@ -70,8 +70,8 @@ func ContainerClonedEvent(c Container, name string, template string, ip string) 
 // ContainerPausedEvent returns a connection open event object giving the associated data values.
 func ContainerPausedEvent(c Container, detail map[string]interface{}) event.Event {
 	return event.New(
-		event.Type(event.ContainerPaused),
-		event.Sensor(event.ContainersSensor),
+		event.ContainerPaused,
+		event.ContainersSensor,
 		event.Custom("container", c.Detail()),
 		event.CopyFrom(detail),
 	)
@@ -80,8 +80,8 @@ func ContainerPausedEvent(c Container, detail map[string]interface{}) event.Even
 // ContainerResumedEvent returns a connection open event object giving the associated data values.
 func ContainerResumedEvent(c Container, detail map[string]interface{}) event.Event {
 	return event.New(
-		event.Type(event.ContainerResumed),
-		event.Sensor(event.ContainersSensor),
+		event.ContainerResumed,
+		event.ContainersSensor,
 		event.Custom("container", c.Detail()),
 		event.CopyFrom(detail),
 	)
@@ -90,8 +90,8 @@ func ContainerResumedEvent(c Container, detail map[string]interface{}) event.Eve
 // ContainerUnfrozenEvent returns a connection open event object giving the associated data values.
 func ContainerUnfrozenEvent(c Container, detail map[string]interface{}) event.Event {
 	return event.New(
-		event.Type(event.ContainerUnfrozen),
-		event.Sensor(event.ContainersSensor),
+		event.ContainerUnfrozen,
+		event.ContainersSensor,
 		event.Custom("container", c.Detail()),
 		event.CopyFrom(detail),
 	)
@@ -100,8 +100,8 @@ func ContainerUnfrozenEvent(c Container, detail map[string]interface{}) event.Ev
 // ContainerFrozenEvent returns a connection open event object giving the associated data values.
 func ContainerFrozenEvent(c Container, detail map[string]interface{}) event.Event {
 	return event.New(
-		event.Type(event.ContainerFrozen),
-		event.Sensor(event.ContainersSensor),
+		event.ContainerFrozen,
+		event.ContainersSensor,
 		event.Custom("container", c.Detail()),
 		event.CopyFrom(detail),
 	)
@@ -110,8 +110,8 @@ func ContainerFrozenEvent(c Container, detail map[string]interface{}) event.Even
 // ContainerStartedEvent returns a connection open event object giving the associated data values.
 func ContainerStartedEvent(c Container, detail map[string]interface{}) event.Event {
 	return event.New(
-		event.Type(event.ContainerStarted),
-		event.Sensor(event.ContainersSensor),
+		event.ContainerStarted,
+		event.ContainersSensor,
 		event.Custom("container", c.Detail()),
 		// event.CopyFrom(detail),
 	)
@@ -120,8 +120,8 @@ func ContainerStartedEvent(c Container, detail map[string]interface{}) event.Eve
 // ContainerErrorEvent returns a connection open event object giving the associated data values.
 func ContainerErrorEvent(c Container, data error) event.Event {
 	return event.New(
-		event.Type(event.ContainerError),
-		event.Sensor(event.ErrorsSensor),
+		event.ContainerError,
+		event.ErrorsSensor,
 		event.Custom("container", c.Detail()),
 		// event.CopyFrom(detail),
 	)
@@ -130,8 +130,8 @@ func ContainerErrorEvent(c Container, data error) event.Event {
 // ContainerDataWriteEvent returns a connection open event object giving the associated data values.
 func ContainerDataWriteEvent(c Container, data []byte, meta map[string]interface{}) event.Event {
 	return event.New(
-		event.Type(event.DataWrite),
-		event.Sensor(event.ContainersSensor),
+		event.DataWrite,
+		event.ContainersSensor,
 		event.Custom("container", c.Detail()),
 		event.CopyFrom(meta),
 		event.Payload(data),
@@ -141,8 +141,8 @@ func ContainerDataWriteEvent(c Container, data []byte, meta map[string]interface
 // ContainerDataReadEvent returns a connection open event object giving the associated data values.
 func ContainerDataReadEvent(c Container, data []byte) event.Event {
 	return event.New(
-		event.Type(event.DataRead),
-		event.Sensor(event.ContainersSensor),
+		event.DataRead,
+		event.ContainersSensor,
 		event.Custom("container", c.Detail()),
 		event.Payload(data),
 		// event.CopyFrom(detail),

@@ -11,49 +11,49 @@ import (
 type EType string
 
 // contains different sets of possible events type.
-const (
-	PingEvent            = "PING"
-	Operational          = "OPERATIONAL:Event"
-	OperationalAuth      = "OPERATIONAL:AUTH"
-	DataRequest          = "DATA:REQUEST"
-	DataRead             = "DATA:READ"
-	DataWrite            = "DATA:WRITE"
-	ServiceEnded         = "SERVICE:ENDED"
-	ServiceStarted       = "SERVICE:STARTED"
-	ConnectionOpened     = "CONNECTION:OPENED"
-	ConnectionClosed     = "CONNECTION:CLOSED"
-	UserSessionOpened    = "SESSION:USER:OPENED"
-	UserSessionClosed    = "SESSION:USER:CLOSED"
-	ConnectionReadError  = "CONNECTION:ERROR:READ"
-	ConnectionWriteError = "CONNECTION:ERROR:WRITE"
-	ContainerStarted     = "CONTAINER:STARTED"
-	ContainerFrozen      = "CONTAINER:FROZEN"
-	ContainerDial        = "CONTAINER:DIAL"
-	ContainerError       = "CONTAINER:ERROR"
-	ContainerUnfrozen    = "CONTAINER:UNFROZEN"
-	ContainerCloned      = "CONTAINER:CLONED"
-	ContainerStopped     = "CONTAINER:STOPPED"
-	ContainerPaused      = "CONTAINER:PAUSED"
-	ContainerResumed     = "CONTAINER:RESUMED"
-	ContainerTarred      = "CONTAINER:TARRED"
-	ContainerCheckpoint  = "CONTAINER:CHECKPOINT"
-	ContainerPcaped      = "CONTAINER:PCAPED"
+var (
+	PingEvent            = Type("PING")
+	Operational          = Type("OPERATIONAL:Event")
+	OperationalAuth      = Type("OPERATIONAL:AUTH")
+	DataRequest          = Type("DATA:REQUEST")
+	DataRead             = Type("DATA:READ")
+	DataWrite            = Type("DATA:WRITE")
+	ServiceEnded         = Type("SERVICE:ENDED")
+	ServiceStarted       = Type("SERVICE:STARTED")
+	ConnectionOpened     = Type("CONNECTION:OPENED")
+	ConnectionClosed     = Type("CONNECTION:CLOSED")
+	UserSessionOpened    = Type("SESSION:USER:OPENED")
+	UserSessionClosed    = Type("SESSION:USER:CLOSED")
+	ConnectionReadError  = Type("CONNECTION:ERROR:READ")
+	ConnectionWriteError = Type("CONNECTION:ERROR:WRITE")
+	ContainerStarted     = Type("CONTAINER:STARTED")
+	ContainerFrozen      = Type("CONTAINER:FROZEN")
+	ContainerDial        = Type("CONTAINER:DIAL")
+	ContainerError       = Type("CONTAINER:ERROR")
+	ContainerUnfrozen    = Type("CONTAINER:UNFROZEN")
+	ContainerCloned      = Type("CONTAINER:CLONED")
+	ContainerStopped     = Type("CONTAINER:STOPPED")
+	ContainerPaused      = Type("CONTAINER:PAUSED")
+	ContainerResumed     = Type("CONTAINER:RESUMED")
+	ContainerTarred      = Type("CONTAINER:TARRED")
+	ContainerCheckpoint  = Type("CONTAINER:CHECKPOINT")
+	ContainerPcaped      = Type("CONTAINER:PCAPED")
 )
 
 //====================================================================================
 
-// Contains a series of sensors constants.
-const (
-	ContainersSensor      = "CONTAINER"
-	ConnectionSensor      = "CONNECTION"
-	ServiceSensor         = "SERVICE"
-	SessionSensor         = "SESSIONS"
-	EventSensor           = "EVENTS"
-	PingSensor            = "PING"
-	DataSensor            = "DATA"
-	ErrorsSensor          = "ERRORS"
-	DataErrorSensor       = "DATA:ERROR"
-	ConnectionErrorSensor = "CONNECTION:ERROR"
+// Contains a series of sensors variables.
+var (
+	ContainersSensor      = Sensor("CONTAINER")
+	ConnectionSensor      = Sensor("CONNECTION")
+	ServiceSensor         = Sensor("SERVICE")
+	SessionSensor         = Sensor("SESSIONS")
+	EventSensor           = Sensor("EVENTS")
+	PingSensor            = Sensor("PING")
+	DataSensor            = Sensor("DATA")
+	ErrorsSensor          = Sensor("ERRORS")
+	DataErrorSensor       = Sensor("DATA:ERROR")
+	ConnectionErrorSensor = Sensor("CONNECTION:ERROR")
 )
 
 //====================================================================================
@@ -113,6 +113,13 @@ func Token(token string) Option {
 func Category(s string) Option {
 	return func(m Event) {
 		m["category"] = ECategory(s)
+	}
+}
+
+// Error returns an option for setting the error value.
+func Error(err error) Option {
+	return func(m Event) {
+		m["error"] = err
 	}
 }
 

@@ -647,7 +647,7 @@ func EventPortscan(sourceIP net.IP, duration time.Duration, count int, ports []s
 	return event.New(
 		CanaryOptions,
 		EventCategoryPortscan,
-		event.Type(event.ServiceStarted),
+		event.ServiceStarted,
 		event.Custom("source-ip", sourceIP.String()),
 		event.Custom("portscan.ports", ports),
 		event.Custom("portscan.duration", duration),

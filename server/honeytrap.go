@@ -114,11 +114,8 @@ type ListenerConfig struct {
 func EventServiceStarted(service string, primitive toml.Primitive) event.Event {
 	return event.New(
 		event.Category(service),
-		event.Sensor(event.ServiceSensor),
-		event.Type(event.ServiceStarted),
-		event.CopyFrom(map[string]interface{}{
-			"primitive": primitive,
-		}),
+		event.ServiceSensor,
+		event.ServiceStarted,
 	)
 }
 
@@ -142,25 +139,19 @@ func (hc *Honeytrap) startProxies() {
 				log.Errorf("Error in service: %s: %s", st.Service, err.Error())
 
 				hc.events.Send(event.New(
-					event.Sensor(event.ServiceSensor),
+					event.ServiceSensor,
 					event.Category(st.Service),
-					event.Type(event.ServiceStarted),
-					event.CopyFrom(map[string]interface{}{
-						"primitive": primitive,
-						"error":     err.Error(),
-					}),
+					event.ServiceStarted,
+					event.Error(err),
 				))
 
 				continue
 			}
 
 			hc.events.Send(event.New(
-				event.Sensor(event.ServiceSensor),
+				event.ServiceSensor,
 				event.Category(st.Service),
-				event.Type(event.ServiceStarted),
-				event.CopyFrom(map[string]interface{}{
-					"primitive": primitive,
-				}),
+				event.ServiceStarted,
 			))
 
 			/*
