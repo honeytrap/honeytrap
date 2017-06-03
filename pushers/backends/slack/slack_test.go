@@ -22,16 +22,19 @@ const (
 
 var (
 	blueChip = event.New(
+		event.Type("Chip"),
 		event.Sensor("BlueChip"),
 		event.Category("Chip Integrated"),
 	)
 
 	ping = event.New(
+		event.Type("Ping"),
 		event.Sensor("Ping"),
 		event.Category("Ping Notification"),
 	)
 
 	crum = event.New(
+		event.Type("Crum"),
 		event.Sensor("Crum Stream"),
 		event.Category("WebRTC Crum Stream"),
 	)
@@ -123,10 +126,10 @@ func TestSlackPusher(t *testing.T) {
 			}
 			t.Logf("\t%s\t Should have successfully retrieved fields.", passed)
 
-			if len(fields) < 4 {
-				t.Fatalf("\t%s\t Should have successfully retrieved 4 fields.", failed)
+			if len(fields) < 3 {
+				t.Fatalf("\t%s\t Should have successfully retrieved 3 fields.", failed)
 			}
-			t.Logf("\t%s\t Should have successfully retrieved 4 fields.", passed)
+			t.Logf("\t%s\t Should have successfully retrieved 3 fields.", passed)
 		}
 	}
 }
@@ -134,7 +137,7 @@ func TestSlackPusher(t *testing.T) {
 func TestSlackGenerator(t *testing.T) {
 	tomlConfig := `
 	backend = "slack"
-	webhookURL = "https://hooks.slack.com/services/KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"`
+	webhook_url = "https://hooks.slack.com/services/KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"`
 
 	var config toml.Primitive
 
