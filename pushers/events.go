@@ -14,13 +14,13 @@ func NewEventBus() *EventBus {
 }
 
 // Subscribe adds the giving channel to the list of subscribers for the giving bus.
-func (e *EventBus) Subscribe(channels ...Channel) {
-	e.subscribers = append(e.subscribers, channels...)
+func (eb *EventBus) Subscribe(channels ...Channel) {
+	eb.subscribers = append(eb.subscribers, channels...)
 }
 
 // Send deliverers the slice of messages to all subscribers.
-func (e *EventBus) Send(pm event.Event) {
-	for _, subscriber := range e.subscribers {
-		subscriber.Send(pm)
+func (eb *EventBus) Send(e event.Event) {
+	for _, subscriber := range eb.subscribers {
+		subscriber.Send(e)
 	}
 }

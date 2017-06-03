@@ -76,8 +76,9 @@ type filterChannel struct {
 
 // Send delivers the slice of PushMessages and using the internal filters
 // to filter out the desired messages allowed for all registered backends.
-func (mc filterChannel) Send(msgs event.Event) {
-	for _, item := range mc.Filter.Filter(msgs) {
+func (mc filterChannel) Send(e event.Event) {
+	// TODO:concat all filters to each other, instead of groups
+	for _, item := range mc.Filter.Filter(e) {
 		mc.Channel.Send(item)
 	}
 }
