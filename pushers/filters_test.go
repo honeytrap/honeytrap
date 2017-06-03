@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/honeytrap/honeytrap/pushers"
-	"github.com/honeytrap/honeytrap/pushers/message"
+	"github.com/honeytrap/honeytrap/pushers/event"
 )
 
 const (
@@ -13,29 +13,20 @@ const (
 )
 
 var (
-	blueChip = message.Event{
-		Sensor:      "BlueChip",
-		Category:    "Chip Integrated",
-		SessionID:   "4334334-3433434-34343-FUD",
-		ContainerID: "56454-5454UDF-2232UI-34FGHU",
-		Data:        "Hello World!",
-	}
+	blueChip = event.New(
+		event.Sensor("BlueChip"),
+		event.Category("Chip Integrated"),
+	)
 
-	ping = message.Event{
-		Sensor:      "Ping",
-		Category:    "Ping Notificiation",
-		SessionID:   "4334334-3433434-34343-FUD",
-		ContainerID: "56454-5454UDF-2232UI-34FGHU",
-		Data:        "Hello World!",
-	}
+	ping = event.New(
+		event.Sensor("Ping"),
+		event.Category("Ping Notification"),
+	)
 
-	crum = message.Event{
-		Sensor:      "Crum Stream",
-		Category:    "WebRTC Crum Stream",
-		SessionID:   "4334334-3433434-34343-FUD",
-		ContainerID: "56454-5454UDF-2232UI-34FGHU",
-		Data:        "Hello World!",
-	}
+	crum = event.New(
+		event.Sensor("Crum Stream"),
+		event.Category("WebRTC Crum Stream"),
+	)
 )
 
 func TestRegExpFilter(t *testing.T) {

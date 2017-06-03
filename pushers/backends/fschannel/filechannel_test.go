@@ -1,13 +1,12 @@
 package fschannel_test
 
 import (
-	"bytes"
 	"io/ioutil"
 	"testing"
 
 	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/pushers/backends/fschannel"
-	"github.com/honeytrap/honeytrap/pushers/message"
+	"github.com/honeytrap/honeytrap/pushers/event"
 	"github.com/honeytrap/honeytrap/utils/tests"
 )
 
@@ -18,31 +17,20 @@ const (
 )
 
 var (
-	splitter = []byte("\r\n")
+	blueChip = event.New(
+		event.Sensor("BlueChip"),
+		event.Category("Chip Integrated"),
+	)
 
-	blueChip = message.Event{
-		Sensor:      "BlueChip",
-		Category:    "Chip Integrated",
-		SessionID:   "4334334-3433434-34343-FUD",
-		ContainerID: "56454-5454UDF-2232UI-34FGHU",
-		Data:        "Hello World!",
-	}
+	ping = event.New(
+		event.Sensor("Ping"),
+		event.Category("Ping Notification"),
+	)
 
-	ping = message.Event{
-		Sensor:      "Ping",
-		Category:    "Ping Notificiation",
-		SessionID:   "4334334-3433434-34343-FUD",
-		ContainerID: "56454-5454UDF-2232UI-34FGHU",
-		Data:        "Hello World!",
-	}
-
-	crum = message.Event{
-		Sensor:      "Crum Stream",
-		Category:    "WebRTC Crum Stream",
-		SessionID:   "4334334-3433434-34343-FUD",
-		ContainerID: "56454-5454UDF-2232UI-34FGHU",
-		Data:        "Hello World!",
-	}
+	crum = event.New(
+		event.Sensor("Crum Stream"),
+		event.Category("WebRTC Crum Stream"),
+	)
 )
 
 // TestFileBackend validates the behaviour of the FileBackend.
@@ -70,10 +58,10 @@ func TestFileBackend(t *testing.T) {
 			}
 			t.Logf("\t%s\t Should have successfully read %s file", passed, tmpFile)
 
-			if contents := bytes.Split(data, splitter); len(contents) == 3 {
-				t.Fatalf("\t%s\t Should have successfully match content length in %s to %d", failed, tmpFile, 3)
+			if len(data) == 0 {
+				t.Fatalf("\t%s\t Should have successfully have file size greater than 0", failed)
 			}
-			t.Logf("\t%s\t Should have successfully match content length in %s to %d", passed, tmpFile, 3)
+			t.Logf("\t%s\t Should have successfully have file size greater than 0", passed)
 		}
 	}
 }

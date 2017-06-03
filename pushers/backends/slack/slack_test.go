@@ -11,7 +11,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/pushers/backends/slack"
-	"github.com/honeytrap/honeytrap/pushers/message"
+	"github.com/honeytrap/honeytrap/pushers/event"
 	"github.com/honeytrap/honeytrap/utils/tests"
 )
 
@@ -21,29 +21,23 @@ const (
 )
 
 var (
-	blueChip = message.Event{
-		Sensor:      "BlueChip",
-		Category:    "Chip Integrated",
-		SessionID:   "4334334-3433434-34343-FUD",
-		ContainerID: "56454-5454UDF-2232UI-34FGHU",
-		Data:        "Hello World!",
-	}
+	blueChip = event.New(
+		event.Type("Chip"),
+		event.Sensor("BlueChip"),
+		event.Category("Chip Integrated"),
+	)
 
-	ping = message.Event{
-		Sensor:      "Ping",
-		Category:    "Ping Notificiation",
-		SessionID:   "4334334-3433434-34343-FUD",
-		ContainerID: "56454-5454UDF-2232UI-34FGHU",
-		Data:        "Hello World!",
-	}
+	ping = event.New(
+		event.Type("Ping"),
+		event.Sensor("Ping"),
+		event.Category("Ping Notification"),
+	)
 
-	crum = message.Event{
-		Sensor:      "Crum Stream",
-		Category:    "WebRTC Crum Stream",
-		SessionID:   "4334334-3433434-34343-FUD",
-		ContainerID: "56454-5454UDF-2232UI-34FGHU",
-		Data:        "Hello World!",
-	}
+	crum = event.New(
+		event.Type("Crum"),
+		event.Sensor("Crum Stream"),
+		event.Category("WebRTC Crum Stream"),
+	)
 )
 
 type slackService struct {
@@ -96,11 +90,9 @@ func TestSlackPusher(t *testing.T) {
 			var service slackService
 
 			server := httptest.NewServer(&service)
-			host := server.URL + "/services"
 
-			channel := slack.New(slack.APIConfig{
-				Host:  host,
-				Token: "343HJUYFHGT/B4545IO/VOOepdacxW9HG60eDfoFBiMF",
+			channel := slack.New(slack.Config{
+				WebhookURL: server.URL + "/services/343HJUYFHGT/B4545IO/VOOepdacxW9HG60eDfoFBiMF",
 			})
 
 			channel.Send(blueChip)
@@ -134,10 +126,10 @@ func TestSlackPusher(t *testing.T) {
 			}
 			t.Logf("\t%s\t Should have successfully retrieved fields.", passed)
 
-			if len(fields) < 4 {
-				t.Fatalf("\t%s\t Should have successfully retrieved 4 fields.", failed)
+			if len(fields) < 3 {
+				t.Fatalf("\t%s\t Should have successfully retrieved 3 fields.", failed)
 			}
-			t.Logf("\t%s\t Should have successfully retrieved 4 fields.", passed)
+			t.Logf("\t%s\t Should have successfully retrieved 3 fields.", passed)
 		}
 	}
 }
@@ -145,8 +137,7 @@ func TestSlackPusher(t *testing.T) {
 func TestSlackGenerator(t *testing.T) {
 	tomlConfig := `
 	backend = "slack"
-	host = "https://hooks.slack.com/services/"
-	token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"`
+	webhook_url = "https://hooks.slack.com/services/KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"`
 
 	var config toml.Primitive
 

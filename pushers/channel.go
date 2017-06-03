@@ -5,7 +5,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/config"
-	"github.com/honeytrap/honeytrap/pushers/message"
+	"github.com/honeytrap/honeytrap/pushers/event"
 	logging "github.com/op/go-logging"
 )
 
@@ -18,7 +18,7 @@ var log = logging.MustGetLogger("honeytrap:channels")
 // Channel defines a interface which exposes a single method for delivering
 // PushMessages to a giving underline service.
 type Channel interface {
-	Send(message.Event)
+	Send(event.Event)
 }
 
 //=======================================================================================================
@@ -76,7 +76,7 @@ type filterChannel struct {
 
 // Send delivers the slice of PushMessages and using the internal filters
 // to filter out the desired messages allowed for all registered backends.
-func (mc filterChannel) Send(msgs message.Event) {
+func (mc filterChannel) Send(msgs event.Event) {
 	for _, item := range mc.Filter.Filter(msgs) {
 		mc.Channel.Send(item)
 	}
@@ -98,9 +98,17 @@ func FilterChannel(channel Channel, filter FilterGroup) Channel {
 func MakeFilter(bus *EventBus, config *config.Config, conf config.ChannelConfig) error {
 	var filters FilterGroup
 
-	filters.Add(NewRegExpFilter(CategoryFilterFunc, MakeMatchers(conf.Categories...)...))
-	filters.Add(NewRegExpFilter(CategoryFilterFunc, MakeMatchers(conf.Sensors...)...))
-	filters.Add(NewRegExpFilter(CategoryFilterFunc, MakeMatchers(conf.Events...)...))
+	if len(conf.Categories) != 0 {
+		filters.Add(NewRegExpFilter(CategoryFilterFunc, MakeMatchers(conf.Categories...)...))
+	}
+
+	if len(conf.Sensors) != 0 {
+		filters.Add(NewRegExpFilter(CategoryFilterFunc, MakeMatchers(conf.Sensors...)...))
+	}
+
+	if len(conf.Events) != 0 {
+		filters.Add(NewRegExpFilter(CategoryFilterFunc, MakeMatchers(conf.Events...)...))
+	}
 
 	// Generate all filters for the channel's backends
 	for _, backend := range conf.Backends {

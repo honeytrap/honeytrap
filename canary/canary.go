@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/glycerine/rbuf"
 	"github.com/honeytrap/honeytrap/canary/arp"
 	"github.com/honeytrap/honeytrap/canary/ethernet"
 	"github.com/honeytrap/honeytrap/canary/icmp"
@@ -17,12 +18,22 @@ import (
 	"github.com/honeytrap/honeytrap/canary/tcp"
 	"github.com/honeytrap/honeytrap/canary/udp"
 	"github.com/honeytrap/honeytrap/pushers"
-	"github.com/honeytrap/honeytrap/pushers/message"
+	"github.com/honeytrap/honeytrap/pushers/event"
+	logging "github.com/op/go-logging"
 )
+
+var log = logging.MustGetLogger("canary")
 
 // first dns
 // ntp
 // send reset?
+// udp check connect or answer
+// parameters
+// clean up old states
+// check ring buffer
+// use sockets and io.Reader
+// parameters: ports to include exclude/ filter (or do we want to filter the events)
+// interface to listen on
 
 const (
 	// MaxEpollEvents defines maximum number of poll events to retrieve at once
@@ -54,6 +65,10 @@ const (
 
 // Canary contains the canary struct
 type Canary struct {
+	rt RouteTable
+
+	ac ARPCache
+
 	epfd int
 
 	m sync.Mutex
@@ -65,6 +80,12 @@ type Canary struct {
 	networkInterfaces []net.Interface
 
 	events pushers.Channel
+
+	descriptors map[string]int32
+
+	buffer *rbuf.FixedSizeRingBuf
+
+	stateTable StateTable
 }
 
 // KnockGroup groups multiple knocks
@@ -208,7 +229,7 @@ func (c *Canary) handleUDP(iph *ipv4.Header, data []byte) error {
 		}
 
 		// do we only want to detect scans? Or also detect payloads?
-		c.events.Send(EventUDP(iph.Src, hdr.Destination, string(hdr.Payload)))
+		c.events.Send(EventUDP(iph.Src, iph.Dst, hdr.Source, hdr.Destination, hdr.Payload))
 	} else if err := fn(iph, hdr); err != nil {
 		fmt.Printf("Could not decode udp packet: %s", err)
 	}
@@ -243,20 +264,23 @@ func (c *Canary) handleARP(data []byte) error {
 	_ = arp
 
 	// check if it is my hardware address or broadcast
-	/*
-		if bytes.Compare(arp.TargetMAC[:], []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}) == 0 {
+	if bytes.Compare(arp.TargetMAC[:], []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}) == 0 {
+		if arp.Opcode == 0x01 {
+			// fmt.Printf("ARP: Who has %s? tell %s.", net.IPv4(arp.TargetIP[0], arp.TargetIP[1], arp.TargetIP[2], arp.TargetIP[3]).String(), net.IPv4(arp.SenderIP[0], arp.SenderIP[1], arp.SenderIP[2], arp.SenderIP[3]).String())
+		}
+		return nil
+	}
+
+	for _, networkInterface := range c.networkInterfaces {
+		if bytes.Compare(arp.TargetMAC[:], networkInterface.HardwareAddr) == 0 {
 			if arp.Opcode == 0x01 {
-				fmt.Printf("ARP: Who has %s? tell %s.", net.IPv4(arp.TargetIP[0], arp.TargetIP[1], arp.TargetIP[2], arp.TargetIP[3]).String(), net.IPv4(arp.SenderIP[0], arp.SenderIP[1], arp.SenderIP[2], arp.SenderIP[3]).String())
-			}
-		} else if bytes.Compare(arp.TargetMAC[:], c.networkInterface.HardwareAddr) == 0 {
-			if arp.Opcode == 0x01 {
-				fmt.Printf("ARP: Who has %s? tell %s.", net.IPv4(arp.TargetIP[0], arp.TargetIP[1], arp.TargetIP[2], arp.TargetIP[3]).String(), net.IPv4(arp.SenderIP[0], arp.SenderIP[1], arp.SenderIP[2], arp.SenderIP[3]).String())
+				// fmt.Printf("ARP: Who has %s? tell %s.", net.IPv4(arp.TargetIP[0], arp.TargetIP[1], arp.TargetIP[2], arp.TargetIP[3]).String(), net.IPv4(arp.SenderIP[0], arp.SenderIP[1], arp.SenderIP[2], arp.SenderIP[3]).String())
 			} else {
 			}
 		} else {
-			fmt.Println("ARP: not for me")
+			// 			fmt.Println("ARP: not for me")
 		}
-	*/
+	}
 
 	return nil
 }
@@ -286,60 +310,324 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 		return err
 	}
 
-	if hdr.Ctrl&tcp.SYN != tcp.SYN {
-		return nil
-	} else if hdr.Ctrl&tcp.ACK != 0 {
-		return nil
-	}
-
-	// do handhake
-
 	if !c.isMe(iph.Dst) {
 		return nil
 	}
 
-	c.knockChan <- KnockTCPPort{
-		SourceIP:        iph.Src,
-		DestinationPort: hdr.Destination,
+	if hdr.Source == 22 || hdr.Destination == 22 {
+		return nil
+	}
+
+	state := c.stateTable.Get(iph.Src, iph.Dst, hdr.Source, hdr.Destination)
+	if state != nil {
+	} else if hdr.HasFlag(tcp.SYN) && !hdr.HasFlag(tcp.ACK) {
+		// no state found
+		state = NewState(iph.Src, hdr.Source, iph.Dst, hdr.Destination)
+		c.stateTable.Add(state)
+	} else {
+		// no existing state found, returning
+		return nil // ErrNoExistingStateFound()
+	}
+
+	// USE PUSH?
+	// ACK THE PAYLOAD ALWAYS
+
+	// ACK EACH SYN, PSH, FIN AND RST
+	switch {
+	case hdr.HasFlag(tcp.SYN):
+		fallthrough
+	case hdr.HasFlag(tcp.RST):
+		fallthrough
+	case hdr.HasFlag(tcp.FIN):
+		fallthrough
+	case hdr.HasFlag(tcp.PSH):
+		c.ack(state, iph, hdr)
+	}
+
+	if hdr.Ctrl&tcp.SYN == tcp.SYN {
+		c.knockChan <- KnockTCPPort{
+			SourceIP:        iph.Src,
+			DestinationPort: hdr.Destination,
+		}
+	} else if hdr.Ctrl&tcp.PSH == tcp.PSH {
+		handlers := map[uint16]func(*ipv4.Header, *tcp.Header) error{
+			80: c.DecodeHTTP,
+		}
+
+		if fn, ok := handlers[hdr.Destination]; !ok {
+			c.events.Send(EventTCPPayload(iph.Src, hdr.Destination, string(hdr.Payload)))
+		} else if err := fn(iph, hdr); err != nil {
+			fmt.Printf("Could not decode tcp packet: %s", err)
+		}
+
+		return nil
+	} else {
+		// FIN / RST
+		return nil
 	}
 
 	// check if we have tcp listeners on specified port, and answer otherwise
 	return nil
 }
+func (c *Canary) ack(state *State, iph *ipv4.Header, tcph *tcp.Header) error {
+	seqNum := tcph.SeqNum + uint32(len(tcph.Payload))
+	flags := tcp.Flag(tcp.ACK)
+
+	if tcph.HasFlag(tcp.SYN) {
+		seqNum++
+		flags |= tcp.Flag(tcp.SYN)
+	} else if tcph.HasFlag(tcp.RST) {
+		seqNum++
+		flags |= tcp.Flag(tcp.RST)
+	} else if tcph.HasFlag(tcp.FIN) {
+		seqNum++
+		flags |= tcp.Flag(tcp.FIN)
+	}
+
+	// TODO: keep state....
+	// SeqNum
+	// ID
+
+	th := &tcp.Header{
+		Source:      tcph.Destination,
+		Destination: tcph.Source,
+		SeqNum:      state.SendNext,
+		AckNum:      seqNum,
+		Reserved:    0,
+		ECN:         0,
+		Ctrl:        flags,
+		Window:      65531,
+		Checksum:    0,
+		Urgent:      0,
+		Options:     []tcp.Option{},
+		Payload:     []byte{},
+	}
+
+	data1, err := th.Marshal()
+	if err != nil {
+		return err
+	}
+
+	// ack the received packet
+	iph2 := &ipv4.Header{
+		Version:  4,
+		Len:      20,
+		TOS:      0,
+		Flags:    0,
+		FragOff:  0,
+		TTL:      128,
+		Src:      iph.Dst,
+		Dst:      iph.Src,
+		ID:       int(state.ID), // state.ID() which will increment automatically
+		Protocol: 6,
+		TotalLen: 20 + len(data1),
+	}
+
+	data, err := iph2.Marshal()
+	if err != nil {
+		return err
+	}
+
+	state.ID++
+	// we don't have to increate sendNext for ACK
+	// state.SendNext++
+
+	if tcph.HasFlag(tcp.SYN) {
+		state.SendNext++
+	} else if tcph.HasFlag(tcp.RST) {
+		state.SendNext++
+	} else if tcph.HasFlag(tcp.FIN) {
+		state.SendNext++
+	}
+
+	updateTCPChecksum(iph2, data1)
+
+	data = append(data, data1...)
+
+	// Src := net.IPv4(data1[12], data1[13], data1[14], data1[15])
+	Dst := net.IPv4(data[16], data[17], data[18], data[19])
+
+	ef := ethernet.EthernetFrame{
+		Source:      c.networkInterfaces[0].HardwareAddr,
+		Destination: []byte{0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
+		Type:        0x0800,
+	}
+
+	intf := ""
+
+	ae := c.ac.Get(Dst)
+	if ae != nil {
+		ef.Destination = ae.HardwareAddress
+		intf = ae.Interface
+	} else {
+		// TODO(make function)
+		for _, route := range c.rt {
+			// find shortest route
+			if !route.Destination.Contains(Dst) {
+				continue
+			}
+
+			a := c.ac.Get(route.Gateway)
+
+			intf = a.Interface
+			ef.Destination = a.HardwareAddress
+			break
+		}
+
+	}
+
+	data2, err := ef.Marshal()
+	if err != nil {
+		fmt.Println("Error marshalling ethernet frame: ", err)
+	}
+
+	csum := uint32(0)
+
+	// calculate correct ip header length here.
+	length := 20 // len(data1) - 1
+
+	// calculate options?
+
+	/*
+		i := length
+
+		for {
+			if i > len(data) {
+				break
+			}
+
+			if data[i] == 0x00 {
+				break
+			}
+
+			fmt.Println("Got option")
+
+			length += int(data[i+1])
+			i += int(data[i+1])
+		}
+	*/
+
+	for i := 0; i < length; i += 2 {
+		if i == 10 {
+			continue
+		}
+
+		csum += uint32(data[i]) << 8
+		csum += uint32(data[i+1])
+	}
+
+	for {
+		// Break when sum is less or equals to 0xFFFF
+		if csum <= 65535 {
+			break
+		}
+		// Add carry to the sum
+		csum = (csum >> 16) + uint32(uint16(csum))
+	}
+
+	csum = uint32(^uint16(csum))
+
+	data[10] = uint8((csum >> 8) & 0xFF)
+	data[11] = uint8(csum & 0xFF)
+
+	data = append(data2, data...)
+
+	c.send(intf, data)
+
+	return nil
+}
+
+// Count occurrences in s of any bytes in t.
+func countAnyByte(s string, t string) int {
+	n := 0
+	for i := 0; i < len(s); i++ {
+		if strings.IndexByte(t, s[i]) >= 0 {
+			n++
+		}
+	}
+	return n
+}
+
+// Split s at any bytes in t.
+func splitAtBytes(s string, t string) []string {
+	a := make([]string, 1+countAnyByte(s, t))
+	n := 0
+	last := 0
+	for i := 0; i < len(s); i++ {
+		if strings.IndexByte(t, s[i]) >= 0 {
+			if last < i {
+				a[n] = s[last:i]
+				n++
+			}
+			last = i + 1
+		}
+	}
+	if last < len(s) {
+		a[n] = s[last:]
+		n++
+	}
+	return a[0:n]
+}
 
 // New will return a Canary for specified interfaces. Events will be delivered through
 // events
 func New(interfaces []net.Interface, events pushers.Channel) (*Canary, error) {
+	rt, err := parseRouteTable("/proc/net/route")
+	if err != nil {
+		return nil, fmt.Errorf("Could not parse route table: %s", err.Error())
+	}
+
+	ac, err := parseARPCache("/proc/net/arp")
+	if err != nil {
+		return nil, fmt.Errorf("Could not parse arp cache: %s", err.Error())
+	}
+
 	epfd, err := syscall.EpollCreate1(0)
 	if err != nil {
 		return nil, fmt.Errorf("epoll_create1: %s", err.Error())
 	}
 
 	networkInterfaces := []net.Interface{}
+	descriptors := map[string]int32{}
 
 	for _, intf := range interfaces {
-		if fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(htons(syscall.ETH_P_ALL))); err != nil {
+		if intf.Name != "ens160" && intf.Name != "eth0" && intf.Name != "ens3" {
+			continue
+		}
+
+		fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(htons(syscall.ETH_P_ALL)))
+		if err != nil {
 			return nil, fmt.Errorf("Could not create socket: %s", err.Error())
-		} else if fd < 0 {
+		}
+
+		if fd < 0 {
 			return nil, fmt.Errorf("Socket error: return < 0")
-		} else if err = syscall.EpollCtl(epfd, syscall.EPOLL_CTL_ADD, fd, &syscall.EpollEvent{
+		}
+
+		if err = syscall.EpollCtl(epfd, syscall.EPOLL_CTL_ADD, fd, &syscall.EpollEvent{
 			Events: syscall.EPOLLIN | syscall.EPOLLERR | syscall.EPOLL_NONBLOCK,
 			Fd:     int32(fd),
 		}); err != nil {
 			return nil, fmt.Errorf("epollctl: %s", err.Error())
 		}
 
+		descriptors[intf.Name] = int32(fd)
 		networkInterfaces = append(networkInterfaces, intf)
 	}
 
 	r := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
 
 	return &Canary{
+		ac:                ac,
+		rt:                rt,
 		epfd:              epfd,
+		descriptors:       descriptors,
 		networkInterfaces: networkInterfaces,
 		r:                 r,
 		knockChan:         make(chan interface{}, 100),
 		events:            events,
+
+		buffer: rbuf.NewFixedSizeRingBuf(65535),
 	}, nil
 }
 
@@ -348,82 +636,100 @@ func (c *Canary) Close() {
 	syscall.Close(c.epfd)
 }
 
-func (c *Canary) knockDetector() {
-	knocks := NewUniqueSet(func(v1, v2 interface{}) bool {
-		k1, k2 := v1.(*KnockGroup), v2.(*KnockGroup)
-		if k1.Protocol != k2.Protocol {
-			return false
-		}
-
-		return bytes.Compare(k1.SourceIP, k2.SourceIP) == 0
-	})
-
-	for {
-		select {
-		case sk := <-c.knockChan:
-			grouper := sk.(KnockGrouper)
-			knock := knocks.Add(grouper.NewGroup()).(*KnockGroup)
-
-			knock.Count++
-			knock.Last = time.Now()
-
-			knock.Knocks.Add(sk)
-
-		case <-time.After(time.Second * 5):
-			// TODO: make time configurable
-
-			now := time.Now()
-
-			knocks.Each(func(i int, v interface{}) {
-				k := v.(*KnockGroup)
-
-				if k.Count > 100 {
-				} else if k.Last.Add(time.Second * 5).After(now) {
-					return
-				}
-
-				defer knocks.Remove(k)
-
-				ports := make([]string, k.Knocks.Count())
-
-				k.Knocks.Each(func(i int, v interface{}) {
-					if k, ok := v.(KnockTCPPort); ok {
-						ports[i] = fmt.Sprintf("tcp/%d", k.DestinationPort)
-					} else if k, ok := v.(KnockUDPPort); ok {
-						ports[i] = fmt.Sprintf("udp/%d", k.DestinationPort)
-					} else if _, ok := v.(KnockICMP); ok {
-						ports[i] = fmt.Sprintf("icmp")
-					}
-				})
-
-				c.events.Send(EventPortscan(k.SourceIP, k.Last.Sub(k.Start), k.Count, ports))
-			})
-		}
-	}
-}
+var (
+	// EventCategoryPortscan contains events for ssdp traffic
+	EventCategoryPortscan = event.Category("portscan")
+)
 
 // EventPortscan will return a portscan event struct
-func EventPortscan(sourceIP net.IP, duration time.Duration, count int, ports []string) message.Event {
-	return message.Event{
-		Sensor:   "Canary",
-		Category: "Portscan",
-		Type:     message.ServiceStarted,
-		Details: map[string]interface{}{
-			"message": fmt.Sprintf("Port %d touch(es) detected from %s with duration %+v: %s", count, sourceIP, duration, strings.Join(ports, ", ")),
-		},
-	}
+func EventPortscan(sourceIP net.IP, duration time.Duration, count int, ports []string) event.Event {
+	// TODO: do something different with message
+	return event.New(
+		CanaryOptions,
+		EventCategoryPortscan,
+		event.ServiceStarted,
+		event.Custom("source-ip", sourceIP.String()),
+		event.Custom("portscan.ports", ports),
+		event.Custom("portscan.duration", duration),
+		event.Custom("message", fmt.Sprintf("Port %d touch(es) detected from %s with duration %+v: %s", count, sourceIP, duration, strings.Join(ports, ", "))),
+	)
 }
 
 // send will queue a packet for sending
-func (c *Canary) send(data []byte) error {
+func (c *Canary) send(intf string, data []byte) error {
 	c.m.Lock()
 	defer c.m.Unlock()
 
-	return nil
+	// add to send queue
+	// ring buffer?
+
+	// how does the buffer play nice with retransmits
+
+	c.buffer.Write(data)
+
+	// enable poll out
+	// find interface
+
+	for _, intf := range c.networkInterfaces {
+		// send network frame
+		// find gateway
+		//
+
+		_ = intf
+	}
+
+	fd := c.descriptors[intf]
+
+	err := syscall.EpollCtl(c.epfd, syscall.EPOLL_CTL_MOD, int(fd), &syscall.EpollEvent{
+		Events: syscall.EPOLLIN | syscall.EPOLLOUT,
+		Fd:     int32(fd),
+	})
+
+	return err
+}
+
+func updateTCPChecksum(iph *ipv4.Header, data []byte) {
+	length := len(data)
+
+	csum := uint32(0)
+
+	csum += (uint32(iph.Src[12]) + uint32(iph.Src[14])) << 8
+	csum += uint32(iph.Src[13]) + uint32(iph.Src[15])
+	csum += (uint32(iph.Dst[12]) + uint32(iph.Dst[14])) << 8
+	csum += uint32(iph.Dst[13]) + uint32(iph.Dst[15])
+
+	csum += uint32(6)
+	csum += uint32(length) & 0xffff
+	csum += uint32(length) >> 16
+
+	length = len(data) - 1
+
+	// calculate correct ip header length here.
+	for i := 0; i < length; i += 2 {
+		if i == 16 {
+			continue
+		}
+
+		csum += uint32(data[i]) << 8
+		csum += uint32(data[i+1])
+	}
+
+	if len(data)%2 == 1 {
+		csum += uint32(data[length]) << 8
+	}
+
+	for csum > 0xffff {
+		csum = (csum >> 16) + (csum & 0xffff)
+	}
+
+	csum = uint32(^uint16(csum + (csum >> 16)))
+
+	data[16] = uint8((csum >> 8) & 0xFF)
+	data[17] = uint8(csum & 0xFF)
 }
 
 // send will queue a packet for sending
-func (c *Canary) transmit(fd int32) {
+func (c *Canary) transmit(fd int32) error {
 	// os specific transmitter
 	// protocol implementation specific
 
@@ -434,6 +740,24 @@ func (c *Canary) transmit(fd int32) {
 
 	c.m.Lock()
 	defer c.m.Unlock()
+
+	buffer := make([]byte, 65535)
+	n, err := c.buffer.Read(buffer)
+	if err != nil {
+		fmt.Println("BLA", err)
+	}
+
+	to := &syscall.SockaddrLinklayer{
+		Protocol: htons(syscall.ETH_P_ALL),
+		Ifindex:  c.networkInterfaces[0].Index,
+	}
+
+	err = syscall.Sendto((int(fd)), buffer[:n], 0, to)
+	if err != nil {
+		panic(err)
+	}
+
+	return nil
 }
 
 // Run will start Canary
@@ -463,26 +787,28 @@ func (c *Canary) Run() error {
 					c.handleARP(eh.Payload[:])
 				} else if eh.Type == EthernetTypeIPv4 {
 					if iph, err := ipv4.Parse(eh.Payload[:]); err != nil {
-						fmt.Printf("Error parsing ip header: %s", err.Error())
+						log.Debugf("Error parsing ip header: %s", err.Error())
 					} else {
 						data := iph.Payload[:]
 
 						switch iph.Protocol {
 						case 1 /* icmp */ :
 							c.handleICMP(iph, data)
+						case 2 /* IGMP */ :
+
 						case 6 /* tcp */ :
+							// what interface?
 							c.handleTCP(iph, data)
 						case 17 /* udp */ :
 							c.handleUDP(iph, data)
 						default:
-							fmt.Printf("Unknown protocol: %x", iph.Protocol)
+							log.Debugf("Ignoring protocol: %x", iph.Protocol)
 						}
 					}
 				}
 			}
 
 			if events[ev].Events&syscall.EPOLLOUT == syscall.EPOLLOUT {
-				// should we use the network interface fd, or just events[ev]Fd?
 				c.transmit(events[ev].Fd)
 
 				// disable epollout again
@@ -494,9 +820,9 @@ func (c *Canary) Run() error {
 
 			if events[ev].Events&syscall.EPOLLERR == syscall.EPOLLERR {
 				if v, err := syscall.GetsockoptInt(int(events[ev].Fd), syscall.SOL_SOCKET, syscall.SO_ERROR); err != nil {
-					fmt.Println("Error", err)
+					log.Errorf("Error while retrieving polling error: %s", err)
 				} else {
-					fmt.Println("Error val", v)
+					log.Errorf("Polling error: %#q", v)
 				}
 			}
 		}

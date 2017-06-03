@@ -1,90 +1,175 @@
 package elasticsearch
 
 import (
-	"bytes"
-	"encoding/json"
-	"errors"
-	"fmt"
+	"context"
 
-	"io"
-	"io/ioutil"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
+
+	elastic "gopkg.in/olivere/elastic.v5"
 
 	"github.com/honeytrap/honeytrap/pushers"
-	"github.com/honeytrap/honeytrap/pushers/message"
+	"github.com/honeytrap/honeytrap/pushers/event"
 	"github.com/op/go-logging"
+)
+
+var (
+	_ = pushers.RegisterBackend("elasticsearch", NewWith)
 )
 
 var log = logging.MustGetLogger("honeytrap:channels:elasticsearch")
 
-// SearchConfig defines a struct which holds configuration values for a SearchBackend.
-type SearchConfig struct {
-	Host string
+// Config defines a struct which holds configuration values for a SearchBackend.
+type Config struct {
+	Host *url.URL
+
+	Index string
 }
 
-// SearchBackend defines a struct which provides a channel for delivery
+// UnmarshalTOML deserializes the giving data into the config.
+func (c *Config) UnmarshalTOML(p interface{}) error {
+	data, _ := p.(map[string]interface{})
+
+	if v, ok := data["host"]; !ok {
+	} else if s, ok := v.(string); !ok {
+	} else if u, err := url.Parse(s); err != nil {
+		return err
+	} else {
+		c.Host = u
+		c.Index = u.Path[1:]
+
+		// remove path
+		c.Host.Path = ""
+	}
+
+	return nil
+}
+
+type tomlURL struct {
+	*url.URL
+}
+
+// unmashalText converts the giving text into a valid URL.
+func (d *tomlURL) UnmarshalText(text []byte) error {
+	var err error
+	d.URL, err = url.Parse(string(text))
+	return err
+}
+
+/*
+u, err := url.Parse(config.Host)
+if err != nil {
+	return nil, err
+}
+*/
+
+// ElasticSearchBackend defines a struct which provides a channel for delivery
 // push messages to an elasticsearch api.
-type SearchBackend struct {
+type ElasticSearchBackend struct {
+	Config
+
 	client *http.Client
-	config SearchConfig
+	ch     chan event.Event
 }
 
 // New returns a new instance of a SearchBackend.
-func New(conf SearchConfig) SearchBackend {
-	return SearchBackend{
-		config: conf,
+func New(conf Config) *ElasticSearchBackend {
+	ch := make(chan event.Event, 100)
+
+	backend := ElasticSearchBackend{
 		client: &http.Client{
 			Transport: &http.Transport{
 				MaxIdleConnsPerHost: 5,
 			},
 			Timeout: time.Duration(20) * time.Second,
 		},
+		ch:     ch,
+		Config: conf,
 	}
+
+	go backend.run()
+
+	return &backend
 }
 
 // NewWith defines a function to return a pushers.Backend which delivers
 // new messages to a giving underline ElasticSearch API defined by the configuration
 // retrieved from the giving toml.Primitive.
 func NewWith(meta toml.MetaData, data toml.Primitive) (pushers.Channel, error) {
-	var apiconfig SearchConfig
+	var config Config
 
-	if err := meta.PrimitiveDecode(data, &apiconfig); err != nil {
+	if err := meta.PrimitiveDecode(data, &config); err != nil {
 		return nil, err
 	}
 
-	if apiconfig.Host == "" {
-		return nil, errors.New("elasticsearch.SearchConfig Invalid: Host can not be empty")
-	}
-
-	return New(apiconfig), nil
+	return New(config), nil
 }
 
-func init() {
-	pushers.RegisterBackend("elasticsearch", NewWith)
+func (hc ElasticSearchBackend) run() {
+	log.Debug("Indexer started...")
+	defer log.Debug("Indexer stopped...")
+
+	// TODO: reconnect with elasticsearch, don't fail
+	es, err := elastic.NewClient(elastic.SetURL(hc.Host.String()), elastic.SetSniff(false))
+	if err != nil {
+		panic(err)
+	}
+
+	bulk := es.Bulk()
+
+	count := 0
+	for {
+		select {
+		case doc := <-hc.ch:
+			messageID := uuid.NewV4()
+
+			bulk = bulk.Add(elastic.NewBulkIndexRequest().
+				Index(hc.Index).
+				Type("event").
+				Id(messageID.String()).
+				Doc(doc),
+			)
+
+			if bulk.NumberOfActions() < 10 {
+				continue
+			}
+		case <-time.After(time.Second * 10):
+		}
+
+		if bulk.NumberOfActions() == 0 {
+		} else if response, err := bulk.Do(context.Background()); err != nil {
+			log.Errorf("Error indexing: %s", err.Error())
+		} else {
+			indexed := response.Indexed()
+			count += len(indexed)
+
+			log.Infof("Bulk indexing: %d total %d.\n", len(indexed), count)
+		}
+	}
 }
 
 // Send delivers the giving push messages into the internal elastic search endpoint.
-func (hc SearchBackend) Send(message message.Event) {
-	log.Infof("ElasticSearchBackend: Sending %d actions.", message)
+func (hc ElasticSearchBackend) Send(message event.Event) {
+	hc.ch <- message
+}
 
-	buf := new(bytes.Buffer)
+/*
+	// buffer
+	log.Debugf("ElasticSearchBackend: Sending %d actions.", message)
 
-	if message.Sensor == "honeytrap" && message.Category == "ping" {
+	category, _, sensor := event.Identity()
+
+	if string(sensor) == "honeytrap" && string(category) == "ping" {
 		// ignore
 		return
 	}
 
-	if err := json.NewEncoder(buf).Encode(message.Data); err != nil {
-		log.Errorf("ElasticSearchBackend: Error encoding data: %s", err.Error())
-		return
-	}
-
 	messageID := uuid.NewV4()
-	req, err := http.NewRequest("PUT", fmt.Sprintf("%s/%s/%s/%s", hc.config.Host, message.Sensor, message.Category, messageID.String()), buf)
+	req, err := http.NewRequest("PUT", fmt.Sprintf("%s/%+s/%+s/%s", hc.config.Host, sensor, category, messageID.String()), event.DataReader())
 	if err != nil {
 		log.Errorf("ElasticSearchBackend: Error while preparing request: %s", err.Error())
 		return
@@ -107,5 +192,6 @@ func (hc SearchBackend) Send(message message.Event) {
 		return
 	}
 
-	log.Infof("ElasticSearchBackend: Sent %d actions.", message)
+	log.Debugf("ElasticSearchBackend: Sent %d actions.", message)
 }
+*/

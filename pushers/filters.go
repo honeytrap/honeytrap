@@ -3,7 +3,7 @@ package pushers
 import (
 	"regexp"
 
-	"github.com/honeytrap/honeytrap/pushers/message"
+	"github.com/honeytrap/honeytrap/pushers/event"
 )
 
 //==========================================================================================
@@ -11,7 +11,7 @@ import (
 // Filter defines an interface which exposes a method for filtering specific
 // messages by specific boundaries.
 type Filter interface {
-	Filter(...message.Event) []message.Event
+	Filter(...event.Event) []event.Event
 }
 
 //==========================================================================================
@@ -20,13 +20,18 @@ type Filter interface {
 // a series of events.
 type FilterGroup []Filter
 
-func (fg *FilterGroup) Add(filters Filter) {
-	*fg = append(*fg, filters)
+// Add adds the underline filter into the group.
+func (fg *FilterGroup) Add(filter Filter) {
+	*fg = append(*fg, filter)
 }
 
 // Filter returns a slice of messages that match the giving criterias from the
 // provided events.
-func (fg FilterGroup) Filter(events ...message.Event) []message.Event {
+func (fg FilterGroup) Filter(events ...event.Event) []event.Event {
+	if len(fg) == 0 {
+		return events
+	}
+
 	for _, filter := range fg {
 		events = filter.Filter(events...)
 	}
@@ -37,31 +42,40 @@ func (fg FilterGroup) Filter(events ...message.Event) []message.Event {
 //==========================================================================================
 
 // RegExpFilterFunction defines the function used by the RegExpFilter
-// to provide custom filtering validation for each provided message.Event.
-type RegExpFilterFunction func(*regexp.Regexp, message.Event) bool
+// to provide custom filtering validation for each provided event.Event.
+type RegExpFilterFunction func(*regexp.Regexp, event.Event) bool
 
-// SensorFilterFunc defines a function to validate a PushMessage.Sensor value
+// SensorFilterFunc defines a function to validate a Pushevent.Sensor value
 // based on a provided regular expression.
-func SensorFilterFunc(rx *regexp.Regexp, message message.Event) bool {
-	return rx.MatchString(message.Sensor)
-}
-
-// CategoryFilterFunc defines a function to validate a PushMessage.Category value
-// based on a provided regular expression.
-func CategoryFilterFunc(rx *regexp.Regexp, message message.Event) bool {
-	return rx.MatchString(string(message.Category))
-}
-
-// EventFilterFunc defines a function to validate a PushMessage.Category value
-// based on a provided regular expression.
-func EventFilterFunc(rx *regexp.Regexp, m message.Event) bool {
-	if event, ok := m.Data.(message.Event); ok {
-		return rx.MatchString(event.Sensor)
+func SensorFilterFunc(rx *regexp.Regexp, message event.Event) bool {
+	val, ok := message["sensor"].(string)
+	if !ok {
+		return false
 	}
 
-	// TODO: Decide if we should return false when this is called for messages
-	// not containing event objects.
-	return true
+	return rx.MatchString(val)
+}
+
+// TypeFilterFunc defines a function to validate a Pushevent.Category value
+// based on a provided regular expression.
+func TypeFilterFunc(rx *regexp.Regexp, message event.Event) bool {
+	val, ok := message["type"].(string)
+	if !ok {
+		return false
+	}
+
+	return rx.MatchString(val)
+}
+
+// CategoryFilterFunc defines a function to validate a Pushevent.Category value
+// based on a provided regular expression.
+func CategoryFilterFunc(rx *regexp.Regexp, message event.Event) bool {
+	val, ok := message["category"].(string)
+	if !ok {
+		return false
+	}
+
+	return rx.MatchString(val)
 }
 
 //==========================================================================================
@@ -85,12 +99,12 @@ func NewRegExpFilter(fn RegExpFilterFunction, rx ...*regexp.Regexp) *RegExpFilte
 
 // Filter returns a slice of messages passed in which passes the internal regular
 // expressions criterias.
-func (r *RegExpFilter) Filter(messages ...message.Event) []message.Event {
+func (r *RegExpFilter) Filter(messages ...event.Event) []event.Event {
 	if r.conditions == nil || len(r.conditions) == 0 {
 		return messages
 	}
 
-	var filtered []message.Event
+	var filtered []event.Event
 
 	{
 	mloop:
