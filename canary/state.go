@@ -23,6 +23,8 @@ type State struct {
 
 	// /proc/net/tcp
 
+	socket *Socket
+
 	// contains tx_queue
 	// contains rx_queue
 }

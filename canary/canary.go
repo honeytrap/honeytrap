@@ -229,7 +229,28 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 		state = NewState(iph.Src, hdr.Source, iph.Dst, hdr.Destination)
 		c.stateTable.Add(state)
 
-		// add Socket{}
+		// or is state == socket?
+
+		// new socket
+		state.socket = NewSocket(iph.Src, iph.Dst)
+
+		/*
+			go func() {
+				fmt.Println("BLA socket")
+				// default handler
+				rdr := io.TeeReader(state.socket, os.Stdout)
+
+				buff := make([]byte, 2048)
+
+				n, err := io.ReadFull(rdr, buff)
+				if err == nil {
+				} else if _, err := io.Copy(ioutil.Discard, rdr); err == nil {
+				} else {
+				}
+
+				c.events.Send(EventTCPPayload(iph.Src, hdr.Destination, string(buff[:n])))
+			}()
+		*/
 	} else {
 		// no existing state found, returning
 		return nil // ErrNoExistingStateFound()
@@ -246,23 +267,34 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 		c.ack(state, iph, hdr)
 	}
 
+	state.socket.write(hdr.Payload)
+
+	if hdr.Ctrl&tcp.PSH == tcp.PSH {
+		handlers := map[uint16]func(*ipv4.Header, *tcp.Header) error{
+			80: c.DecodeHTTP,
+		}
+
+		state.socket.flush()
+
+		if fn, ok := handlers[hdr.Destination]; !ok {
+			c.events.Send(EventTCPPayload(iph.Src, hdr.Destination, string(hdr.Payload)))
+		} else if err := fn(iph, hdr); err != nil {
+			_ = fn
+		}
+
+	}
+
 	if hdr.Ctrl&tcp.SYN == tcp.SYN {
 		c.knockChan <- KnockTCPPort{
 			SourceIP:        iph.Src,
 			DestinationPort: hdr.Destination,
 		}
-	} else if hdr.Ctrl&tcp.PSH == tcp.PSH {
-		handlers := map[uint16]func(*ipv4.Header, *tcp.Header) error{
-			80: c.DecodeHTTP,
-		}
-
-		if fn, ok := handlers[hdr.Destination]; !ok {
-			c.events.Send(EventTCPPayload(iph.Src, hdr.Destination, string(hdr.Payload)))
-		} else if err := fn(iph, hdr); err != nil {
-			fmt.Printf("Could not decode tcp packet: %s", err)
-		}
-
-		return nil
+	} else if hdr.Ctrl&tcp.RST == tcp.RST {
+		// we should only close when RST but not RST-ACK
+		state.socket.close()
+	} else if hdr.Ctrl&tcp.FIN == tcp.FIN {
+		// we should only close when FIN but not FIN-ACK
+		state.socket.close()
 	} else {
 		// remove states
 		// FIN / RST
