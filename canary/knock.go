@@ -3,8 +3,32 @@ package canary
 import (
 	"bytes"
 	"fmt"
+	"net"
+	"strings"
 	"time"
+
+	"github.com/honeytrap/honeytrap/pushers/event"
 )
+
+var (
+	// EventCategoryPortscan contains events for ssdp traffic
+	EventCategoryPortscan = event.Category("portscan")
+)
+
+// EventPortscan will return a portscan event struct
+func EventPortscan(src, dst net.IP, duration time.Duration, count int, ports []string) event.Event {
+	// TODO: do something different with message
+	return event.New(
+		CanaryOptions,
+		EventCategoryPortscan,
+		event.ServiceStarted,
+		event.SourceIP(src),
+		event.DestinationIP(dst),
+		event.Custom("portscan.ports", ports),
+		event.Custom("portscan.duration", duration),
+		event.Message(fmt.Sprintf("Port %d touch(es) detected from %s with duration %+v: %s", count, src, duration, strings.Join(ports, ", "))),
+	)
+}
 
 func (c *Canary) knockDetector() {
 	knocks := NewUniqueSet(func(v1, v2 interface{}) bool {
@@ -13,7 +37,11 @@ func (c *Canary) knockDetector() {
 			return false
 		}
 
-		return bytes.Compare(k1.SourceIP, k2.SourceIP) == 0
+		if bytes.Compare(k1.SourceIP, k2.SourceIP) != 0 {
+			return false
+		}
+
+		return bytes.Compare(k1.DestinationIP, k2.DestinationIP) == 0
 	})
 
 	for {
@@ -54,7 +82,7 @@ func (c *Canary) knockDetector() {
 					}
 				})
 
-				c.events.Send(EventPortscan(k.SourceIP, k.Last.Sub(k.Start), k.Count, ports))
+				c.events.Send(EventPortscan(k.SourceIP, k.DestinationIP, k.Last.Sub(k.Start), k.Count, ports))
 			})
 		}
 	}

@@ -22,9 +22,9 @@ import (
 
 // Contains the different buckets used
 var (
-	eventsBucket  = []byte(event.EventSensor)
-	sessionBucket = []byte(event.SessionSensor)
-	pingBucket    = []byte(event.PingEvent)
+	eventsBucket  = []byte("EVENTS")
+	sessionBucket = []byte("SESSION")
+	pingBucket    = []byte("PING")
 )
 
 //=============================================================================================================
@@ -179,69 +179,6 @@ func (h *Honeycast) Containers(w http.ResponseWriter, r *http.Request, params ma
 // Send delivers the underline provided messages and stores them into the underline
 // Honeycast database for retrieval through the API.
 func (h *Honeycast) Send(ev event.Event) {
-	var containers, connections, data, services, pings, serrors, sessions, events []event.Event
-
-	events = append(events, ev)
-
-	sensor, ok := ev["sensor"].(string)
-	if !ok {
-		log.Error("Honeycast API : Event object has non string sensor value : %#q", ev)
-		return
-	}
-
-	switch sensor {
-	case event.SessionSensor:
-		sessions = append(sessions, ev)
-	case event.PingSensor:
-		pings = append(pings, ev)
-	case event.DataSensor:
-		data = append(data, ev)
-	case event.ServiceSensor:
-		services = append(services, ev)
-	case event.ContainersSensor:
-		containers = append(containers, ev)
-	case event.ConnectionSensor:
-		connections = append(connections, ev)
-	case event.ConnectionErrorSensor, event.DataErrorSensor:
-		serrors = append(serrors, ev)
-	}
-
-	// Batch deliver both sessions and events data to all connected
-	h.socket.events <- events
-	h.socket.sessions <- sessions
-
-	//  Batch save all events into individual buckets.
-	if terr := h.bolted.Save(sessionBucket, sessions...); terr != nil {
-		log.Errorf("Honeycast API : Failed to save session events to db: %+q", terr)
-	}
-
-	if terr := h.bolted.Save([]byte(event.ErrorsSensor), serrors...); terr != nil {
-		log.Errorf("Honeycast API : Failed to save errors events to db: %+q", terr)
-	}
-
-	if terr := h.bolted.Save([]byte(event.ConnectionSensor), connections...); terr != nil {
-		log.Errorf("Honeycast API : Failed to save connections events to db: %+q", terr)
-	}
-
-	if terr := h.bolted.Save([]byte(event.ServiceSensor), services...); terr != nil {
-		log.Errorf("Honeycast API : Failed to save service events to db: %+q", terr)
-	}
-
-	if terr := h.bolted.Save([]byte(event.ContainersSensor), containers...); terr != nil {
-		log.Errorf("Honeycast API : Failed to save data events to db: %+q", terr)
-	}
-
-	if terr := h.bolted.Save([]byte(event.DataSensor), data...); terr != nil {
-		log.Errorf("Honeycast API : Failed to save data events to db: %+q", terr)
-	}
-
-	if terr := h.bolted.Save([]byte(event.PingSensor), pings...); terr != nil {
-		log.Errorf("Honeycast API : Failed to save ping events to db: %+q", terr)
-	}
-
-	if terr := h.bolted.Save(eventsBucket, events...); terr != nil {
-		log.Errorf("Honeycast API : Failed to save events to db: %+q", terr)
-	}
 }
 
 // Sessions handles response for all `/sessions` target endpoint and returns all giving push

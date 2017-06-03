@@ -98,6 +98,8 @@ func FilterChannel(channel Channel, filter FilterGroup) Channel {
 func MakeFilter(bus *EventBus, config *config.Config, conf config.ChannelConfig) error {
 	var filters FilterGroup
 
+	// TODO: we want to tunnel filters, for single events. Events will be batched and grouped inside
+	// backends
 	if len(conf.Categories) != 0 {
 		filters.Add(NewRegExpFilter(CategoryFilterFunc, MakeMatchers(conf.Categories...)...))
 	}
@@ -135,7 +137,9 @@ func MakeFilter(bus *EventBus, config *config.Config, conf config.ChannelConfig)
 			return err
 		}
 
-		bus.Subscribe(FilterChannel(base, filters))
+		channel := base
+		channel = FilterChannel(base, filters)
+		bus.Subscribe(channel)
 	}
 
 	return nil

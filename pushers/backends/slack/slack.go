@@ -76,7 +76,7 @@ func (mc SlackBackend) Send(event event.Event) {
 	//Attempt to encode message body first and if failed, log and continue.
 	var messageBuffer bytes.Buffer
 
-	category := event["cateory"].(string)
+	category := event["category"].(string)
 	sensor := event["sensor"].(string)
 	etype := event["type"].(string)
 

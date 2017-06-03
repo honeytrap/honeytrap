@@ -17,16 +17,16 @@ var (
 )
 
 // EventTCPPayload will return a snmp event struct
-func EventTCPPayload(sourceIP net.IP, port uint16, payload string) event.Event {
-	// TODO: message should go into String() / Message, where event.Event will become interface
+func EventTCPPayload(src, dst net.IP, srcport, dstport uint16, payload []byte) event.Event {
 	return event.New(
 		CanaryOptions,
-		EventCategoryHTTP,
+		EventCategoryTCP,
 		event.ServiceStarted,
-		event.Custom("source-ip", sourceIP.String()),
-		event.Custom("tcp.port", port),
-		event.Custom("tcp.payload", payload),
-		event.Custom("tcp.length", len(payload)),
+		event.SourceIP(src),
+		event.DestinationIP(dst),
+		event.SourcePort(srcport),
+		event.DestinationPort(dstport),
+		event.Payload(payload),
 	)
 }
 
@@ -48,27 +48,24 @@ func (c *Canary) DecodeHTTP(iph *ipv4.Header, tcph *tcp.Header) error {
 	}
 
 	// add specific detections, reflection attack detection etc
-	c.events.Send(EventHTTP(iph.Src, request.Method, request.RequestURI, request.Proto, request.Header))
-	return nil
-}
-
-// EventHTTP will return a snmp event struct
-func EventHTTP(sourceIP net.IP, method, uri, proto string, headers http.Header) event.Event {
-	// TODO: message should go into String() / Message, where event.Event will become interface
-	return event.New(
+	c.events.Send(event.New(
 		CanaryOptions,
 		EventCategoryHTTP,
 		event.ServiceStarted,
-		event.Custom("source-ip", sourceIP.String()),
-		event.Custom("http.method", method),
-		event.Custom("http.uri", uri),
-		event.Custom("http.proto", proto),
-		event.Custom("http.headers", headers),
+		event.SourceIP(iph.Src),
+		event.DestinationIP(iph.Dst),
+		event.SourcePort(tcph.Source),
+		event.DestinationPort(tcph.Destination),
+		event.Custom("http.method", request.Method),
+		event.Custom("http.uri", request.URL.String()),
+		event.Custom("http.proto", request.Proto),
+		event.Custom("http.headers", request.Header),
+		event.Custom("http.host", request.Header.Get("Host")),
+		event.Custom("http.content-type", request.Header.Get("Content-Type")),
+		event.Custom("http.user-agent", request.Header.Get("User-Agent")),
+	))
 
-		event.Custom("http.host", headers.Get("Host")),
-		event.Custom("http.content-type", headers.Get("Content-Type")),
-		event.Custom("http.user-agent", headers.Get("User-Agent")),
-	)
+	return nil
 }
 
 // port 139 -> http://s11.invisionfree.com/dongsongbang/ar/t170.htm

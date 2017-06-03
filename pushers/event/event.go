@@ -1,6 +1,7 @@
 package event
 
 import (
+	"fmt"
 	"net"
 	"time"
 )
@@ -193,10 +194,19 @@ func DestinationPort(port uint16) Option {
 	}
 }
 
+// Message returns an option for setting the payload value.
+// should this be just a formatter? eg Bla Bla {src-ip}
+func Message(format string, a ...interface{}) Option {
+	return func(m Event) {
+		m["message"] = fmt.Sprintf(format, a...)
+	}
+}
+
 // Payload returns an option for setting the payload value.
 func Payload(data []byte) Option {
 	return func(m Event) {
 		m["payload"] = string(data)
+		m["payload-length"] = len(data)
 	}
 }
 

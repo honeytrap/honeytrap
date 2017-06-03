@@ -25,6 +25,8 @@ func (fg *FilterGroup) Add(filter Filter) {
 	*fg = append(*fg, filter)
 }
 
+// TODO(make events single events)
+
 // Filter returns a slice of messages that match the giving criterias from the
 // provided events.
 func (fg FilterGroup) Filter(events ...event.Event) []event.Event {
@@ -60,7 +62,7 @@ func TypeFilterFunc(rx *regexp.Regexp, message event.Event) bool {
 // CategoryFilterFunc defines a function to validate a Pushevent.Category value
 // based on a provided regular expression.
 func CategoryFilterFunc(rx *regexp.Regexp, message event.Event) bool {
-	return rx.MatchString(message["category"].(string))
+	return rx.MatchString(string(message["category"].(event.ECategory)))
 }
 
 //==========================================================================================

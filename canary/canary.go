@@ -18,7 +18,6 @@ import (
 	"github.com/honeytrap/honeytrap/canary/tcp"
 	"github.com/honeytrap/honeytrap/canary/udp"
 	"github.com/honeytrap/honeytrap/pushers"
-	"github.com/honeytrap/honeytrap/pushers/event"
 	logging "github.com/op/go-logging"
 )
 
@@ -93,7 +92,9 @@ type KnockGroup struct {
 	Start time.Time
 	Last  time.Time
 
-	SourceIP net.IP
+	SourceIP      net.IP
+	DestinationIP net.IP
+
 	Protocol Protocol
 
 	Count int
@@ -109,16 +110,18 @@ type KnockGrouper interface {
 // KnockUDPPort struct contain UDP port knock metadata
 type KnockUDPPort struct {
 	SourceIP        net.IP
+	DestinationIP   net.IP
 	DestinationPort uint16
 }
 
 // NewGroup will return a new KnockGroup for UDP protocol
 func (k KnockUDPPort) NewGroup() *KnockGroup {
 	return &KnockGroup{
-		Start:    time.Now(),
-		SourceIP: k.SourceIP,
-		Count:    0,
-		Protocol: ProtocolUDP,
+		Start:         time.Now(),
+		SourceIP:      k.SourceIP,
+		DestinationIP: k.DestinationIP,
+		Count:         0,
+		Protocol:      ProtocolUDP,
 		Knocks: NewUniqueSet(func(v1, v2 interface{}) bool {
 			if _, ok := v1.(KnockUDPPort); !ok {
 				return false
@@ -136,16 +139,18 @@ func (k KnockUDPPort) NewGroup() *KnockGroup {
 // KnockTCPPort struct contain TCP port knock metadata
 type KnockTCPPort struct {
 	SourceIP        net.IP
+	DestinationIP   net.IP
 	DestinationPort uint16
 }
 
 // NewGroup will return a new KnockGroup for TCP protocol
 func (k KnockTCPPort) NewGroup() *KnockGroup {
 	return &KnockGroup{
-		Start:    time.Now(),
-		SourceIP: k.SourceIP,
-		Protocol: ProtocolTCP,
-		Count:    0,
+		Start:         time.Now(),
+		SourceIP:      k.SourceIP,
+		DestinationIP: k.DestinationIP,
+		Protocol:      ProtocolTCP,
+		Count:         0,
 		Knocks: NewUniqueSet(func(v1, v2 interface{}) bool {
 			if _, ok := v1.(KnockTCPPort); !ok {
 				return false
@@ -162,16 +167,18 @@ func (k KnockTCPPort) NewGroup() *KnockGroup {
 
 // KnockICMP struct contain ICMP knock metadata
 type KnockICMP struct {
-	SourceIP net.IP
+	SourceIP      net.IP
+	DestinationIP net.IP
 }
 
 // NewGroup will return a new KnockGroup for ICMP protocol
 func (k KnockICMP) NewGroup() *KnockGroup {
 	return &KnockGroup{
-		Start:    time.Now(),
-		SourceIP: k.SourceIP,
-		Count:    0,
-		Protocol: ProtocolICMP,
+		Start:         time.Now(),
+		SourceIP:      k.SourceIP,
+		DestinationIP: k.DestinationIP,
+		Count:         0,
+		Protocol:      ProtocolICMP,
 		Knocks: NewUniqueSet(func(v1, v2 interface{}) bool {
 			if _, ok := v1.(KnockICMP); !ok {
 				return false
@@ -225,6 +232,7 @@ func (c *Canary) handleUDP(iph *ipv4.Header, data []byte) error {
 		// default handler
 		c.knockChan <- KnockUDPPort{
 			SourceIP:        iph.Src,
+			DestinationIP:   iph.Dst,
 			DestinationPort: hdr.Destination,
 		}
 
@@ -249,7 +257,8 @@ func (c *Canary) handleICMP(iph *ipv4.Header, data []byte) error {
 	}
 
 	c.knockChan <- KnockICMP{
-		SourceIP: iph.Src,
+		SourceIP:      iph.Src,
+		DestinationIP: iph.Dst,
 	}
 	return nil
 }
@@ -347,6 +356,7 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 	if hdr.Ctrl&tcp.SYN == tcp.SYN {
 		c.knockChan <- KnockTCPPort{
 			SourceIP:        iph.Src,
+			DestinationIP:   iph.Dst,
 			DestinationPort: hdr.Destination,
 		}
 	} else if hdr.Ctrl&tcp.PSH == tcp.PSH {
@@ -355,7 +365,7 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 		}
 
 		if fn, ok := handlers[hdr.Destination]; !ok {
-			c.events.Send(EventTCPPayload(iph.Src, hdr.Destination, string(hdr.Payload)))
+			c.events.Send(EventTCPPayload(iph.Src, iph.Dst, hdr.Source, hdr.Destination, hdr.Payload))
 		} else if err := fn(iph, hdr); err != nil {
 			fmt.Printf("Could not decode tcp packet: %s", err)
 		}
@@ -590,6 +600,7 @@ func New(interfaces []net.Interface, events pushers.Channel) (*Canary, error) {
 	networkInterfaces := []net.Interface{}
 	descriptors := map[string]int32{}
 
+	// TODO: interfaces configurable
 	for _, intf := range interfaces {
 		if intf.Name != "ens160" && intf.Name != "eth0" && intf.Name != "ens3" {
 			continue
@@ -634,25 +645,6 @@ func New(interfaces []net.Interface, events pushers.Channel) (*Canary, error) {
 // Close will close the canary
 func (c *Canary) Close() {
 	syscall.Close(c.epfd)
-}
-
-var (
-	// EventCategoryPortscan contains events for ssdp traffic
-	EventCategoryPortscan = event.Category("portscan")
-)
-
-// EventPortscan will return a portscan event struct
-func EventPortscan(sourceIP net.IP, duration time.Duration, count int, ports []string) event.Event {
-	// TODO: do something different with message
-	return event.New(
-		CanaryOptions,
-		EventCategoryPortscan,
-		event.ServiceStarted,
-		event.Custom("source-ip", sourceIP.String()),
-		event.Custom("portscan.ports", ports),
-		event.Custom("portscan.duration", duration),
-		event.Custom("message", fmt.Sprintf("Port %d touch(es) detected from %s with duration %+v: %s", count, sourceIP, duration, strings.Join(ports, ", "))),
-	)
 }
 
 // send will queue a packet for sending
