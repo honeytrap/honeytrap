@@ -48,19 +48,34 @@ type RegExpFilterFunction func(*regexp.Regexp, event.Event) bool
 // SensorFilterFunc defines a function to validate a Pushevent.Sensor value
 // based on a provided regular expression.
 func SensorFilterFunc(rx *regexp.Regexp, message event.Event) bool {
-	return rx.MatchString(message["sensor"].(string))
+	val, ok := message["sensor"].(string)
+	if !ok {
+		return false
+	}
+
+	return rx.MatchString(val)
 }
 
 // TypeFilterFunc defines a function to validate a Pushevent.Category value
 // based on a provided regular expression.
 func TypeFilterFunc(rx *regexp.Regexp, message event.Event) bool {
-	return rx.MatchString(message["type"].(string))
+	val, ok := message["type"].(string)
+	if !ok {
+		return false
+	}
+
+	return rx.MatchString(val)
 }
 
 // CategoryFilterFunc defines a function to validate a Pushevent.Category value
 // based on a provided regular expression.
 func CategoryFilterFunc(rx *regexp.Regexp, message event.Event) bool {
-	return rx.MatchString(message["category"].(string))
+	val, ok := message["category"].(string)
+	if !ok {
+		return false
+	}
+
+	return rx.MatchString(val)
 }
 
 //==========================================================================================

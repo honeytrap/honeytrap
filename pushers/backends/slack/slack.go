@@ -76,7 +76,7 @@ func (mc SlackBackend) Send(ev event.Event) {
 	//Attempt to encode message body first and if failed, log and continue.
 	var messageBuffer bytes.Buffer
 
-	category, ok := ev["category"].(event.ECategory)
+	category, ok := ev["category"].(string)
 	if !ok {
 		log.Errorf("Error event has no category value")
 		return
@@ -88,7 +88,7 @@ func (mc SlackBackend) Send(ev event.Event) {
 		return
 	}
 
-	etype, ok := ev["type"].(event.EType)
+	etype, ok := ev["type"].(string)
 	if !ok {
 		log.Errorf("Error event has no type value")
 		return

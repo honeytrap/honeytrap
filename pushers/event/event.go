@@ -7,9 +7,6 @@ import (
 
 //====================================================================================
 
-// EType defines a string type for all event types available.
-type EType string
-
 // contains different sets of possible events type.
 var (
 	PingEvent            = Type("PING")
@@ -69,12 +66,6 @@ var (
 
 //====================================================================================
 
-// ECategory defines a string type for for which is used to defined event category
-// for different types.
-type ECategory string
-
-//====================================================================================
-
 // Option defines a function type for events modifications.
 type Option func(Event)
 
@@ -123,7 +114,7 @@ func Token(token string) Option {
 // Category returns an option for setting the category value.
 func Category(s string) Option {
 	return func(m Event) {
-		m["category"] = ECategory(s)
+		m["category"] = s
 	}
 }
 
@@ -137,7 +128,7 @@ func Error(err error) Option {
 // Type returns an option for setting the type value.
 func Type(s string) Option {
 	return func(m Event) {
-		m["type"] = EType(s)
+		m["type"] = s
 	}
 }
 
