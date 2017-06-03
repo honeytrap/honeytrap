@@ -76,9 +76,23 @@ func (mc SlackBackend) Send(ev event.Event) {
 	//Attempt to encode message body first and if failed, log and continue.
 	var messageBuffer bytes.Buffer
 
-	category := event["category"].(string)
-	sensor := event["sensor"].(string)
-	etype := event["type"].(string)
+	category, ok := ev["category"].(string)
+	if !ok {
+		log.Errorf("Error event has no category value")
+		return
+	}
+
+	sensor, ok := ev["sensor"].(string)
+	if !ok {
+		log.Errorf("Error event has no sensor value")
+		return
+	}
+
+	etype, ok := ev["type"].(string)
+	if !ok {
+		log.Errorf("Error event has no type value")
+		return
+	}
 
 	var newMessage Message
 	newMessage.Text = fmt.Sprintf("Event with Category %q of Type %q for Sensor %q occured", category, etype, sensor)

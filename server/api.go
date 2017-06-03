@@ -312,8 +312,19 @@ func (h *Honeycast) bucketFind(bucket []byte, w http.ResponseWriter, r *http.Req
 			if doTypeMatch || doSensorMatch {
 				for _, event := range events {
 
-					eventType := event["type"].(string)
-					eventSensor := event["sensor"].(string)
+					eventType, ok := event["type"].(string)
+					if !ok {
+						log.Error("Honeycast API : Invalid Response received : %+q", err)
+						http.Error(w, "Invalid 'Type' parameter, string allowed only: "+terr.Error(), http.StatusInternalServerError)
+						return
+					}
+
+					eventSensor, ok := event["sensor"].(string)
+					if !ok {
+						log.Error("Honeycast API : Invalid Response received : %+q", err)
+						http.Error(w, "Invalid 'Sensor' parameter, string allowed only: "+terr.Error(), http.StatusInternalServerError)
+						return
+					}
 
 					var typeMatched bool
 					var sensorMatched bool
