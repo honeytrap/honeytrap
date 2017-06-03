@@ -17,20 +17,20 @@ const (
 )
 
 var (
-	blueChip = event.New(event.CopyFrom(map[string]interface{}{
-		"sensor":   "BlueChip",
-		"category": "Chip Integrated",
-	}))
+	blueChip = event.New(
+		event.Sensor("BlueChip"),
+		event.Category("Chip Integrated"),
+	)
 
-	ping = event.New(event.CopyFrom(map[string]interface{}{
-		"sensor":   "Ping",
-		"category": "Ping Notificiation",
-	}))
+	ping = event.New(
+		event.Sensor("Ping"),
+		event.Category("Ping Notification"),
+	)
 
-	crum = event.New(event.CopyFrom(map[string]interface{}{
-		"senspr":   "Crum Stream",
-		"category": "WebRTC Crum Stream",
-	}))
+	crum = event.New(
+		event.Sensor("Crum Stream"),
+		event.Category("WebRTC Crum Stream"),
+	)
 )
 
 // TestFileBackend validates the behaviour of the FileBackend.

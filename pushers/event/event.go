@@ -45,6 +45,17 @@ var (
 
 // Contains a series of sensors variables.
 var (
+	ContainersSensorName      = "CONTAINER"
+	ConnectionSensorName      = "CONNECTION"
+	ServiceSensorName         = "SERVICE"
+	SessionSensorName         = "SESSIONS"
+	EventSensorName           = "EVENTS"
+	PingSensorName            = "PING"
+	DataSensorName            = "DATA"
+	ErrorsSensorName          = "ERRORS"
+	DataErrorSensorName       = "DATA:ERROR"
+	ConnectionErrorSensorName = "CONNECTION:ERROR"
+
 	ContainersSensor      = Sensor("CONTAINER")
 	ConnectionSensor      = Sensor("CONNECTION")
 	ServiceSensor         = Sensor("SERVICE")

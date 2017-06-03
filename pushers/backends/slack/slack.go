@@ -70,8 +70,8 @@ func NewWith(meta toml.MetaData, data toml.Primitive) (pushers.Channel, error) {
 
 // Send delivers the giving push messages to the required slack channel.
 // TODO: Ask if Send shouldnt return an error to allow proper delivery validation.
-func (mc SlackBackend) Send(event event.Event) {
-	log.Infof("Sending Message: %#v", event)
+func (mc SlackBackend) Send(ev event.Event) {
+	log.Infof("Sending Message: %#v", ev)
 
 	//Attempt to encode message body first and if failed, log and continue.
 	var messageBuffer bytes.Buffer
@@ -83,7 +83,7 @@ func (mc SlackBackend) Send(event event.Event) {
 	var newMessage Message
 	newMessage.Text = fmt.Sprintf("Event with Category %q of Type %q for Sensor %q occured", category, etype, sensor)
 
-	if m, ok := event["message"].(string); ok {
+	if m, ok := ev["message"].(string); ok {
 		newMessage.Text = m
 	}
 
@@ -113,7 +113,7 @@ func (mc SlackBackend) Send(event event.Event) {
 		AddField("Category", string(category)).
 		AddField("Type", string(etype))
 
-	for name, value := range event {
+	for name, value := range ev {
 		switch vo := value.(type) {
 		case string:
 			fieldAttachment.AddField(name, vo)
@@ -172,7 +172,7 @@ func (mc SlackBackend) Send(event event.Event) {
 		return
 	}
 
-	log.Infof("Delivered Message: %#v", event)
+	log.Infof("Delivered Message: %#v", ev)
 }
 
 // Message defines the base message to be included sent to a slack endpoint.

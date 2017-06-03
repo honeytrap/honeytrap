@@ -22,9 +22,9 @@ import (
 
 // Contains the different buckets used
 var (
-	eventsBucket  = []byte("EVENTS")
-	sessionBucket = []byte("SESSION")
-	pingBucket    = []byte("PING")
+	eventsBucket  = []byte(event.EventSensorName)
+	sessionBucket = []byte(event.SessionSensorName)
+	pingBucket    = []byte(event.PingSensorName)
 )
 
 //=============================================================================================================
@@ -63,7 +63,7 @@ func NewHoneycast(config *config.Config, manager *director.ContainerConnections,
 	// Create the database we desire.
 	// TODO: Should we really panic here, it makes sense to do that, since it's the server
 	// right?
-	bolted, err := NewBolted(fmt.Sprintf("%s-bolted", config.Token, event.ContainersSensor, event.ConnectionSensor, event.ServiceSensor, event.SessionSensor, event.PingSensor, event.DataSensor, event.ErrorsSensor, event.EventSensor))
+	bolted, err := NewBolted(fmt.Sprintf("%s-bolted", config.Token), event.ContainersSensorName, event.ConnectionSensorName, event.ServiceSensorName, event.SessionSensorName, event.PingSensorName, event.DataSensorName, event.ErrorsSensorName, event.EventSensorName)
 	if err != nil {
 		log.Errorf("Failed to created BoltDB session: %+q", err)
 		panic(err)
@@ -179,6 +179,69 @@ func (h *Honeycast) Containers(w http.ResponseWriter, r *http.Request, params ma
 // Send delivers the underline provided messages and stores them into the underline
 // Honeycast database for retrieval through the API.
 func (h *Honeycast) Send(ev event.Event) {
+	var containers, connections, data, services, pings, serrors, sessions, events []event.Event
+
+	events = append(events, ev)
+
+	sensor, ok := ev["sensor"].(string)
+	if !ok {
+		log.Error("Honeycast API : Event object has non string sensor value : %#q", ev)
+		return
+	}
+
+	switch sensor {
+	case event.SessionSensorName:
+		sessions = append(sessions, ev)
+	case event.PingSensorName:
+		pings = append(pings, ev)
+	case event.DataSensorName:
+		data = append(data, ev)
+	case event.ServiceSensorName:
+		services = append(services, ev)
+	case event.ContainersSensorName:
+		containers = append(containers, ev)
+	case event.ConnectionSensorName:
+		connections = append(connections, ev)
+	case event.ConnectionErrorSensorName, event.DataErrorSensorName:
+		serrors = append(serrors, ev)
+	}
+
+	// Batch deliver both sessions and events data to all connected
+	h.socket.events <- events
+	h.socket.sessions <- sessions
+
+	//  Batch save all events into individual buckets.
+	if terr := h.bolted.Save(sessionBucket, sessions...); terr != nil {
+		log.Errorf("Honeycast API : Failed to save session events to db: %+q", terr)
+	}
+
+	if terr := h.bolted.Save([]byte(event.ErrorsSensorName), serrors...); terr != nil {
+		log.Errorf("Honeycast API : Failed to save errors events to db: %+q", terr)
+	}
+
+	if terr := h.bolted.Save([]byte(event.ConnectionSensorName), connections...); terr != nil {
+		log.Errorf("Honeycast API : Failed to save connections events to db: %+q", terr)
+	}
+
+	if terr := h.bolted.Save([]byte(event.ServiceSensorName), services...); terr != nil {
+		log.Errorf("Honeycast API : Failed to save service events to db: %+q", terr)
+	}
+
+	if terr := h.bolted.Save([]byte(event.ContainersSensorName), containers...); terr != nil {
+		log.Errorf("Honeycast API : Failed to save data events to db: %+q", terr)
+	}
+
+	if terr := h.bolted.Save([]byte(event.DataSensorName), data...); terr != nil {
+		log.Errorf("Honeycast API : Failed to save data events to db: %+q", terr)
+	}
+
+	if terr := h.bolted.Save([]byte(event.PingSensorName), pings...); terr != nil {
+		log.Errorf("Honeycast API : Failed to save ping events to db: %+q", terr)
+	}
+
+	if terr := h.bolted.Save(eventsBucket, events...); terr != nil {
+		log.Errorf("Honeycast API : Failed to save events to db: %+q", terr)
+	}
 }
 
 // Sessions handles response for all `/sessions` target endpoint and returns all giving push
@@ -547,7 +610,7 @@ func NewSocketTransport(config *config.Config) (*SocketTransport, error) {
 	socket.config = config
 
 	// Create the database we desire.
-	bolted, err := NewBolted(fmt.Sprintf("%s-bolted", config.Token, sessionBucket, eventsBucket))
+	bolted, err := NewBolted(fmt.Sprintf("%s-bolted", config.Token), event.ContainersSensorName, event.ConnectionSensorName, event.ServiceSensorName, event.SessionSensorName, event.PingSensorName, event.DataSensorName, event.ErrorsSensorName, event.EventSensorName)
 	if err != nil {
 		log.Errorf("Failed to created BoltDB session: %+q", err)
 		return nil, err
