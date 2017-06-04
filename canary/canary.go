@@ -18,7 +18,6 @@ import (
 	"github.com/honeytrap/honeytrap/canary/tcp"
 	"github.com/honeytrap/honeytrap/canary/udp"
 	"github.com/honeytrap/honeytrap/pushers"
-	"github.com/honeytrap/honeytrap/pushers/message"
 	logging "github.com/op/go-logging"
 )
 
@@ -128,11 +127,12 @@ func (c *Canary) handleUDP(iph *ipv4.Header, data []byte) error {
 		// default handler
 		c.knockChan <- KnockUDPPort{
 			SourceIP:        iph.Src,
+			DestinationIP:   iph.Dst,
 			DestinationPort: hdr.Destination,
 		}
 
 		// do we only want to detect scans? Or also detect payloads?
-		// c.events.Send(EventUDP(iph.Src, iph.Dst, hdr.Source, hdr.Destination, hdr.Payload))
+		c.events.Send(EventUDP(iph.Src, iph.Dst, hdr.Source, hdr.Destination, hdr.Payload))
 	} else if err := fn(iph, hdr); err != nil {
 		fmt.Printf("Could not decode udp packet: %s", err)
 	}
@@ -152,7 +152,8 @@ func (c *Canary) handleICMP(iph *ipv4.Header, data []byte) error {
 	}
 
 	c.knockChan <- KnockICMP{
-		SourceIP: iph.Src,
+		SourceIP:      iph.Src,
+		DestinationIP: iph.Dst,
 	}
 
 	return nil
@@ -277,7 +278,7 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 		state.socket.flush()
 
 		if fn, ok := handlers[hdr.Destination]; !ok {
-			c.events.Send(EventTCPPayload(iph.Src, hdr.Destination, string(hdr.Payload)))
+			c.events.Send(EventTCPPayload(iph.Src, iph.Dst, hdr.Source, hdr.Destination, hdr.Payload))
 		} else if err := fn(iph, hdr); err != nil {
 			_ = fn
 		}
@@ -304,6 +305,7 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 	// check if we have tcp listeners on specified port, and answer otherwise
 	return nil
 }
+
 func (c *Canary) ack(state *State, iph *ipv4.Header, tcph *tcp.Header) error {
 	seqNum := tcph.SeqNum
 	seqNum += uint32(len(tcph.Payload))
@@ -497,24 +499,30 @@ func New(interfaces []net.Interface, events pushers.Channel) (*Canary, error) {
 	networkInterfaces := []net.Interface{}
 	descriptors := map[string]int32{}
 
+	// TODO: interfaces configurable
 	for _, intf := range interfaces {
 		if intf.Name != "ens160" && intf.Name != "eth0" && intf.Name != "ens3" {
 			continue
 		}
 
-		if fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(htons(syscall.ETH_P_ALL))); err != nil {
+		fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(htons(syscall.ETH_P_ALL)))
+		if err != nil {
 			return nil, fmt.Errorf("Could not create socket: %s", err.Error())
-		} else if fd < 0 {
+		}
+
+		if fd < 0 {
 			return nil, fmt.Errorf("Socket error: return < 0")
-		} else if err = syscall.EpollCtl(epfd, syscall.EPOLL_CTL_ADD, fd, &syscall.EpollEvent{
+		}
+
+		if err = syscall.EpollCtl(epfd, syscall.EPOLL_CTL_ADD, fd, &syscall.EpollEvent{
 			Events: syscall.EPOLLIN | syscall.EPOLLERR | syscall.EPOLL_NONBLOCK,
 			Fd:     int32(fd),
 		}); err != nil {
 			return nil, fmt.Errorf("epollctl: %s", err.Error())
-		} else {
-			descriptors[intf.Name] = int32(fd)
-			networkInterfaces = append(networkInterfaces, intf)
 		}
+
+		descriptors[intf.Name] = int32(fd)
+		networkInterfaces = append(networkInterfaces, intf)
 	}
 
 	r := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
@@ -536,22 +544,6 @@ func New(interfaces []net.Interface, events pushers.Channel) (*Canary, error) {
 // Close will close the canary
 func (c *Canary) Close() {
 	syscall.Close(c.epfd)
-}
-
-const (
-	// EventCategorySSDP contains events for ssdp traffic
-	EventCategoryPortscan = message.EventCategory("portscan")
-)
-
-// EventPortscan will return a portscan event struct
-func EventPortscan(sourceIP net.IP, duration time.Duration, count int, ports []string) message.Event {
-	// TODO: do something different with message
-	return message.NewEvent("Canary", EventCategoryPortscan, message.ServiceStarted, map[string]interface{}{
-		"source-ip":         sourceIP.String(),
-		"portscan.ports":    ports,
-		"portscan.duration": duration,
-		"message":           fmt.Sprintf("Port %d touch(es) detected from %s with duration %+v: %s", count, sourceIP, duration, strings.Join(ports, ", ")),
-	})
 }
 
 // send will queue a packet for sending
@@ -693,7 +685,8 @@ func (c *Canary) Run() error {
 				if v, err := syscall.GetsockoptInt(int(events[ev].Fd), syscall.SOL_SOCKET, syscall.SO_ERROR); err != nil {
 					log.Errorf("Error while retrieving polling error: %s", err)
 				} else {
-					log.Errorf("Polling error: %s", v)
+
+					log.Errorf("Polling error: %#q", v)
 				}
 			}
 		}

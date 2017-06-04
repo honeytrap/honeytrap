@@ -11,17 +11,21 @@ import (
 	"github.com/honeytrap/honeytrap/canary/ipv4"
 	"github.com/honeytrap/honeytrap/canary/udp"
 	"github.com/honeytrap/honeytrap/pushers/event"
-	"github.com/honeytrap/honeytrap/pushers/message"
 )
 
+// contains different variables in use.
 var (
 	SensorCanary = event.Sensor("Canary")
 
 	// EventCategorySSDP contains events for ssdp traffic
 	EventCategoryUDP = event.Category("udp")
+
+	CanaryOptions = event.NewWith(
+		SensorCanary,
+	)
 )
 
-// EventSSDP will return a snmp event struct
+// EventUDP will return a snmp event struct
 func EventUDP(sourceIP, destinationIP net.IP, srcport, dstport uint16, payload []byte) event.Event {
 	return event.New(
 		SensorCanary,
@@ -37,9 +41,9 @@ func EventUDP(sourceIP, destinationIP net.IP, srcport, dstport uint16, payload [
 	)
 }
 
-const (
+var (
 	// EventCategorySSDP contains events for ssdp traffic
-	EventCategorySSDP = message.EventCategory("ssdp")
+	EventCategorySSDP = event.Category("ssdp")
 )
 
 // DecodeSSDP will decode NTP packets
@@ -55,31 +59,33 @@ func (c *Canary) DecodeSSDP(iph *ipv4.Header, udph *udp.Header) error {
 	}
 
 	// add specific detections, reflection attack detection etc
-	c.events.Send(EventSSDP(iph.Src, request.Method, request.RequestURI, request.Proto, request.Header))
+	c.events.Send(event.New(
+		CanaryOptions,
+		EventCategorySSDP,
+		event.ServiceStarted,
+
+		event.SourceIP(iph.Src),
+		event.DestinationIP(iph.Dst),
+		event.SourcePort(udph.Source),
+		event.DestinationPort(udph.Destination),
+
+		event.Custom("ssdp.method", request.Method),
+		event.Custom("ssdp.uri", request.RequestURI),
+		event.Custom("ssdp.proto", request.Proto),
+		event.Custom("ssdp.headers", request.Header),
+
+		event.Custom("ssdp.host", request.Header.Get("HOST")),
+		event.Custom("ssdp.man", request.Header.Get("MAN")),
+		event.Custom("ssdp.mx", request.Header.Get("MX")),
+		event.Custom("ssdp.st", request.Header.Get("ST")),
+	))
+
 	return nil
 }
 
-// EventSSDP will return a snmp event struct
-func EventSSDP(sourceIP net.IP, method, uri, proto string, headers http.Header) message.Event {
-	// TODO: message should go into String() / Message, where message.Event will become interface
-	return message.NewEvent("Canary", EventCategorySSDP, message.ServiceStarted, map[string]interface{}{
-		"source-ip": sourceIP.String(),
-
-		"ssdp.method":  method,
-		"ssdp.uri":     uri,
-		"ssdp.proto":   proto,
-		"ssdp.headers": headers,
-
-		"ssdp.host": headers.Get("HOST"),
-		"ssdp.man":  headers.Get("MAN"),
-		"ssdp.mx":   headers.Get("MX"),
-		"ssdp.st":   headers.Get("ST"),
-	})
-}
-
-const (
+var (
 	// EventCategorySIP contains events for ntp traffic
-	EventCategorySIP = message.EventCategory("sip")
+	EventCategorySIP = event.Category("sip")
 )
 
 // DecodeSIP will decode NTP packets
@@ -95,73 +101,78 @@ func (c *Canary) DecodeSIP(iph *ipv4.Header, udph *udp.Header) error {
 	}
 
 	// add specific detections, reflection attack detection etc
-	c.events.Send(EventSIP(iph.Src, request.Method, request.RequestURI, request.Proto, request.Header))
+	c.events.Send(event.New(
+		CanaryOptions,
+		EventCategorySNMPTrap,
+		event.ServiceStarted,
+
+		event.SourceIP(iph.Src),
+		event.DestinationIP(iph.Dst),
+		event.SourcePort(udph.Source),
+		event.DestinationPort(udph.Destination),
+
+		event.Custom("sip.method", request.Method),
+		event.Custom("sip.uri", request.RequestURI),
+		event.Custom("sip.proto", request.Proto),
+		event.Custom("sip.headers", request.Header),
+		event.Custom("sip.from", request.Header.Get("From")),
+		event.Custom("sip.to", request.Header.Get("To")),
+		event.Custom("sip.via", request.Header.Get("Via")),
+		event.Custom("sip.contact", request.Header.Get("Contact")),
+		event.Custom("sip.call-id", request.Header.Get("Call-ID")),
+		event.Custom("sip.user-agent", request.Header.Get("User-Agent")),
+	))
 
 	return nil
 }
 
-// EventSIP will return a snmp event struct
-func EventSIP(sourceIP net.IP, method, uri, proto string, headers http.Header) message.Event {
-	// TODO: message should go into String() / Message, where message.Event will become interface
-	return message.NewEvent("Canary", EventCategorySIP, message.ServiceStarted, map[string]interface{}{
-		"source-ip":      sourceIP.String(),
-		"sip.method":     method,
-		"sip.uri":        uri,
-		"sip.proto":      proto,
-		"sip.headers":    headers,
-		"sip.from":       headers.Get("From"),
-		"sip.to":         headers.Get("To"),
-		"sip.via":        headers.Get("Via"),
-		"sip.contact":    headers.Get("Contact"),
-		"sip.call-id":    headers.Get("Call-ID"),
-		"sip.user-agent": headers.Get("User-Agent"),
-	})
-}
-
-const (
+var (
 	// EventCategorySNMPTrap contains events for ntp traffic
-	EventCategorySNMPTrap = message.EventCategory("snmp-trap")
+	EventCategorySNMPTrap = event.Category("snmp-trap")
 )
 
 // DecodeSNMPTrap will decode NTP packets
 func (c *Canary) DecodeSNMPTrap(iph *ipv4.Header, udph *udp.Header) error {
 	// add specific detections, reflection attack detection etc
-	c.events.Send(EventSNMPTrap(iph.Src))
+	c.events.Send(event.New(
+		CanaryOptions,
+		EventCategorySNMPTrap,
+		event.ServiceStarted,
+
+		event.SourceIP(iph.Src),
+		event.DestinationIP(iph.Dst),
+		event.SourcePort(udph.Source),
+		event.DestinationPort(udph.Destination),
+	))
 
 	return nil
 }
 
-// EventSNMPTrap will return a snmp event struct
-func EventSNMPTrap(sourceIP net.IP) message.Event {
-	// TODO: message should go into String() / Message, where message.Event will become interface
-	return message.NewEvent("Canary", EventCategorySNMPTrap, message.ServiceStarted, map[string]interface{}{
-		"source-ip": sourceIP.String(),
-	})
-}
-
-const (
+var (
 	// EventCategorySNMP contains events for ntp traffic
-	EventCategorySNMP = message.EventCategory("snmp")
+	EventCategorySNMP = event.Category("snmp")
 )
 
 // DecodeSNMP will decode NTP packets
 func (c *Canary) DecodeSNMP(iph *ipv4.Header, udph *udp.Header) error {
 	// add specific detections, reflection attack detection etc
-	c.events.Send(EventSNMP(iph.Src))
+	c.events.Send(event.New(
+		CanaryOptions,
+		EventCategorySNMP,
+		event.ServiceStarted,
+
+		event.SourceIP(iph.Src),
+		event.DestinationIP(iph.Dst),
+		event.SourcePort(udph.Source),
+		event.DestinationPort(udph.Destination),
+	))
+
 	return nil
 }
 
-// EventSNMP will return a snmp event struct
-func EventSNMP(sourceIP net.IP) message.Event {
-	// TODO: message should go into String() / Message, where message.Event will become interface
-	return message.NewEvent("Canary", EventCategorySNMP, message.ServiceStarted, map[string]interface{}{
-		"source-ip": sourceIP.String(),
-	})
-}
-
-const (
+var (
 	// EventCategoryNTP contains events for ntp traffic
-	EventCategoryNTP = message.EventCategory("ntp")
+	EventCategoryNTP = event.Category("ntp")
 )
 
 // DecodeNTP will decode NTP packets
@@ -175,13 +186,8 @@ func (c *Canary) DecodeNTP(iph *ipv4.Header, udph *udp.Header) error {
 	}
 
 	// add specific detections, reflection attack detection etc
-	c.events.Send(EventNTP(iph.Src, *layer))
+	ntp := *layer
 
-	return nil
-}
-
-// EventNTP will return a ntp query event struct
-func EventNTP(sourceIP net.IP, ntp layers.NTP) message.Event {
 	// what to do with other modes?
 	modes := map[layers.NTPMode]string{
 		layers.NTPMode(0): "reserved",
@@ -194,25 +200,35 @@ func EventNTP(sourceIP net.IP, ntp layers.NTP) message.Event {
 		layers.NTPMode(7): "private",
 	}
 
-	// TODO: message should go into String() / Message, where message.Event will become interface
+	// TODO: message should go into String() / Message, where event.Event will become interface
 	mode := fmt.Sprintf("%q", ntp.Mode)
 	if m, ok := modes[ntp.Mode]; ok {
 		mode = m
 	}
 
-	return message.NewEvent("Canary", EventCategoryNTP, message.ServiceStarted, map[string]interface{}{
-		"source-ip":   sourceIP.String(),
-		"ntp.message": fmt.Sprintf("NTP packet received, version=%d, mode=%s", ntp.Version, mode),
-		"ntp.version": ntp.Version,
-		"ntp.mode":    mode,
-	})
+	c.events.Send(event.New(
+		CanaryOptions,
+		EventCategoryNTP,
+		event.ServiceStarted,
+
+		event.SourceIP(iph.Src),
+		event.DestinationIP(iph.Dst),
+		event.SourcePort(udph.Source),
+		event.DestinationPort(udph.Destination),
+
+		event.Custom("ntp.message", fmt.Sprintf("NTP packet received, version=%d, mode=%s", ntp.Version, mode)),
+		event.Custom("ntp.version", ntp.Version),
+		event.Custom("ntp.mode", mode),
+	))
+
+	return nil
 }
 
-const (
+var (
 	// EventCategoryDNSQuery contains the category for dns query events
-	EventCategoryDNSQuery = message.EventCategory("dns-query")
+	EventCategoryDNSQuery = event.Category("dns-query")
 	// EventCategoryDNSOther contains the category for dns other events
-	EventCategoryDNSOther = message.EventCategory("dns-other")
+	EventCategoryDNSOther = event.Category("dns-other")
 )
 
 // DecodeDNS will decode DNS packets
@@ -227,35 +243,43 @@ func (c *Canary) DecodeDNS(iph *ipv4.Header, udph *udp.Header) error {
 
 	// DNSTypeANY -> Amplification attack (https://www.us-cert.gov/ncas/alerts/TA13-088A)
 
+	dns := *layer
+
 	switch layer.OpCode {
 	case layers.DNSOpCodeQuery:
-		c.events.Send(EventDNSQuery(iph.Src, *layer))
+		c.events.Send(event.New(
+			CanaryOptions,
+			EventCategoryDNSQuery,
+			event.ServiceStarted,
 
+			event.SourceIP(iph.Src),
+			event.DestinationIP(iph.Dst),
+			event.SourcePort(udph.Source),
+			event.DestinationPort(udph.Destination),
+
+			event.Custom("dns.message", fmt.Sprintf("Querying for: %#q", dns.Questions)),
+			event.Custom("dns.questions", dns.Questions),
+		))
 	default:
-		c.events.Send(EventDNSOther(iph.Src, *layer))
+		c.events.Send(event.New(
+			CanaryOptions,
+			EventCategoryDNSOther,
+			event.ServiceStarted,
+
+			event.SourceIP(iph.Src),
+			event.DestinationIP(iph.Dst),
+			event.SourcePort(udph.Source),
+			event.DestinationPort(udph.Destination),
+
+			event.Message("opcode=%+q questions=%#q", dns.OpCode, dns.Questions),
+			event.Custom("dns.opcode", dns.OpCode),
+			event.Custom("dns.questions", dns.Questions),
+		))
 	}
 
 	// add specific detections, reflection attack detection etc
 
 	return nil
-}
-
-// EventDNSQuery will return a dns query event struct
-func EventDNSQuery(sourceIP net.IP, dns layers.DNS) message.Event {
-	return message.NewEvent("Canary", EventCategoryDNSQuery, message.ServiceStarted, map[string]interface{}{
-		"message":       fmt.Sprintf("Querying for: %s", dns.Questions),
-		"dns.questions": dns.Questions,
-	})
-}
-
-// EventDNSOther will return a dns query event struct
-func EventDNSOther(sourceIP net.IP, dns layers.DNS) message.Event {
-	return message.NewEvent("Canary", EventCategoryDNSOther, message.ServiceStarted, map[string]interface{}{
-		"source-ip":     sourceIP.String(),
-		"dns.message":   fmt.Sprintf("opcode=%s questions=%s", dns.OpCode, dns.Questions),
-		"dns.opcode":    dns.OpCode,
-		"dns.questions": dns.Questions,
-	})
 }
 
 // DummyFeedback is a Dummy Feedback struct

@@ -5,6 +5,7 @@ import (
 	"net"
 )
 
+// State defines a struct for holding connection data and address.
 type State struct {
 	// interface?
 
@@ -29,13 +30,15 @@ type State struct {
 	// contains rx_queue
 }
 
+// StateTable defines a slice of States type.
 type StateTable []*State
 
+// Add adds the state into the table.
 func (st *StateTable) Add(state *State) {
 	*st = append(*st, state)
 }
 
-// GetState will return the state for the ip, port combination
+// Get will return the state for the ip, port combination
 func (st *StateTable) Get(SrcIP, DestIP net.IP, SrcPort, DestPort uint16) *State {
 	for _, state := range *st {
 		if state.SrcPort != SrcPort && state.DestPort != SrcPort {
@@ -61,6 +64,7 @@ func (st *StateTable) Get(SrcIP, DestIP net.IP, SrcPort, DestPort uint16) *State
 	return nil // state
 }
 
+// NewState returns a new instance of a State.
 func NewState(src net.IP, srcPort uint16, dest net.IP, dstPort uint16) *State {
 	return &State{
 		SrcIP:   src,

@@ -13,7 +13,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/config"
 	"github.com/honeytrap/honeytrap/pushers"
-	"github.com/honeytrap/honeytrap/pushers/message"
+	"github.com/honeytrap/honeytrap/pushers/event"
 	"github.com/op/go-logging"
 )
 
@@ -46,7 +46,7 @@ type FileBackend struct {
 	config  FileConfig
 	timeout time.Duration
 	dest    *os.File
-	request chan message.Event
+	request chan event.Event
 	closer  chan struct{}
 	wg      sync.WaitGroup
 }
@@ -55,7 +55,7 @@ type FileBackend struct {
 func New(c FileConfig) *FileBackend {
 	var fc FileBackend
 	fc.config = c
-	fc.request = make(chan message.Event)
+	fc.request = make(chan event.Event)
 	fc.closer = make(chan struct{})
 	fc.timeout = config.MakeDuration(c.Timeout, int(defaultWaitTime))
 
@@ -86,7 +86,7 @@ func (f *FileBackend) Wait() {
 
 // Send delivers the giving if it passes all filtering criteria into the
 // FileBackend write queue.
-func (f *FileBackend) Send(message message.Event) {
+func (f *FileBackend) Send(message event.Event) {
 	log.Debug("FileBackend.Send : Started")
 
 	if err := f.syncWrites(); err != nil {
@@ -114,7 +114,7 @@ func (f *FileBackend) syncWrites() error {
 	}
 
 	if f.request == nil {
-		f.request = make(chan message.Event)
+		f.request = make(chan event.Event)
 	}
 
 	var err error

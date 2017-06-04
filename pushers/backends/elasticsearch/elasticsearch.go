@@ -13,7 +13,7 @@ import (
 	elastic "gopkg.in/olivere/elastic.v5"
 
 	"github.com/honeytrap/honeytrap/pushers"
-	"github.com/honeytrap/honeytrap/pushers/message"
+	"github.com/honeytrap/honeytrap/pushers/event"
 	"github.com/op/go-logging"
 )
 
@@ -23,13 +23,14 @@ var (
 
 var log = logging.MustGetLogger("honeytrap:channels:elasticsearch")
 
-// SearchConfig defines a struct which holds configuration values for a SearchBackend.
+// Config defines a struct which holds configuration values for a SearchBackend.
 type Config struct {
 	Host *url.URL
 
 	Index string
 }
 
+// UnmarshalTOML deserializes the giving data into the config.
 func (c *Config) UnmarshalTOML(p interface{}) error {
 	data, _ := p.(map[string]interface{})
 
@@ -52,6 +53,7 @@ type tomlURL struct {
 	*url.URL
 }
 
+// unmashalText converts the giving text into a valid URL.
 func (d *tomlURL) UnmarshalText(text []byte) error {
 	var err error
 	d.URL, err = url.Parse(string(text))
@@ -65,18 +67,18 @@ if err != nil {
 }
 */
 
-// SearchBackend defines a struct which provides a channel for delivery
+// ElasticSearchBackend defines a struct which provides a channel for delivery
 // push messages to an elasticsearch api.
 type ElasticSearchBackend struct {
 	Config
 
 	client *http.Client
-	ch     chan message.Event
+	ch     chan event.Event
 }
 
 // New returns a new instance of a SearchBackend.
 func New(conf Config) *ElasticSearchBackend {
-	ch := make(chan message.Event, 100)
+	ch := make(chan event.Event, 100)
 
 	backend := ElasticSearchBackend{
 		client: &http.Client{
@@ -151,7 +153,7 @@ func (hc ElasticSearchBackend) run() {
 }
 
 // Send delivers the giving push messages into the internal elastic search endpoint.
-func (hc ElasticSearchBackend) Send(message message.Event) {
+func (hc ElasticSearchBackend) Send(message event.Event) {
 	hc.ch <- message
 }
 
@@ -159,20 +161,15 @@ func (hc ElasticSearchBackend) Send(message message.Event) {
 	// buffer
 	log.Debugf("ElasticSearchBackend: Sending %d actions.", message)
 
-	buf := new(bytes.Buffer)
+	category, _, sensor := event.Identity()
 
-	if message.Sensor == "honeytrap" && message.Category == "ping" {
+	if string(sensor) == "honeytrap" && string(category) == "ping" {
 		// ignore
 		return
 	}
 
-	if err := json.NewEncoder(buf).Encode(message.Data); err != nil {
-		log.Errorf("ElasticSearchBackend: Error encoding data: %s", err.Error())
-		return
-	}
-
 	messageID := uuid.NewV4()
-	req, err := http.NewRequest("PUT", fmt.Sprintf("%s/%s/%s/%s", hc.config.Host, message.Sensor, message.Category, messageID.String()), buf)
+	req, err := http.NewRequest("PUT", fmt.Sprintf("%s/%+s/%+s/%s", hc.config.Host, sensor, category, messageID.String()), event.DataReader())
 	if err != nil {
 		log.Errorf("ElasticSearchBackend: Error while preparing request: %s", err.Error())
 		return

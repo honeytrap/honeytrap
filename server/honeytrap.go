@@ -24,14 +24,14 @@ import (
 	proxies "github.com/honeytrap/honeytrap/proxies"
 	_ "github.com/honeytrap/honeytrap/proxies/ssh" // TODO: Add comment
 
-	"github.com/honeytrap/honeytrap/pushers/message"
+	"github.com/honeytrap/honeytrap/pushers/event"
 
 	pushers "github.com/honeytrap/honeytrap/pushers"
+	_ "github.com/honeytrap/honeytrap/pushers/backends/console"       // Registers stdout backend.
 	_ "github.com/honeytrap/honeytrap/pushers/backends/elasticsearch" // Registers elasticsearch backend.
 	_ "github.com/honeytrap/honeytrap/pushers/backends/fschannel"     // Registers file backend.
 	_ "github.com/honeytrap/honeytrap/pushers/backends/honeytrap"     // Registers honeytrap backend.
 	_ "github.com/honeytrap/honeytrap/pushers/backends/slack"         // Registers slack backend.
-	_ "github.com/honeytrap/honeytrap/pushers/backends/stdout"        // Registers stdout backend.
 
 	utils "github.com/honeytrap/honeytrap/utils"
 
@@ -111,15 +111,12 @@ type ListenerConfig struct {
 }
 
 // EventServiceStarted will return a service started Event struct
-func EventServiceStarted(service string, primitive toml.Primitive) message.Event {
-	return message.Event{
-		Sensor:   service,
-		Category: "Services",
-		Type:     message.ServiceStarted,
-		Details: map[string]interface{}{
-			"primitive": primitive,
-		},
-	}
+func EventServiceStarted(service string, primitive toml.Primitive) event.Event {
+	return event.New(
+		event.Category(service),
+		event.ServiceSensor,
+		event.ServiceStarted,
+	)
 }
 
 func (hc *Honeytrap) startProxies() {
@@ -141,25 +138,21 @@ func (hc *Honeytrap) startProxies() {
 			if err != nil {
 				log.Errorf("Error in service: %s: %s", st.Service, err.Error())
 
-				hc.events.Send(message.Event{
-					Sensor: st.Service,
-					Type:   message.ServiceStarted,
-					Details: map[string]interface{}{
-						"primitive": primitive,
-						"error":     err.Error(),
-					},
-				})
+				hc.events.Send(event.New(
+					event.ServiceSensor,
+					event.Category(st.Service),
+					event.ServiceStarted,
+					event.Error(err),
+				))
 
 				continue
 			}
 
-			hc.events.Send(message.Event{
-				Sensor: st.Service,
-				Type:   message.ServiceStarted,
-				Details: map[string]interface{}{
-					"primitive": primitive,
-				},
-			})
+			hc.events.Send(event.New(
+				event.ServiceSensor,
+				event.Category(st.Service),
+				event.ServiceStarted,
+			))
 
 			/*
 				if err := toml.PrimitiveDecode(primitive, &service); err != nil {
