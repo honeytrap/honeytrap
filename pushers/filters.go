@@ -11,128 +11,49 @@ import (
 // Filter defines an interface which exposes a method for filtering specific
 // messages by specific boundaries.
 type Filter interface {
-	Filter(...event.Event) []event.Event
+	Filter(event.Event) bool
 }
 
-//==========================================================================================
+type filterChannel struct {
+	Channel
 
-// FilterGroup defines a slice of Filter object which used together to filter
-// a series of events.
-type FilterGroup []Filter
-
-// Add adds the underline filter into the group.
-func (fg *FilterGroup) Add(filter Filter) {
-	*fg = append(*fg, filter)
+	FilterFn FilterFunc
 }
 
-// TODO(make events single events)
-
-// Filter returns a slice of messages that match the giving criterias from the
-// provided events.
-func (fg FilterGroup) Filter(events ...event.Event) []event.Event {
-	if len(fg) == 0 {
-		return events
+// Send delivers the slice of PushMessages and using the internal filters
+// to filter out the desired messages allowed for all registered backends.
+func (mc filterChannel) Send(e event.Event) {
+	if !mc.FilterFn(e) {
+		return
 	}
 
-	for _, filter := range fg {
-		events = filter.Filter(events...)
+	mc.Channel.Send(e)
+}
+
+type FilterFunc func(event.Event) bool
+
+func RegexFilterFunc(field string, expressions []string) FilterFunc {
+	matchers := make([]*regexp.Regexp, len(expressions))
+
+	for i, match := range expressions {
+		matchers[i] = regexp.MustCompile(match)
 	}
 
-	return events
-}
-
-//==========================================================================================
-
-// RegExpFilterFunction defines the function used by the RegExpFilter
-// to provide custom filtering validation for each provided event.Event.
-type RegExpFilterFunction func(*regexp.Regexp, event.Event) bool
-
-// SensorFilterFunc defines a function to validate a Pushevent.Sensor value
-// based on a provided regular expression.
-func SensorFilterFunc(rx *regexp.Regexp, message event.Event) bool {
-	val, ok := message["sensor"].(string)
-	if !ok {
-		return false
-	}
-
-	return rx.MatchString(val)
-}
-
-// TypeFilterFunc defines a function to validate a Pushevent.Category value
-// based on a provided regular expression.
-func TypeFilterFunc(rx *regexp.Regexp, message event.Event) bool {
-	val, ok := message["type"].(string)
-	if !ok {
-		return false
-	}
-
-	return rx.MatchString(val)
-}
-
-// CategoryFilterFunc defines a function to validate a Pushevent.Category value
-// based on a provided regular expression.
-func CategoryFilterFunc(rx *regexp.Regexp, message event.Event) bool {
-	val, ok := message["category"].(string)
-	if !ok {
-		return false
-	}
-
-	return rx.MatchString(val)
-}
-
-//==========================================================================================
-
-// RegExpFilter defines a struct which implements the Filters interface and
-// provides the ability to filter by a provided set of regular expression
-// and a function which runs down all provided messages
-type RegExpFilter struct {
-	conditions []*regexp.Regexp
-	validator  RegExpFilterFunction
-}
-
-// NewRegExpFilter returns a new instance of a RegExpFilter with the provided validator
-// and regexp.Regexp matchers.
-func NewRegExpFilter(fn RegExpFilterFunction, rx ...*regexp.Regexp) *RegExpFilter {
-	var rxFilter RegExpFilter
-	rxFilter.validator = fn
-	rxFilter.conditions = rx
-	return &rxFilter
-}
-
-// Filter returns a slice of messages passed in which passes the internal regular
-// expressions criterias.
-func (r *RegExpFilter) Filter(messages ...event.Event) []event.Event {
-	if r.conditions == nil || len(r.conditions) == 0 {
-		return messages
-	}
-
-	var filtered []event.Event
-
-	{
-	mloop:
-		for _, message := range messages {
-			for _, rx := range r.conditions {
-				if !r.validator(rx, message) {
-					continue mloop
-				}
-			}
-
-			filtered = append(filtered, message)
+	return func(e event.Event) bool {
+		for _, rx := range matchers {
+			val := e.Get(field)
+			return rx.MatchString(val)
 		}
-	}
 
-	return filtered
+		return false
+	}
 }
 
-//==========================================================================================
-
-// MakeMatchers takes a giving slice of strings and returns a slice of regexp.Regexp.
-func MakeMatchers(m ...string) []*regexp.Regexp {
-	var matchers []*regexp.Regexp
-
-	for _, match := range m {
-		matchers = append(matchers, regexp.MustCompile(match))
+// FilterChannel defines a struct which handles the delivery of giving
+// messages to a specific sets of backend channels based on specific criterias.
+func FilterChannel(channel Channel, fn FilterFunc) Channel {
+	return filterChannel{
+		Channel:  channel,
+		FilterFn: fn,
 	}
-
-	return matchers
 }

@@ -73,6 +73,16 @@ type Option func(Event)
 // Event defines a map type for event data.
 type Event map[string]interface{}
 
+func (e Event) Get(s string) string {
+	if v, ok := e[s]; !ok {
+		return ""
+	} else if v, ok := v.(string); !ok {
+		return ""
+	} else {
+		return v
+	}
+}
+
 // New returns a new Event with the options applied.
 func New(opts ...Option) Event {
 	e := map[string]interface{}{

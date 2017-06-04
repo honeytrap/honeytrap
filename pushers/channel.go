@@ -66,53 +66,9 @@ func ChannelsFrom(conf *config.Config, bus *EventBus) {
 	}
 }
 
-//================================================================================
-
-type filterChannel struct {
-	Channel
-
-	Filter FilterGroup
-}
-
-// Send delivers the slice of PushMessages and using the internal filters
-// to filter out the desired messages allowed for all registered backends.
-func (mc filterChannel) Send(e event.Event) {
-	// TODO:concat all filters to each other, instead of groups
-	for _, item := range mc.Filter.Filter(e) {
-		mc.Channel.Send(item)
-	}
-}
-
-// FilterChannel defines a struct which handles the delivery of giving
-// messages to a specific sets of backend channels based on specific criterias.
-func FilterChannel(channel Channel, filter FilterGroup) Channel {
-	return filterChannel{
-		Channel: channel,
-		Filter:  filter,
-	}
-}
-
-//================================================================================
-
 // MakeFilter returns a slice of Channels which match the giving criterias
 // associated with the provided config.ChannelConfig.
 func MakeFilter(bus *EventBus, config *config.Config, conf config.ChannelConfig) error {
-	var filters FilterGroup
-
-	// TODO: we want to tunnel filters, for single events. Events will be batched and grouped inside
-	// backends
-	if len(conf.Categories) != 0 {
-		filters.Add(NewRegExpFilter(CategoryFilterFunc, MakeMatchers(conf.Categories...)...))
-	}
-
-	if len(conf.Sensors) != 0 {
-		filters.Add(NewRegExpFilter(CategoryFilterFunc, MakeMatchers(conf.Sensors...)...))
-	}
-
-	if len(conf.Events) != 0 {
-		filters.Add(NewRegExpFilter(CategoryFilterFunc, MakeMatchers(conf.Events...)...))
-	}
-
 	// Generate all filters for the channel's backends
 	for _, backend := range conf.Backends {
 		// Retrieve backend configuration.
@@ -139,7 +95,19 @@ func MakeFilter(bus *EventBus, config *config.Config, conf config.ChannelConfig)
 		}
 
 		channel := base
-		channel = FilterChannel(base, filters)
+
+		if len(conf.Categories) != 0 {
+			channel = FilterChannel(channel, RegexFilterFunc("category", conf.Categories))
+		}
+
+		if len(conf.Sensors) != 0 {
+			channel = FilterChannel(channel, RegexFilterFunc("sensor", conf.Sensors))
+		}
+
+		if len(conf.Events) != 0 {
+			channel = FilterChannel(channel, RegexFilterFunc("event", conf.Events))
+		}
+
 		bus.Subscribe(channel)
 	}
 
