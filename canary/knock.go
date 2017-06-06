@@ -74,6 +74,7 @@ type KnockTCPPort struct {
 func (k KnockTCPPort) NewGroup() *KnockGroup {
 	return &KnockGroup{
 		Start:         time.Now(),
+		SourceIP:      k.SourceIP,
 		DestinationIP: k.DestinationIP,
 		Protocol:      ProtocolTCP,
 		Count:         0,

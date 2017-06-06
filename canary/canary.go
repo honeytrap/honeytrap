@@ -3,8 +3,10 @@ package canary
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"math/rand"
 	"net"
+	"os"
 	"strings"
 	"sync"
 	"syscall"
@@ -32,7 +34,6 @@ var log = logging.MustGetLogger("canary")
 // check ring buffer
 // use sockets and io.Reader
 // parameters: ports to include exclude/ filter (or do we want to filter the events)
-// config: interface to listen on
 // answer with data
 
 const (
@@ -228,107 +229,276 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 	} else if hdr.HasFlag(tcp.SYN) && !hdr.HasFlag(tcp.ACK) {
 		// no state found
 		state = NewState(iph.Src, hdr.Source, iph.Dst, hdr.Destination)
+		state.State = SocketListen
 		c.stateTable.Add(state)
 
 		// or is state == socket?
 
 		// new socket
-		state.socket = NewSocket(iph.Src, iph.Dst)
+		state.socket = NewSocket(
+			&net.TCPAddr{
+				IP:   iph.Src,
+				Port: int(hdr.Source),
+			},
+			&net.TCPAddr{
+				IP:   iph.Dst,
+				Port: int(hdr.Destination),
+			},
+		)
 
-		/*
-			go func() {
-				fmt.Println("BLA socket")
-				// default handler
-				rdr := io.TeeReader(state.socket, os.Stdout)
+		go func() {
+			// we can check als for signaturs to use specifiec protocol
+			handlers := map[uint16]func(net.Conn) error{
+				80: c.DecodeHTTP,
+			}
 
+			if fn, ok := handlers[hdr.Destination]; !ok {
 				buff := make([]byte, 2048)
 
-				n, err := io.ReadFull(rdr, buff)
-				if err == nil {
-				} else if _, err := io.Copy(ioutil.Discard, rdr); err == nil {
-				} else {
-				}
+				rdr := io.TeeReader(state.socket, os.Stdout)
+				n, _ := rdr.Read(buff)
 
-				c.events.Send(EventTCPPayload(iph.Src, hdr.Destination, string(buff[:n])))
-			}()
-		*/
+				c.events.Send(EventTCPPayload(state.SrcIP, state.DestIP, state.SrcPort, state.DestPort, buff[:n]))
+			} else if err := fn(state.socket); err != nil {
+				_ = fn
+			}
+		}()
 	} else {
 		// no existing state found, returning
 		return nil // ErrNoExistingStateFound()
 	}
 
-	switch {
-	case hdr.HasFlag(tcp.SYN):
-		fallthrough
-	case hdr.HasFlag(tcp.RST):
-		fallthrough
-	case hdr.HasFlag(tcp.FIN):
-		fallthrough
-	case hdr.HasFlag(tcp.PSH):
-		c.ack(state, iph, hdr)
+	// https://tools.ietf.org/html/rfc793
+	// page 65
+
+	if state.State == SocketListen {
+		switch {
+		case hdr.HasFlag(tcp.SYN):
+			state.SendUnacknowledged = state.InitialSendSequenceNumber
+			state.SendNext = state.InitialSendSequenceNumber + 1
+
+			state.RecvNext = hdr.SeqNum
+			state.RecvNext++
+			c.ack(state, tcp.SYN|tcp.ACK)
+			state.SendNext++
+			state.State = SocketSynReceived
+			return nil
+		}
 	}
 
-	state.socket.write(hdr.Payload)
+	// check sequence number
 
-	if hdr.Ctrl&tcp.PSH == tcp.PSH {
-		handlers := map[uint16]func(*ipv4.Header, *tcp.Header) error{
-			80: c.DecodeHTTP,
+	switch {
+	case hdr.HasFlag(tcp.RST):
+		if state.State == SocketSynReceived {
+			// enter listen state
+			state.State = SocketListen
+			return nil
 		}
 
-		state.socket.flush()
+		switch state.State {
+		case SocketEstablished:
+		case SocketFinWait1:
+		case SocketFinWait2:
+		case SocketCloseWait:
+			// If the RST bit is set then, any outstanding RECEIVEs and SEND
+			// should receive "reset" responses.  All segment queues should be
+			// flushed.  Users should also receive an unsolicited general
+			// "connection reset" signal.  Enter the CLOSED state, delete the
+			// TCB, and return.
+			state.State = SocketClosed
+			return nil
+		case SocketClosing:
+		case SocketLastAck:
+		case SocketTimeWait:
+			// If the RST bit is set then, enter the CLOSED state, delete the
+			// TCB, and return.
+			state.State = SocketClosed
+			return nil
+		}
+	}
 
-		if fn, ok := handlers[hdr.Destination]; !ok {
-			c.events.Send(EventTCPPayload(iph.Src, iph.Dst, hdr.Source, hdr.Destination, hdr.Payload))
-		} else if err := fn(iph, hdr); err != nil {
-			_ = fn
+	// check security and precedence
+
+	/*
+			if state.State == SynReceived {
+				// enter listen state
+				return nil
+			}
+
+			state.RecvNext++
+			c.ack(state, tcp.RST|tcp.ACK)
+		case hdr.HasFlag(tcp.FIN):
+			state.RecvNext++
+			c.ack(state, tcp.FIN|tcp.ACK)
+	*/
+	if hdr.HasFlag(tcp.SYN) {
+		// If the SYN is in the window it is an error, send a reset, any
+		// outstanding RECEIVEs and SEND should receive "reset" responses,
+		// all segment queues should be flushed, the user should also
+		// receive an unsolicited general "connection reset" signal, enter
+		// the CLOSED state, delete the TCB, and return.
+
+		// If the SYN is not in the window this step would not be reached
+		// and an ack would have been sent in the first step (sequence
+		// number check).
+		return nil
+	}
+
+	// check the ACK field
+	if !hdr.HasFlag(tcp.ACK) {
+		// if the ACK bit is off drop the segment and return
+		return nil
+	}
+
+	if state.State == SocketSynReceived {
+		if state.SendUnacknowledged <= hdr.AckNum &&
+			hdr.AckNum <= state.SendNext {
+			state.State = SocketEstablished
+		} else {
+			// If the segment acknowledgment is not acceptable, form a
+			// reset segment,
+			// <SEQ=SEG.ACK><CTL=RST>
+			// and send it.
+			return nil
+		}
+	}
+
+	// SocketEstablished
+	// If SND.UNA < SEG.ACK =< SND.NXT then, set SND.UNA <- SEG.ACK.
+
+	if state.SendUnacknowledged <= hdr.AckNum &&
+		hdr.AckNum <= state.SendNext {
+		state.SendUnacknowledged = hdr.AckNum
+	}
+
+	// Any segments on the retransmission queue which are thereby
+	// entirely acknowledged are removed.  Users should receive
+	// positive acknowledgments for buffers which have been SENT and
+	// fully acknowledged (i.e., SEND buffer should be returned with
+	// 	"ok" response).
+
+	// retransmission queue
+
+	// If the ACK is a duplicate
+	// (SEG.ACK < SND.UNA), it can be ignored.
+	if hdr.AckNum < state.SendUnacknowledged {
+	}
+
+	// If the ACK acks
+	// something not yet sent (SEG.ACK > SND.NXT) then send an ACK,
+	// drop the segment, and return.
+	if hdr.AckNum > state.SendUnacknowledged {
+		c.ack(state, tcp.ACK)
+		return nil
+	}
+
+	// If SND.UNA < SEG.ACK =< SND.NXT, the send window should be
+	// updated.  If (SND.WL1 < SEG.SEQ or (SND.WL1 = SEG.SEQ and
+	// 	SND.WL2 =< SEG.ACK)), set SND.WND <- SEG.WND, set
+	// SND.WL1 <- SEG.SEQ, and set SND.WL2 <- SEG.ACK.
+
+	// 	Note that SND.WND is an offset from SND.UNA, that SND.WL1
+	// records the sequence number of the last segment used to update
+	// SND.WND, and that SND.WL2 records the acknowledgment number of
+	// the last segment used to update SND.WND.  The check here
+	// prevents using old segments to update the window.
+
+	if state.State == SocketFinWait1 {
+		// In addition to the processing for the ESTABLISHED state, if
+		// our FIN is now acknowledged then enter FIN-WAIT-2 and continue
+		// processing in that state.
+		state.State = SocketFinWait2
+	} else if state.State == SocketFinWait2 {
+		// In addition to the processing for the ESTABLISHED state, if
+		// our FIN is now acknowledged then enter FIN-WAIT-2 and continue
+		// processing in that state.
+		state.State = SocketFinWait2
+	}
+
+	if state.State == SocketEstablished ||
+		state.State == SocketFinWait1 ||
+		state.State == SocketFinWait2 {
+
+		state.socket.write(hdr.Payload)
+
+		switch {
+		case hdr.HasFlag(tcp.PSH):
+			state.socket.flush()
 		}
 
+		// Once the TCP takes responsibility for the data it advances
+		// RCV.NXT over the data accepted, and adjusts RCV.WND as
+		// apporopriate to the current buffer availability.  The total of
+		// RCV.NXT and RCV.WND should not be reduced.
+		state.RecvNext += uint32(len(hdr.Payload))
+		// state.ReceiveWindow = state.socket.bufferavailable() //  hdr.Payload
+
+		// TODO: not in spec, but what should we do? otherwise
+		// it will ACK to the SYN, SYNACK, ACK
+		if len(hdr.Payload) > 0 {
+			// This acknowledgment should be piggybacked on a segment being
+			// transmitted if possible without incurring undue delay.
+			c.ack(state, tcp.ACK)
+		}
 	}
 
 	if hdr.Ctrl&tcp.SYN == tcp.SYN {
 		c.knockChan <- KnockTCPPort{
 			SourceIP:        iph.Src,
+			DestinationIP:   iph.Dst,
 			DestinationPort: hdr.Destination,
 		}
-	} else if hdr.Ctrl&tcp.RST == tcp.RST {
-		// we should only close when RST but not RST-ACK
-		state.socket.close()
-	} else if hdr.Ctrl&tcp.FIN == tcp.FIN {
+	}
+
+	if hdr.Ctrl&tcp.FIN == tcp.FIN {
+		if state.State == SocketSynReceived || state.State == SocketEstablished {
+			// Enter the CLOSE-WAIT state.
+			state.State = SocketCloseWait
+		} else if state.State == SocketFinWait1 {
+			// If our FIN has been ACKed (perhaps in this segment), then
+			// enter TIME-WAIT, start the time-wait timer, turn off the other
+			// timers; otherwise enter the CLOSING state.
+			state.State = SocketClosing
+		} else if state.State == SocketFinWait2 {
+			// Enter the TIME-WAIT state.  Start the time-wait timer, turn
+			// off the other timers.
+		}
+
 		// we should only close when FIN but not FIN-ACK
-		state.socket.close()
+		// set state status s.FINWAIT
+		// state.socket.close()
 	} else {
 		// remove states
 		// FIN / RST
 		return nil
 	}
-
+	/*
+		if hdr.Ctrl&tcp.RST == tcp.RST {
+			// we should only close when RST but not RST-ACK
+			state.socket.close()
+		} else if hdr.Ctrl&tcp.FIN == tcp.FIN {
+			// we should only close when FIN but not FIN-ACK
+			// set state status s.FINWAIT
+			state.socket.close()
+		} else {
+			// remove states
+			// FIN / RST
+			return nil
+		}
+	*/
 	// check if we have tcp listeners on specified port, and answer otherwise
 	return nil
 }
 
-func (c *Canary) ack(state *State, iph *ipv4.Header, tcph *tcp.Header) error {
-	seqNum := tcph.SeqNum
-	seqNum += uint32(len(tcph.Payload))
-
-	flags := tcp.Flag(tcp.ACK)
-	if tcph.HasFlag(tcp.SYN) {
-		seqNum++
-		flags |= tcp.Flag(tcp.SYN)
-	} else if tcph.HasFlag(tcp.RST) {
-		seqNum++
-		flags |= tcp.Flag(tcp.RST)
-	} else if tcph.HasFlag(tcp.FIN) {
-		seqNum++
-		flags |= tcp.Flag(tcp.FIN)
-	}
-
+func (c *Canary) ack(state *State, flags tcp.Flag) error {
 	payload := []byte{}
 
 	th := &tcp.Header{
-		Source:      tcph.Destination,
-		Destination: tcph.Source,
+		Source:      state.DestPort,
+		Destination: state.SrcPort,
 		SeqNum:      state.SendNext,
-		AckNum:      seqNum,
+		AckNum:      state.RecvNext,
 		Reserved:    0,
 		ECN:         0,
 		Ctrl:        flags,
@@ -345,38 +515,28 @@ func (c *Canary) ack(state *State, iph *ipv4.Header, tcph *tcp.Header) error {
 	}
 
 	// ack the received packet
-	iph2 := &ipv4.Header{
+	iph := &ipv4.Header{
 		Version:  4,
 		Len:      20,
 		TOS:      0,
 		Flags:    0,
 		FragOff:  0,
 		TTL:      128,
-		Src:      iph.Dst,
-		Dst:      iph.Src,
+		Src:      state.DestIP,
+		Dst:      state.SrcIP,
 		ID:       int(state.ID), // state.ID() which will increment automatically
 		Protocol: 6,
 		TotalLen: 20 + len(data1),
 	}
 
-	data, err := iph2.Marshal()
+	data, err := iph.Marshal()
 	if err != nil {
 		return err
 	}
 
 	state.ID++
 
-	if tcph.HasFlag(tcp.SYN) {
-		state.SendNext++
-	} else if tcph.HasFlag(tcp.RST) {
-		state.SendNext++
-	} else if tcph.HasFlag(tcp.FIN) {
-		state.SendNext++
-	}
-
-	state.SendNext += uint32(len(payload))
-
-	updateTCPChecksum(iph2, data1)
+	updateTCPChecksum(iph, data1)
 
 	data = append(data, data1...)
 
@@ -480,7 +640,7 @@ func splitAtBytes(s string, t string) []string {
 
 // New will return a Canary for specified interfaces. Events will be delivered through
 // events
-func New(interfaces []net.Interface, events pushers.Channel) (*Canary, error) {
+func New(interfaces []string, events pushers.Channel) (*Canary, error) {
 	rt, err := parseRouteTable("/proc/net/route")
 	if err != nil {
 		return nil, fmt.Errorf("Could not parse route table: %s", err.Error())
@@ -499,10 +659,10 @@ func New(interfaces []net.Interface, events pushers.Channel) (*Canary, error) {
 	networkInterfaces := []net.Interface{}
 	descriptors := map[string]int32{}
 
-	// TODO: interfaces configurable
-	for _, intf := range interfaces {
-		if intf.Name != "ens160" && intf.Name != "eth0" && intf.Name != "ens3" {
-			continue
+	for _, name := range interfaces {
+		intf, err := net.InterfaceByName(name)
+		if err != nil {
+			return nil, err
 		}
 
 		fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(htons(syscall.ETH_P_ALL)))
@@ -522,7 +682,7 @@ func New(interfaces []net.Interface, events pushers.Channel) (*Canary, error) {
 		}
 
 		descriptors[intf.Name] = int32(fd)
-		networkInterfaces = append(networkInterfaces, intf)
+		networkInterfaces = append(networkInterfaces, *intf)
 	}
 
 	r := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))

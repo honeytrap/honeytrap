@@ -17,17 +17,43 @@ type State struct {
 
 	ID uint32
 
-	RecvNext uint32
-	SendNext uint32
-
 	LastAcked uint32
 
 	// /proc/net/tcp
 
 	socket *Socket
 
+	State SocketState
 	// contains tx_queue
 	// contains rx_queue
+
+	// SND.UNA - send unacknowledged
+	SendUnacknowledged uint32
+	// SND.NXT - send next
+	SendNext uint32
+	// SND.WND - send window
+	SendWindow uint32
+	// SND.UP  - send urgent pointer
+	SendUrgentPointer uint32
+
+	// SND.WL1 - segment sequence number used for last window update
+	SendWL1 uint32
+
+	// SND.WL2 - segment acknowledgment number used for last window update
+	SendWL2 uint32
+
+	// ISS     - initial send sequence number
+	InitialSendSequenceNumber uint32
+
+	// RCV.NXT - receive next
+	RecvNext uint32
+	// RCV.WND - receive window
+	ReceiveWindow uint32
+	// RCV.UP  - receive urgent pointer
+	ReceiveUrgentPointer uint32
+
+	// IRS     - initial receive sequence number
+	InitialReceiveSequenceNumber uint32
 }
 
 // StateTable defines a slice of States type.
@@ -75,7 +101,7 @@ func NewState(src net.IP, srcPort uint16, dest net.IP, dstPort uint16) *State {
 
 		ID: rand.Uint32(),
 
-		RecvNext: 0,
-		SendNext: rand.Uint32(),
+		RecvNext:                  0,
+		InitialSendSequenceNumber: rand.Uint32(),
 	}
 }

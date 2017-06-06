@@ -257,12 +257,7 @@ func (hc *Honeytrap) startStatsServer() {
 }
 
 func (hc *Honeytrap) startCanary() error {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return err
-	}
-
-	c, err := canary.New(ifaces, hc.events)
+	c, err := canary.New(hc.config.Canary.Interfaces, hc.events)
 	if err != nil {
 		return err
 	}

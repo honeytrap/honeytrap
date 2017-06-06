@@ -108,6 +108,10 @@ type (
 		Web   WebConfig   `toml:"web"`
 		Agent AgentConfig `toml:"agent"`
 
+		Canary struct {
+			Interfaces []string `toml:"interfaces"`
+		} `toml:"canary"`
+
 		Providers []struct {
 			LXC struct {
 			} `toml:"lxc"`

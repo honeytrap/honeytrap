@@ -151,6 +151,22 @@ func Sensor(s string) Option {
 }
 
 // SourceIP returns an option for setting the source-ip value.
+func SourceAddr(addr net.Addr) Option {
+	return func(m Event) {
+		m["source-ip"] = addr.(*net.TCPAddr).IP.String()
+		m["source-port"] = addr.(*net.TCPAddr).Port
+	}
+}
+
+// DestinationIP returns an option for setting the destination-ip value.
+func DestinationAddr(addr net.Addr) Option {
+	return func(m Event) {
+		m["destination-ip"] = addr.(*net.TCPAddr).IP.String()
+		m["destination-port"] = addr.(*net.TCPAddr).Port
+	}
+}
+
+// SourceIP returns an option for setting the source-ip value.
 func SourceIP(ip net.IP) Option {
 	return func(m Event) {
 		m["source-ip"] = ip.String()

@@ -21,6 +21,9 @@ token = "433UI-56JK-3433NJ-KI954"
     ssh_addr = "localhost"
     ssh_port = "2222"
 
+[canary]
+interfaces = ["ens160"]
+
 [delays]
 push_every = "10s"
 freeze_every = "10s"

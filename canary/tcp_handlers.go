@@ -2,12 +2,10 @@ package canary
 
 import (
 	"bufio"
-	"bytes"
+	"fmt"
 	"net"
 	"net/http"
 
-	"github.com/honeytrap/honeytrap/canary/ipv4"
-	"github.com/honeytrap/honeytrap/canary/tcp"
 	"github.com/honeytrap/honeytrap/pushers/event"
 )
 
@@ -36,11 +34,11 @@ var (
 )
 
 // DecodeHTTP will decode NTP packets
-func (c *Canary) DecodeHTTP(iph *ipv4.Header, tcph *tcp.Header) error {
+func (c *Canary) DecodeHTTP(conn net.Conn) error {
+	defer conn.Close()
+
 	request, err := http.ReadRequest(
-		bufio.NewReader(
-			bytes.NewReader(tcph.Payload),
-		),
+		bufio.NewReader(conn),
 	)
 	if err != nil {
 		// log error / send error channel
@@ -52,10 +50,8 @@ func (c *Canary) DecodeHTTP(iph *ipv4.Header, tcph *tcp.Header) error {
 		CanaryOptions,
 		EventCategoryHTTP,
 		event.ServiceStarted,
-		event.SourceIP(iph.Src),
-		event.DestinationIP(iph.Dst),
-		event.SourcePort(tcph.Source),
-		event.DestinationPort(tcph.Destination),
+		event.SourceAddr(conn.RemoteAddr()),
+		event.DestinationAddr(conn.LocalAddr()),
 		event.Custom("http.method", request.Method),
 		event.Custom("http.uri", request.URL.String()),
 		event.Custom("http.proto", request.Proto),
@@ -65,6 +61,7 @@ func (c *Canary) DecodeHTTP(iph *ipv4.Header, tcph *tcp.Header) error {
 		event.Custom("http.user-agent", request.Header.Get("User-Agent")),
 	))
 
+	fmt.Printf("%+v", request)
 	return nil
 }
 
