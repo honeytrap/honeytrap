@@ -11,7 +11,7 @@ Honeytrap is a honeypot framework written in Go, that isolates each attacker in 
 
 ## Installation
 Currently Honeytrap can only be installed from source on Linux, since it depends on Linux Containers (LXC). It has been tested on Linux (CentOS and Ubuntu) and also works on a Raspberry Pi. Our guide is provided [here](https://github.com/Einzelganger/honeytrap/wiki/Installation).
-> Note that the Dockerfile is there for autobuilding purposes, not for installing Honeytrap.
+> Note that the Dockerfile in the root of the repository is present for autobuilding purposes, not for installing Honeytrap.
 
 
 ## API
