@@ -4,133 +4,30 @@
 <img src="honeytrap_icon-small.png"/>
 
 ## What is Honeytrap?
-Honeytrap is a honeypot framework written in Go, that isolates each attacker in it's own LXC container. On subsequent attacks, the attacker will be presented with the same container, making monitoring their actions easier. The container events and user sessions can be monitored with an HTTP and WebSocket API. Notifications can be sent to Slack channels. 
+Honeytrap is a honeypot framework written in Go, that isolates each attacker in it's own LXC container. On subsequent attacks, the attacker will be presented with the same container, making monitoring their actions easier. The container-events and user-sessions can be monitored with an HTTP and WebSocket API. Logging can also be sent to other locations like Slack chatrooms. For more information and news, be sure to visit our official website or subscribe to our Twitter feed.
 
-## Installation from source
+- [Official website](http://honeytrap.io/#!/)
+- [Twitter](https://twitter.com/honeycastio)
 
-First, install the libraries libpcap-dev for network monitoring, and lxc1 and lxc-dev for container services. 
-We also need gcc and pkgconfig to compile the Honeytrap package.
-```
-apt install -y libpcap-dev lxc1 lxc-dev gcc pkg-config
-```
-
-Honeytrap is written in Go, so we download the Go language from Google.
-```
-cd /usr/local
-wget https://storage.googleapis.com/golang/go1.8rc3.linux-amd64.tar.gz
-tar vxf go1.8rc3.linux-amd64.tar.gz
-```
-
-Create a directory for the Honeytrap installation.
-```
-mkdir /opt/honeytrap
-```
-
-Set the Go environment variables for your shell. Add the following to *~/.bashrc*.
-```
-export GOPATH=/opt/honeytrap
-export PATH=$PATH:/usr/local/go/bin/
-```
-
-And apply these changes:
-```
-source ~/.bashrc
-```
-
-Now, let's download the application.
-```
-cd /opt/honeytrap/
-go get github.com/honeytrap/honeytrap
-```
-
-Copy the sample configuration file for usage.
-```
-cp ./src/github.com/honeytrap/honeytrap/config.toml.sample /opt/honeytrap/config.toml
-``` 
-Create a LXC container base image, so Honeytrap can start this when required.
-```
-$ lxc-create -t download -n honeytrap -- --dist ubuntu --release xenial --arch amd64
-```
-
-Now we have to run a script from this source repository.
-This script will create a chrooted environment for LXC with Apache, curl, wget and an SSH server.
-First cd to the location of this repo and set the executable bit on the *container.sh* script in the *contrib* folder and run it with sudo.
-```
-honeypot/contrib$ chmod +x container.sh
-honeypot/contrib$ sudo ./container.sh
-``` 
-Congratulations, the setup is done and testing can begin!
-Start Honeytrap with the following command:
-```
-$GOPATH/bin/honeytrap --config $GOPATH/config.toml 
-
-```
-Try connecting to the honeypot, with the password ubuntu:
-```
-ssh -p 8022 ubuntu@localhost
-```
+## Installation
+Currently Honeytrap can only be installed from source on Linux, since it depends on Linux Containers (LXC). It has been tested on Linux (CentOS and Ubuntu) and also works on a Raspberry Pi. Our guide is provided [here](https://github.com/Einzelganger/honeytrap/wiki/Installation).
+> Note that the Dockerfile is there for autobuilding purposes, not for installing Honeytrap.
 
 
 ## API
-Honeytrap exposes a specific API which allows us to easily retrieve data about sessions and events which are occurring within the deployed instance. This API allows anyone using the project to expose an interface to showcase the different occurring sessions running on the instance.
+Honeytrap exposes an API that makes it easy to retrieve data about sessions and events that occur within the deployed instance. This API allows anyone using the project to expose an interface to showcase the different occurring sessions running on the instance.
 
 More information:
-- The **HTTP API** manual can be found [here](HTTP-API.md) 
-- The  **WebSocket API** manual can be found [here](WebSocket-API.md) 
+- The **HTTP API** manual can be found [here](https://github.com/Einzelganger/honeytrap/wiki/HTTP-API.md) 
+- The  **WebSocket API** manual can be found [here](https://github.com/Einzelganger/honeytrap/wiki/WebSocket-API.md) 
 
 
 ## Contribute
+Contributions are [welcome](https://github.com/Einzelganger/honeytrap/wiki/Contribution_Guide).
 
-Contributions are welcome.
-
-### Setup your Honeytrap Github Repository
-
-Fork Honeytrap upstream source repository to your own personal repository. Copy the URL for marija from your personal github repo (you will need it for the git clone command below).
-
-```sh
-$ mkdir -p $GOPATH/src/github.com/honeytrap/honeytrap
-$ cd $GOPATH/src/github.com/honeytrap/honeytrap
-$ git clone <paste saved URL for personal forked honeytrap repo>
-$ cd honeytrap/honeytrap
-```
-
-###  Developer Guidelines
-``Honeytrap`` community welcomes your contribution. To make the process as seamless as possible, we ask for the following:
-* Go ahead and fork the project and make your changes. We encourage pull requests to discuss code changes.
-    - Fork it
-    - Create your feature branch (git checkout -b my-new-feature)
-    - Commit your changes (git commit -am 'Add some feature')
-    - Push to the branch (git push origin my-new-feature)
-    - Create new Pull Request
-
-* If you have additional dependencies for ``Honeytrap``, ``Honeytrap`` manages its dependencies using [govendor](https://github.com/kardianos/govendor):
-    - Run `go get foo/bar`.
-    - Edit your code to import foo/bar.
-    - Run `make pkg-add PKG=foo/bar` from the top-level directory.
-
-* If you have dependencies for ``Honeytrap`` which needs to be removed:
-    - Edit your code to not import foo/bar.
-    - Run `make pkg-remove PKG=foo/bar` from top-level directory.
-
-* When you're ready to create a pull request, be sure to:
-    - Have test cases for the new code. If you have questions about how to do it, please ask in your pull request.
-    - Run `make verifiers`
-    - Squash your commits into a single commit. `git rebase -i`. It's okay to force-update your pull request.
-    - Make sure `go test -race ./...` and `go build` completes.
-
-* Read [Effective Go](https://github.com/golang/go/wiki/CodeReviewComments) article from Golang project.
-    - `Honeytrap` project fully conforms to Golang style.
-    - If you found offending code, please feel free to send a pull request.
-
-## Creators
+## About
+We hope you enjoy this program. If you have any comments, tips or want to thank us, you can find us here.
 
 **Remco Verhoef**
 - <https://twitter.com/remco_verhoef>
 - <https://twitter.com/dutchcoders>
-
-## Copyright and license
-
-Code and documentation copyright 2017 Honeytrap.
-
-Code released under [Affero General Public License](LICENSE).
-
