@@ -18,8 +18,8 @@ Currently Honeytrap can only be installed from source on Linux, since it depends
 Honeytrap exposes an API that makes it easy to retrieve data about sessions and events that occur within the deployed instance. This API allows anyone using the project to expose an interface to showcase the different occurring sessions running on the instance.
 
 More information:
-- The **HTTP API** manual can be found [here](https://github.com/Einzelganger/honeytrap/wiki/HTTP-API.md) 
-- The  **WebSocket API** manual can be found [here](https://github.com/Einzelganger/honeytrap/wiki/WebSocket-API.md) 
+- The **HTTP API** manual can be found [here](https://github.com/Einzelganger/honeytrap/wiki/HTTP-API) 
+- The  **WebSocket API** manual can be found [here](https://github.com/Einzelganger/honeytrap/wiki/WebSocket-API) 
 
 
 ## Contribute
