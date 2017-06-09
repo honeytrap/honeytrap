@@ -39,6 +39,12 @@ key = "slack.4"
 host = "https://hooks.slack.com/services/"
 token = "KUL6M39MCM/YU16GBD/VOOW9HG60eDfoFBiMF"
 
+[[channel]] 
+backends = ["console"] 
+#categories = ["sessions", "containers"] 
+#sensors = ["sessions-start", "containers-open"] 
+#events = ["connection-open", "connection-closed"]
+
 [housekeeper]
 every = "10s"
 
