@@ -1,12 +1,12 @@
 package canary
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
 	"math/rand"
 	"net"
-	"os"
 	"strings"
 	"sync"
 	"syscall"
@@ -87,6 +87,15 @@ type Canary struct {
 	buffer *rbuf.FixedSizeRingBuf
 
 	stateTable StateTable
+
+	txqueue *Queue
+}
+
+type Queue struct {
+	packets []interface{}
+}
+
+func Add() {
 }
 
 // Taken from https://github.com/xiezhenye/harp/blob/master/src/arp/arp.go#L53
@@ -136,6 +145,7 @@ func (c *Canary) handleUDP(iph *ipv4.Header, data []byte) error {
 		c.events.Send(EventUDP(iph.Src, iph.Dst, hdr.Source, hdr.Destination, hdr.Payload))
 	} else if err := fn(iph, hdr); err != nil {
 		fmt.Printf("Could not decode udp packet: %s", err)
+		return err
 	}
 
 	return nil
@@ -225,17 +235,16 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 	}
 
 	state := c.stateTable.Get(iph.Src, iph.Dst, hdr.Source, hdr.Destination)
-	if state != nil {
-	} else if hdr.HasFlag(tcp.SYN) && !hdr.HasFlag(tcp.ACK) {
+	if hdr.HasFlag(tcp.SYN) && !hdr.HasFlag(tcp.ACK) {
 		// no state found
-		state = NewState(iph.Src, hdr.Source, iph.Dst, hdr.Destination)
+		state = c.NewState(iph.Src, hdr.Source, iph.Dst, hdr.Destination)
 		state.State = SocketListen
 		c.stateTable.Add(state)
 
 		// or is state == socket?
 
 		// new socket
-		state.socket = NewSocket(
+		state.socket = state.NewSocket(
 			&net.TCPAddr{
 				IP:   iph.Src,
 				Port: int(hdr.Source),
@@ -245,28 +254,17 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 				Port: int(hdr.Destination),
 			},
 		)
+	}
 
-		go func() {
-			// we can check als for signaturs to use specifiec protocol
-			handlers := map[uint16]func(net.Conn) error{
-				80: c.DecodeHTTP,
-			}
-
-			if fn, ok := handlers[hdr.Destination]; !ok {
-				buff := make([]byte, 2048)
-
-				rdr := io.TeeReader(state.socket, os.Stdout)
-				n, _ := rdr.Read(buff)
-
-				c.events.Send(EventTCPPayload(state.SrcIP, state.DestIP, state.SrcPort, state.DestPort, buff[:n]))
-			} else if err := fn(state.socket); err != nil {
-				_ = fn
-			}
-		}()
-	} else {
+	if state == nil {
 		// no existing state found, returning
 		return nil // ErrNoExistingStateFound()
 	}
+
+	// this is far from ideal, but basically we want to prevent changing state values
+	// in race conditions (eg from socket) and from handleTCP function
+	state.m.Lock()
+	defer state.m.Unlock()
 
 	// https://tools.ietf.org/html/rfc793
 	// page 65
@@ -279,7 +277,7 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 
 			state.RecvNext = hdr.SeqNum
 			state.RecvNext++
-			c.ack(state, tcp.SYN|tcp.ACK)
+			c.send(state, []byte{}, tcp.SYN|tcp.ACK)
 			state.SendNext++
 			state.State = SocketSynReceived
 			return nil
@@ -362,6 +360,38 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 			// and send it.
 			return nil
 		}
+
+		// listen handler,
+		// linux works with syn queue
+		go func() {
+			// we can check als for signaturs to use specifiec protocol
+			handlers := map[uint16]func(net.Conn) error{
+				23:   c.DecodeTelnet,
+				80:   c.DecodeHTTP,
+				443:  c.DecodeHTTPS,
+				139:  c.DecodeNBTIP,
+				445:  c.DecodeSMBIP,
+				1433: c.DecodeMSSQL,
+				6379: c.DecodeRedis,
+			}
+
+			if fn, ok := handlers[hdr.Destination]; !ok {
+				buff := make([]byte, 2048)
+
+				rdr := state.socket // io.TeeReader(state.socket, os.Stdout)
+				n, _ := rdr.Read(buff)
+
+				w := bufio.NewWriter(state.socket)
+				//w.WriteString("test")
+				w.Flush()
+
+				state.socket.Close()
+
+				c.events.Send(EventTCPPayload(state.SrcIP, state.DestIP, state.SrcPort, state.DestPort, buff[:n]))
+			} else if err := fn(state.socket); err != nil {
+				_ = fn
+			}
+		}()
 	}
 
 	// SocketEstablished
@@ -389,8 +419,9 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 	// something not yet sent (SEG.ACK > SND.NXT) then send an ACK,
 	// drop the segment, and return.
 	if hdr.AckNum > state.SendUnacknowledged {
-		c.ack(state, tcp.ACK)
-		return nil
+		// is this necessary?
+		// c.send(state, []byte{}, tcp.ACK)
+		// return nil
 	}
 
 	// If SND.UNA < SEG.ACK =< SND.NXT, the send window should be
@@ -439,7 +470,8 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 		if len(hdr.Payload) > 0 {
 			// This acknowledgment should be piggybacked on a segment being
 			// transmitted if possible without incurring undue delay.
-			c.ack(state, tcp.ACK)
+			// fmt.Printf("ACK'ing %d %d\n", state.SendNext, state.RecvNext)
+			c.send(state, []byte{}, tcp.ACK)
 		}
 	}
 
@@ -452,17 +484,40 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 	}
 
 	if hdr.Ctrl&tcp.FIN == tcp.FIN {
+		// If the FIN bit is set, signal the user "connection closing" and
+		// return any pending RECEIVEs with same message, advance RCV.NXT
+		// over the FIN, and Option an acknowledgment for the FIN.  Note that
+		// FIN implies PUSH for any segment text not yet delivered to the
+		// user.
+		state.RecvNext = hdr.SeqNum
+
 		if state.State == SocketSynReceived || state.State == SocketEstablished {
 			// Enter the CLOSE-WAIT state.
+			state.socket.flush()
+			state.socket.close()
+
+			state.RecvNext++
+			// c.send(state, []byte{}, tcp.SYN|tcp.ACK)
+			c.send(state, []byte{}, tcp.FIN|tcp.ACK)
+			state.SendNext++
+
 			state.State = SocketCloseWait
+
+			// 			state.socket.close()
 		} else if state.State == SocketFinWait1 {
 			// If our FIN has been ACKed (perhaps in this segment), then
 			// enter TIME-WAIT, start the time-wait timer, turn off the other
 			// timers; otherwise enter the CLOSING state.
 			state.State = SocketClosing
 		} else if state.State == SocketFinWait2 {
+			state.RecvNext++
+
+			// fmt.Printf("(socketfinwait)ACK'ing %d %d\n", state.SendNext, state.RecvNext)
+			c.send(state, []byte{}, tcp.ACK)
+
 			// Enter the TIME-WAIT state.  Start the time-wait timer, turn
 			// off the other timers.
+			state.State = SocketTimeWait
 		}
 
 		// we should only close when FIN but not FIN-ACK
@@ -491,8 +546,8 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 	return nil
 }
 
-func (c *Canary) ack(state *State, flags tcp.Flag) error {
-	payload := []byte{}
+func (c *Canary) send(state *State, payload []byte, flags tcp.Flag) error {
+	// fmt.Printf("Sending packet flags=%d state=%d payload-length=%d\n%s\n", flags, state.State, len(payload), string(debug.Stack()))
 
 	th := &tcp.Header{
 		Source:      state.DestPort,
@@ -502,7 +557,7 @@ func (c *Canary) ack(state *State, flags tcp.Flag) error {
 		Reserved:    0,
 		ECN:         0,
 		Ctrl:        flags,
-		Window:      65535,
+		Window:      state.ReceiveWindow,
 		Checksum:    0,
 		Urgent:      0,
 		Options:     []tcp.Option{},
@@ -597,13 +652,28 @@ func (c *Canary) ack(state *State, flags tcp.Flag) error {
 	data2, err := ef.Marshal()
 	if err != nil {
 		fmt.Println("Error marshalling ethernet frame: ", err)
+		return err
 	}
 
 	data = append(data2, data...)
 
-	c.send(ae.Interface, data)
+	c.buffer.Write([]byte{byte((len(data) & 0xFF00) >> 8), byte(len(data) & 0xFF)})
+	c.buffer.Write(data)
 
-	return nil
+	fd := c.descriptors[ae.Interface]
+
+	// copy to retransmission queue
+	/*
+		c.txqueue = append(c.txqueue, Packet{
+			t: time.Now()
+			d:
+		})
+	*/
+
+	return syscall.EpollCtl(c.epfd, syscall.EPOLL_CTL_MOD, int(fd), &syscall.EpollEvent{
+		Events: syscall.EPOLLIN | syscall.EPOLLOUT,
+		Fd:     int32(fd),
+	})
 }
 
 // Count occurrences in s of any bytes in t.
@@ -696,6 +766,7 @@ func New(interfaces []string, events pushers.Channel) (*Canary, error) {
 		r:                 r,
 		knockChan:         make(chan interface{}, 100),
 		events:            events,
+		m:                 sync.Mutex{},
 
 		buffer: rbuf.NewFixedSizeRingBuf(65535),
 	}, nil
@@ -704,20 +775,6 @@ func New(interfaces []string, events pushers.Channel) (*Canary, error) {
 // Close will close the canary
 func (c *Canary) Close() {
 	syscall.Close(c.epfd)
-}
-
-// send will queue a packet for sending
-func (c *Canary) send(intf string, data []byte) error {
-	c.buffer.Write(data)
-
-	fd := c.descriptors[intf]
-
-	err := syscall.EpollCtl(c.epfd, syscall.EPOLL_CTL_MOD, int(fd), &syscall.EpollEvent{
-		Events: syscall.EPOLLIN | syscall.EPOLLOUT,
-		Fd:     int32(fd),
-	})
-
-	return err
 }
 
 func updateTCPChecksum(iph *ipv4.Header, data []byte) {
@@ -762,22 +819,32 @@ func updateTCPChecksum(iph *ipv4.Header, data []byte) {
 
 // send will queue a packet for sending
 func (c *Canary) transmit(fd int32) error {
-	buffer := make([]byte, 65535)
-	n, err := c.buffer.Read(buffer)
-	if err != nil {
-		log.Error("Error reading buffer: %s", err)
-		return err
-	}
+	for {
+		len, err := c.buffer.ReadUint32()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			log.Error("Error reading buffer 1: %s", err)
+			return err
+		}
 
-	to := &syscall.SockaddrLinklayer{
-		Protocol: htons(syscall.ETH_P_ALL),
-		Ifindex:  c.networkInterfaces[0].Index,
-	}
+		buffer := make([]byte, len)
+		n, err := c.buffer.Read(buffer)
+		if err != nil {
+			log.Error("Error reading buffer 2: %s", err)
+			return err
+		}
 
-	err = syscall.Sendto((int(fd)), buffer[:n], 0, to)
-	if err != nil {
-		log.Error("Error sending buffer: %s", err)
-		return err
+		to := &syscall.SockaddrLinklayer{
+			Protocol: htons(syscall.ETH_P_ALL),
+			Ifindex:  c.networkInterfaces[0].Index,
+		}
+
+		err = syscall.Sendto((int(fd)), buffer[:n], 0, to)
+		if err != nil {
+			log.Error("Error sending buffer: %s", err)
+			return err
+		}
 	}
 
 	return nil

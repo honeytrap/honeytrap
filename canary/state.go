@@ -3,11 +3,17 @@ package canary
 import (
 	"math/rand"
 	"net"
+	"sync"
+
+	"github.com/honeytrap/honeytrap/canary/tcp"
 )
 
 // State defines a struct for holding connection data and address.
 type State struct {
 	// interface?
+	c *Canary
+
+	m sync.Mutex
 
 	SrcIP   net.IP
 	SrcPort uint16
@@ -48,12 +54,33 @@ type State struct {
 	// RCV.NXT - receive next
 	RecvNext uint32
 	// RCV.WND - receive window
-	ReceiveWindow uint32
+	ReceiveWindow uint16
 	// RCV.UP  - receive urgent pointer
 	ReceiveUrgentPointer uint32
 
 	// IRS     - initial receive sequence number
 	InitialReceiveSequenceNumber uint32
+}
+
+func (s *State) write(data []byte) {
+	s.m.Lock()
+	defer s.m.Unlock()
+
+	s.c.send(s, data, tcp.PSH|tcp.ACK)
+	s.SendNext += uint32(len(data))
+}
+
+func (s *State) close() {
+	s.m.Lock()
+	defer s.m.Unlock()
+
+	// Queue this until all preceding SENDs have been segmentized, then
+	// form a FIN segment and send it.  In any case, enter FIN-WAIT-1
+	// state.
+	s.c.send(s, []byte{}, tcp.FIN|tcp.ACK)
+	s.SendNext++
+
+	s.State = SocketFinWait1
 }
 
 // StateTable defines a slice of States type.
@@ -91,8 +118,10 @@ func (st *StateTable) Get(SrcIP, DestIP net.IP, SrcPort, DestPort uint16) *State
 }
 
 // NewState returns a new instance of a State.
-func NewState(src net.IP, srcPort uint16, dest net.IP, dstPort uint16) *State {
+func (c *Canary) NewState(src net.IP, srcPort uint16, dest net.IP, dstPort uint16) *State {
 	return &State{
+		c: c,
+
 		SrcIP:   src,
 		SrcPort: srcPort,
 
@@ -101,7 +130,11 @@ func NewState(src net.IP, srcPort uint16, dest net.IP, dstPort uint16) *State {
 
 		ID: rand.Uint32(),
 
+		ReceiveWindow: 65535,
+
 		RecvNext:                  0,
 		InitialSendSequenceNumber: rand.Uint32(),
+
+		m: sync.Mutex{},
 	}
 }

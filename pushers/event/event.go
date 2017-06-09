@@ -1,6 +1,7 @@
 package event
 
 import (
+	"encoding/hex"
 	"fmt"
 	"net"
 	"time"
@@ -234,6 +235,7 @@ func Message(format string, a ...interface{}) Option {
 func Payload(data []byte) Option {
 	return func(m Event) {
 		m["payload"] = string(data)
+		m["payload-hex"] = hex.EncodeToString(data)
 		m["payload-length"] = len(data)
 	}
 }

@@ -1,6 +1,7 @@
 package canary
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -64,6 +65,8 @@ type Socket struct {
 	wbuffer *rbuf.FixedSizeRingBuf
 
 	closed bool
+
+	state *State
 }
 
 func (s Socket) LocalAddr() net.Addr {
@@ -97,10 +100,8 @@ func (s Socket) Read(p []byte) (n int, err error) {
 	// close (io.EOF)
 	select {
 	case <-s.rchan:
-		/*
-			case <-time.After(time.Second * 1):
-				return 0, errors.New("Timeout occured")
-		*/
+	case <-time.After(time.Second * 60):
+		return 0, errors.New("Readtimeout occured")
 	}
 
 	n, _ = s.rbuffer.Read(p)
@@ -118,6 +119,7 @@ func (s Socket) read(p []byte) (n int, err error) {
 }
 
 func (s Socket) Write(p []byte) (n int, err error) {
+	s.state.write(p)
 	// all writes are buffered in herer
 	// shold trigger channel that will update state
 	// don't send by socket self
@@ -135,13 +137,18 @@ func (s Socket) close() {
 }
 
 func (s Socket) Close() error {
+	s.state.close()
+
+	fmt.Println("CLOSE")
 	return nil
 }
 
-func NewSocket(src, dst net.Addr) *Socket {
+func (state *State) NewSocket(src, dst net.Addr) *Socket {
 	return &Socket{
-		laddr: src,
-		raddr: dst,
+		state: state,
+
+		laddr: dst,
+		raddr: src,
 
 		rchan: make(chan interface{}),
 

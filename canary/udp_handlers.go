@@ -15,7 +15,7 @@ import (
 
 // contains different variables in use.
 var (
-	SensorCanary = event.Sensor("Canary")
+	SensorCanary = event.Sensor("canary")
 
 	// EventCategorySSDP contains events for ssdp traffic
 	EventCategoryUDP = event.Category("udp")
