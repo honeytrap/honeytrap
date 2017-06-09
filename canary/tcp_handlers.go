@@ -130,7 +130,7 @@ func (c *Canary) DecodeHTTPS(conn net.Conn) error {
 			event.Custom("https.random", fmt.Sprintf("%x", random)),
 		}...)
 
-		if clientVersion == 0x304 {
+		if clientVersion != 0x304 {
 			randomEpoch := binary.BigEndian.Uint32(buff[2:6])
 			options = append(options, event.Custom("https.random-epoch", fmt.Sprintf("%d", randomEpoch)))
 		}

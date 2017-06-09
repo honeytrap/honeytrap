@@ -63,6 +63,8 @@ type State struct {
 }
 
 func (s *State) write(data []byte) {
+	// I think tstate should not write packets directly,
+	// instead to write queue or buffer
 	s.m.Lock()
 	defer s.m.Unlock()
 
@@ -71,6 +73,8 @@ func (s *State) write(data []byte) {
 }
 
 func (s *State) close() {
+	// I think tstate should not write packets directly,
+	// instead to write queue or buffer
 	s.m.Lock()
 	defer s.m.Unlock()
 
