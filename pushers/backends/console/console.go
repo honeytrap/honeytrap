@@ -33,14 +33,22 @@ type Config struct {
 type ConsoleBackend struct {
 	io.Writer
 
+	ch     chan event.Event
 	config Config
 }
 
 // New returns a new instance of a FileBackend.
 func New(c Config) *ConsoleBackend {
-	return &ConsoleBackend{
+	ch := make(chan event.Event, 100)
+
+	backend := ConsoleBackend{
 		Writer: os.Stdout,
+		ch:     ch,
 	}
+
+	go backend.run()
+
+	return &backend
 }
 
 // NewWith defines a function to return a pushers.Backend which delivers
@@ -73,36 +81,44 @@ func printify(s string) string {
 	return o
 }
 
+func (b ConsoleBackend) run() {
+	for {
+		e := <-b.ch
+
+		params := []string{}
+		for k, v := range e {
+			switch v.(type) {
+			case net.IP:
+				params = append(params, fmt.Sprintf("%s=%s", k, v.(net.IP).String()))
+			case uint32:
+				params = append(params, fmt.Sprintf("%s=%d", k, v))
+			case uint16:
+				params = append(params, fmt.Sprintf("%s=%d", k, v))
+			case uint8:
+				params = append(params, fmt.Sprintf("%s=%d", k, v))
+			case uint:
+				params = append(params, fmt.Sprintf("%s=%d", k, v))
+			case int32:
+				params = append(params, fmt.Sprintf("%s=%d", k, v))
+			case int16:
+				params = append(params, fmt.Sprintf("%s=%d", k, v))
+			case int8:
+				params = append(params, fmt.Sprintf("%s=%d", k, v))
+			case int:
+				params = append(params, fmt.Sprintf("%s=%d", k, v))
+			case string:
+				params = append(params, fmt.Sprintf("%s=%s", k, printify(v.(string))))
+			default:
+				params = append(params, fmt.Sprintf("%s=%#v", k, v))
+			}
+		}
+
+		fmt.Fprintf(b.Writer, "%s > %s > %s\n", e["sensor"], e["category"], strings.Join(params, ", "))
+	}
+}
+
 // Send delivers the giving if it passes all filtering criteria into the
 // FileBackend write queue.
-func (f *ConsoleBackend) Send(e event.Event) {
-	params := []string{}
-	for k, v := range e {
-		switch v.(type) {
-		case net.IP:
-			params = append(params, fmt.Sprintf("%s=%s", k, v.(net.IP).String()))
-		case uint32:
-			params = append(params, fmt.Sprintf("%s=%d", k, v))
-		case uint16:
-			params = append(params, fmt.Sprintf("%s=%d", k, v))
-		case uint8:
-			params = append(params, fmt.Sprintf("%s=%d", k, v))
-		case uint:
-			params = append(params, fmt.Sprintf("%s=%d", k, v))
-		case int32:
-			params = append(params, fmt.Sprintf("%s=%d", k, v))
-		case int16:
-			params = append(params, fmt.Sprintf("%s=%d", k, v))
-		case int8:
-			params = append(params, fmt.Sprintf("%s=%d", k, v))
-		case int:
-			params = append(params, fmt.Sprintf("%s=%d", k, v))
-		case string:
-			params = append(params, fmt.Sprintf("%s=%s", k, printify(v.(string))))
-		default:
-			params = append(params, fmt.Sprintf("%s=%#v", k, v))
-		}
-	}
-
-	fmt.Fprintf(f.Writer, "%s > %s > %s\n", e["sensor"], e["category"], strings.Join(params, ", "))
+func (b *ConsoleBackend) Send(e event.Event) {
+	b.ch <- e
 }
