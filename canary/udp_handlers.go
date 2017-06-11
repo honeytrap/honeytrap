@@ -103,7 +103,7 @@ func (c *Canary) DecodeSIP(iph *ipv4.Header, udph *udp.Header) error {
 	// add specific detections, reflection attack detection etc
 	c.events.Send(event.New(
 		CanaryOptions,
-		EventCategorySNMPTrap,
+		EventCategorySIP,
 		event.ServiceStarted,
 
 		event.SourceIP(iph.Src),
