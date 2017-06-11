@@ -373,6 +373,7 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 				445:  c.DecodeSMBIP,
 				1433: c.DecodeMSSQL,
 				6379: c.DecodeRedis,
+				9200: c.DecodeElasticsearch,
 			}
 
 			if fn, ok := handlers[hdr.Destination]; !ok {

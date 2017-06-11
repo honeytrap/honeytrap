@@ -75,7 +75,51 @@ func (c *Canary) DecodeHTTP(conn net.Conn) error {
 }
 
 var (
-	// EventCategoryHTTP contains events for ssdp traffic
+	// EventCategoryElasticsearch contains events for elasticsearch traffic
+	EventCategoryElasticsearch = event.Category("elasticsearch")
+)
+
+// DecodeElasticsearch will decode NTP packets
+func (c *Canary) DecodeElasticsearch(conn net.Conn) error {
+	defer conn.Close()
+
+	request, err := http.ReadRequest(
+		bufio.NewReader(conn),
+	)
+	if err != nil {
+		// log error / send error channel
+		return nil
+	}
+
+	// add specific detections, reflection attack detection etc
+	c.events.Send(event.New(
+		CanaryOptions,
+		EventCategoryElasticsearch,
+		event.ServiceStarted,
+		event.SourceAddr(conn.RemoteAddr()),
+		event.DestinationAddr(conn.LocalAddr()),
+		event.Custom("http.method", request.Method),
+		event.Custom("http.uri", request.URL.String()),
+		event.Custom("http.proto", request.Proto),
+		event.Custom("http.headers", request.Header),
+		event.Custom("http.host", request.Header.Get("Host")),
+		event.Custom("http.content-type", request.Header.Get("Content-Type")),
+		event.Custom("http.user-agent", request.Header.Get("User-Agent")),
+	))
+
+	resp := http.Response{}
+
+	w := bufio.NewWriter(conn)
+	resp.Write(w)
+
+	w.Flush()
+	_ = w
+
+	fmt.Printf("%+v", request)
+	return nil
+}
+
+var (
 	// EventCategoryHTTPS contains events for https traffic
 	EventCategoryHTTPS = event.Category("https")
 )
