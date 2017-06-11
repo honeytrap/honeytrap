@@ -76,6 +76,7 @@ func (c *Canary) DecodeHTTP(conn net.Conn) error {
 
 var (
 	// EventCategoryHTTP contains events for ssdp traffic
+	// EventCategoryHTTPS contains events for https traffic
 	EventCategoryHTTPS = event.Category("https")
 )
 
