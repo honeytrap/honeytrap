@@ -155,6 +155,11 @@ func (h *Header) Unmarshal(b []byte) error {
 		copy(h.Options, b[HeaderLen:])
 	}
 
+	if h.TotalLen > len(b) {
+		return fmt.Errorf("buffer too short, expected %d got %d", 20+h.TotalLen, len(b))
+
+	}
+
 	h.Payload = b[20:h.TotalLen]
 
 	return nil
