@@ -78,6 +78,10 @@ func (s Socket) RemoteAddr() net.Addr {
 }
 
 func (s Socket) flush() {
+	if s.closed {
+		return
+	}
+
 	// non blocking channel
 	select {
 	case s.rchan <- []byte{}:
