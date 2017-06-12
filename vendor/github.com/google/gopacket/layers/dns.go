@@ -445,6 +445,10 @@ loop:
 				return nil, 0,
 					errors.New("dns name is too long")
 			}
+			if index2 > len(data) {
+				return nil, 0,
+					errors.New("dns name out of buffer")
+			}
 			*buffer = append(*buffer, '.')
 			*buffer = append(*buffer, data[index+1:index2]...)
 			index = index2
