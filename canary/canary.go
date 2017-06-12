@@ -20,6 +20,7 @@ import (
 	"github.com/honeytrap/honeytrap/canary/tcp"
 	"github.com/honeytrap/honeytrap/canary/udp"
 	"github.com/honeytrap/honeytrap/pushers"
+	"github.com/honeytrap/honeytrap/pushers/event"
 	logging "github.com/op/go-logging"
 )
 
@@ -364,6 +365,30 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 		// listen handler,
 		// linux works with syn queue
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Println("Recovered in f", r)
+
+					message := event.Message("%+v", r)
+					if err, ok := r.(error); ok {
+						message = event.Message("%+v", err)
+					}
+
+					c.events.Send(event.New(
+						CanaryOptions,
+						EventCategoryTCP,
+						event.SeverityFatal,
+						event.SourceIP(state.SrcIP),
+						event.DestinationIP(state.DestIP),
+						event.SourcePort(state.SrcPort),
+						event.DestinationPort(state.DestPort),
+						event.Stack(),
+						message,
+						// event.Payload(buff[:n]),
+					))
+				}
+			}()
+
 			// we can check als for signaturs to use specifiec protocol
 			handlers := map[uint16]func(net.Conn) error{
 				23:   c.DecodeTelnet,

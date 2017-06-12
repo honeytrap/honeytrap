@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
+	"runtime/debug"
 	"time"
 )
 
@@ -18,6 +19,8 @@ var (
 	DataRead             = Type("DATA:READ")
 	DataWrite            = Type("DATA:WRITE")
 	ServiceEnded         = Type("SERVICE:ENDED")
+	SeverityFatal        = Type("fatal")
+	SeverityError        = Type("error")
 	ServiceStarted       = Type("SERVICE:STARTED")
 	ConnectionOpened     = Type("CONNECTION:OPENED")
 	ConnectionClosed     = Type("CONNECTION:CLOSED")
@@ -228,6 +231,14 @@ func DestinationPort(port uint16) Option {
 func Message(format string, a ...interface{}) Option {
 	return func(m Event) {
 		m["message"] = fmt.Sprintf(format, a...)
+	}
+}
+
+// Stack returns a stacktrace
+func Stack() Option {
+	return func(m Event) {
+		data := debug.Stack()
+		m["stacktrace"] = string(data)
 	}
 }
 
