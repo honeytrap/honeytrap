@@ -96,6 +96,10 @@ func MakeFilter(bus *EventBus, config *config.Config, conf config.ChannelConfig)
 
 		channel := base
 
+		if config.Token != "" {
+			channel = TokenChannel(channel, config.Token)
+		}
+
 		if len(conf.Categories) != 0 {
 			channel = FilterChannel(channel, RegexFilterFunc("category", conf.Categories))
 		}

@@ -57,3 +57,22 @@ func FilterChannel(channel Channel, fn FilterFunc) Channel {
 		FilterFn: fn,
 	}
 }
+
+type tokenChannel struct {
+	Channel
+
+	Token string
+}
+
+// Send delivers the slice of PushMessages and using the internal filters
+// to filter out the desired messages allowed for all registered backends.
+func (mc tokenChannel) Send(e event.Event) {
+	mc.Channel.Send(event.Apply(e, event.Token(mc.Token)))
+}
+
+func TokenChannel(channel Channel, token string) Channel {
+	return tokenChannel{
+		Channel: channel,
+		Token:   token,
+	}
+}
