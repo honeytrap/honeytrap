@@ -22,7 +22,7 @@ type filterChannel struct {
 
 // Send delivers the slice of PushMessages and using the internal filters
 // to filter out the desired messages allowed for all registered backends.
-func (mc filterChannel) Send(e event.Event) {
+func (mc filterChannel) Send(e *event.Event) {
 	if !mc.FilterFn(e) {
 		return
 	}
@@ -30,8 +30,10 @@ func (mc filterChannel) Send(e event.Event) {
 	mc.Channel.Send(e)
 }
 
-type FilterFunc func(event.Event) bool
+// FilterFunc defines a function for event filtering.
+type FilterFunc func(*event.Event) bool
 
+// RegexFilterFunc returns a function for filtering event values.
 func RegexFilterFunc(field string, expressions []string) FilterFunc {
 	matchers := make([]*regexp.Regexp, len(expressions))
 
@@ -39,7 +41,7 @@ func RegexFilterFunc(field string, expressions []string) FilterFunc {
 		matchers[i] = regexp.MustCompile(match)
 	}
 
-	return func(e event.Event) bool {
+	return func(e *event.Event) bool {
 		for _, rx := range matchers {
 			val := e.Get(field)
 			return rx.MatchString(val)
@@ -66,10 +68,11 @@ type tokenChannel struct {
 
 // Send delivers the slice of PushMessages and using the internal filters
 // to filter out the desired messages allowed for all registered backends.
-func (mc tokenChannel) Send(e event.Event) {
+func (mc tokenChannel) Send(e *event.Event) {
 	mc.Channel.Send(event.Apply(e, event.Token(mc.Token)))
 }
 
+// TokenChannel returns a Channel to set token value.
 func TokenChannel(channel Channel, token string) Channel {
 	return tokenChannel{
 		Channel: channel,

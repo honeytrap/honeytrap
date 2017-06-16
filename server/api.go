@@ -178,32 +178,32 @@ func (h *Honeycast) Containers(w http.ResponseWriter, r *http.Request, params ma
 
 // Send delivers the underline provided messages and stores them into the underline
 // Honeycast database for retrieval through the API.
-func (h *Honeycast) Send(ev event.Event) {
-	var containers, connections, data, services, pings, serrors, sessions, events []event.Event
+func (h *Honeycast) Send(ev *event.Event) {
+	var containers, connections, data, services, pings, serrors, sessions, events []event.Map
 
-	events = append(events, ev)
+	events = append(events, ev.Map())
 
 	sensor, ok := ev["sensor"].(string)
 	if !ok {
-		log.Error("Honeycast API : Event object has non string sensor value : %#q", ev)
+		log.Error("Honeycast API : Event object has non string sensor value : %#q", ev.Map())
 		return
 	}
 
 	switch sensor {
 	case event.SessionSensorName:
-		sessions = append(sessions, ev)
+		sessions = append(sessions, ev.Map())
 	case event.PingSensorName:
-		pings = append(pings, ev)
+		pings = append(pings, ev.Map())
 	case event.DataSensorName:
-		data = append(data, ev)
+		data = append(data, ev.Map())
 	case event.ServiceSensorName:
-		services = append(services, ev)
+		services = append(services, ev.Map())
 	case event.ContainersSensorName:
-		containers = append(containers, ev)
+		containers = append(containers, ev.Map())
 	case event.ConnectionSensorName:
-		connections = append(connections, ev)
+		connections = append(connections, ev.Map())
 	case event.ConnectionErrorSensorName, event.DataErrorSensorName:
-		serrors = append(serrors, ev)
+		serrors = append(serrors, ev.Map())
 	}
 
 	// Batch deliver both sessions and events data to all connected

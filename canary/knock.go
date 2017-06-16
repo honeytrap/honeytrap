@@ -121,7 +121,7 @@ func (k KnockICMP) NewGroup() *KnockGroup {
 }
 
 // EventPortscan will return a portscan event struct
-func EventPortscan(src, dst net.IP, duration time.Duration, count int, ports []string) event.Event {
+func EventPortscan(src, dst net.IP, duration time.Duration, count int, ports []string) *event.Event {
 	// TODO: do something different with message
 	return event.New(
 		CanaryOptions,

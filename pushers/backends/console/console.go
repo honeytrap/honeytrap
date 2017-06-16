@@ -33,13 +33,13 @@ type Config struct {
 type ConsoleBackend struct {
 	io.Writer
 
-	ch     chan event.Event
+	ch     chan event.Map
 	config Config
 }
 
 // New returns a new instance of a FileBackend.
 func New(c Config) *ConsoleBackend {
-	ch := make(chan event.Event, 100)
+	ch := make(chan event.Map, 100)
 
 	backend := ConsoleBackend{
 		Writer: os.Stdout,
@@ -119,6 +119,6 @@ func (b ConsoleBackend) run() {
 
 // Send delivers the giving if it passes all filtering criteria into the
 // FileBackend write queue.
-func (b *ConsoleBackend) Send(e event.Event) {
-	b.ch <- e
+func (b *ConsoleBackend) Send(e *event.Event) {
+	b.ch <- e.Map()
 }

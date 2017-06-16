@@ -66,7 +66,7 @@ func init() {
 }
 
 // Send delivers all messages to the underline connection.
-func (hc TrapBackend) Send(message event.Event) {
+func (hc TrapBackend) Send(message *event.Event) {
 	var err error
 	var req *http.Request
 
@@ -75,7 +75,7 @@ func (hc TrapBackend) Send(message event.Event) {
 
 	var jsData bytes.Buffer
 
-	if err := json.NewEncoder(&jsData).Encode(message); err != nil {
+	if err := json.NewEncoder(&jsData).Encode(message.Map()); err != nil {
 		log.Errorf("HoneytrapBackend: Error while marshalling to json: %s", err.Error())
 		return
 	}

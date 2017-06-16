@@ -36,7 +36,7 @@ type Config struct {
 type SlackBackend struct {
 	config Config
 
-	ch chan event.Event
+	ch chan event.Map
 }
 
 // New returns a new instance of a SlackBackend.
@@ -44,7 +44,7 @@ type SlackBackend struct {
 func New(config Config) *SlackBackend {
 	backend := SlackBackend{
 		config: config,
-		ch:     make(chan event.Event, 100),
+		ch:     make(chan event.Map, 100),
 	}
 
 	go backend.run()
@@ -198,8 +198,8 @@ func (b SlackBackend) run() {
 
 // Send delivers the giving push messages to the required slack channel.
 // TODO: Ask if Send shouldnt return an error to allow proper delivery validation.
-func (b SlackBackend) Send(e event.Event) {
-	b.ch <- e
+func (b SlackBackend) Send(e *event.Event) {
+	b.ch <- e.Map()
 }
 
 // Message defines the base message to be included sent to a slack endpoint.

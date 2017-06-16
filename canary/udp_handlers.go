@@ -26,7 +26,7 @@ var (
 )
 
 // EventUDP will return a snmp event struct
-func EventUDP(sourceIP, destinationIP net.IP, srcport, dstport uint16, payload []byte) event.Event {
+func EventUDP(sourceIP, destinationIP net.IP, srcport, dstport uint16, payload []byte) *event.Event {
 	return event.New(
 		SensorCanary,
 		EventCategoryUDP,

@@ -46,7 +46,7 @@ type FileBackend struct {
 	config  FileConfig
 	timeout time.Duration
 	dest    *os.File
-	request chan event.Event
+	request chan event.Map
 	closer  chan struct{}
 	wg      sync.WaitGroup
 }
@@ -55,7 +55,7 @@ type FileBackend struct {
 func New(c FileConfig) *FileBackend {
 	var fc FileBackend
 	fc.config = c
-	fc.request = make(chan event.Event)
+	fc.request = make(chan event.Map)
 	fc.closer = make(chan struct{})
 	fc.timeout = config.MakeDuration(c.Timeout, int(defaultWaitTime))
 
@@ -86,7 +86,7 @@ func (f *FileBackend) Wait() {
 
 // Send delivers the giving if it passes all filtering criteria into the
 // FileBackend write queue.
-func (f *FileBackend) Send(message event.Event) {
+func (f *FileBackend) Send(message *event.Event) {
 	log.Debug("FileBackend.Send : Started")
 
 	if err := f.syncWrites(); err != nil {
@@ -94,7 +94,7 @@ func (f *FileBackend) Send(message event.Event) {
 		return
 	}
 
-	f.request <- message
+	f.request <- message.Map()
 }
 
 // syncWrites startups the channel procedure to listen for new writes to giving file.
