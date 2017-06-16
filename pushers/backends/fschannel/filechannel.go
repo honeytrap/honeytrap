@@ -114,7 +114,7 @@ func (f *FileBackend) syncWrites() error {
 	}
 
 	if f.request == nil {
-		f.request = make(chan event.Event)
+		f.request = make(chan event.Map)
 	}
 
 	var err error

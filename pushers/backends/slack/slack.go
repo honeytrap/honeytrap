@@ -40,7 +40,6 @@ type SlackBackend struct {
 }
 
 // New returns a new instance of a SlackBackend.
-
 func New(config Config) *SlackBackend {
 	backend := SlackBackend{
 		config: config,

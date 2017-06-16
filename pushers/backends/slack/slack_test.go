@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/BurntSushi/toml"
@@ -18,6 +19,7 @@ import (
 const (
 	passed = "\u2713"
 	failed = "\u2717"
+	path   = "/services/343HJUYFHGT/B4545IO/VOOepdacxW9HG60eDfoFBiMF"
 )
 
 var (
@@ -42,10 +44,13 @@ var (
 
 type slackService struct {
 	Body bytes.Buffer
+	wg   sync.WaitGroup
 }
 
 func (s *slackService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/services/343HJUYFHGT/B4545IO/VOOepdacxW9HG60eDfoFBiMF" {
+	defer s.wg.Done()
+
+	if r.URL.Path != path {
 		w.WriteHeader(404)
 		return
 	}
@@ -58,10 +63,13 @@ func (s *slackService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 type anySlackService struct {
 	Body  bytes.Buffer
+	wg    sync.WaitGroup
 	Token string
 }
 
 func (s *anySlackService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	defer s.wg.Done()
+
 	if !strings.Contains(r.URL.Path, "/services") {
 		w.WriteHeader(404)
 		return
@@ -92,10 +100,14 @@ func TestSlackPusher(t *testing.T) {
 			server := httptest.NewServer(&service)
 
 			channel := slack.New(slack.Config{
-				WebhookURL: server.URL + "/services/343HJUYFHGT/B4545IO/VOOepdacxW9HG60eDfoFBiMF",
+				WebhookURL: server.URL + path,
 			})
 
+			service.wg.Add(1)
+
 			channel.Send(blueChip)
+
+			service.wg.Wait()
 
 			response := make(map[string]interface{})
 			if err := json.NewDecoder(&service.Body).Decode(&response); err != nil {
