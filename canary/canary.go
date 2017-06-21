@@ -92,7 +92,7 @@ type Canary struct {
 	txqueue *Queue
 }
 
-// Queue contains packats for delivery.
+// Queue contains packets for delivery.
 type Queue struct {
 	packets []interface{}
 }
