@@ -235,12 +235,9 @@ func Payload(data []byte) Option {
 // given key.
 func MergeFrom(data map[string]interface{}) Option {
 	return func(m *Event) {
-		m.ml.Lock()
-		defer m.ml.Unlock()
-
 		for name, value := range data {
-			if _, ok := m.mp[name]; !ok {
-				m.mp[name] = value
+			if !m.Has(name) {
+				m.Add(name, value)
 			}
 		}
 	}
@@ -250,11 +247,8 @@ func MergeFrom(data map[string]interface{}) Option {
 // key's value if matching key.
 func CopyFrom(data map[string]interface{}) Option {
 	return func(m *Event) {
-		m.ml.Lock()
-		defer m.ml.Unlock()
-
 		for name, value := range data {
-			m.mp[name] = value
+			m.Add(name, value)
 		}
 	}
 }
@@ -297,13 +291,21 @@ func (e *Event) Add(s string, v interface{}) {
 func (e *Event) Map() Map {
 	mp := make(map[string]interface{})
 
-	e.sm.Range(func(key, value interface{}) {
+	e.sm.Range(func(key, value interface{}) bool {
 		if keyName, ok := key.(string); ok {
 			mp[keyName] = value
 		}
+
+		return true
 	})
 
 	return Map(mp)
+}
+
+// Has returns true/false if the giving key exists.
+func (e *Event) Has(s string) bool {
+	_, ok := e.sm.Load(s)
+	return ok
 }
 
 // Get retrieves a giving value for a key has string.
