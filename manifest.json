@@ -23,6 +23,9 @@
         },
         "golang.org/x/crypto": {
             "branch": "master"
+        },
+        "golang.org/x/sync": {
+            "branch": "master"
         }
     }
 }

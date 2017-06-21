@@ -1,3 +1,5 @@
+// +build go1.7
+
 package profile_test
 
 import "github.com/pkg/profile"

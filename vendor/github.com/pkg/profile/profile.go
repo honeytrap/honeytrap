@@ -16,13 +16,11 @@ import (
 const (
 	cpuMode = iota
 	memMode
-	mutexMode
 	blockMode
 	traceMode
 )
 
-// Profile represents an active profiling session.
-type Profile struct {
+type profile struct {
 	// quiet suppresses informational messages during profiling.
 	quiet bool
 
@@ -52,14 +50,14 @@ type Profile struct {
 // Programs with more sophisticated signal handling should set
 // this to true and ensure the Stop() function returned from Start()
 // is called during shutdown.
-func NoShutdownHook(p *Profile) { p.noShutdownHook = true }
+func NoShutdownHook(p *profile) { p.noShutdownHook = true }
 
 // Quiet suppresses informational messages during profiling.
-func Quiet(p *Profile) { p.quiet = true }
+func Quiet(p *profile) { p.quiet = true }
 
 // CPUProfile enables cpu profiling.
 // It disables any previous profiling settings.
-func CPUProfile(p *Profile) { p.mode = cpuMode }
+func CPUProfile(p *profile) { p.mode = cpuMode }
 
 // DefaultMemProfileRate is the default memory profiling rate.
 // See also http://golang.org/pkg/runtime/#pkg-variables
@@ -67,44 +65,35 @@ const DefaultMemProfileRate = 4096
 
 // MemProfile enables memory profiling.
 // It disables any previous profiling settings.
-func MemProfile(p *Profile) {
+func MemProfile(p *profile) {
 	p.memProfileRate = DefaultMemProfileRate
 	p.mode = memMode
 }
 
 // MemProfileRate enables memory profiling at the preferred rate.
 // It disables any previous profiling settings.
-func MemProfileRate(rate int) func(*Profile) {
-	return func(p *Profile) {
+func MemProfileRate(rate int) func(*profile) {
+	return func(p *profile) {
 		p.memProfileRate = rate
 		p.mode = memMode
 	}
 }
 
-// MutexProfile enables mutex profiling.
-// It disables any previous profiling settings.
-//
-// Mutex profiling is a no-op before go1.8.
-func MutexProfile(p *Profile) { p.mode = mutexMode }
-
 // BlockProfile enables block (contention) profiling.
 // It disables any previous profiling settings.
-func BlockProfile(p *Profile) { p.mode = blockMode }
-
-// Trace profile controls if execution tracing will be enabled. It disables any previous profiling settings.
-func TraceProfile(p *Profile) { p.mode = traceMode }
+func BlockProfile(p *profile) { p.mode = blockMode }
 
 // ProfilePath controls the base path where various profiling
 // files are written. If blank, the base path will be generated
 // by ioutil.TempDir.
-func ProfilePath(path string) func(*Profile) {
-	return func(p *Profile) {
+func ProfilePath(path string) func(*profile) {
+	return func(p *profile) {
 		p.path = path
 	}
 }
 
 // Stop stops the profile and flushes any unwritten data.
-func (p *Profile) Stop() {
+func (p *profile) Stop() {
 	if !atomic.CompareAndSwapUint32(&p.stopped, 0, 1) {
 		// someone has already called close
 		return
@@ -119,14 +108,14 @@ var started uint32
 // Start starts a new profiling session.
 // The caller should call the Stop method on the value returned
 // to cleanly stop profiling.
-func Start(options ...func(*Profile)) interface {
+func Start(options ...func(*profile)) interface {
 	Stop()
 } {
 	if !atomic.CompareAndSwapUint32(&started, 0, 1) {
 		log.Fatal("profile: Start() already called")
 	}
 
-	var prof Profile
+	var prof profile
 	for _, option := range options {
 		option(&prof)
 	}
@@ -177,23 +166,6 @@ func Start(options ...func(*Profile)) interface {
 			f.Close()
 			runtime.MemProfileRate = old
 			logf("profile: memory profiling disabled, %s", fn)
-		}
-
-	case mutexMode:
-		fn := filepath.Join(path, "mutex.pprof")
-		f, err := os.Create(fn)
-		if err != nil {
-			log.Fatalf("profile: could not create mutex profile %q: %v", fn, err)
-		}
-		enableMutexProfile()
-		logf("profile: mutex profiling enabled, %s", fn)
-		prof.closer = func() {
-			if mp := pprof.Lookup("mutex"); mp != nil {
-				mp.WriteTo(f, 0)
-			}
-			f.Close()
-			disableMutexProfile()
-			logf("profile: mutex profiling disabled, %s", fn)
 		}
 
 	case blockMode:

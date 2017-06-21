@@ -14,20 +14,13 @@ import (
 
 type checkFn func(t *testing.T, stdout, stderr []byte, err error)
 
-func TestProfile(t *testing.T) {
-	f, err := ioutil.TempFile("", "profile_test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(f.Name())
-
-	var profileTests = []struct {
-		name   string
-		code   string
-		checks []checkFn
-	}{{
-		name: "default profile (cpu)",
-		code: `
+var profileTests = []struct {
+	name   string
+	code   string
+	checks []checkFn
+}{{
+	name: "default profile (cpu)",
+	code: `
 package main
 
 import "github.com/pkg/profile"
@@ -36,14 +29,14 @@ func main() {
 	defer profile.Start().Stop()
 }	
 `,
-		checks: []checkFn{
-			NoStdout,
-			Stderr("profile: cpu profiling enabled"),
-			NoErr,
-		},
-	}, {
-		name: "memory profile",
-		code: `
+	checks: []checkFn{
+		NoStdout,
+		Stderr("profile: cpu profiling enabled"),
+		NoErr,
+	},
+}, {
+	name: "memory profile",
+	code: `
 package main
 
 import "github.com/pkg/profile"
@@ -52,14 +45,14 @@ func main() {
 	defer profile.Start(profile.MemProfile).Stop()
 }	
 `,
-		checks: []checkFn{
-			NoStdout,
-			Stderr("profile: memory profiling enabled"),
-			NoErr,
-		},
-	}, {
-		name: "memory profile (rate 2048)",
-		code: `
+	checks: []checkFn{
+		NoStdout,
+		Stderr("profile: memory profiling enabled"),
+		NoErr,
+	},
+}, {
+	name: "memory profile (rate 2048)",
+	code: `
 package main
 
 import "github.com/pkg/profile"
@@ -68,14 +61,14 @@ func main() {
 	defer profile.Start(profile.MemProfileRate(2048)).Stop()
 }	
 `,
-		checks: []checkFn{
-			NoStdout,
-			Stderr("profile: memory profiling enabled (rate 2048)"),
-			NoErr,
-		},
-	}, {
-		name: "double start",
-		code: `
+	checks: []checkFn{
+		NoStdout,
+		Stderr("profile: memory profiling enabled (rate 2048)"),
+		NoErr,
+	},
+}, {
+	name: "double start",
+	code: `
 package main
 
 import "github.com/pkg/profile"
@@ -85,14 +78,14 @@ func main() {
 	profile.Start()
 }	
 `,
-		checks: []checkFn{
-			NoStdout,
-			Stderr("cpu profiling enabled", "profile: Start() already called"),
-			Err,
-		},
-	}, {
-		name: "block profile",
-		code: `
+	checks: []checkFn{
+		NoStdout,
+		Stderr("cpu profiling enabled", "profile: Start() already called"),
+		Err,
+	},
+}, {
+	name: "block profile",
+	code: `
 package main
 
 import "github.com/pkg/profile"
@@ -101,30 +94,14 @@ func main() {
 	defer profile.Start(profile.BlockProfile).Stop()
 }	
 `,
-		checks: []checkFn{
-			NoStdout,
-			Stderr("profile: block profiling enabled"),
-			NoErr,
-		},
-	}, {
-		name: "mutex profile",
-		code: `
-package main
-
-import "github.com/pkg/profile"
-
-func main() {
-	defer profile.Start(profile.MutexProfile).Stop()
-}
-`,
-		checks: []checkFn{
-			NoStdout,
-			Stderr("profile: mutex profiling enabled"),
-			NoErr,
-		},
-	}, {
-		name: "profile path",
-		code: `
+	checks: []checkFn{
+		NoStdout,
+		Stderr("profile: block profiling enabled"),
+		NoErr,
+	},
+}, {
+	name: "profile path",
+	code: `
 package main
 
 import "github.com/pkg/profile"
@@ -133,30 +110,30 @@ func main() {
 	defer profile.Start(profile.ProfilePath(".")).Stop()
 }	
 `,
-		checks: []checkFn{
-			NoStdout,
-			Stderr("profile: cpu profiling enabled, cpu.pprof"),
-			NoErr,
-		},
-	}, {
-		name: "profile path error",
-		code: `
+	checks: []checkFn{
+		NoStdout,
+		Stderr("profile: cpu profiling enabled, cpu.pprof"),
+		NoErr,
+	},
+}, {
+	name: "profile path error",
+	code: `
 package main
 
 import "github.com/pkg/profile"
 
 func main() {
-		defer profile.Start(profile.ProfilePath("` + f.Name() + `")).Stop()
+		defer profile.Start(profile.ProfilePath("README.md")).Stop()
 }	
 `,
-		checks: []checkFn{
-			NoStdout,
-			Stderr("could not create initial output"),
-			Err,
-		},
-	}, {
-		name: "multiple profile sessions",
-		code: `
+	checks: []checkFn{
+		NoStdout,
+		Stderr("could not create initial output"),
+		Err,
+	},
+}, {
+	name: "multiple profile sessions",
+	code: `
 package main
 
 import "github.com/pkg/profile"
@@ -166,26 +143,21 @@ func main() {
 	profile.Start(profile.MemProfile).Stop()
 	profile.Start(profile.BlockProfile).Stop()
 	profile.Start(profile.CPUProfile).Stop()
-	profile.Start(profile.MutexProfile).Stop()
 }
 `,
-		checks: []checkFn{
-			NoStdout,
-			Stderr("profile: cpu profiling enabled",
-				"profile: cpu profiling disabled",
-				"profile: memory profiling enabled",
-				"profile: memory profiling disabled",
-				"profile: block profiling enabled",
-				"profile: block profiling disabled",
-				"profile: cpu profiling enabled",
-				"profile: cpu profiling disabled",
-				"profile: mutex profiling enabled",
-				"profile: mutex profiling disabled"),
-			NoErr,
-		},
-	}, {
-		name: "profile quiet",
-		code: `
+	checks: []checkFn{
+		NoStdout,
+		Stderr("profile: cpu profiling enabled",
+			"profile: cpu profiling disabled",
+			"profile: memory profiling enabled",
+			"profile: memory profiling disabled",
+			"profile: block profiling enabled",
+			"profile: block profiling disabled"),
+		NoErr,
+	},
+}, {
+	name: "profile quiet",
+	code: `
 package main
 
 import "github.com/pkg/profile"
@@ -194,8 +166,10 @@ func main() {
         defer profile.Start(profile.Quiet).Stop()
 }       
 `,
-		checks: []checkFn{NoStdout, NoStderr, NoErr},
-	}}
+	checks: []checkFn{NoStdout, NoStderr, NoErr},
+}}
+
+func TestProfile(t *testing.T) {
 	for _, tt := range profileTests {
 		t.Log(tt.name)
 		stdout, stderr, err := runTest(t, tt.code)
