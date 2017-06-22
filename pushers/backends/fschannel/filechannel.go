@@ -86,7 +86,7 @@ func (f *FileBackend) Wait() {
 
 // Send delivers the giving if it passes all filtering criteria into the
 // FileBackend write queue.
-func (f *FileBackend) Send(message *event.Event) {
+func (f *FileBackend) Send(message event.Event) {
 	log.Debug("FileBackend.Send : Started")
 
 	if err := f.syncWrites(); err != nil {

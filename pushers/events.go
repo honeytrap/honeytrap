@@ -19,7 +19,7 @@ func (eb *EventBus) Subscribe(channels ...Channel) {
 }
 
 // Send deliverers the slice of messages to all subscribers.
-func (eb *EventBus) Send(e *event.Event) {
+func (eb *EventBus) Send(e event.Event) {
 	for _, subscriber := range eb.subscribers {
 		subscriber.Send(e)
 	}

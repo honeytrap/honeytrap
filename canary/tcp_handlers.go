@@ -16,7 +16,7 @@ var (
 )
 
 // EventTCPPayload will return a snmp event struct
-func EventTCPPayload(src, dst net.IP, srcport, dstport uint16, payload []byte) *event.Event {
+func EventTCPPayload(src, dst net.IP, srcport, dstport uint16, payload []byte) event.Event {
 	return event.New(
 		CanaryOptions,
 		EventCategoryTCP,

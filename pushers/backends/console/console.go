@@ -119,6 +119,6 @@ func (b ConsoleBackend) run() {
 
 // Send delivers the giving if it passes all filtering criteria into the
 // FileBackend write queue.
-func (b *ConsoleBackend) Send(e *event.Event) {
+func (b *ConsoleBackend) Send(e event.Event) {
 	b.ch <- e.Map()
 }

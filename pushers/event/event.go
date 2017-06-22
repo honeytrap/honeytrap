@@ -75,13 +75,13 @@ var (
 //====================================================================================
 
 // Option defines a function type for events modifications.
-type Option func(*Event)
+type Option func(Event)
 
 // Map defines a map type for event data.
 type Map map[string]interface{}
 
 // Apply applies all options to the Event returning it after it's done.
-func Apply(e *Event, opts ...Option) *Event {
+func Apply(e Event, opts ...Option) Event {
 	for _, option := range opts {
 		option(e)
 	}
@@ -92,7 +92,7 @@ func Apply(e *Event, opts ...Option) *Event {
 // NewWith combines the set of option into a single option which
 // applies all the series when called.
 func NewWith(opts ...Option) Option {
-	return func(e *Event) {
+	return func(e Event) {
 		for _, option := range opts {
 			option(e)
 		}
@@ -101,42 +101,42 @@ func NewWith(opts ...Option) Option {
 
 // Token adds the provided token into the giving Event.
 func Token(token string) Option {
-	return func(m *Event) {
+	return func(m Event) {
 		m.Add("token", token)
 	}
 }
 
 // Category returns an option for setting the category value.
 func Category(s string) Option {
-	return func(m *Event) {
+	return func(m Event) {
 		m.Add("category", s)
 	}
 }
 
 // Error returns an option for setting the error value.
 func Error(err error) Option {
-	return func(m *Event) {
+	return func(m Event) {
 		m.Add("error", err)
 	}
 }
 
 // Type returns an option for setting the type value.
 func Type(s string) Option {
-	return func(m *Event) {
+	return func(m Event) {
 		m.Add("type", s)
 	}
 }
 
 // Sensor returns an option for setting the sensor value.
 func Sensor(s string) Option {
-	return func(m *Event) {
+	return func(m Event) {
 		m.Add("sensor", s)
 	}
 }
 
 // SourceAddr returns an option for setting the source-ip value.
 func SourceAddr(addr net.Addr) Option {
-	return func(m *Event) {
+	return func(m Event) {
 		m.Add("source-ip", addr.(*net.TCPAddr).IP.String())
 		m.Add("source-port", addr.(*net.TCPAddr).Port)
 	}
@@ -144,7 +144,7 @@ func SourceAddr(addr net.Addr) Option {
 
 // DestinationAddr returns an option for setting the destination-ip value.
 func DestinationAddr(addr net.Addr) Option {
-	return func(m *Event) {
+	return func(m Event) {
 		m.Add("destination-ip", addr.(*net.TCPAddr).IP.String())
 		m.Add("destination-port", addr.(*net.TCPAddr).Port)
 	}
@@ -152,56 +152,56 @@ func DestinationAddr(addr net.Addr) Option {
 
 // SourceIP returns an option for setting the source-ip value.
 func SourceIP(ip net.IP) Option {
-	return func(m *Event) {
+	return func(m Event) {
 		m.Add("source-ip", ip.String())
 	}
 }
 
 // DestinationIP returns an option for setting the destination-ip value.
 func DestinationIP(ip net.IP) Option {
-	return func(m *Event) {
+	return func(m Event) {
 		m.Add("destination-ip", ip.String())
 	}
 }
 
 // RemoteAddr returns an option for setting the host-addr value.
 func RemoteAddr(addr string) Option {
-	return func(m *Event) {
+	return func(m Event) {
 		m.Add("remote-addr", addr)
 	}
 }
 
 // HostAddr returns an option for setting the host-addr value.
 func HostAddr(addr string) Option {
-	return func(m *Event) {
+	return func(m Event) {
 		m.Add("host-addr", addr)
 	}
 }
 
 // RemoteAddrFrom returns an option for setting the host-addr value.
 func RemoteAddrFrom(addr net.Addr) Option {
-	return func(m *Event) {
+	return func(m Event) {
 		m.Add("remote-addr", addr.String())
 	}
 }
 
 // HostAddrFrom returns an option for setting the host-addr value.
 func HostAddrFrom(addr net.Addr) Option {
-	return func(m *Event) {
+	return func(m Event) {
 		m.Add("host-addr", addr.String())
 	}
 }
 
 // SourcePort returns an option for setting the source-port value.
 func SourcePort(port uint16) Option {
-	return func(m *Event) {
+	return func(m Event) {
 		m.Add("source-port", port)
 	}
 }
 
 // DestinationPort returns an option for setting the destination-port value.
 func DestinationPort(port uint16) Option {
-	return func(m *Event) {
+	return func(m Event) {
 		m.Add("destination-port", port)
 	}
 }
@@ -209,14 +209,14 @@ func DestinationPort(port uint16) Option {
 // Message returns an option for setting the payload value.
 // should this be just a formatter? eg Bla Bla {src-ip}
 func Message(format string, a ...interface{}) Option {
-	return func(m *Event) {
+	return func(m Event) {
 		m.Add("message", fmt.Sprintf(format, a...))
 	}
 }
 
 // Stack returns a stacktrace
 func Stack() Option {
-	return func(m *Event) {
+	return func(m Event) {
 		data := debug.Stack()
 		m.Add("stacktrace", string(data))
 	}
@@ -224,7 +224,7 @@ func Stack() Option {
 
 // Payload returns an option for setting the payload value.
 func Payload(data []byte) Option {
-	return func(m *Event) {
+	return func(m Event) {
 		m.Add("payload", string(data))
 		m.Add("payload-hex", hex.EncodeToString(data))
 		m.Add("payload-length", len(data))
@@ -234,7 +234,7 @@ func Payload(data []byte) Option {
 // MergeFrom copies the internal key-value pair into the event if the event lacks the
 // given key.
 func MergeFrom(data map[string]interface{}) Option {
-	return func(m *Event) {
+	return func(m Event) {
 		for name, value := range data {
 			if !m.Has(name) {
 				m.Add(name, value)
@@ -246,7 +246,7 @@ func MergeFrom(data map[string]interface{}) Option {
 // CopyFrom copies the internal key-value pair into the event, overwritten any previous
 // key's value if matching key.
 func CopyFrom(data map[string]interface{}) Option {
-	return func(m *Event) {
+	return func(m Event) {
 		for name, value := range data {
 			m.Add(name, value)
 		}
@@ -255,7 +255,7 @@ func CopyFrom(data map[string]interface{}) Option {
 
 // Custom returns an option for setting the custom key-value pair.
 func Custom(name string, value interface{}) Option {
-	return func(m *Event) {
+	return func(m Event) {
 		m.Add(name, value)
 	}
 }
@@ -268,8 +268,8 @@ type Event struct {
 }
 
 // New returns a new Event with the options applied.
-func New(opts ...Option) *Event {
-	e := &Event{
+func New(opts ...Option) Event {
+	e := Event{
 		sm: new(syncmap.Map),
 	}
 
@@ -283,12 +283,12 @@ func New(opts ...Option) *Event {
 }
 
 // Add adds the key and value into the event.
-func (e *Event) Add(s string, v interface{}) {
+func (e Event) Add(s string, v interface{}) {
 	e.sm.Store(s, v)
 }
 
 // Map returns the underline map for the giving object.
-func (e *Event) Map() Map {
+func (e Event) Map() Map {
 	mp := make(map[string]interface{})
 
 	e.sm.Range(func(key, value interface{}) bool {
@@ -303,13 +303,13 @@ func (e *Event) Map() Map {
 }
 
 // Has returns true/false if the giving key exists.
-func (e *Event) Has(s string) bool {
+func (e Event) Has(s string) bool {
 	_, ok := e.sm.Load(s)
 	return ok
 }
 
 // Get retrieves a giving value for a key has string.
-func (e *Event) Get(s string) string {
+func (e Event) Get(s string) string {
 	if v, ok := e.sm.Load(s); !ok {
 		return ""
 	} else if v, ok := v.(string); !ok {

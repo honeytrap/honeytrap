@@ -18,7 +18,7 @@ var log = logging.MustGetLogger("honeytrap:channels")
 // Channel defines a interface which exposes a single method for delivering
 // PushMessages to a giving underline service.
 type Channel interface {
-	Send(*event.Event)
+	Send(event.Event)
 }
 
 //=======================================================================================================

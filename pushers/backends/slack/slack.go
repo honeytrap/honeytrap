@@ -197,7 +197,7 @@ func (b SlackBackend) run() {
 
 // Send delivers the giving push messages to the required slack channel.
 // TODO: Ask if Send shouldnt return an error to allow proper delivery validation.
-func (b SlackBackend) Send(e *event.Event) {
+func (b SlackBackend) Send(e event.Event) {
 	b.ch <- e.Map()
 }
 

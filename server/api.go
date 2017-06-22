@@ -178,7 +178,7 @@ func (h *Honeycast) Containers(w http.ResponseWriter, r *http.Request, params ma
 
 // Send delivers the underline provided messages and stores them into the underline
 // Honeycast database for retrieval through the API.
-func (h *Honeycast) Send(ev *event.Event) {
+func (h *Honeycast) Send(ev event.Event) {
 	var containers, connections, data, services, pings, serrors, sessions, events []event.Map
 
 	events = append(events, ev.Map())

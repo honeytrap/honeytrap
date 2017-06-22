@@ -66,7 +66,7 @@ func init() {
 }
 
 // Send delivers all messages to the underline connection.
-func (hc TrapBackend) Send(eventMessage *event.Event) {
+func (hc TrapBackend) Send(eventMessage event.Event) {
 	var err error
 	var req *http.Request
 

@@ -153,7 +153,7 @@ func (hc ElasticSearchBackend) run() {
 }
 
 // Send delivers the giving push messages into the internal elastic search endpoint.
-func (hc ElasticSearchBackend) Send(message *event.Event) {
+func (hc ElasticSearchBackend) Send(message event.Event) {
 	hc.ch <- message.Map()
 }
 
