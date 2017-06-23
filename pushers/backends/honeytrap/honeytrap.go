@@ -70,10 +70,12 @@ func (hc TrapBackend) Send(eventMessage event.Event) {
 	var err error
 	var req *http.Request
 
-	message := make(map[interface{}]interface{})
+	message := make(map[string]interface{})
 
 	eventMessage.Range(func(key, value interface{}) bool {
-		message[key] = value
+		if keyName, ok := key.(string); ok {
+			message[keyName] = value
+		}
 		return true
 	})
 

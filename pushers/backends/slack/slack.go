@@ -36,14 +36,14 @@ type Config struct {
 type SlackBackend struct {
 	config Config
 
-	ch chan map[interface{}]interface{}
+	ch chan map[string]interface{}
 }
 
 // New returns a new instance of a SlackBackend.
 func New(config Config) *SlackBackend {
 	backend := SlackBackend{
 		config: config,
-		ch:     make(chan map[interface{}]interface{}, 100),
+		ch:     make(chan map[string]interface{}, 100),
 	}
 
 	go backend.run()
@@ -136,7 +136,7 @@ func (b SlackBackend) run() {
 		for name, value := range ev {
 			switch vo := value.(type) {
 			case string:
-				fieldAttachment.AddField(fmt.Sprintf("%+s", name), vo)
+				fieldAttachment.AddField(name, vo)
 				break
 
 			default:
@@ -145,7 +145,7 @@ func (b SlackBackend) run() {
 					continue
 				}
 
-				fieldAttachment.AddField(fmt.Sprintf("%+s", name), string(data))
+				fieldAttachment.AddField(name, string(data))
 			}
 		}
 
@@ -198,10 +198,12 @@ func (b SlackBackend) run() {
 // Send delivers the giving push messages to the required slack channel.
 // TODO: Ask if Send shouldnt return an error to allow proper delivery validation.
 func (b SlackBackend) Send(e event.Event) {
-	mp := make(map[interface{}]interface{})
+	mp := make(map[string]interface{})
 
 	e.Range(func(key, value interface{}) bool {
-		mp[key] = value
+		if keyName, ok := key.(string); ok {
+			mp[keyName] = value
+		}
 		return true
 	})
 
