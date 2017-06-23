@@ -10,8 +10,10 @@ import (
 	"github.com/glycerine/rbuf"
 )
 
+// SocketState defines a int type.
 type SocketState int
 
+// contains different SocketState.
 const (
 	SocketClosed SocketState = iota
 	SocketListen
@@ -55,6 +57,7 @@ func (ss SocketState) String() string {
 	}
 }
 
+// Socket defines a object for representing a giving underrline socket
 type Socket struct {
 	laddr net.Addr
 	raddr net.Addr
@@ -69,10 +72,12 @@ type Socket struct {
 	state *State
 }
 
+// LocalAddr returns local net.Addr.
 func (s Socket) LocalAddr() net.Addr {
 	return s.laddr
 }
 
+// RemoteAddr returns remote net.Addr.
 func (s Socket) RemoteAddr() net.Addr {
 	return s.raddr
 }
@@ -140,6 +145,7 @@ func (s Socket) close() {
 	s.closed = true
 }
 
+// Close closes the underline connection.
 func (s Socket) Close() error {
 	s.state.close()
 
@@ -147,6 +153,7 @@ func (s Socket) Close() error {
 	return nil
 }
 
+// NewSocket returns a new instance of Socket.
 func (state *State) NewSocket(src, dst net.Addr) *Socket {
 	return &Socket{
 		state: state,

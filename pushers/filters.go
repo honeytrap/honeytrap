@@ -30,8 +30,10 @@ func (mc filterChannel) Send(e event.Event) {
 	mc.Channel.Send(e)
 }
 
+// FilterFunc defines a function for event filtering.
 type FilterFunc func(event.Event) bool
 
+// RegexFilterFunc returns a function for filtering event values.
 func RegexFilterFunc(field string, expressions []string) FilterFunc {
 	matchers := make([]*regexp.Regexp, len(expressions))
 
@@ -70,6 +72,7 @@ func (mc tokenChannel) Send(e event.Event) {
 	mc.Channel.Send(event.Apply(e, event.Token(mc.Token)))
 }
 
+// TokenChannel returns a Channel to set token value.
 func TokenChannel(channel Channel, token string) Channel {
 	return tokenChannel{
 		Channel: channel,

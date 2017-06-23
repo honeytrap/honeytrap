@@ -1,5 +1,5 @@
 {
-    "memo": "9d723c53bc12edb05df669651297d45c26444b5fa83ea1fa72a648664b4f5477",
+    "memo": "dd8dbefa95f695300214e980730cf8deacf1dfd19a349d67bf17b031f610fbea",
     "projects": [
         {
             "name": "github.com/BurntSushi/toml",
@@ -19,8 +19,16 @@
         },
         {
             "name": "github.com/dimfeld/httptreemux",
-            "version": "v3.8.0",
-            "revision": "86f7c217d9043ebc6adfd8e2ed04a0bb1e1db651",
+            "version": "v3.9.0",
+            "revision": "13dde8a00d96b369e7398490fd8a3af9ca114b84",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/elazarl/go-bindata-assetfs",
+            "branch": "master",
+            "revision": "30f82fa23fd844bd5bb1e5f216db87fd77b5eb43",
             "packages": [
                 "."
             ]
@@ -29,6 +37,14 @@
             "name": "github.com/fatih/color",
             "version": "v1.4.1",
             "revision": "9131ab34cf20d2f6d83fdc67168a5430d1c7dc23",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/glycerine/rbuf",
+            "branch": "master",
+            "revision": "e57eda7aada105c8b00090b66e338a6413c3fbe9",
             "packages": [
                 "."
             ]
@@ -124,6 +140,14 @@
             ]
         },
         {
+            "name": "github.com/pkg/errors",
+            "version": "v0.8.0",
+            "revision": "3866ebc348c54054262feae422da428fe6cf147d",
+            "packages": [
+                "."
+            ]
+        },
+        {
             "name": "github.com/pkg/profile",
             "version": "v1.2.0",
             "revision": "1c16f117a3ab788fdf0e334e623b8bccf5679866",
@@ -140,14 +164,6 @@
             ]
         },
         {
-            "name": "github.com/upspin/upspin",
-            "branch": "master",
-            "revision": "fa4c6f6e47d60823249c55a3a5196436e0237b3c",
-            "packages": [
-                "log"
-            ]
-        },
-        {
             "name": "golang.org/x/crypto",
             "branch": "master",
             "revision": "40541ccb1c6e64c947ed6f606b8a6cb4b67d7436",
@@ -159,11 +175,28 @@
             ]
         },
         {
+            "name": "golang.org/x/sync",
+            "branch": "master",
+            "revision": "f52d1811a62927559de87708c8913c1650ce4f26",
+            "packages": [
+                "syncmap"
+            ]
+        },
+        {
             "name": "golang.org/x/sys",
             "branch": "master",
             "revision": "9a7256cb28ed514b4e1e5f68959914c4c28a92e0",
             "packages": [
                 "unix"
+            ]
+        },
+        {
+            "name": "gopkg.in/olivere/elastic.v5",
+            "version": "v5.0.41",
+            "revision": "3113f9b9ad37509fe5f8a0e5e91c96fdc4435e26",
+            "packages": [
+                ".",
+                "uritemplates"
             ]
         }
     ]

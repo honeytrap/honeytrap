@@ -46,7 +46,7 @@ type FileBackend struct {
 	config  FileConfig
 	timeout time.Duration
 	dest    *os.File
-	request chan event.Event
+	request chan map[interface{}]interface{}
 	closer  chan struct{}
 	wg      sync.WaitGroup
 }
@@ -55,7 +55,7 @@ type FileBackend struct {
 func New(c FileConfig) *FileBackend {
 	var fc FileBackend
 	fc.config = c
-	fc.request = make(chan event.Event)
+	fc.request = make(chan map[interface{}]interface{})
 	fc.closer = make(chan struct{})
 	fc.timeout = config.MakeDuration(c.Timeout, int(defaultWaitTime))
 
@@ -94,7 +94,14 @@ func (f *FileBackend) Send(message event.Event) {
 		return
 	}
 
-	f.request <- message
+	mp := make(map[interface{}]interface{})
+
+	message.Range(func(key, value interface{}) bool {
+		mp[key] = value
+		return true
+	})
+
+	f.request <- mp
 }
 
 // syncWrites startups the channel procedure to listen for new writes to giving file.
@@ -114,7 +121,7 @@ func (f *FileBackend) syncWrites() error {
 	}
 
 	if f.request == nil {
-		f.request = make(chan event.Event)
+		f.request = make(chan map[interface{}]interface{})
 	}
 
 	var err error

@@ -73,12 +73,12 @@ type ElasticSearchBackend struct {
 	Config
 
 	client *http.Client
-	ch     chan event.Event
+	ch     chan map[interface{}]interface{}
 }
 
 // New returns a new instance of a SearchBackend.
 func New(conf Config) *ElasticSearchBackend {
-	ch := make(chan event.Event, 100)
+	ch := make(chan map[interface{}]interface{}, 100)
 
 	backend := ElasticSearchBackend{
 		client: &http.Client{
@@ -154,7 +154,14 @@ func (hc ElasticSearchBackend) run() {
 
 // Send delivers the giving push messages into the internal elastic search endpoint.
 func (hc ElasticSearchBackend) Send(message event.Event) {
-	hc.ch <- message
+	mp := make(map[interface{}]interface{})
+
+	message.Range(func(key, value interface{}) bool {
+		mp[key] = value
+		return true
+	})
+
+	hc.ch <- mp
 }
 
 /*

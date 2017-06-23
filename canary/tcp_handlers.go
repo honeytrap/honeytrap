@@ -124,7 +124,7 @@ var (
 	EventCategoryHTTPS = event.Category("https")
 )
 
-// DecodeHTTP will decode NTP packets
+// DecodeHTTPS will decode NTP packets
 func (c *Canary) DecodeHTTPS(conn net.Conn) error {
 	defer conn.Close()
 
@@ -203,11 +203,11 @@ func (c *Canary) DecodeHTTPS(conn net.Conn) error {
 }
 
 var (
-	// EventCategoryHTTP contains events for ssdp traffic
+	// EventCategoryMSSQL contains events for ssdp traffic
 	EventCategoryMSSQL = event.Category("mssql")
 )
 
-// DecodeHTTP will decode NTP packets
+// DecodeMSSQL will decode NTP packets
 func (c *Canary) DecodeMSSQL(conn net.Conn) error {
 	defer conn.Close()
 
@@ -228,11 +228,11 @@ func (c *Canary) DecodeMSSQL(conn net.Conn) error {
 }
 
 var (
-	// EventCategoryHTTP contains events for ssdp traffic
+	// EventCategoryTelnet contains events for ssdp traffic
 	EventCategoryTelnet = event.Category("telnet")
 )
 
-// DecodeHTTP will decode NTP packets
+// DecodeTelnet will decode NTP packets
 func (c *Canary) DecodeTelnet(conn net.Conn) error {
 	defer conn.Close()
 
@@ -253,11 +253,11 @@ func (c *Canary) DecodeTelnet(conn net.Conn) error {
 }
 
 var (
-	// EventCategoryHTTP contains events for ssdp traffic
+	// EventCategoryRedis contains events for ssdp traffic
 	EventCategoryRedis = event.Category("redis")
 )
 
-// DecodeHTTP will decode NTP packets
+// DecodeRedis will decode NTP packets
 func (c *Canary) DecodeRedis(conn net.Conn) error {
 	defer conn.Close()
 
@@ -278,11 +278,11 @@ func (c *Canary) DecodeRedis(conn net.Conn) error {
 }
 
 var (
-	// EventCategoryHTTP contains events for ssdp traffic
+	// EventCategoryRDP contains events for ssdp traffic
 	EventCategoryRDP = event.Category("rdp")
 )
 
-// DecodeHTTP will decode NTP packets
+// DecodeRDP will decode NTP packets
 func (c *Canary) DecodeRDP(conn net.Conn) error {
 	defer conn.Close()
 
@@ -303,11 +303,11 @@ func (c *Canary) DecodeRDP(conn net.Conn) error {
 }
 
 var (
-	// EventCategoryHTTP contains events for ssdp traffic
+	// EventCategoryFTP contains events for ssdp traffic
 	EventCategoryFTP = event.Category("ftp")
 )
 
-// DecodeHTTP will decode NTP packets
+// DecodeFTP will decode NTP packets
 func (c *Canary) DecodeFTP(conn net.Conn) error {
 	defer conn.Close()
 
@@ -328,11 +328,11 @@ func (c *Canary) DecodeFTP(conn net.Conn) error {
 }
 
 var (
-	// EventCategoryHTTP contains events for ssdp traffic
+	// EventCategoryNBTIP contains events for ssdp traffic
 	EventCategoryNBTIP = event.Category("nbt-ip")
 )
 
-// DecodeHTTP will decode NTP packets
+// DecodeNBTIP will decode NTP packets
 func (c *Canary) DecodeNBTIP(conn net.Conn) error {
 	defer conn.Close()
 
@@ -353,11 +353,11 @@ func (c *Canary) DecodeNBTIP(conn net.Conn) error {
 }
 
 var (
-	// EventCategoryHTTP contains events for ssdp traffic
+	// EventCategorySMBIP contains events for ssdp traffic
 	EventCategorySMBIP = event.Category("smb-ip")
 )
 
-// DecodeHTTP will decode NTP packets
+// DecodeSMBIP will decode NTP packets
 func (c *Canary) DecodeSMBIP(conn net.Conn) error {
 	defer conn.Close()
 

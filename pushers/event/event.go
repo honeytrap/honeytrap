@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"runtime/debug"
-	"time"
 )
 
 //====================================================================================
@@ -74,32 +73,6 @@ var (
 // Option defines a function type for events modifications.
 type Option func(Event)
 
-// Event defines a map type for event data.
-type Event map[string]interface{}
-
-func (e Event) Get(s string) string {
-	if v, ok := e[s]; !ok {
-		return ""
-	} else if v, ok := v.(string); !ok {
-		return ""
-	} else {
-		return v
-	}
-}
-
-// New returns a new Event with the options applied.
-func New(opts ...Option) Event {
-	e := map[string]interface{}{
-		"date": time.Now(),
-	}
-
-	for _, opt := range opts {
-		opt(e)
-	}
-
-	return Event(e)
-}
-
 // Apply applies all options to the Event returning it after it's done.
 func Apply(e Event, opts ...Option) Event {
 	for _, option := range opts {
@@ -122,107 +95,107 @@ func NewWith(opts ...Option) Option {
 // Token adds the provided token into the giving Event.
 func Token(token string) Option {
 	return func(m Event) {
-		m["token"] = token
+		m.Store("token", token)
 	}
 }
 
 // Category returns an option for setting the category value.
 func Category(s string) Option {
 	return func(m Event) {
-		m["category"] = s
+		m.Store("category", s)
 	}
 }
 
 // Error returns an option for setting the error value.
 func Error(err error) Option {
 	return func(m Event) {
-		m["error"] = err
+		m.Store("error", err)
 	}
 }
 
 // Type returns an option for setting the type value.
 func Type(s string) Option {
 	return func(m Event) {
-		m["type"] = s
+		m.Store("type", s)
 	}
 }
 
 // Sensor returns an option for setting the sensor value.
 func Sensor(s string) Option {
 	return func(m Event) {
-		m["sensor"] = s
+		m.Store("sensor", s)
 	}
 }
 
-// SourceIP returns an option for setting the source-ip value.
+// SourceAddr returns an option for setting the source-ip value.
 func SourceAddr(addr net.Addr) Option {
 	return func(m Event) {
-		m["source-ip"] = addr.(*net.TCPAddr).IP.String()
-		m["source-port"] = addr.(*net.TCPAddr).Port
+		m.Store("source-ip", addr.(*net.TCPAddr).IP.String())
+		m.Store("source-port", addr.(*net.TCPAddr).Port)
 	}
 }
 
-// DestinationIP returns an option for setting the destination-ip value.
+// DestinationAddr returns an option for setting the destination-ip value.
 func DestinationAddr(addr net.Addr) Option {
 	return func(m Event) {
-		m["destination-ip"] = addr.(*net.TCPAddr).IP.String()
-		m["destination-port"] = addr.(*net.TCPAddr).Port
+		m.Store("destination-ip", addr.(*net.TCPAddr).IP.String())
+		m.Store("destination-port", addr.(*net.TCPAddr).Port)
 	}
 }
 
 // SourceIP returns an option for setting the source-ip value.
 func SourceIP(ip net.IP) Option {
 	return func(m Event) {
-		m["source-ip"] = ip.String()
+		m.Store("source-ip", ip.String())
 	}
 }
 
 // DestinationIP returns an option for setting the destination-ip value.
 func DestinationIP(ip net.IP) Option {
 	return func(m Event) {
-		m["destination-ip"] = ip.String()
+		m.Store("destination-ip", ip.String())
 	}
 }
 
 // RemoteAddr returns an option for setting the host-addr value.
 func RemoteAddr(addr string) Option {
 	return func(m Event) {
-		m["remote-addr"] = addr
+		m.Store("remote-addr", addr)
 	}
 }
 
 // HostAddr returns an option for setting the host-addr value.
 func HostAddr(addr string) Option {
 	return func(m Event) {
-		m["host-addr"] = addr
+		m.Store("host-addr", addr)
 	}
 }
 
 // RemoteAddrFrom returns an option for setting the host-addr value.
 func RemoteAddrFrom(addr net.Addr) Option {
 	return func(m Event) {
-		m["remote-addr"] = addr.String()
+		m.Store("remote-addr", addr.String())
 	}
 }
 
 // HostAddrFrom returns an option for setting the host-addr value.
 func HostAddrFrom(addr net.Addr) Option {
 	return func(m Event) {
-		m["host-addr"] = addr.String()
+		m.Store("host-addr", addr.String())
 	}
 }
 
 // SourcePort returns an option for setting the source-port value.
 func SourcePort(port uint16) Option {
 	return func(m Event) {
-		m["source-port"] = port
+		m.Store("source-port", port)
 	}
 }
 
 // DestinationPort returns an option for setting the destination-port value.
 func DestinationPort(port uint16) Option {
 	return func(m Event) {
-		m["destination-port"] = port
+		m.Store("destination-port", port)
 	}
 }
 
@@ -230,7 +203,7 @@ func DestinationPort(port uint16) Option {
 // should this be just a formatter? eg Bla Bla {src-ip}
 func Message(format string, a ...interface{}) Option {
 	return func(m Event) {
-		m["message"] = fmt.Sprintf(format, a...)
+		m.Store("message", fmt.Sprintf(format, a...))
 	}
 }
 
@@ -238,16 +211,16 @@ func Message(format string, a ...interface{}) Option {
 func Stack() Option {
 	return func(m Event) {
 		data := debug.Stack()
-		m["stacktrace"] = string(data)
+		m.Store("stacktrace", string(data))
 	}
 }
 
 // Payload returns an option for setting the payload value.
 func Payload(data []byte) Option {
 	return func(m Event) {
-		m["payload"] = string(data)
-		m["payload-hex"] = hex.EncodeToString(data)
-		m["payload-length"] = len(data)
+		m.Store("payload", string(data))
+		m.Store("payload-hex", hex.EncodeToString(data))
+		m.Store("payload-length", len(data))
 	}
 }
 
@@ -256,8 +229,8 @@ func Payload(data []byte) Option {
 func MergeFrom(data map[string]interface{}) Option {
 	return func(m Event) {
 		for name, value := range data {
-			if _, ok := m[name]; !ok {
-				m[name] = value
+			if !m.Has(name) {
+				m.Store(name, value)
 			}
 		}
 	}
@@ -268,7 +241,7 @@ func MergeFrom(data map[string]interface{}) Option {
 func CopyFrom(data map[string]interface{}) Option {
 	return func(m Event) {
 		for name, value := range data {
-			m[name] = value
+			m.Store(name, value)
 		}
 	}
 }
@@ -276,6 +249,6 @@ func CopyFrom(data map[string]interface{}) Option {
 // Custom returns an option for setting the custom key-value pair.
 func Custom(name string, value interface{}) Option {
 	return func(m Event) {
-		m[name] = value
+		m.Store(name, value)
 	}
 }

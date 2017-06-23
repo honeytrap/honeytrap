@@ -92,10 +92,12 @@ type Canary struct {
 	txqueue *Queue
 }
 
+// Queue contains packets for delivery.
 type Queue struct {
 	packets []interface{}
 }
 
+// Add TODO(remco): Add comment
 func Add() {
 }
 

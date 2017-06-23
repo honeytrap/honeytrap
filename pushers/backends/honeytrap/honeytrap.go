@@ -66,12 +66,19 @@ func init() {
 }
 
 // Send delivers all messages to the underline connection.
-func (hc TrapBackend) Send(message event.Event) {
+func (hc TrapBackend) Send(eventMessage event.Event) {
 	var err error
 	var req *http.Request
 
-	category := message["cateory"]
-	sensor := message["sensor"]
+	message := make(map[interface{}]interface{})
+
+	eventMessage.Range(func(key, value interface{}) bool {
+		message[key] = value
+		return true
+	})
+
+	category := message["cateory"].(string)
+	sensor := message["sensor"].(string)
 
 	var jsData bytes.Buffer
 
