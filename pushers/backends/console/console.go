@@ -33,13 +33,13 @@ type Config struct {
 type ConsoleBackend struct {
 	io.Writer
 
-	ch     chan map[string]interface{}
+	ch     chan map[interface{}]interface{}
 	config Config
 }
 
 // New returns a new instance of a FileBackend.
 func New(c Config) *ConsoleBackend {
-	ch := make(chan map[string]interface{}, 100)
+	ch := make(chan map[interface{}]interface{}, 100)
 
 	backend := ConsoleBackend{
 		Writer: os.Stdout,
@@ -120,13 +120,10 @@ func (b ConsoleBackend) run() {
 // Send delivers the giving if it passes all filtering criteria into the
 // FileBackend write queue.
 func (b *ConsoleBackend) Send(e event.Event) {
-	mp := make(map[string]interface{})
+	mp := make(map[interface{}]interface{})
 
 	e.Range(func(key, value interface{}) bool {
-		if keyName, ok := key.(string); ok {
-			mp[keyName] = value
-		}
-
+		mp[key] = value
 		return true
 	})
 

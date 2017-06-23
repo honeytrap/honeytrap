@@ -70,18 +70,15 @@ func (hc TrapBackend) Send(eventMessage event.Event) {
 	var err error
 	var req *http.Request
 
-	message := make(map[string]interface{})
+	message := make(map[interface{}]interface{})
 
 	eventMessage.Range(func(key, value interface{}) bool {
-		if keyName, ok := key.(string); ok {
-			message[keyName] = value
-		}
-
+		message[key] = value
 		return true
 	})
 
-	category := message["cateory"]
-	sensor := message["sensor"]
+	category := message["cateory"].(string)
+	sensor := message["sensor"].(string)
 
 	var jsData bytes.Buffer
 
