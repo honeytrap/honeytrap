@@ -252,3 +252,18 @@ func Custom(name string, value interface{}) Option {
 		m.Store(name, value)
 	}
 }
+
+// ToMap returns a map containing all available data which map
+// a string key and value type.
+func ToMap(ev Event) map[string]interface{} {
+	mp := make(map[string]interface{})
+
+	ev.Range(func(key, value interface{}) bool {
+		if keyName, ok := key.(string); ok {
+			mp[keyName] = value
+		}
+		return true
+	})
+
+	return mp
+}
