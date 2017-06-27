@@ -2,7 +2,6 @@ package httptreemux
 
 import (
 	"bufio"
-	"encoding/json"
 	"html/template"
 	"net/http"
 	"os"
@@ -24,48 +23,24 @@ func ShowErrorsPanicHandler(w http.ResponseWriter, r *http.Request, err interfac
 	renderPrettyError(w, r, err, stack)
 }
 
-func makeErrorData(r *http.Request, err interface{}, stack []byte, filePath string, line int) map[string]interface{} {
+func renderPrettyError(rw http.ResponseWriter, req *http.Request, err interface{}, stack []byte) {
+	_, filePath, line, _ := runtime.Caller(4)
 
 	data := map[string]interface{}{
+		"Error":    err,
 		"Stack":    string(stack),
-		"Params":   r.URL.Query(),
-		"Method":   r.Method,
+		"Params":   req.URL.Query(),
+		"Method":   req.Method,
 		"FilePath": filePath,
 		"Line":     line,
 		"Lines":    readErrorFileLines(filePath, line),
 	}
 
-	if e, ok := err.(error); ok {
-		data["Error"] = e.Error()
-	} else {
-		data["Error"] = err
-	}
-
-	return data
-}
-
-func renderPrettyError(rw http.ResponseWriter, req *http.Request, err interface{}, stack []byte) {
-	_, filePath, line, _ := runtime.Caller(5)
-
-	data := makeErrorData(req, err, stack, filePath, line)
 	rw.Header().Set("Content-Type", "text/html")
 	rw.WriteHeader(http.StatusInternalServerError)
 
 	tpl := template.Must(template.New("ErrorPage").Parse(panicPageTpl))
 	tpl.Execute(rw, data)
-}
-
-func ShowErrorsJsonPanicHandler(w http.ResponseWriter, r *http.Request, err interface{}) {
-	const size = 4096
-	stack := make([]byte, size)
-	stack = stack[:runtime.Stack(stack, false)]
-
-	_, filePath, line, _ := runtime.Caller(4)
-	data := makeErrorData(r, err, stack, filePath, line)
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusInternalServerError)
-	json.NewEncoder(w).Encode(data)
 }
 
 func readErrorFileLines(filePath string, errorLine int) map[int]string {

@@ -64,6 +64,7 @@ func NewHoneycast(config *config.Config, manager *director.ContainerConnections,
 	// TODO: Should we really panic here, it makes sense to do that, since it's the server
 	// right?
 	bolted, err := NewBolted(fmt.Sprintf("%s-bolted", config.Token), event.ContainersSensorName, event.ConnectionSensorName, event.ServiceSensorName, event.SessionSensorName, event.PingSensorName, event.DataSensorName, event.ErrorsSensorName, event.EventSensorName)
+
 	if err != nil {
 		log.Errorf("Failed to created BoltDB session: %+q", err)
 		panic(err)
@@ -179,31 +180,27 @@ func (h *Honeycast) Containers(w http.ResponseWriter, r *http.Request, params ma
 // Send delivers the underline provided messages and stores them into the underline
 // Honeycast database for retrieval through the API.
 func (h *Honeycast) Send(ev event.Event) {
-	var containers, connections, data, services, pings, serrors, sessions, events []event.Map
+	var containers, connections, data, services, pings, serrors, sessions, events []map[string]interface{}
 
-	events = append(events, ev.Map())
+	events = append(events, event.ToMap(ev))
 
-	sensor, ok := ev["sensor"].(string)
-	if !ok {
-		log.Error("Honeycast API : Event object has non string sensor value : %#q", ev.Map())
-		return
-	}
+	sensor := ev.Get("sensor")
 
 	switch sensor {
 	case event.SessionSensorName:
-		sessions = append(sessions, ev.Map())
+		sessions = append(sessions, event.ToMap(ev))
 	case event.PingSensorName:
-		pings = append(pings, ev.Map())
+		pings = append(pings, event.ToMap(ev))
 	case event.DataSensorName:
-		data = append(data, ev.Map())
+		data = append(data, event.ToMap(ev))
 	case event.ServiceSensorName:
-		services = append(services, ev.Map())
+		services = append(services, event.ToMap(ev))
 	case event.ContainersSensorName:
-		containers = append(containers, ev.Map())
+		containers = append(containers, event.ToMap(ev))
 	case event.ConnectionSensorName:
-		connections = append(connections, ev.Map())
+		connections = append(connections, event.ToMap(ev))
 	case event.ConnectionErrorSensorName, event.DataErrorSensorName:
-		serrors = append(serrors, ev.Map())
+		serrors = append(serrors, event.ToMap(ev))
 	}
 
 	// Batch deliver both sessions and events data to all connected
@@ -296,7 +293,7 @@ func (h *Honeycast) bucketFind(bucket []byte, w http.ResponseWriter, r *http.Req
 		}
 
 		var terr error
-		var events, filteredEvents []event.Event
+		var events, filteredEvents []map[string]interface{}
 
 		events, terr = h.bolted.Get(bucket, index, length)
 		if terr != nil {
@@ -423,8 +420,8 @@ type Socketcast struct {
 	clients      map[*websocket.Conn]bool
 	newClients   chan *websocket.Conn
 	closeClients chan *websocket.Conn
-	events       chan []event.Event
-	sessions     chan []event.Event
+	events       chan []map[string]interface{}
+	sessions     chan []map[string]interface{}
 	close        chan struct{}
 	data         chan targetMessage
 	wg           sync.WaitGroup
@@ -443,9 +440,9 @@ func NewSocketcast(config *config.Config, db *Bolted, origins func(*http.Request
 
 	socket.close = make(chan struct{}, 0)
 	socket.data = make(chan targetMessage, 0)
-	socket.events = make(chan []event.Event, 0)
+	socket.events = make(chan []map[string]interface{}, 0)
 	socket.clients = make(map[*websocket.Conn]bool)
-	socket.sessions = make(chan []event.Event, 0)
+	socket.sessions = make(chan []map[string]interface{}, 0)
 	socket.newClients = make(chan *websocket.Conn, 0)
 	socket.closeClients = make(chan *websocket.Conn, 0)
 	socket.transport = SocketTransportWithDB(config, db)
@@ -686,7 +683,7 @@ func (so *SocketTransport) HandleMessage(message []byte, conn *websocket.Conn) e
 }
 
 // DeliverNewSessions delivers new incoming requests to the underline socket transport.
-func (so *SocketTransport) DeliverNewSessions(events []event.Event, conn *websocket.Conn) error {
+func (so *SocketTransport) DeliverNewSessions(events []map[string]interface{}, conn *websocket.Conn) error {
 	if events == nil {
 		return nil
 	}
@@ -698,7 +695,7 @@ func (so *SocketTransport) DeliverNewSessions(events []event.Event, conn *websoc
 }
 
 // DeliverNewEvents delivers new incoming requests to the underline socket transport.
-func (so *SocketTransport) DeliverNewEvents(events []event.Event, conn *websocket.Conn) error {
+func (so *SocketTransport) DeliverNewEvents(events []map[string]interface{}, conn *websocket.Conn) error {
 	if events == nil {
 		return nil
 	}
@@ -733,10 +730,10 @@ const (
 // EventResponse defines a struct which is sent a request type used to respond to
 // given requests.
 type EventResponse struct {
-	ResponsePerPage int           `json:"responser_per_page"`
-	Page            int           `json:"page"`
-	Total           int           `json:"total"`
-	Events          []event.Event `json:"events"`
+	ResponsePerPage int                      `json:"responser_per_page"`
+	Page            int                      `json:"page"`
+	Total           int                      `json:"total"`
+	Events          []map[string]interface{} `json:"events"`
 }
 
 // EventRequest defines a struct which receives a request type used to retrieve

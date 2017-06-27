@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/boltdb/bolt"
-	"github.com/honeytrap/honeytrap/pushers/event"
 )
 
 // Bolted defines a structure which saves delivered events into a giving boltDB
@@ -65,8 +64,8 @@ func (d *Bolted) GetSize(bucket []byte) (int, error) {
 // Get returns the giving buckets based on the provided cursor point and size.
 // If the `from` and `length` are -1 then all keys and values are returned, else
 // the provided range will be used.
-func (d *Bolted) Get(bucket []byte, from int, length int) ([]event.Event, error) {
-	var list []event.Event
+func (d *Bolted) Get(bucket []byte, from int, length int) ([]map[string]interface{}, error) {
+	var list []map[string]interface{}
 	// var total int
 
 	if err := d.db.View(func(tx *bolt.Tx) error {
@@ -82,7 +81,7 @@ func (d *Bolted) Get(bucket []byte, from int, length int) ([]event.Event, error)
 					continue
 				}
 
-				var item event.Event
+				var item map[string]interface{}
 				if err := json.Unmarshal(v, &item); err != nil {
 					return err
 				}
@@ -101,7 +100,7 @@ func (d *Bolted) Get(bucket []byte, from int, length int) ([]event.Event, error)
 					continue
 				}
 
-				var item event.Event
+				var item map[string]interface{}
 				if err := json.Unmarshal(v, &item); err != nil {
 					return err
 				}
@@ -124,7 +123,7 @@ func (d *Bolted) Get(bucket []byte, from int, length int) ([]event.Event, error)
 				break
 			}
 
-			var item event.Event
+			var item map[string]interface{}
 			if err := json.Unmarshal(v, &item); err != nil {
 				return err
 			}
@@ -145,7 +144,7 @@ func (d *Bolted) Get(bucket []byte, from int, length int) ([]event.Event, error)
 }
 
 // Save attempts to save the series of passed in events into the underline db.
-func (d *Bolted) Save(bucket []byte, events ...event.Event) error {
+func (d *Bolted) Save(bucket []byte, events ...map[string]interface{}) error {
 	if events == nil {
 		return nil
 	}

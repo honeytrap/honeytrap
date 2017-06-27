@@ -2,6 +2,7 @@ package fschannel_test
 
 import (
 	"io/ioutil"
+	"os"
 	"testing"
 
 	"github.com/BurntSushi/toml"
@@ -13,7 +14,7 @@ import (
 const (
 	passed  = "\u2713"
 	failed  = "\u2717"
-	tmpFile = "/tmp/filechannels.pub"
+	tmpFile = "filechannels.pub"
 )
 
 var (
@@ -51,6 +52,8 @@ func TestFileBackend(t *testing.T) {
 			fc.Send(blueChip)
 
 			fc.Wait()
+
+			defer os.Remove(tmpFile)
 
 			data, err := ioutil.ReadFile(tmpFile)
 			if err != nil {
