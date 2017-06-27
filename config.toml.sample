@@ -1,30 +1,20 @@
-director = "lxc"
+director = "io"
 template = "honeytrap"
 token = "433UI-56JK-3433NJ-KI954"
 
-[directors]
+[director_config]
+service_addr = "http://api.honeytrap.com/pixi:4060"
 
-    [directors.io_config]
-    service_addr = "http://api.honeytrap.com/pixi:4060"
+[[director_config.commands]]
+name = "echo"
+level = 2
+args = ["hello"]
 
-    [[directors.io_config.commands]]
-    name = "echo"
-    level = 2
-    args = ["hello"]
+[[director_config.commands]]
+name = "echo"
+level = 3
+args = ["world!"]
 
-    [[directors.io_config.commands]]
-    name = "echo"
-    level = 3
-    args = ["world!"]
-
-    [directors.cowrie_config]
-    ssh_addr = "localhost"
-    ssh_port = "2222"
-
-    [directors.firejail]
-    app = firefox
-    net = eth0
-    ip = 192.168.10.100
 
 [canary]
 interfaces = ["ens160"]
