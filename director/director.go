@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"time"
 
 	logging "github.com/op/go-logging"
 )
@@ -21,8 +22,8 @@ type Director interface {
 // Container defines a type which exposes methods for connecting to a container.
 type Container interface {
 	Name() string
-	Dial(context.Context) (net.Conn, error)
 	Detail() ContainerDetail
+	Dial(context.Context, port string) (net.Conn, error)
 }
 
 // ContainerDetail defines a struct which is used to detail specific container meta-data.
@@ -199,4 +200,39 @@ func (cn *ContainerConnections) manage() {
 			}
 		}
 	}
+}
+
+// GetHostAddr takes the giving address string and if it has no ip or use the
+// zeroth ip format, then modifies the ip with the current systems ip.
+func GetHostAddr(addr string) string {
+	if addr == "" {
+		if real, err := GetMainIP(); err == nil {
+			return real + ":0"
+		}
+	}
+
+	ip, port, err := net.SplitHostPort(addr)
+	if err == nil && ip == "" || ip == "0.0.0.0" {
+		if realIP, err := GetMainIP(); err == nil {
+			return net.JoinHostPort(realIP, port)
+		}
+	}
+
+	return addr
+}
+
+// getMainIP returns the giving system IP by attempting to connect to a imaginary
+// ip and returns the giving system ip.
+func getMainIP() (string, error) {
+	udp, err := net.DialTimeout("udp", "8.8.8.8:80", 1*time.Millisecond)
+	if udp == nil {
+		return "", err
+	}
+
+	defer udp.Close()
+
+	localAddr := udp.LocalAddr().String()
+	ip, _, _ := net.SplitHostPort(localAddr)
+
+	return ip, nil
 }

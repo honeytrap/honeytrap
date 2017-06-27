@@ -54,6 +54,7 @@ type (
 	// by honeytrap.
 	DirectorConfig struct {
 		IOConfig IOConfig                `toml:"io_config"`
+		Firejail FireJailConfig          `toml:"firejail_config"`
 		Cowrie   CowrieConfig            `toml:"cowrie_config"`
 		LXC      LxcConfig               `toml:"lxc_config"`
 		Commands []process.Command       `toml:"commands"`
@@ -123,6 +124,21 @@ type (
 		} `toml:"logging"`
 	}
 )
+
+// FireJailConfig defines a structure for the execution of a command policy for the generation
+// of a given firejail instance.
+type FireJailConfig struct {
+	Options      map[string]string `toml:"options"`
+	Envs         map[string]string `toml:"envs"`
+	Namespace    string            `toml:"namespace"`
+	App          string            `toml:"app"`
+	Profile      string            `toml:"profile"`
+	GatewayAddr  string            `toml:"gateway_addr"`
+	IPAddr       string            `toml:"ip_addr"`
+	DNSAddr      string            `toml:"dns_addr"`
+	Hostname     string            `toml:"hostname"`
+	NetInterface string            `toml:"net"`
+}
 
 // WebConfig defines the configuration for the web access point.
 type WebConfig struct {

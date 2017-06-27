@@ -167,7 +167,7 @@ func (c *CowrieContainer) Detail() director.ContainerDetail {
 
 // Dial connects to the giving address to provide proxying stream between
 // both endpoints.
-func (c *CowrieContainer) Dial(ctx context.Context) (net.Conn, error) {
+func (c *CowrieContainer) Dial(ctx context.Context, port string) (net.Conn, error) {
 	addr := fmt.Sprintf("%s:%s", c.meta.SSHAddr, c.meta.SSHPort)
 
 	log.Infof("Cowrie : %q : Dial Connection : Remote : %+q", c.targetName, addr)

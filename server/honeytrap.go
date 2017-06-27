@@ -16,6 +16,7 @@ import (
 	"github.com/honeytrap/honeytrap/config"
 	"github.com/honeytrap/honeytrap/director"
 	"github.com/honeytrap/honeytrap/director/cowriedirector"
+	"github.com/honeytrap/honeytrap/director/firejail"
 	"github.com/honeytrap/honeytrap/director/iodirector"
 	"github.com/honeytrap/honeytrap/director/lxcdirector"
 
@@ -66,6 +67,8 @@ func New(conf *config.Config) *Honeytrap {
 	switch conf.Director {
 	case cowriedirector.DirectorKey:
 		dir = cowriedirector.New(conf, bus)
+	case firejail.DirectorKey:
+		dir = firejail.New(conf, bus)
 	case iodirector.DirectorKey:
 		dir = iodirector.New(conf, bus)
 	case lxcdirector.DirectorKey:

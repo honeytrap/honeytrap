@@ -166,7 +166,7 @@ func (io *IOContainer) Detail() director.ContainerDetail {
 
 // Dial connects to the giving address to provide proxying stream between
 // both endpoints.
-func (io *IOContainer) Dial(ctx context.Context) (net.Conn, error) {
+func (io *IOContainer) Dial(ctx context.Context, port string) (net.Conn, error) {
 	log.Infof("IO : %q : Dial Connection : Remote : %+q", io.targetName, io.meta.ServiceAddr)
 
 	// Execute all global commands.

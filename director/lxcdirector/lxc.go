@@ -586,7 +586,7 @@ func (c *LxcContainer) CleanUp() error {
 
 // Dial attempts to connect to the internal network of the
 // internal container.
-func (c *LxcContainer) Dial(ctx context.Context) (net.Conn, error) {
+func (c *LxcContainer) Dial(ctx context.Context, port string) (net.Conn, error) {
 	if err := c.ensureStarted(); err != nil {
 		return nil, err
 	}
