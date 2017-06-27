@@ -35,12 +35,12 @@ func RegisterDirector(name string, generator DirectorGenerator) DirectorGenerato
 }
 
 // NewDirector returns a new Director of the giving name with the provided toml.Primitive.
-func NewDirector(name string, con *config.Config, meta toml.MetaData, primi toml.Primitive, ch pushers.Channel) (Director, error) {
-	log.Debug("Initializing director : %#q", name)
+func NewDirector(con *config.Config, meta toml.MetaData, primi toml.Primitive, ch pushers.Channel) (Director, error) {
+	log.Debug("Initializing director : %#q", con.Director)
 
-	maker, ok := backends.b[name]
+	maker, ok := backends.b[con.Director]
 	if !ok {
-		return nil, fmt.Errorf("Backend %q not found", name)
+		return nil, fmt.Errorf("Director with name %q not found", con.Director)
 	}
 
 	return maker(con, meta, primi, ch)

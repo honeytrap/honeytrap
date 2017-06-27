@@ -15,10 +15,10 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/config"
 	"github.com/honeytrap/honeytrap/director"
-	"github.com/honeytrap/honeytrap/director/cowriedirector"
-	"github.com/honeytrap/honeytrap/director/firejail"
-	"github.com/honeytrap/honeytrap/director/iodirector"
-	"github.com/honeytrap/honeytrap/director/lxcdirector"
+	_ "github.com/honeytrap/honeytrap/director/cowriedirector"
+	_ "github.com/honeytrap/honeytrap/director/firejail"
+	_ "github.com/honeytrap/honeytrap/director/iodirector"
+	_ "github.com/honeytrap/honeytrap/director/lxcdirector"
 
 	assetfs "github.com/elazarl/go-bindata-assetfs"
 
@@ -62,19 +62,9 @@ func New(conf *config.Config) *Honeytrap {
 	// Initialize all channels within the provided config.
 	pushers.ChannelsFrom(conf, bus)
 
-	var dir director.Director
-
-	switch conf.Director {
-	case cowriedirector.DirectorKey:
-		dir = cowriedirector.New(conf, bus)
-	case firejail.DirectorKey:
-		dir = firejail.New(conf, bus)
-	case iodirector.DirectorKey:
-		dir = iodirector.New(conf, bus)
-	case lxcdirector.DirectorKey:
-		dir = lxcdirector.New(conf, bus)
-	default:
-		panic(fmt.Sprintf("Unknown director type: %q", conf.Director))
+	dir, err := director.NewDirector(conf, conf.MetaData, conf.DirectorConfig, bus)
+	if err != nil {
+		panic(err)
 	}
 
 	manager := director.NewContainerConnections()
