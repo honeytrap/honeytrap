@@ -21,6 +21,11 @@ token = "433UI-56JK-3433NJ-KI954"
     ssh_addr = "localhost"
     ssh_port = "2222"
 
+    [directors.firejail]
+    app = firefox
+    net = eth0
+    ip = 192.168.10.100
+
 [canary]
 interfaces = ["ens160"]
 
