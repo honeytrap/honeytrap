@@ -40,33 +40,29 @@ type LxcConfig struct {
 // LxcProvider defines a struct which loads the needed configuration for handling
 // lxc based containers.
 type LxcProvider struct {
-	config         *config.Config
-	events         pushers.Channel
-	globalCommands process.SyncProcess
-	globalScripts  process.SyncScripts
+	lxconfig LxcConfig
+	config   *config.Config
+	events   pushers.Channel
 }
 
 // NewLxcProvider returns a new instance of a LxcProvider as a Provider.
-func NewLxcProvider(config *config.Config, events pushers.Channel) *LxcProvider {
+func NewLxcProvider(config *config.Config, xconfig LxcConfig, events pushers.Channel) *LxcProvider {
 	return &LxcProvider{
-		config:         config,
-		events:         events,
-		globalScripts:  process.SyncScripts{Scripts: config.Directors.Scripts},
-		globalCommands: process.SyncProcess{Commands: config.Directors.Commands},
+		config:   config,
+		lxconfig: xconfig,
+		events:   events,
 	}
 }
 
 // NewContainer returns a new LxcContainer from the provider.
 func (lp *LxcProvider) NewContainer(name string) (director.Container, error) {
 	c := LxcContainer{
-		provider:  lp,
-		name:      name,
-		config:    lp.config,
-		idle:      time.Now(),
-		gscripts:  lp.globalScripts,
-		gcommands: lp.globalCommands,
-		meta:      lp.config.Directors.LXC,
-		sf:        sniffer.New(lp.config.NetFilter),
+		provider: lp,
+		name:     name,
+		config:   lp.config,
+		idle:     time.Now(),
+		meta:     lp.lxconfig,
+		sf:       sniffer.New(lp.config.NetFilter),
 	}
 
 	var err error
@@ -81,19 +77,17 @@ func (lp *LxcProvider) NewContainer(name string) (director.Container, error) {
 
 // LxcContainer defines a struct to encapsulated a lxc.Container.
 type LxcContainer struct {
-	ip        string
-	name      string
-	template  string
-	idevice   string
-	idle      time.Time
-	config    *config.Config
-	meta      config.LxcConfig
-	c         *lxc.Container
-	m         sync.Mutex
-	sf        *sniffer.Sniffer
-	provider  *LxcProvider
-	gcommands process.SyncProcess
-	gscripts  process.SyncScripts
+	ip       string
+	name     string
+	template string
+	idevice  string
+	idle     time.Time
+	config   *config.Config
+	meta     config.LxcConfig
+	c        *lxc.Container
+	m        sync.Mutex
+	sf       *sniffer.Sniffer
+	provider *LxcProvider
 }
 
 // Detail returns the ContainerDetail related to this giving container.
@@ -586,22 +580,12 @@ func (c *LxcContainer) CleanUp() error {
 
 // Dial attempts to connect to the internal network of the
 // internal container.
-func (c *LxcContainer) Dial(ctx context.Context) (net.Conn, error) {
+func (c *LxcContainer) Dial(ctx context.Context, port string) (net.Conn, error) {
 	if err := c.ensureStarted(); err != nil {
 		return nil, err
 	}
 
 	if err := c.settle(); err != nil {
-		return nil, err
-	}
-
-	// Execute all global commands.
-	// TODO: Move context to be supplied by caller and not set in code
-	if err := c.gcommands.Exec(ctx, os.Stdout, os.Stderr); err != nil {
-		return nil, err
-	}
-
-	if err := c.gscripts.Exec(ctx, os.Stdout, os.Stderr); err != nil {
 		return nil, err
 	}
 

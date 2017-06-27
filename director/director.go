@@ -4,11 +4,49 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"time"
+
+	"github.com/honeytrap/honeytrap/config"
+	"github.com/honeytrap/honeytrap/pushers"
 
 	logging "github.com/op/go-logging"
 )
 
 var log = logging.MustGetLogger("honeytrap:director")
+
+//=======================================================================================================
+
+// DirectorGenerator defines a function type which returns a Channel created
+// from a primitive.
+type DirectorGenerator func(*config.Config, toml.MetaData, toml.Primitive, pushers.Channel) (Director, error)
+
+// TODO(alex): Decide if we need a mutex to secure things concurrently.
+// We assume it will never be read/written to concurrently.
+var backends = struct {
+	b map[string]DirectorGenerator
+}{
+	b: make(map[string]DirectorGenerator),
+}
+
+// RegisterDirector adds the giving generator to the global generator lists.
+func RegisterDirector(name string, generator DirectorGenerator) DirectorGenerator {
+	backends.b[name] = generator
+	return generator
+}
+
+// NewDirector returns a new Director of the giving name with the provided toml.Primitive.
+func NewDirector(con *config.Config, meta toml.MetaData, primi toml.Primitive, ch pushers.Channel) (Director, error) {
+	log.Debug("Initializing director : %#q", con.Director)
+
+	maker, ok := backends.b[con.Director]
+	if !ok {
+		return nil, fmt.Errorf("Director with name %q not found", con.Director)
+	}
+
+	return maker(con, meta, primi, ch)
+}
+
+//=======================================================================================================
 
 // Director defines an interface which exposes an interface to allow structures that
 // implement this interface allow us to control containers which they provide.
@@ -21,8 +59,8 @@ type Director interface {
 // Container defines a type which exposes methods for connecting to a container.
 type Container interface {
 	Name() string
-	Dial(context.Context) (net.Conn, error)
 	Detail() ContainerDetail
+	Dial(context.Context, port string) (net.Conn, error)
 }
 
 // ContainerDetail defines a struct which is used to detail specific container meta-data.
@@ -199,4 +237,39 @@ func (cn *ContainerConnections) manage() {
 			}
 		}
 	}
+}
+
+// GetHostAddr takes the giving address string and if it has no ip or use the
+// zeroth ip format, then modifies the ip with the current systems ip.
+func GetHostAddr(addr string) string {
+	if addr == "" {
+		if real, err := GetMainIP(); err == nil {
+			return real + ":0"
+		}
+	}
+
+	ip, port, err := net.SplitHostPort(addr)
+	if err == nil && ip == "" || ip == "0.0.0.0" {
+		if realIP, err := GetMainIP(); err == nil {
+			return net.JoinHostPort(realIP, port)
+		}
+	}
+
+	return addr
+}
+
+// getMainIP returns the giving system IP by attempting to connect to a imaginary
+// ip and returns the giving system ip.
+func getMainIP() (string, error) {
+	udp, err := net.DialTimeout("udp", "8.8.8.8:80", 1*time.Millisecond)
+	if udp == nil {
+		return "", err
+	}
+
+	defer udp.Close()
+
+	localAddr := udp.LocalAddr().String()
+	ip, _, _ := net.SplitHostPort(localAddr)
+
+	return ip, nil
 }

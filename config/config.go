@@ -10,7 +10,6 @@ import (
 	"os"
 
 	"github.com/BurntSushi/toml"
-	"github.com/honeytrap/honeytrap/process"
 	logging "github.com/op/go-logging"
 )
 
@@ -27,37 +26,6 @@ type (
 	// HouseKeeper defines the settings for operation cleanup.
 	HouseKeeper struct {
 		Every Delay `toml:"every"`
-	}
-
-	// LxcConfig defines the settings for the lxc director.
-	LxcConfig struct {
-		Commands []process.Command       `toml:"commands"`
-		Scripts  []process.ScriptProcess `toml:"scripts"`
-	}
-
-	// IOConfig defines the settings for the iodirector.
-	IOConfig struct {
-		ServiceAddr string                  `toml:"service_addr"`
-		Commands    []process.Command       `toml:"commands"`
-		Scripts     []process.ScriptProcess `toml:"scripts"`
-	}
-
-	// CowrieConfig defines the settings for director meta.
-	CowrieConfig struct {
-		SSHPort  string                  `toml:"ssh_port"`
-		SSHAddr  string                  `toml:"ssh_addr"`
-		Commands []process.Command       `toml:"commands"`
-		Scripts  []process.ScriptProcess `toml:"scripts"`
-	}
-
-	// DirectorConfig defines the settings for all directors supported
-	// by honeytrap.
-	DirectorConfig struct {
-		IOConfig IOConfig                `toml:"io_config"`
-		Cowrie   CowrieConfig            `toml:"cowrie_config"`
-		LXC      LxcConfig               `toml:"lxc_config"`
-		Commands []process.Command       `toml:"commands"`
-		Scripts  []process.ScriptProcess `toml:"scripts"`
 	}
 
 	// ChannelConfig defines the giving fields used to generate a custom event channel.
@@ -90,15 +58,15 @@ type (
 	// Config defines the central type where all configuration is umarhsalled to.
 	Config struct {
 		toml.MetaData
-		Token       string         `toml:"token"`
-		Template    string         `toml:"template"`
-		NetFilter   string         `toml:"net_filter"`
-		Keys        string         `toml:"keys"`
-		Director    string         `toml:"director"`
-		Delays      Delays         `toml:"delays"`
-		Folders     Folders        `toml:"folders"`
-		HouseKeeper HouseKeeper    `toml:"housekeeper"`
-		Directors   DirectorConfig `toml:"directors"`
+		Token          string         `toml:"token"`
+		Template       string         `toml:"template"`
+		NetFilter      string         `toml:"net_filter"`
+		Keys           string         `toml:"keys"`
+		Director       string         `toml:"director"`
+		Delays         Delays         `toml:"delays"`
+		Folders        Folders        `toml:"folders"`
+		HouseKeeper    HouseKeeper    `toml:"housekeeper"`
+		DirectorConfig toml.Primitive `toml:"director_config"`
 
 		Backends map[string]toml.Primitive `toml:"backend"`
 		Channels []ChannelConfig           `toml:"channel"`
@@ -172,11 +140,6 @@ var Default = Config{
 	Folders: Folders{},
 	HouseKeeper: HouseKeeper{
 		Every: Delay(60 * time.Second),
-	},
-	Directors: DirectorConfig{
-		Cowrie: CowrieConfig{
-			SSHPort: "2222",
-		},
 	},
 	Web: WebConfig{
 		Port: ":3000",
