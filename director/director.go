@@ -6,6 +6,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/config"
 	"github.com/honeytrap/honeytrap/pushers"
 
@@ -16,20 +17,20 @@ var log = logging.MustGetLogger("honeytrap:director")
 
 //=======================================================================================================
 
-// DirectorGenerator defines a function type which returns a Channel created
+// Generator defines a function type which returns a Channel created
 // from a primitive.
-type DirectorGenerator func(*config.Config, toml.MetaData, toml.Primitive, pushers.Channel) (Director, error)
+type Generator func(*config.Config, toml.MetaData, toml.Primitive, pushers.Channel) (Director, error)
 
 // TODO(alex): Decide if we need a mutex to secure things concurrently.
 // We assume it will never be read/written to concurrently.
 var backends = struct {
-	b map[string]DirectorGenerator
+	b map[string]Generator
 }{
-	b: make(map[string]DirectorGenerator),
+	b: make(map[string]Generator),
 }
 
 // RegisterDirector adds the giving generator to the global generator lists.
-func RegisterDirector(name string, generator DirectorGenerator) DirectorGenerator {
+func RegisterDirector(name string, generator Generator) Generator {
 	backends.b[name] = generator
 	return generator
 }
@@ -60,7 +61,7 @@ type Director interface {
 type Container interface {
 	Name() string
 	Detail() ContainerDetail
-	Dial(context.Context, port string) (net.Conn, error)
+	Dial(context.Context, string) (net.Conn, error)
 }
 
 // ContainerDetail defines a struct which is used to detail specific container meta-data.
@@ -243,14 +244,14 @@ func (cn *ContainerConnections) manage() {
 // zeroth ip format, then modifies the ip with the current systems ip.
 func GetHostAddr(addr string) string {
 	if addr == "" {
-		if real, err := GetMainIP(); err == nil {
+		if real, err := getMainIP(); err == nil {
 			return real + ":0"
 		}
 	}
 
 	ip, port, err := net.SplitHostPort(addr)
 	if err == nil && ip == "" || ip == "0.0.0.0" {
-		if realIP, err := GetMainIP(); err == nil {
+		if realIP, err := getMainIP(); err == nil {
 			return net.JoinHostPort(realIP, port)
 		}
 	}
