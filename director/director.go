@@ -6,10 +6,47 @@ import (
 	"net"
 	"time"
 
+	"github.com/honeytrap/honeytrap/config"
+	"github.com/honeytrap/honeytrap/pushers"
+
 	logging "github.com/op/go-logging"
 )
 
 var log = logging.MustGetLogger("honeytrap:director")
+
+//=======================================================================================================
+
+// DirectorGenerator defines a function type which returns a Channel created
+// from a primitive.
+type DirectorGenerator func(*config.Config, toml.MetaData, toml.Primitive, pushers.Channel) (Director, error)
+
+// TODO(alex): Decide if we need a mutex to secure things concurrently.
+// We assume it will never be read/written to concurrently.
+var backends = struct {
+	b map[string]DirectorGenerator
+}{
+	b: make(map[string]DirectorGenerator),
+}
+
+// RegisterDirector adds the giving generator to the global generator lists.
+func RegisterDirector(name string, generator DirectorGenerator) DirectorGenerator {
+	backends.b[name] = generator
+	return generator
+}
+
+// NewDirector returns a new Director of the giving name with the provided toml.Primitive.
+func NewDirector(name string, con *config.Config, meta toml.MetaData, primi toml.Primitive, ch pushers.Channel) (Director, error) {
+	log.Debug("Initializing director : %#q", name)
+
+	maker, ok := backends.b[name]
+	if !ok {
+		return nil, fmt.Errorf("Backend %q not found", name)
+	}
+
+	return maker(con, meta, primi, ch)
+}
+
+//=======================================================================================================
 
 // Director defines an interface which exposes an interface to allow structures that
 // implement this interface allow us to control containers which they provide.

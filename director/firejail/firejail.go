@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/config"
 	"github.com/honeytrap/honeytrap/director"
 	"github.com/honeytrap/honeytrap/process"
@@ -25,7 +26,25 @@ const (
 var (
 	dailTimeout = 5 * time.Second
 	log         = logging.MustGetLogger("honeytrap:director:firejail")
+	_           = director.RegisterDirector("firejail", NewWith)
 )
+
+// JailConfig defines a structure for the execution of a command policy for the generation
+// of a given firejail instance.
+type JailConfig struct {
+	Options      map[string]string       `toml:"options"`
+	Envs         map[string]string       `toml:"envs"`
+	Namespace    string                  `toml:"namespace"`
+	App          string                  `toml:"app"`
+	Profile      string                  `toml:"profile"`
+	GatewayAddr  string                  `toml:"gateway_addr"`
+	IPAddr       string                  `toml:"ip_addr"`
+	DNSAddr      string                  `toml:"dns_addr"`
+	Hostname     string                  `toml:"hostname"`
+	NetInterface string                  `toml:"net"`
+	Commands     []process.Command       `toml:"commands"`
+	Scripts      []process.ScriptProcess `toml:"scripts"`
+}
 
 // Director defines a central structure which creates/retrieves Container
 // connections for the giving system.
@@ -39,10 +58,22 @@ type Director struct {
 	containers     map[string]director.Container
 }
 
+// NewWith defines a function to return a director.Director.
+func NewWith(cnf *Config, meta toml.MetaData, data toml.Primitive, events pushers.Channel) (director.Director, error) {
+	var jconfig JailConfig
+
+	if err := meta.PrimitiveDecode(data, &jconfig); err != nil {
+		return nil, err
+	}
+
+	return New(cnf, jconfig, events), nil
+}
+
 // New returns a new instance of the Director.
-func New(config *config.Config, events pushers.Channel) *Director {
+func New(config *config.Config, jailconfig JailConfig, events pushers.Channel) *Director {
 	return &Director{
 		config:         config,
+		jailConfig:     jailconfig,
 		events:         events,
 		containers:     make(map[string]director.Container),
 		globalScripts:  process.SyncScripts{Scripts: config.Directors.Scripts},
@@ -78,7 +109,7 @@ func (d *Director) NewContainer(addr string) (director.Container, error) {
 		config:    d.config,
 		gscripts:  d.globalScripts,
 		gcommands: d.globalCommands,
-		meta:      d.config.Directors.Firejail,
+		meta:      d.jailConfig,
 	}
 
 	d.m.Lock()
@@ -144,7 +175,7 @@ type JailContainer struct {
 	config    *config.Config
 	gcommands process.SyncProcess
 	gscripts  process.SyncScripts
-	meta      config.FireJailConfig
+	meta      JailConfig
 }
 
 // Detail returns the ContainerDetail related to this giving container.

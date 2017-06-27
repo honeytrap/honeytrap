@@ -40,6 +40,7 @@ type LxcConfig struct {
 // LxcProvider defines a struct which loads the needed configuration for handling
 // lxc based containers.
 type LxcProvider struct {
+	lxconfig       LxcConfig
 	config         *config.Config
 	events         pushers.Channel
 	globalCommands process.SyncProcess
@@ -47,9 +48,10 @@ type LxcProvider struct {
 }
 
 // NewLxcProvider returns a new instance of a LxcProvider as a Provider.
-func NewLxcProvider(config *config.Config, events pushers.Channel) *LxcProvider {
+func NewLxcProvider(config *config.Config, xconfig LxcConfig, events pushers.Channel) *LxcProvider {
 	return &LxcProvider{
 		config:         config,
+		lxconfig:       xconfig,
 		events:         events,
 		globalScripts:  process.SyncScripts{Scripts: config.Directors.Scripts},
 		globalCommands: process.SyncProcess{Commands: config.Directors.Commands},
@@ -63,9 +65,9 @@ func (lp *LxcProvider) NewContainer(name string) (director.Container, error) {
 		name:      name,
 		config:    lp.config,
 		idle:      time.Now(),
+		meta:      lp.lxconfig,
 		gscripts:  lp.globalScripts,
 		gcommands: lp.globalCommands,
-		meta:      lp.config.Directors.LXC,
 		sf:        sniffer.New(lp.config.NetFilter),
 	}
 

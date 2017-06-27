@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/config"
 	"github.com/honeytrap/honeytrap/director"
 	"github.com/honeytrap/honeytrap/process"
@@ -28,11 +29,21 @@ const (
 var (
 	dailTimeout = 5 * time.Second
 	log         = logging.MustGetLogger("honeytrap:director:cowrie")
+	_           = director.RegisterDirector("cowrie", NewWith)
 )
+
+// CwConfig defines the settings for director meta.
+type CwConfig struct {
+	SSHPort  string                  `toml:"ssh_port"`
+	SSHAddr  string                  `toml:"ssh_addr"`
+	Commands []process.Command       `toml:"commands"`
+	Scripts  []process.ScriptProcess `toml:"scripts"`
+}
 
 // Director defines a central structure which creates/retrieves Container
 // connectCowriens for the giving system.
 type Director struct {
+	cwconfig       CwConfig
 	config         *config.Config
 	namer          namecon.Namer
 	events         pushers.Channel
@@ -42,9 +53,25 @@ type Director struct {
 	globalScripts  process.SyncScripts
 }
 
+// NewWith defines a function to return a director.Director.
+func NewWith(cnf *Config, meta toml.MetaData, data toml.Primitive, events pushers.Channel) (director.Director, error) {
+	var jconfig CwConfig
+
+	if err := meta.PrimitiveDecode(data, &jconfig); err != nil {
+		return nil, err
+	}
+
+	return New(cnf, jconfig, events), nil
+}
+
 // New returns a new instance of the Director.
-func New(config *config.Config, events pushers.Channel) *Director {
+func New(config *config.Config, cw CwConfig, events pushers.Channel) *Director {
+	if cw.SSHPort == "" {
+		cw.SSHPort = "2222"
+	}
+
 	return &Director{
+		cwconfig:       cw,
 		config:         config,
 		events:         events,
 		containers:     make(map[string]director.Container),
@@ -82,7 +109,7 @@ func (d *Director) NewContainer(addr string) (director.Container, error) {
 		config:     d.config,
 		gscripts:   d.globalScripts,
 		gcommands:  d.globalCommands,
-		meta:       d.config.Directors.Cowrie,
+		meta:       d.cwconfig,
 	}
 
 	d.m.Lock()
