@@ -72,13 +72,11 @@ func NewWith(cnf *Config, meta toml.MetaData, data toml.Primitive, events pusher
 // New returns a new instance of the Director.
 func New(config *config.Config, jailconfig JailConfig, events pushers.Channel) *Director {
 	return &Director{
-		config:         config,
-		jailConfig:     jailconfig,
-		events:         events,
-		containers:     make(map[string]director.Container),
-		globalScripts:  process.SyncScripts{Scripts: config.Directors.Scripts},
-		globalCommands: process.SyncProcess{Commands: config.Directors.Commands},
-		namer:          namecon.NewNamerCon(config.Template+"-%s", namecon.Basic{}),
+		config:     config,
+		jailConfig: jailconfig,
+		events:     events,
+		containers: make(map[string]director.Container),
+		namer:      namecon.NewNamerCon(config.Template+"-%s", namecon.Basic{}),
 	}
 }
 
@@ -193,16 +191,6 @@ func (io *JailContainer) Detail() director.ContainerDetail {
 // both endpoints.
 func (io *JailContainer) Dial(ctx context.Context, port string) (net.Conn, error) {
 	log.Infof("Jail : %q : Dial Connection : Remote : %+q", io.targetName, io.meta.ServiceAddr)
-
-	// Execute all global commands.
-	// TODO: Move context to be supplied by caller and not set in code
-	if err := io.gcommands.Exec(ctx, os.Stdout, os.Stderr); err != nil {
-		return nil, err
-	}
-
-	if err := io.gscripts.Exec(ctx, os.Stdout, os.Stderr); err != nil {
-		return nil, err
-	}
 
 	command, err := toCommand(io.meta)
 	if err != nil {

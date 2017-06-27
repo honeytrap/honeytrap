@@ -63,13 +63,11 @@ func NewWith(cnf *Config, meta toml.MetaData, data toml.Primitive, events pusher
 // New returns a new instance of the Director.
 func New(config *config.Config, ioc IOConfig, events pushers.Channel) *Director {
 	return &Director{
-		config:         config,
-		ioconfig:       ioc,
-		events:         events,
-		containers:     make(map[string]director.Container),
-		globalScripts:  process.SyncScripts{Scripts: config.Directors.Scripts},
-		globalCommands: process.SyncProcess{Commands: config.Directors.Commands},
-		namer:          namecon.NewNamerCon(config.Template+"-%s", namecon.Basic{}),
+		config:     config,
+		ioconfig:   ioc,
+		events:     events,
+		containers: make(map[string]director.Container),
+		namer:      namecon.NewNamerCon(config.Template+"-%s", namecon.Basic{}),
 	}
 }
 
@@ -100,8 +98,6 @@ func (d *Director) NewContainer(addr string) (director.Container, error) {
 		targetAddr: addr,
 		targetName: name,
 		config:     d.config,
-		gscripts:   d.globalScripts,
-		gcommands:  d.globalCommands,
 		meta:       d.ioconfig,
 	}
 
@@ -169,8 +165,6 @@ type IOContainer struct {
 	targetName string
 	config     *config.Config
 	meta       config.IOConfig
-	gcommands  process.SyncProcess
-	gscripts   process.SyncScripts
 }
 
 // Detail returns the ContainerDetail related to this giving container.
@@ -188,16 +182,6 @@ func (io *IOContainer) Detail() director.ContainerDetail {
 // both endpoints.
 func (io *IOContainer) Dial(ctx context.Context, port string) (net.Conn, error) {
 	log.Infof("IO : %q : Dial Connection : Remote : %+q", io.targetName, io.meta.ServiceAddr)
-
-	// Execute all global commands.
-	// TODO: Move context to be supplied by caller and not set in code
-	if err := io.gcommands.Exec(ctx, os.Stdout, os.Stderr); err != nil {
-		return nil, err
-	}
-
-	if err := io.gscripts.Exec(ctx, os.Stdout, os.Stderr); err != nil {
-		return nil, err
-	}
 
 	// Execute all local commands.
 	localScripts := process.SyncScripts{Scripts: io.meta.Scripts}

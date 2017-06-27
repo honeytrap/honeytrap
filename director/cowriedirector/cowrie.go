@@ -43,14 +43,12 @@ type CwConfig struct {
 // Director defines a central structure which creates/retrieves Container
 // connectCowriens for the giving system.
 type Director struct {
-	cwconfig       CwConfig
-	config         *config.Config
-	namer          namecon.Namer
-	events         pushers.Channel
-	m              sync.Mutex
-	containers     map[string]director.Container
-	globalCommands process.SyncProcess
-	globalScripts  process.SyncScripts
+	cwconfig   CwConfig
+	config     *config.Config
+	namer      namecon.Namer
+	events     pushers.Channel
+	m          sync.Mutex
+	containers map[string]director.Container
 }
 
 // NewWith defines a function to return a director.Director.
@@ -71,13 +69,11 @@ func New(config *config.Config, cw CwConfig, events pushers.Channel) *Director {
 	}
 
 	return &Director{
-		cwconfig:       cw,
-		config:         config,
-		events:         events,
-		containers:     make(map[string]director.Container),
-		globalScripts:  process.SyncScripts{Scripts: config.Directors.Scripts},
-		globalCommands: process.SyncProcess{Commands: config.Directors.Commands},
-		namer:          namecon.NewNamerCon(config.Template+"-%s", namecon.Basic{}),
+		cwconfig:   cw,
+		config:     config,
+		events:     events,
+		containers: make(map[string]director.Container),
+		namer:      namecon.NewNamerCon(config.Template+"-%s", namecon.Basic{}),
 	}
 }
 
@@ -107,8 +103,6 @@ func (d *Director) NewContainer(addr string) (director.Container, error) {
 	container = &CowrieContainer{
 		targetName: name,
 		config:     d.config,
-		gscripts:   d.globalScripts,
-		gcommands:  d.globalCommands,
 		meta:       d.cwconfig,
 	}
 
@@ -175,8 +169,6 @@ type CowrieContainer struct {
 	targetName string
 	config     *config.Config
 	meta       config.CowrieConfig
-	gcommands  process.SyncProcess
-	gscripts   process.SyncScripts
 }
 
 // Detail returns the ContainerDetail related to this giving container.
@@ -198,16 +190,6 @@ func (c *CowrieContainer) Dial(ctx context.Context, port string) (net.Conn, erro
 	addr := fmt.Sprintf("%s:%s", c.meta.SSHAddr, c.meta.SSHPort)
 
 	log.Infof("Cowrie : %q : Dial Connection : Remote : %+q", c.targetName, addr)
-
-	// Execute all global commands.
-	// TODO: Move context to be supplied by caller and not set in code
-	if err := c.gcommands.Exec(ctx, os.Stdout, os.Stderr); err != nil {
-		return nil, err
-	}
-
-	if err := c.gscripts.Exec(ctx, os.Stdout, os.Stderr); err != nil {
-		return nil, err
-	}
 
 	// Execute all local commands.
 	localScripts := process.SyncScripts{Scripts: c.meta.Scripts}
