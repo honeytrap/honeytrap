@@ -4,7 +4,7 @@ package lxcdirector
 
 import (
 	// #nosec
-	"errors"
+
 	"net"
 	"sync"
 
@@ -151,5 +151,5 @@ func (d *Director) GetContainer(c net.Conn) (director.Container, error) {
 		return container, nil
 	}
 
-	return nil, errors.New("Container not found")
+	return d.NewContainer(c.RemoteAddr().String())
 }

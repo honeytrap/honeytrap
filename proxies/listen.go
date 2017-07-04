@@ -39,10 +39,12 @@ func (lw *ProxyListener) Accept() (c net.Conn, err error) {
 	// Attempt to GetContainer from director.
 	container, err := lw.director.GetContainer(c)
 	if err != nil {
+		log.Error("proxy : %q : Failed to retrieve container : %q : %+q", c.RemoteAddr().String(), err)
 
 		// Container does not exists on director, so ask for new one.
 		container, err = lw.director.NewContainer(c.RemoteAddr().String())
 		if err != nil {
+			log.Error("proxy : %q : Failed to create container : %q : %+q", c.RemoteAddr().String(), err)
 
 			lw.events.Send(ConnectionClosedEvent(c))
 
@@ -66,6 +68,8 @@ func (lw *ProxyListener) Accept() (c net.Conn, err error) {
 	// there therefore be a time-stamp added to use the deadline capability of context?
 	c2, err = container.Dial(context.Background(), port)
 	if err != nil {
+		log.Error("proxy : %q : Failed to dail container : %q : %+q", c.RemoteAddr().String(), err)
+
 		lw.events.Send(UserSessionClosedEvent(c, container.Detail()))
 
 		lw.events.Send(ConnectionClosedEvent(c))

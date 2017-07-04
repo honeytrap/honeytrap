@@ -5,7 +5,6 @@ package iodirector
 
 import (
 	"context"
-	"errors"
 	"net"
 	"os"
 	"sync"
@@ -143,7 +142,7 @@ func (d *Director) GetContainer(conn net.Conn) (director.Container, error) {
 	}
 	d.m.Unlock()
 
-	return nil, errors.New("Container not found")
+	return d.NewContainer(conn.RemoteAddr().String())
 }
 
 // getName returns a new name based on the provided address.

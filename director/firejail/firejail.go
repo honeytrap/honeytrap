@@ -34,8 +34,9 @@ var (
 type JailConfig struct {
 	Options      map[string]string       `toml:"options"`
 	Envs         map[string]string       `toml:"envs"`
-	Namespace    string                  `toml:"namespace"`
 	App          string                  `toml:"app"`
+	Name         string                  `toml:"name"`
+	DefaultPort  string                  `toml:"default_port"`
 	Profile      string                  `toml:"profile"`
 	GatewayAddr  string                  `toml:"gateway_addr"`
 	IPAddr       string                  `toml:"ip_addr"`
@@ -50,7 +51,7 @@ type JailConfig struct {
 // connections for the giving system.
 type Director struct {
 	config         *config.Config
-	jailConfig 		JailConfig
+	jailConfig     JailConfig
 	namer          namecon.Namer
 	events         pushers.Channel
 	globalCommands process.SyncProcess
@@ -106,10 +107,10 @@ func (d *Director) NewContainer(addr string) (director.Container, error) {
 
 	container = &JailContainer{
 		targetName: name,
-		config:    d.config,
-		gscripts:  d.globalScripts,
-		gcommands: d.globalCommands,
-		meta:      d.jailConfig,
+		config:     d.config,
+		gscripts:   d.globalScripts,
+		gcommands:  d.globalCommands,
+		meta:       d.jailConfig,
 	}
 
 	d.m.Lock()
@@ -141,6 +142,7 @@ func (d *Director) GetContainer(conn net.Conn) (director.Container, error) {
 
 	name, err := d.getName(conn.RemoteAddr().String())
 	if err != nil {
+		log.Errorf("Jail : Failed to retrieve existing container : %+q : %+q", conn.RemoteAddr(), err)
 		return nil, err
 	}
 
@@ -154,7 +156,7 @@ func (d *Director) GetContainer(conn net.Conn) (director.Container, error) {
 	}
 	d.m.Unlock()
 
-	return nil, errors.New("Container not found")
+	return d.NewContainer(conn.RemoteAddr().String())
 }
 
 // getName returns a new name based on the provided address.
@@ -173,10 +175,10 @@ func (d *Director) getName(addr string) (string, error) {
 // between stream endpoints.
 type JailContainer struct {
 	targetName string
-	config    *config.Config
-	gcommands process.SyncProcess
-	gscripts  process.SyncScripts
-	meta      JailConfig
+	config     *config.Config
+	gcommands  process.SyncProcess
+	gscripts   process.SyncScripts
+	meta       JailConfig
 }
 
 // Detail returns the ContainerDetail related to this giving container.
@@ -195,15 +197,23 @@ func (io *JailContainer) Detail() director.ContainerDetail {
 func (io *JailContainer) Dial(ctx context.Context, port string) (net.Conn, error) {
 	log.Infof("Jail : %q : Dial Connection : Remote : %q", io.targetName, io.meta.App)
 
+	if port == "0" {
+		port = io.meta.DefaultPort
+	}
+
 	command, err := toCommand(io.meta)
 	if err != nil {
+		log.Error("Jail : %q : Dial Connection : Failed : %q", io.targetName, err)
 		return nil, err
 	}
 
 	command.Async = true
 
+	log.Infof("Jail : %q : Dial Connection : Executing Command : Command{Name: %q, Args: %+q}", io.targetName, command.Name, command.Args)
+
 	// Run command associated with firejail to bootup
-	if err := command.Run(ctx, os.Stdout, os.Stderr); err != nil {
+	if err := command.Run(ctx, nil, os.Stderr); err != nil {
+		log.Error("Jail : %q : Dial Connection : Failed : %q", io.targetName, err)
 		return nil, err
 	}
 
@@ -212,15 +222,18 @@ func (io *JailContainer) Dial(ctx context.Context, port string) (net.Conn, error
 	localCommands := process.SyncProcess{Commands: io.meta.Commands}
 
 	if err := localCommands.Exec(ctx, os.Stdout, os.Stderr); err != nil {
+		log.Error("Jail : %q : Dial Connection : Failed : %q", io.targetName, err)
 		return nil, err
 	}
 
 	if err := localScripts.Exec(ctx, os.Stdout, os.Stderr); err != nil {
+		log.Error("Jail : %q : Dial Connection : Failed : %q", io.targetName, err)
 		return nil, err
 	}
 
 	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%s", io.meta.IPAddr, port), dailTimeout)
 	if err != nil {
+		log.Error("Jail : %q : Dial Connection : Failed : %q", io.targetName, err)
 		return nil, err
 	}
 
@@ -241,7 +254,7 @@ func toCommand(jc JailConfig) (process.Command, error) {
 	var proc process.Command
 
 	if jc.App == "" {
-		return proc, errors.New("App can not be empty in FireJailConfig")
+		return proc, errors.New("App can not be empty in JailConfig")
 	}
 
 	proc.Name = "firejail"
@@ -254,43 +267,47 @@ func toCommand(jc JailConfig) (process.Command, error) {
 	}
 
 	if jc.IPAddr != "" {
-		args = append(args, fmt.Sprintf("ip=%s", jc.IPAddr))
+		args = append(args, "ip", jc.IPAddr)
 	} else if ip, ok := jc.Options["ip"]; ok {
-		args = append(args, fmt.Sprintf("ip=%s", ip))
+		args = append(args, "ip", ip)
 	} else {
-		args = append(args, fmt.Sprintf("ip=%s", director.GetHostAddr("")))
+		addr := director.GetHostAddr("")
+
+		if ip, _, err := net.SplitHostPort(addr); err == nil {
+			args = append(args, "ip", ip)
+		}
 	}
 
 	_, ok = jc.Options["dns"]
 	if jc.DNSAddr != "" && !ok {
-		args = append(args, fmt.Sprintf("dns=%s", jc.DNSAddr))
+		args = append(args, "dns", jc.DNSAddr)
 	}
 
 	_, ok = jc.Options["hostname"]
 	if jc.Hostname != "" && !ok {
-		args = append(args, fmt.Sprintf("hostname=%s", jc.Hostname))
+		args = append(args, "hostname", jc.Hostname)
 	}
 
 	_, ok = jc.Options["net"]
 	if jc.NetInterface != "" && !ok {
-		args = append(args, fmt.Sprintf("net=%s", jc.NetInterface))
+		args = append(args, "net", jc.NetInterface)
 	}
 
 	_, ok = jc.Options["defaultgw"]
 	if jc.GatewayAddr != "" && !ok {
-		args = append(args, fmt.Sprintf("defaultgw=%s", jc.GatewayAddr))
+		args = append(args, "defaultgw", jc.GatewayAddr)
 	}
 
-	// if jc.Namespace != "" {
-	// 	args = append(args, fmt.Sprintf("name=%s", jc.Namespace))
-	// }
+	if jc.Name != "" {
+		args = append(args, "name", jc.Name)
+	}
 
 	for name, value := range jc.Envs {
-		args = append(args, fmt.Sprintf("env %s=%s", name, value))
+		args = append(args, "env", fmt.Sprintf("%s=%s", name, value))
 	}
 
 	for name, value := range jc.Options {
-		args = append(args, fmt.Sprintf("%s=%s", name, value))
+		args = append(args, name, value)
 	}
 
 	// Add the appname.

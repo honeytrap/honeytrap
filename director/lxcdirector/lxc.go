@@ -34,9 +34,10 @@ var (
 
 // LxcConfig defines the settings for the lxc director.
 type LxcConfig struct {
-	Template string
-	Commands []process.Command       `toml:"commands"`
-	Scripts  []process.ScriptProcess `toml:"scripts"`
+	Template    string
+	DefaultPort string                  `toml:"default_port"`
+	Commands    []process.Command       `toml:"commands"`
+	Scripts     []process.ScriptProcess `toml:"scripts"`
 }
 
 // LxcProvider defines a struct which loads the needed configuration for handling
@@ -49,6 +50,10 @@ type LxcProvider struct {
 
 // NewLxcProvider returns a new instance of a LxcProvider as a Provider.
 func NewLxcProvider(config *config.Config, xconfig LxcConfig, events pushers.Channel) *LxcProvider {
+	if xconfig.DefaultPort == "" {
+		xconfig.DefaultPort = "22"
+	}
+
 	return &LxcProvider{
 		config:   config,
 		lxconfig: xconfig,
@@ -583,6 +588,10 @@ func (c *LxcContainer) CleanUp() error {
 // Dial attempts to connect to the internal network of the
 // internal container.
 func (c *LxcContainer) Dial(ctx context.Context, port string) (net.Conn, error) {
+	if port == "0" {
+		port = c.meta.DefaultPort
+	}
+
 	if err := c.ensureStarted(); err != nil {
 		return nil, err
 	}

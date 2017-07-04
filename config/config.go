@@ -159,11 +159,16 @@ func (c *Config) Load(file string) error {
 		return err
 	}
 
-	c.MetaData = meta
+	directorConf := conf.DirectorConfig
 
 	if err := mergo.MergeWithOverwrite(c, conf); err != nil {
 		return err
 	}
+
+	c.MetaData = meta
+
+	//NOTE: Any non pointer gets replaced by merge. Be careful.
+	c.DirectorConfig = directorConf
 
 	logBackends := []logging.Backend{}
 	for _, log := range conf.Logging {

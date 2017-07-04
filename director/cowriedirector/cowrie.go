@@ -5,7 +5,6 @@ package cowriedirector
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -148,7 +147,7 @@ func (d *Director) GetContainer(conn net.Conn) (director.Container, error) {
 	}
 	d.m.Unlock()
 
-	return nil, errors.New("Container not found")
+	return d.NewContainer(conn.RemoteAddr().String())
 }
 
 // getName returns a new name based on the provided address.
