@@ -5,18 +5,18 @@ package event
 import (
 	"time"
 
-	"sync/syncmap"
+	"sync"
 )
 
 // Event defines a object which adds key-value pairs into a map type for event data.
 type Event struct {
-	sm *syncmap.Map
+	sm *sync.Map
 }
 
 // New returns a new Event with the options applied.
 func New(opts ...Option) Event {
 	e := Event{
-		sm: new(syncmap.Map),
+		sm: new(sync.Map),
 	}
 
 	e.sm.Store("date", time.Now())

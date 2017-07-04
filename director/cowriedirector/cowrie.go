@@ -52,14 +52,14 @@ type Director struct {
 }
 
 // NewWith defines a function to return a director.Director.
-func NewWith(cnf *Config, meta toml.MetaData, data toml.Primitive, events pushers.Channel) (director.Director, error) {
-	var jconfig CwConfig
+func NewWith(cnf *config.Config, meta toml.MetaData, data toml.Primitive, events pushers.Channel) (director.Director, error) {
+	var wconfig CwConfig
 
-	if err := meta.PrimitiveDecode(data, &jconfig); err != nil {
+	if err := meta.PrimitiveDecode(data, &wconfig); err != nil {
 		return nil, err
 	}
 
-	return New(cnf, jconfig, events), nil
+	return New(cnf, wconfig, events), nil
 }
 
 // New returns a new instance of the Director.
@@ -168,7 +168,7 @@ func (d *Director) getName(addr string) (string, error) {
 type CowrieContainer struct {
 	targetName string
 	config     *config.Config
-	meta       config.CowrieConfig
+	meta       CwConfig
 }
 
 // Detail returns the ContainerDetail related to this giving container.

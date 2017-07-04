@@ -11,7 +11,6 @@ import (
 	"github.com/BurntSushi/toml"
 	config "github.com/honeytrap/honeytrap/config"
 	"github.com/honeytrap/honeytrap/director"
-	"github.com/honeytrap/honeytrap/process"
 	"github.com/honeytrap/honeytrap/pushers"
 
 	lxc "github.com/honeytrap/golxc"
@@ -27,15 +26,9 @@ var (
 	_ = director.RegisterDirector("lxc", NewWith)
 )
 
-// LxcConfig defines the settings for the lxc director.
-type LxcConfig struct {
-	Commands []process.Command       `toml:"commands"`
-	Scripts  []process.ScriptProcess `toml:"scripts"`
-}
-
 // Director defines a struct which handles the management of registered containers.
 type Director struct {
-	lxconfig   LxConfig
+	lxconfig   LxcConfig
 	config     *config.Config
 	provider   *LxcProvider
 	namer      namecon.Namer
@@ -44,14 +37,14 @@ type Director struct {
 }
 
 // NewWith defines a function to return a director.Director.
-func NewWith(cnf *Config, meta toml.MetaData, data toml.Primitive, events pushers.Channel) (director.Director, error) {
-	var jconfig LxcConfig
+func NewWith(cnf *config.Config, meta toml.MetaData, data toml.Primitive, events pushers.Channel) (director.Director, error) {
+	var lconfig LxcConfig
 
-	if err := meta.PrimitiveDecode(data, &jconfig); err != nil {
+	if err := meta.PrimitiveDecode(data, &lconfig); err != nil {
 		return nil, err
 	}
 
-	return New(cnf, jconfig, events), nil
+	return New(cnf, lconfig, events), nil
 }
 
 // New returns a new instance of the Director.
@@ -62,9 +55,9 @@ func New(config *config.Config, xconfig LxcConfig, events pushers.Channel) *Dire
 	d := &Director{
 		config:     config,
 		lxconfig:   xconfig,
-		provider:   NewLxcProvider(conf, xconfig, events),
+		provider:   NewLxcProvider(config, xconfig, events),
 		containers: map[string]director.Container{},
-		namer:      namecon.NewNamerCon(conf.Template+"-%s", namecon.Basic{}),
+		namer:      namecon.NewNamerCon(config.Template+"-%s", namecon.Basic{}),
 	}
 
 	d.registerContainers()

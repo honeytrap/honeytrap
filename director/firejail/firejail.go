@@ -50,6 +50,7 @@ type JailConfig struct {
 // connections for the giving system.
 type Director struct {
 	config         *config.Config
+	jailConfig 		JailConfig
 	namer          namecon.Namer
 	events         pushers.Channel
 	globalCommands process.SyncProcess
@@ -59,7 +60,7 @@ type Director struct {
 }
 
 // NewWith defines a function to return a director.Director.
-func NewWith(cnf *Config, meta toml.MetaData, data toml.Primitive, events pushers.Channel) (director.Director, error) {
+func NewWith(cnf *config.Config, meta toml.MetaData, data toml.Primitive, events pushers.Channel) (director.Director, error) {
 	var jconfig JailConfig
 
 	if err := meta.PrimitiveDecode(data, &jconfig); err != nil {
@@ -104,6 +105,7 @@ func (d *Director) NewContainer(addr string) (director.Container, error) {
 	d.m.Unlock()
 
 	container = &JailContainer{
+		targetName: name,
 		config:    d.config,
 		gscripts:  d.globalScripts,
 		gcommands: d.globalCommands,
@@ -170,6 +172,7 @@ func (d *Director) getName(addr string) (string, error) {
 // JailContainer defines a core container structure which generates new net connections
 // between stream endpoints.
 type JailContainer struct {
+	targetName string
 	config    *config.Config
 	gcommands process.SyncProcess
 	gscripts  process.SyncScripts
@@ -180,7 +183,7 @@ type JailContainer struct {
 func (io *JailContainer) Detail() director.ContainerDetail {
 	return director.ContainerDetail{
 		Name:          io.targetName,
-		ContainerAddr: io.meta.ServiceAddr,
+		ContainerAddr: fmt.Sprintf("%s:%s", io.meta.IPAddr, "0"),
 		Meta: map[string]interface{}{
 			"driver": DirectorKey,
 		},
@@ -190,7 +193,7 @@ func (io *JailContainer) Detail() director.ContainerDetail {
 // Dial connects to the giving address to provide proxying stream between
 // both endpoints.
 func (io *JailContainer) Dial(ctx context.Context, port string) (net.Conn, error) {
-	log.Infof("Jail : %q : Dial Connection : Remote : %+q", io.targetName, io.meta.ServiceAddr)
+	log.Infof("Jail : %q : Dial Connection : Remote : %q", io.targetName, io.meta.App)
 
 	command, err := toCommand(io.meta)
 	if err != nil {
@@ -234,7 +237,7 @@ func (io *JailContainer) Name() string {
 // toCommand returns the process.Command best associated with the given JailCommand
 // which returns a process.Command which executes then eeded firejail call to start up
 // the desired chrooted instance.
-func toCommand(jc config.FireJailConfig) (process.Command, error) {
+func toCommand(jc JailConfig) (process.Command, error) {
 	var proc process.Command
 
 	if jc.App == "" {
@@ -255,32 +258,32 @@ func toCommand(jc config.FireJailConfig) (process.Command, error) {
 	} else if ip, ok := jc.Options["ip"]; ok {
 		args = append(args, fmt.Sprintf("ip=%s", ip))
 	} else {
-		args = append(args, fmt.Sprintf("ip=%s", director.GetHostAddr()))
+		args = append(args, fmt.Sprintf("ip=%s", director.GetHostAddr("")))
 	}
 
-	_, ok := jc.Options["dns"]
+	_, ok = jc.Options["dns"]
 	if jc.DNSAddr != "" && !ok {
 		args = append(args, fmt.Sprintf("dns=%s", jc.DNSAddr))
 	}
 
-	_, ok := jc.Options["hostname"]
+	_, ok = jc.Options["hostname"]
 	if jc.Hostname != "" && !ok {
 		args = append(args, fmt.Sprintf("hostname=%s", jc.Hostname))
 	}
 
-	_, ok := jc.Options["net"]
+	_, ok = jc.Options["net"]
 	if jc.NetInterface != "" && !ok {
 		args = append(args, fmt.Sprintf("net=%s", jc.NetInterface))
 	}
 
-	_, ok := jc.Options["defaultgw"]
+	_, ok = jc.Options["defaultgw"]
 	if jc.GatewayAddr != "" && !ok {
 		args = append(args, fmt.Sprintf("defaultgw=%s", jc.GatewayAddr))
 	}
 
-	if jc.Name != "" {
-		args = append(args, fmt.Sprintf("name=%s", jc.Name))
-	}
+	// if jc.Namespace != "" {
+	// 	args = append(args, fmt.Sprintf("name=%s", jc.Namespace))
+	// }
 
 	for name, value := range jc.Envs {
 		args = append(args, fmt.Sprintf("env %s=%s", name, value))
@@ -294,7 +297,7 @@ func toCommand(jc config.FireJailConfig) (process.Command, error) {
 	args = append(args, jc.App)
 
 	proc.Args = args
-	proc.Level = process.CriticalLevel
+	proc.Level = process.RedAlert
 
-	return proc
+	return proc, nil
 }

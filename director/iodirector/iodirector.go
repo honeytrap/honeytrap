@@ -42,7 +42,7 @@ type IOConfig struct {
 // connections for the giving system.
 type Director struct {
 	config     *config.Config
-	ioconfig   Config
+	ioconfig   IOConfig
 	namer      namecon.Namer
 	events     pushers.Channel
 	m          sync.Mutex
@@ -50,7 +50,7 @@ type Director struct {
 }
 
 // NewWith defines a function to return a director.Director.
-func NewWith(cnf *Config, meta toml.MetaData, data toml.Primitive, events pushers.Channel) (director.Director, error) {
+func NewWith(cnf *config.Config, meta toml.MetaData, data toml.Primitive, events pushers.Channel) (director.Director, error) {
 	var jconfig IOConfig
 
 	if err := meta.PrimitiveDecode(data, &jconfig); err != nil {
@@ -164,7 +164,7 @@ type IOContainer struct {
 	targetAddr string
 	targetName string
 	config     *config.Config
-	meta       config.IOConfig
+	meta       IOConfig
 }
 
 // Detail returns the ContainerDetail related to this giving container.

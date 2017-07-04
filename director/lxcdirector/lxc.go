@@ -32,9 +32,11 @@ var (
 	_ = director.RegisterProvider("lxc", NewLxcContainer)
 )*/
 
-// LxcConfig defines a struct to provide configuration fields for a LxcProvider.
+// LxcConfig defines the settings for the lxc director.
 type LxcConfig struct {
 	Template string
+	Commands []process.Command       `toml:"commands"`
+	Scripts  []process.ScriptProcess `toml:"scripts"`
 }
 
 // LxcProvider defines a struct which loads the needed configuration for handling
@@ -82,8 +84,8 @@ type LxcContainer struct {
 	template string
 	idevice  string
 	idle     time.Time
+	meta     LxcConfig
 	config   *config.Config
-	meta     config.LxcConfig
 	c        *lxc.Container
 	m        sync.Mutex
 	sf       *sniffer.Sniffer
