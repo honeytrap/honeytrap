@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,36 +23,8 @@ const (
 	// DirectorKey defines the key used to choose this giving director.
 	DirectorKey = "firejail"
 
-	// FireJailProfile defines the default profile to be used for firejail startup.
-	FireJailProfile = `
-include /etc/firejail/disable-mgmt.inc
-include /etc/firejail/disable-secret.inc
-include /etc/firejail/disable-common.inc
-include /etc/firejail/disable-devel.inc
-
-# whitelist ${DOWNLOADS}
-whitelist /dev/dri
-whitelist /dev/full
-whitelist /dev/null
-whitelist /dev/ptmx
-whitelist /dev/pts
-whitelist /dev/random
-whitelist /dev/shm
-whitelist /dev/snd
-whitelist /dev/tty
-whitelist /dev/urandom
-whitelist /dev/zero
-
-caps.drop all
-seccomp
-protocol unix,inet,inet6,netlink
-netfilter
-tracelog
-ipc-namespace
-noroot
-
-include /etc/firejail/whitelist-common.inc
-`
+	fireJailScript = `#!/bin/sh
+firejail %s`
 )
 
 var (
@@ -64,33 +36,29 @@ var (
 // JailConfig defines a structure for the execution of a command policy for the generation
 // of a given firejail instance.
 type JailConfig struct {
-	Options      map[string]string       `toml:"options"`
-	Envs         map[string]string       `toml:"envs"`
-	App          string                  `toml:"app"`
-	Name         string                  `toml:"name"`
-	DefaultPort  string                  `toml:"default_port"`
-	Profile      string                  `toml:"profile"`
-	GatewayAddr  string                  `toml:"gateway_addr"`
-	IPAddr       string                  `toml:"ip_addr"`
-	DNSAddr      string                  `toml:"dns_addr"`
-	Hostname     string                  `toml:"hostname"`
-	NetInterface string                  `toml:"net"`
-	Commands     []process.Command       `toml:"commands"`
-	Scripts      []process.ScriptProcess `toml:"scripts"`
+	Options     map[string]string       `toml:"options"`
+	Envs        map[string]string       `toml:"envs"`
+	App         string                  `toml:"app"`
+	Name        string                  `toml:"name"`
+	DefaultPort string                  `toml:"default_port"`
+	Profile     string                  `toml:"profile"`
+	IPAddr      string                  `toml:"ip_addr"`
+	Net         string                  `toml:"net"`
+	Commands    []process.Command       `toml:"commands"`
+	Scripts     []process.ScriptProcess `toml:"scripts"`
 }
 
 // Director defines a central structure which creates/retrieves Container
 // connections for the giving system.
 type Director struct {
-	firejailProfilePath string
-	config              *config.Config
-	jailConfig          JailConfig
-	namer               namecon.Namer
-	events              pushers.Channel
-	globalCommands      process.SyncProcess
-	globalScripts       process.SyncScripts
-	m                   sync.Mutex
-	containers          map[string]director.Container
+	config         *config.Config
+	jailConfig     JailConfig
+	namer          namecon.Namer
+	events         pushers.Channel
+	globalCommands process.SyncProcess
+	globalScripts  process.SyncScripts
+	m              sync.Mutex
+	containers     map[string]director.Container
 }
 
 // NewWith defines a function to return a director.Director.
@@ -103,11 +71,6 @@ func NewWith(cnf *config.Config, meta toml.MetaData, data toml.Primitive, events
 
 	director := New(cnf, jconfig, events)
 
-	// write out default firejail-profile.
-	if err := director.writeProfile(); err != nil {
-		return nil, err
-	}
-
 	return director, nil
 }
 
@@ -118,7 +81,7 @@ func New(config *config.Config, jailconfig JailConfig, events pushers.Channel) *
 		jailConfig: jailconfig,
 		events:     events,
 		containers: make(map[string]director.Container),
-		namer:      namecon.NewNamerCon(config.Template+"-%s", namecon.Basic{}),
+		namer:      namecon.NewNamerCon("firejail-%s", namecon.Basic{}),
 	}
 }
 
@@ -146,12 +109,12 @@ func (d *Director) NewContainer(addr string) (director.Container, error) {
 	d.m.Unlock()
 
 	container = &JailContainer{
-		targetName:    name,
-		config:        d.config,
-		meta:          d.jailConfig,
-		gscripts:      d.globalScripts,
-		gcommands:     d.globalCommands,
-		targetProfile: d.firejailProfilePath,
+		targetName:   name,
+		config:       d.config,
+		meta:         d.jailConfig,
+		gscripts:     d.globalScripts,
+		gcommands:    d.globalCommands,
+		targetScript: fmt.Sprintf("%s-firejail.sh", name),
 	}
 
 	d.m.Lock()
@@ -200,37 +163,6 @@ func (d *Director) GetContainer(conn net.Conn) (director.Container, error) {
 	return d.NewContainer(conn.RemoteAddr().String())
 }
 
-// writeProfile defines a function to write out the given default Director firejail profile
-// for lunching firejail commands.
-func (d *Director) writeProfile() error {
-	cmddir, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-
-	d.firejailProfilePath = filepath.Join(cmddir, "firejail-default.profile")
-
-	stat, err := os.Stat(d.firejailProfilePath)
-	if err != nil {
-		file, err := os.Create(d.firejailProfilePath)
-		if err != nil {
-			return err
-		}
-
-		defer file.Close()
-
-		if _, err := file.Write([]byte(FireJailProfile)); err != nil {
-			return err
-		}
-
-		return nil
-	}
-
-	d.firejailProfilePath = stat.Name()
-
-	return nil
-}
-
 // getName returns a new name based on the provided address.
 func (d *Director) getName(addr string) (string, error) {
 	host, _, err := net.SplitHostPort(addr)
@@ -246,23 +178,45 @@ func (d *Director) getName(addr string) (string, error) {
 // JailContainer defines a core container structure which generates new net connections
 // between stream endpoints.
 type JailContainer struct {
-	targetName    string
-	targetProfile string
-	config        *config.Config
-	gcommands     process.SyncProcess
-	gscripts      process.SyncScripts
-	meta          JailConfig
+	targetName   string
+	targetScript string
+	config       *config.Config
+	gcommands    process.SyncProcess
+	gscripts     process.SyncScripts
+	meta         JailConfig
 }
 
 // Detail returns the ContainerDetail related to this giving container.
 func (io *JailContainer) Detail() director.ContainerDetail {
 	return director.ContainerDetail{
 		Name:          io.targetName,
-		ContainerAddr: fmt.Sprintf("%s:%s", io.meta.IPAddr, "0"),
+		ContainerAddr: fmt.Sprintf("%s:%s", io.meta.IPAddr, io.meta.DefaultPort),
 		Meta: map[string]interface{}{
 			"driver": DirectorKey,
 		},
 	}
+}
+
+// writeScript will run the giving file script with the contents of the firejail script.
+func (io *JailContainer) writeScript() error {
+	args, err := toArgs(io.meta)
+	if err != nil {
+		log.Error("Jail : %q : Failed to write script : %q", err, io.targetScript)
+		return err
+	}
+
+	file, err := os.Create(io.targetScript)
+	if err != nil {
+		return err
+	}
+
+	defer file.Close()
+
+	if _, err := fmt.Fprintf(file, fireJailScript, strings.Join(args, " ")); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Dial connects to the giving address to provide proxying stream between
@@ -274,24 +228,21 @@ func (io *JailContainer) Dial(ctx context.Context, port string) (net.Conn, error
 		port = io.meta.DefaultPort
 	}
 
-	// If we have no profile set then use default profile.
-	if io.meta.Profile == "" {
-		io.meta.Profile = io.targetProfile
-	}
-
-	command, err := toCommand(io.meta)
-	if err != nil {
-		log.Error("Jail : %q : Dial Connection : Failed : %q", io.targetName, err)
+	// Attempt to write a script file for execution.
+	if err := io.writeScript(); err != nil {
+		log.Errorf("Jail : %q : Dial Connection : Failed : %q", io.targetName, err)
 		return nil, err
 	}
 
-	command.Async = true
+	var command process.Command
+	command.Name = "/bin/sh"
+	command.Args = []string{io.targetScript}
 
 	log.Infof("Jail : %q : Dial Connection : Executing Command : Command{Name: %q, Args: %+q}", io.targetName, command.Name, command.Args)
 
 	// Run command associated with firejail to bootup
-	if err := command.Run(ctx, nil, os.Stderr); err != nil {
-		log.Error("Jail : %q : Dial Connection : Failed : %q", io.targetName, err)
+	if err := command.Run(ctx, os.Stdout, os.Stderr); err != nil {
+		log.Errorf("Jail : %q : Dial Connection : Failed : %q", io.targetName, err)
 		return nil, err
 	}
 
@@ -300,18 +251,18 @@ func (io *JailContainer) Dial(ctx context.Context, port string) (net.Conn, error
 	localCommands := process.SyncProcess{Commands: io.meta.Commands}
 
 	if err := localCommands.Exec(ctx, os.Stdout, os.Stderr); err != nil {
-		log.Error("Jail : %q : Dial Connection : Failed : %q", io.targetName, err)
+		log.Errorf("Jail : %q : Dial Connection : Failed : %q", io.targetName, err)
 		return nil, err
 	}
 
 	if err := localScripts.Exec(ctx, os.Stdout, os.Stderr); err != nil {
-		log.Error("Jail : %q : Dial Connection : Failed : %q", io.targetName, err)
+		log.Errorf("Jail : %q : Dial Connection : Failed : %q", io.targetName, err)
 		return nil, err
 	}
 
 	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%s", io.meta.IPAddr, port), dailTimeout)
 	if err != nil {
-		log.Error("Jail : %q : Dial Connection : Failed : %q", io.targetName, err)
+		log.Errorf("Jail : %q : Dial Connection : Failed : %q", io.targetName, err)
 		return nil, err
 	}
 
@@ -325,75 +276,61 @@ func (io *JailContainer) Name() string {
 
 //===================================================================================================================
 
-// toCommand returns the process.Command best associated with the given JailCommand
-// which returns a process.Command which executes then eeded firejail call to start up
-// the desired chrooted instance.
-func toCommand(jc JailConfig) (process.Command, error) {
-	var proc process.Command
-
-	if jc.App == "" {
-		return proc, errors.New("App can not be empty in JailConfig")
+func toArgs(jc JailConfig) ([]string, error) {
+	if jc.Name == "" {
+		return nil, errors.New("Name can not be empty in JailConfig")
 	}
 
-	proc.Name = "firejail"
+	if jc.App == "" {
+		return nil, errors.New("App can not be empty in JailConfig")
+	}
 
 	var args []string
 
 	_, ok := jc.Options["profile"]
-
-	if jc.Profile != "" && !ok {
-		args = append(args, "profile", jc.Profile)
+	if jc.Profile == "" && !ok {
+		args = append(args, fmt.Sprintf("--profile=%s", "noprofile"))
+	} else {
+		if jc.Profile != "" && !ok {
+			args = append(args, fmt.Sprintf("--profile=%s", jc.Profile))
+		}
 	}
 
 	if jc.IPAddr != "" {
-		args = append(args, "ip", jc.IPAddr)
+		args = append(args, fmt.Sprintf("--ip=%q", jc.IPAddr))
 	} else if ip, ok := jc.Options["ip"]; ok {
-		args = append(args, "ip", ip)
+		args = append(args, fmt.Sprintf("--ip=%q", ip))
 	} else {
 		addr := director.GetHostAddr("")
 
 		if ip, _, err := net.SplitHostPort(addr); err == nil {
-			args = append(args, "ip", ip)
+			args = append(args, fmt.Sprintf("--ip=%q", ip))
 		}
 	}
 
-	_, ok = jc.Options["dns"]
-	if jc.DNSAddr != "" && !ok {
-		args = append(args, "dns", jc.DNSAddr)
-	}
-
-	_, ok = jc.Options["hostname"]
-	if jc.Hostname != "" && !ok {
-		args = append(args, "hostname", jc.Hostname)
-	}
-
 	_, ok = jc.Options["net"]
-	if jc.NetInterface != "" && !ok {
-		args = append(args, "net", jc.NetInterface)
-	}
-
-	_, ok = jc.Options["defaultgw"]
-	if jc.GatewayAddr != "" && !ok {
-		args = append(args, "defaultgw", jc.GatewayAddr)
+	if jc.Net != "" && !ok {
+		// args = append(args, "net", jc.Net)
+		args = append(args, fmt.Sprintf("--net=%s", jc.Net))
 	}
 
 	if jc.Name != "" {
-		args = append(args, "name", jc.Name)
+		// args = append(args, "name", jc.Name)
+		args = append(args, fmt.Sprintf("--name=%s", jc.Name))
 	}
 
 	for name, value := range jc.Envs {
-		args = append(args, "env", fmt.Sprintf("%s=%s", name, value))
+		// args = append(args, "env", fmt.Sprintf("%s=%s", name, value))
+		args = append(args, fmt.Sprintf("--env %s=%s", name, value))
 	}
 
 	for name, value := range jc.Options {
-		args = append(args, name, value)
+		// args = append(args, name, value)
+		args = append(args, fmt.Sprintf("--%s=%s", name, value))
 	}
 
 	// Add the appname.
 	args = append(args, jc.App)
 
-	proc.Args = args
-	proc.Level = process.RedAlert
-
-	return proc, nil
+	return args, nil
 }
