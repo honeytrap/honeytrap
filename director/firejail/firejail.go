@@ -289,6 +289,11 @@ func toArgs(jc JailConfig) ([]string, error) {
 
 	var args []string
 
+	if jc.Name != "" {
+		// args = append(args, "name", jc.Name)
+		args = append(args, fmt.Sprintf("--name=%s", jc.Name))
+	}
+
 	if !jc.IgnoreProfile {
 		_, ok := jc.Options["profile"]
 		if jc.Profile == "" && !ok {
@@ -298,6 +303,12 @@ func toArgs(jc JailConfig) ([]string, error) {
 				args = append(args, fmt.Sprintf("--profile=%s", jc.Profile))
 			}
 		}
+	}
+
+	_, ok := jc.Options["net"]
+	if jc.Net != "" && !ok {
+		// args = append(args, "net", jc.Net)
+		args = append(args, fmt.Sprintf("--net=%s", jc.Net))
 	}
 
 	if jc.IPAddr != "" {
@@ -310,17 +321,6 @@ func toArgs(jc JailConfig) ([]string, error) {
 		if ip, _, err := net.SplitHostPort(addr); err == nil {
 			args = append(args, fmt.Sprintf("--ip=%q", ip))
 		}
-	}
-
-	_, ok := jc.Options["net"]
-	if jc.Net != "" && !ok {
-		// args = append(args, "net", jc.Net)
-		args = append(args, fmt.Sprintf("--net=%s", jc.Net))
-	}
-
-	if jc.Name != "" {
-		// args = append(args, "name", jc.Name)
-		args = append(args, fmt.Sprintf("--name=%s", jc.Name))
 	}
 
 	for name, value := range jc.Envs {
