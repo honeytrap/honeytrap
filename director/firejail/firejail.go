@@ -146,11 +146,12 @@ func (d *Director) NewContainer(addr string) (director.Container, error) {
 	d.m.Unlock()
 
 	container = &JailContainer{
-		targetName: name,
-		config:     d.config,
-		gscripts:   d.globalScripts,
-		gcommands:  d.globalCommands,
-		meta:       d.jailConfig,
+		targetName:    name,
+		config:        d.config,
+		meta:          d.jailConfig,
+		gscripts:      d.globalScripts,
+		gcommands:     d.globalCommands,
+		targetProfile: d.firejailProfilePath,
 	}
 
 	d.m.Lock()
@@ -245,11 +246,12 @@ func (d *Director) getName(addr string) (string, error) {
 // JailContainer defines a core container structure which generates new net connections
 // between stream endpoints.
 type JailContainer struct {
-	targetName string
-	config     *config.Config
-	gcommands  process.SyncProcess
-	gscripts   process.SyncScripts
-	meta       JailConfig
+	targetName    string
+	targetProfile string
+	config        *config.Config
+	gcommands     process.SyncProcess
+	gscripts      process.SyncScripts
+	meta          JailConfig
 }
 
 // Detail returns the ContainerDetail related to this giving container.
@@ -270,6 +272,11 @@ func (io *JailContainer) Dial(ctx context.Context, port string) (net.Conn, error
 
 	if port == "0" {
 		port = io.meta.DefaultPort
+	}
+
+	// If we have no profile set then use default profile.
+	if io.meta.Profile == "" {
+		io.meta.Profile = io.targetProfile
 	}
 
 	command, err := toCommand(io.meta)
@@ -333,8 +340,9 @@ func toCommand(jc JailConfig) (process.Command, error) {
 	var args []string
 
 	_, ok := jc.Options["profile"]
+
 	if jc.Profile != "" && !ok {
-		args = append(args, fmt.Sprintf("profile=%s", jc.Profile))
+		args = append(args, "profile", jc.Profile)
 	}
 
 	if jc.IPAddr != "" {
