@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -21,6 +22,37 @@ import (
 const (
 	// DirectorKey defines the key used to choose this giving director.
 	DirectorKey = "firejail"
+
+	// FireJailProfile defines the default profile to be used for firejail startup.
+	FireJailProfile = `
+include /etc/firejail/disable-mgmt.inc
+include /etc/firejail/disable-secret.inc
+include /etc/firejail/disable-common.inc
+include /etc/firejail/disable-devel.inc
+
+# whitelist ${DOWNLOADS}
+whitelist /dev/dri
+whitelist /dev/full
+whitelist /dev/null
+whitelist /dev/ptmx
+whitelist /dev/pts
+whitelist /dev/random
+whitelist /dev/shm
+whitelist /dev/snd
+whitelist /dev/tty
+whitelist /dev/urandom
+whitelist /dev/zero
+
+caps.drop all
+seccomp
+protocol unix,inet,inet6,netlink
+netfilter
+tracelog
+ipc-namespace
+noroot
+
+include /etc/firejail/whitelist-common.inc
+`
 )
 
 var (
@@ -50,14 +82,15 @@ type JailConfig struct {
 // Director defines a central structure which creates/retrieves Container
 // connections for the giving system.
 type Director struct {
-	config         *config.Config
-	jailConfig     JailConfig
-	namer          namecon.Namer
-	events         pushers.Channel
-	globalCommands process.SyncProcess
-	globalScripts  process.SyncScripts
-	m              sync.Mutex
-	containers     map[string]director.Container
+	firejailProfilePath string
+	config              *config.Config
+	jailConfig          JailConfig
+	namer               namecon.Namer
+	events              pushers.Channel
+	globalCommands      process.SyncProcess
+	globalScripts       process.SyncScripts
+	m                   sync.Mutex
+	containers          map[string]director.Container
 }
 
 // NewWith defines a function to return a director.Director.
@@ -68,7 +101,14 @@ func NewWith(cnf *config.Config, meta toml.MetaData, data toml.Primitive, events
 		return nil, err
 	}
 
-	return New(cnf, jconfig, events), nil
+	director := New(cnf, jconfig, events)
+
+	// write out default firejail-profile.
+	if err := director.writeProfile(); err != nil {
+		return nil, err
+	}
+
+	return director, nil
 }
 
 // New returns a new instance of the Director.
@@ -157,6 +197,37 @@ func (d *Director) GetContainer(conn net.Conn) (director.Container, error) {
 	d.m.Unlock()
 
 	return d.NewContainer(conn.RemoteAddr().String())
+}
+
+// writeProfile defines a function to write out the given default Director firejail profile
+// for lunching firejail commands.
+func (d *Director) writeProfile() error {
+	cmddir, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	d.firejailProfilePath = filepath.Join(cmddir, "firejail-default.profile")
+
+	stat, err := os.Stat(d.firejailProfilePath)
+	if err != nil {
+		file, err := os.Create(d.firejailProfilePath)
+		if err != nil {
+			return err
+		}
+
+		defer file.Close()
+
+		if _, err := file.Write([]byte(FireJailProfile)); err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	d.firejailProfilePath = stat.Name()
+
+	return nil
 }
 
 // getName returns a new name based on the provided address.
