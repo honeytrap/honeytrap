@@ -312,7 +312,7 @@ func toArgs(jc JailConfig) ([]string, error) {
 		}
 	}
 
-	_, ok = jc.Options["net"]
+	_, ok := jc.Options["net"]
 	if jc.Net != "" && !ok {
 		// args = append(args, "net", jc.Net)
 		args = append(args, fmt.Sprintf("--net=%s", jc.Net))
