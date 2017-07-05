@@ -11,13 +11,12 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/satori/go.uuid"
-
 	config "github.com/honeytrap/honeytrap/config"
 	director "github.com/honeytrap/honeytrap/director"
 	protocol "github.com/honeytrap/honeytrap/protocol"
 	pushers "github.com/honeytrap/honeytrap/pushers"
 	utils "github.com/honeytrap/honeytrap/utils"
+	uuid "github.com/satori/go.uuid"
 
 	"github.com/golang/protobuf/proto"
 )
@@ -198,6 +197,11 @@ func (ac *AgentConn) Forward() error {
 
 	// 	return ErrAgentUnsupportedProtocol
 	// }
+
+	_, port, err := net.SplitHostPort(ac.Conn.LocalAddr().String())
+	if err != nil {
+		//TODO(alex): Decide what to do if this fails
+	}
 
 	log.Debugf("Agent forwarding protocol: %s(%s) %s", *payload.RemoteAddress, dport, *payload.Protocol)
 

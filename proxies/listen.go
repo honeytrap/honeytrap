@@ -39,10 +39,12 @@ func (lw *ProxyListener) Accept() (c net.Conn, err error) {
 	// Attempt to GetContainer from director.
 	container, err := lw.director.GetContainer(c)
 	if err != nil {
+		log.Error("proxy : %q : Failed to retrieve container : %q : %+q", c.RemoteAddr().String(), err)
 
 		// Container does not exists on director, so ask for new one.
 		container, err = lw.director.NewContainer(c.RemoteAddr().String())
 		if err != nil {
+			log.Error("proxy : %q : Failed to create container : %q : %+q", c.RemoteAddr().String(), err)
 
 			lw.events.Send(ConnectionClosedEvent(c))
 
@@ -53,16 +55,10 @@ func (lw *ProxyListener) Accept() (c net.Conn, err error) {
 
 	lw.events.Send(UserSessionOpenedEvent(c, container.Detail(), nil))
 
-	// _, port, err := net.SplitHostPort(c.LocalAddr().String())
-	// if err != nil {
-	// 	lw.events.Send(EventConnectionError(c.RemoteAddr(), c.LocalAddr(), "ProxyConn", nil, map[string]interface{}{
-	// 		"error": err,
-	// 	}))
-
-	// 	lw.events.Send(EventConnectionClosed(c.RemoteAddr(), c.LocalAddr(), "ProxyConn", nil, nil))
-	// 	c.Close()
-	// 	return nil, err
-	// }
+	_, port, err := net.SplitHostPort(c.LocalAddr().String())
+	if err != nil {
+		//TODO(alex): Decide what to do if this fails
+	}
 
 	// log.Debugf("Connecting to container port: %s", port)
 
@@ -70,8 +66,10 @@ func (lw *ProxyListener) Accept() (c net.Conn, err error) {
 
 	// TODO(alex): Decide if changing the signature makes sense and if it does, shouldn't
 	// there therefore be a time-stamp added to use the deadline capability of context?
-	c2, err = container.Dial(context.Background())
+	c2, err = container.Dial(context.Background(), port)
 	if err != nil {
+		log.Error("proxy : %q : Failed to dail container : %q : %+q", c.RemoteAddr().String(), err)
+
 		lw.events.Send(UserSessionClosedEvent(c, container.Detail()))
 
 		lw.events.Send(ConnectionClosedEvent(c))

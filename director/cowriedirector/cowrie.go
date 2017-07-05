@@ -5,13 +5,13 @@ package cowriedirector
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"os"
 	"sync"
 	"time"
 
+	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/config"
 	"github.com/honeytrap/honeytrap/director"
 	"github.com/honeytrap/honeytrap/process"
@@ -28,29 +28,51 @@ const (
 var (
 	dailTimeout = 5 * time.Second
 	log         = logging.MustGetLogger("honeytrap:director:cowrie")
+	_           = director.RegisterDirector("cowrie", NewWith)
 )
+
+// CwConfig defines the settings for director meta.
+type CwConfig struct {
+	SSHPort  string                  `toml:"ssh_port"`
+	SSHAddr  string                  `toml:"ssh_addr"`
+	Commands []process.Command       `toml:"commands"`
+	Scripts  []process.ScriptProcess `toml:"scripts"`
+}
 
 // Director defines a central structure which creates/retrieves Container
 // connectCowriens for the giving system.
 type Director struct {
-	config         *config.Config
-	namer          namecon.Namer
-	events         pushers.Channel
-	m              sync.Mutex
-	containers     map[string]director.Container
-	globalCommands process.SyncProcess
-	globalScripts  process.SyncScripts
+	cwconfig   CwConfig
+	config     *config.Config
+	namer      namecon.Namer
+	events     pushers.Channel
+	m          sync.Mutex
+	containers map[string]director.Container
+}
+
+// NewWith defines a function to return a director.Director.
+func NewWith(cnf *config.Config, meta toml.MetaData, data toml.Primitive, events pushers.Channel) (director.Director, error) {
+	var wconfig CwConfig
+
+	if err := meta.PrimitiveDecode(data, &wconfig); err != nil {
+		return nil, err
+	}
+
+	return New(cnf, wconfig, events), nil
 }
 
 // New returns a new instance of the Director.
-func New(config *config.Config, events pushers.Channel) *Director {
+func New(config *config.Config, cw CwConfig, events pushers.Channel) *Director {
+	if cw.SSHPort == "" {
+		cw.SSHPort = "2222"
+	}
+
 	return &Director{
-		config:         config,
-		events:         events,
-		containers:     make(map[string]director.Container),
-		globalScripts:  process.SyncScripts{Scripts: config.Directors.Scripts},
-		globalCommands: process.SyncProcess{Commands: config.Directors.Commands},
-		namer:          namecon.NewNamerCon(config.Template+"-%s", namecon.Basic{}),
+		cwconfig:   cw,
+		config:     config,
+		events:     events,
+		containers: make(map[string]director.Container),
+		namer:      namecon.NewNamerCon(config.Template+"-%s", namecon.Basic{}),
 	}
 }
 
@@ -80,9 +102,7 @@ func (d *Director) NewContainer(addr string) (director.Container, error) {
 	container = &CowrieContainer{
 		targetName: name,
 		config:     d.config,
-		gscripts:   d.globalScripts,
-		gcommands:  d.globalCommands,
-		meta:       d.config.Directors.Cowrie,
+		meta:       d.cwconfig,
 	}
 
 	d.m.Lock()
@@ -127,7 +147,7 @@ func (d *Director) GetContainer(conn net.Conn) (director.Container, error) {
 	}
 	d.m.Unlock()
 
-	return nil, errors.New("Container not found")
+	return d.NewContainer(conn.RemoteAddr().String())
 }
 
 // getName returns a new name based on the provided address.
@@ -147,9 +167,7 @@ func (d *Director) getName(addr string) (string, error) {
 type CowrieContainer struct {
 	targetName string
 	config     *config.Config
-	meta       config.CowrieConfig
-	gcommands  process.SyncProcess
-	gscripts   process.SyncScripts
+	meta       CwConfig
 }
 
 // Detail returns the ContainerDetail related to this giving container.
@@ -167,20 +185,10 @@ func (c *CowrieContainer) Detail() director.ContainerDetail {
 
 // Dial connects to the giving address to provide proxying stream between
 // both endpoints.
-func (c *CowrieContainer) Dial(ctx context.Context) (net.Conn, error) {
+func (c *CowrieContainer) Dial(ctx context.Context, port string) (net.Conn, error) {
 	addr := fmt.Sprintf("%s:%s", c.meta.SSHAddr, c.meta.SSHPort)
 
 	log.Infof("Cowrie : %q : Dial Connection : Remote : %+q", c.targetName, addr)
-
-	// Execute all global commands.
-	// TODO: Move context to be supplied by caller and not set in code
-	if err := c.gcommands.Exec(ctx, os.Stdout, os.Stderr); err != nil {
-		return nil, err
-	}
-
-	if err := c.gscripts.Exec(ctx, os.Stdout, os.Stderr); err != nil {
-		return nil, err
-	}
 
 	// Execute all local commands.
 	localScripts := process.SyncScripts{Scripts: c.meta.Scripts}

@@ -5,6 +5,7 @@
 *.bolted 
 *.db
 config.toml
+firejail-default.profile
 
 # Folders
 _obj

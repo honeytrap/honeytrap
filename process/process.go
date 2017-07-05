@@ -21,7 +21,6 @@ const (
 	Normal CriticalLevel = iota + 1
 	Warning
 	RedAlert
-	SilentKill
 )
 
 const (
@@ -77,7 +76,7 @@ func (c Command) Run(ctx context.Context, out, werr io.Writer) error {
 
 	if !c.Async {
 		if err := proc.Wait(); err != nil {
-			log.Errorf("Process : Error : Command : Begin Execution : %q : %q", c.Name, c.Args)
+			log.Errorf("Process : Error : Command : Execution : %q : %q", c.Name, c.Args)
 
 			if c.Level > Warning {
 				return err
@@ -170,13 +169,13 @@ func (c ScriptProcess) Exec(ctx context.Context, pipeOut, pipeErr io.Writer) err
 	}
 
 	if _, err := tmpFile.Write([]byte(c.Source)); err != nil {
-		log.Errorf("Process : Error : Command : Begin Execution : %q : %+q", c.Shell, err)
+		log.Errorf("Process : Error : Command : Execution : %q : %+q", c.Shell, err)
 		tmpFile.Close()
 		return err
 	}
 
 	if err := tmpFile.Sync(); err != nil {
-		log.Errorf("Process : Error : Command : Begin Execution : %q : %+q", c.Shell, err)
+		log.Errorf("Process : Error : Command : Execution : %q : %+q", c.Shell, err)
 		tmpFile.Close()
 		return err
 	}
@@ -190,7 +189,7 @@ func (c ScriptProcess) Exec(ctx context.Context, pipeOut, pipeErr io.Writer) err
 	proc.Stderr = pipeErr
 
 	if err := proc.Start(); err != nil {
-		log.Errorf("Process : Error : Command : Begin Execution : %q : %+q", c.Shell, err)
+		log.Errorf("Process : Error : Command : Execution : %q : %+q", c.Shell, err)
 		return err
 	}
 
@@ -202,7 +201,7 @@ func (c ScriptProcess) Exec(ctx context.Context, pipeOut, pipeErr io.Writer) err
 	}()
 
 	if err := proc.Wait(); err != nil {
-		log.Errorf("Process : Error : Command : Begin Execution : %q : %q", c.Shell, c.Source)
+		log.Errorf("Process : Error : Command : Execution : %q : %q", c.Shell, c.Source)
 
 		if c.Level > Warning {
 			return err

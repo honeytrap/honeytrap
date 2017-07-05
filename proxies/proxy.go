@@ -3,7 +3,7 @@ package proxies
 import (
 	"net"
 
-	"github.com/op/go-logging"
+	logging "github.com/op/go-logging"
 
 	config "github.com/honeytrap/honeytrap/config"
 	director "github.com/honeytrap/honeytrap/director"

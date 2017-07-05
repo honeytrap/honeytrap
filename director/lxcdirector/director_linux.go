@@ -4,10 +4,11 @@ package lxcdirector
 
 import (
 	// #nosec
-	"errors"
+
 	"net"
 	"sync"
 
+	"github.com/BurntSushi/toml"
 	config "github.com/honeytrap/honeytrap/config"
 	"github.com/honeytrap/honeytrap/director"
 	"github.com/honeytrap/honeytrap/pushers"
@@ -21,8 +22,13 @@ const (
 	DirectorKey = "lxc"
 )
 
+var (
+	_ = director.RegisterDirector("lxc", NewWith)
+)
+
 // Director defines a struct which handles the management of registered containers.
 type Director struct {
+	lxconfig   LxcConfig
 	config     *config.Config
 	provider   *LxcProvider
 	namer      namecon.Namer
@@ -30,16 +36,28 @@ type Director struct {
 	containers map[string]director.Container
 }
 
-// New returns a new instance of a Director.
-func New(conf *config.Config, events pushers.Channel) *Director {
+// NewWith defines a function to return a director.Director.
+func NewWith(cnf *config.Config, meta toml.MetaData, data toml.Primitive, events pushers.Channel) (director.Director, error) {
+	var lconfig LxcConfig
+
+	if err := meta.PrimitiveDecode(data, &lconfig); err != nil {
+		return nil, err
+	}
+
+	return New(cnf, lconfig, events), nil
+}
+
+// New returns a new instance of the Director.
+func New(config *config.Config, xconfig LxcConfig, events pushers.Channel) *Director {
 	// TODO: Need to replace this with Event API.
 	// pusher := pushers.NewRecordPusher(conf)
 
 	d := &Director{
-		config:     conf,
-		provider:   NewLxcProvider(conf, events),
+		config:     config,
+		lxconfig:   xconfig,
+		provider:   NewLxcProvider(config, xconfig, events),
 		containers: map[string]director.Container{},
-		namer:      namecon.NewNamerCon(conf.Template+"-%s", namecon.Basic{}),
+		namer:      namecon.NewNamerCon(config.Template+"-%s", namecon.Basic{}),
 	}
 
 	d.registerContainers()
@@ -133,5 +151,5 @@ func (d *Director) GetContainer(c net.Conn) (director.Container, error) {
 		return container, nil
 	}
 
-	return nil, errors.New("Container not found")
+	return d.NewContainer(c.RemoteAddr().String())
 }

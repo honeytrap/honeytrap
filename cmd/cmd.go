@@ -8,7 +8,6 @@ import (
 	"github.com/fatih/color"
 	"github.com/honeytrap/honeytrap/process"
 	"github.com/minio/cli"
-	"github.com/op/go-logging"
 )
 
 // Version defines the version number for the cli.
@@ -33,8 +32,6 @@ VERSION:
 ` + Version +
 	`{{ "\n"}}`
 
-var log = logging.MustGetLogger("honeytrap/cmd")
-
 // Cmd defines a struct for defining a command.
 type Cmd struct {
 	*cli.App
@@ -49,7 +46,7 @@ func run(name string) func(c *cli.Context) {
 	return func(c *cli.Context) {
 		cmd := process.Command{
 			Name:  name,
-			Level: process.SilentKill,
+			Level: process.RedAlert,
 			Args:  []string(c.Args()),
 		}
 
