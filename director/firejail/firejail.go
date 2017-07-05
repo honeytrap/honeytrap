@@ -289,7 +289,7 @@ func toArgs(jc JailConfig) ([]string, error) {
 
 	var args []string
 
-	if jc.IgnoreProfile {
+	if !jc.IgnoreProfile {
 		_, ok := jc.Options["profile"]
 		if jc.Profile == "" && !ok {
 			args = append(args, fmt.Sprintf("--profile=%s", "noprofile"))
