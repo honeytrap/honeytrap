@@ -36,16 +36,17 @@ var (
 // JailConfig defines a structure for the execution of a command policy for the generation
 // of a given firejail instance.
 type JailConfig struct {
-	Options     map[string]string       `toml:"options"`
-	Envs        map[string]string       `toml:"envs"`
-	App         string                  `toml:"app"`
-	Name        string                  `toml:"name"`
-	DefaultPort string                  `toml:"default_port"`
-	Profile     string                  `toml:"profile"`
-	IPAddr      string                  `toml:"ip_addr"`
-	Net         string                  `toml:"net"`
-	Commands    []process.Command       `toml:"commands"`
-	Scripts     []process.ScriptProcess `toml:"scripts"`
+	Options       map[string]string       `toml:"options"`
+	Envs          map[string]string       `toml:"envs"`
+	App           string                  `toml:"app"`
+	Name          string                  `toml:"name"`
+	DefaultPort   string                  `toml:"default_port"`
+	Profile       string                  `toml:"profile"`
+	IgnoreProfile bool                    `toml:"ignore_profile"`
+	IPAddr        string                  `toml:"ip_addr"`
+	Net           string                  `toml:"net"`
+	Commands      []process.Command       `toml:"commands"`
+	Scripts       []process.ScriptProcess `toml:"scripts"`
 }
 
 // Director defines a central structure which creates/retrieves Container
@@ -288,12 +289,14 @@ func toArgs(jc JailConfig) ([]string, error) {
 
 	var args []string
 
-	_, ok := jc.Options["profile"]
-	if jc.Profile == "" && !ok {
-		args = append(args, fmt.Sprintf("--profile=%s", "noprofile"))
-	} else {
-		if jc.Profile != "" && !ok {
-			args = append(args, fmt.Sprintf("--profile=%s", jc.Profile))
+	if jc.IgnoreProfile {
+		_, ok := jc.Options["profile"]
+		if jc.Profile == "" && !ok {
+			args = append(args, fmt.Sprintf("--profile=%s", "noprofile"))
+		} else {
+			if jc.Profile != "" && !ok {
+				args = append(args, fmt.Sprintf("--profile=%s", jc.Profile))
+			}
 		}
 	}
 
