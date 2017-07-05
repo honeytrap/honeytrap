@@ -236,6 +236,7 @@ func (io *JailContainer) Dial(ctx context.Context, port string) (net.Conn, error
 
 	var command process.Command
 	command.Name = "/bin/sh"
+	command.Level = process.RedAlert
 	command.Args = []string{io.targetScript}
 
 	log.Infof("Jail : %q : Dial Connection : Executing Command : Command{Name: %q, Args: %+q}", io.targetName, command.Name, command.Args)
