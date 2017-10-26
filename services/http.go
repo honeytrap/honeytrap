@@ -82,7 +82,17 @@ func (s *httpService) Handle(conn net.Conn) error {
 			event.Custom("http.url", req.URL.String()),
 		))
 
-		resp := http.Response{}
+		resp := http.Response{
+			StatusCode: http.StatusOK,
+			Status:     http.StatusText(http.StatusOK),
+			Proto:      req.Proto,
+			ProtoMajor: req.ProtoMajor,
+			ProtoMinor: req.ProtoMinor,
+			Request:    req,
+			Header: http.Header{
+				"Server": []string{"Apache"},
+			},
+		}
 		if err := resp.Write(conn); err != nil {
 			return err
 		}
