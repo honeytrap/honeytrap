@@ -202,7 +202,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		} else if d, err := channelFunc(
 			pushers.WithConfig(s),
 		); err != nil {
-			log.Fatal("Error initializing channel %s(%s): %s", key, x.Type, err)
+			log.Fatalf("Error initializing channel %s(%s): %s", key, x.Type, err)
 		} else {
 			channels[key] = d
 		}
@@ -269,7 +269,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			director.WithChannel(hc.bus),
 			director.WithConfig(s),
 		); err != nil {
-			log.Fatal("Error initializing director %s(%s): %s", key, x.Type, err)
+			log.Fatalf("Error initializing director %s(%s): %s", key, x.Type, err)
 		} else {
 			directors[key] = d
 		}
@@ -301,7 +301,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		listener.WithConfig(hc.config.Listener),
 	)
 	if err != nil {
-		log.Fatal("Error initializing listener %s: %s", x.Type, err)
+		log.Fatalf("Error initializing listener %s: %s", x.Type, err)
 	}
 
 	// initialize services
