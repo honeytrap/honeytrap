@@ -80,34 +80,36 @@ capture = ["sniffer","quick"]
 # disable the usage of canaries, which will trigger alerts.
 
 
-[[service]]
-name="telnet01"
+[service.dns]
+type="dns-proxy"
+port="UDP/53"
+director="googledns01"
+
+[service.telnet01]
 type="telnet"
 port="TCP/23"
 banner="test"
 canary="true" 
+director="remote"
 
-[[service]]
-name="telnet02"
+[service.telnet02]
 type="telnet"
 port="TCP/8023"
 banner="Extra telnet deamon"
 
-[[service]]
-name="ssh-auth"
+[service.ssh-auth]
 type="ssh-auth"
-banner="BLABLA"
+banner="OpenSSH_7.2p2 Ubuntu-4ubuntu2.1"
 canary="false"
 username="test"
 password="test"
 
-[[service]]
-name="elasticsearch01"
+[service.elasticsearch01]
 type="http"
 port="TCP/8080"
+director="lxc"
 
-[[service]]
-name="elasticsearch01"
+[service.elasticsearch02]
 type="elasticsearch"
 port="TCP/9200"
 banner="test"
@@ -126,35 +128,35 @@ banner="test"
 # to the standard proxy type port which can be found in <....>. 
 # The proxies are initiated sequential, so we can end with a proxy type "all" that
 # passes the remaining traffic to one director.
-
-
-[[proxy]]
-name="ssh01"
-type="ssh"
-director="single-server01"
-banner="bla" #-> should clone from dest
-certificate=""
-
-[[proxy]]
-name="ssh02"
-type="ssh"
-port="TCP/8022"
-director="lxc"
-banner="bla" #-> should clone from dest
-certificate=""
-
-[[proxy]]
-name="ssh03"
-type="ssh"
-port="TCP/22"
-director="single-server02"
-banner="bla" #-> should clone from dest
-certificate=""
-
-
-[[proxy]]
-name="forwardallremaining"
-director="all"
+#
+#
+#[[proxy]]
+#name="ssh01"
+#type="ssh"
+#director="single-server01"
+#banner="bla" #-> should clone from dest
+#certificate=""
+#
+#[[proxy]]
+#name="ssh02"
+#type="ssh"
+#port="TCP/8022"
+#director="lxc"
+#banner="bla" #-> should clone from dest
+#certificate=""
+#
+#[[proxy]]
+#name="ssh03"
+#type="ssh"
+#port="TCP/22"
+#director="single-server02"
+#banner="bla" #-> should clone from dest
+#certificate=""
+#
+#
+#[[proxy]]
+#name="forwardallremaining"
+#director="all"
 
 # ####################### PROXIES END ######################################## #
 
@@ -166,20 +168,15 @@ director="all"
 # director option in the proxy configuration. Available directors, with their
 # default configuration values, can be found in <......>
 
-[director.single-server01]
+[director.googledns]
 type="remote"
 host="8.8.8.8"
-
-[director.single-server01]
-type="remote"
-host="4.4.4.4."
-dport="22"
 
 [director.lxc]
 type="lxc"
 template="sshtrap"
 
-[director.all]
+[director.qemu]
 type="qemu"
 image="generic"
 snapshot="20170101"
