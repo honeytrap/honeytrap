@@ -245,7 +245,7 @@ func newFile(targetPath string, maxSize int) (*os.File, error) {
 		return dest, nil
 	}
 
-	if err := os.Rename(targetPath, fmt.Sprintf("%s-%s", targetPath, stat.ModTime().UTC())); err != nil {
+	if err := os.Rename(targetPath, fmt.Sprintf("%s-%s", targetPath, stat.ModTime().Format("20060102150405"))); err != nil {
 		return nil, err
 	}
 
