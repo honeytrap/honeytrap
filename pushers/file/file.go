@@ -61,6 +61,9 @@ var (
 // New returns a new instance of a FileBackend.
 func New(options ...func(pushers.Channel) error) (pushers.Channel, error) {
 	fc := FileBackend{
+		FileConfig: FileConfig{
+			MaxSize: defaultMaxSize,
+		},
 		request: make(chan map[string]interface{}),
 		closer:  make(chan struct{}),
 	}
