@@ -1,0 +1,118 @@
+/*
+* Honeytrap
+* Copyright (C) 2016-2017 DutchSec (https://dutchsec.com/)
+*
+* This program is free software; you can redistribute it and/or modify it under
+* the terms of the GNU Affero General Public License version 3 as published by the
+* Free Software Foundation.
+*
+* This program is distributed in the hope that it will be useful, but WITHOUT
+* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+* FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+* details.
+*
+* You should have received a copy of the GNU Affero General Public License
+* version 3 along with this program in the file "LICENSE".  If not, see
+* <http://www.gnu.org/licenses/agpl-3.0.txt>.
+*
+* See https://honeytrap.io/ for more details. All requests should be sent to
+* licensing@honeytrap.io
+*
+* The interactive user interfaces in modified source and object code versions
+* of this program must display Appropriate Legal Notices, as required under
+* Section 5 of the GNU Affero General Public License version 3.
+*
+* In accordance with Section 7(b) of the GNU Affero General Public License version 3,
+* these Appropriate Legal Notices must retain the display of the "Powered by
+* Honeytrap" logo and retain the original copyright notice. If the display of the
+* logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
+* must display the words "Powered by Honeytrap" and retain the original copyright notice.
+ */
+package server
+
+import (
+	"bytes"
+	"fmt"
+	"io/ioutil"
+	"os"
+	"os/user"
+	"path"
+
+	_ "net/http/pprof"
+
+	"github.com/fatih/color"
+	"github.com/pkg/profile"
+	"github.com/rs/xid"
+
+	"github.com/honeytrap/honeytrap/server/profiler"
+)
+
+type OptionFn func(*Honeytrap)
+
+func WithMemoryProfiler() OptionFn {
+	return func(b *Honeytrap) {
+		b.profiler = profiler.New(profile.MemProfile)
+	}
+}
+
+func WithCPUProfiler() OptionFn {
+	return func(b *Honeytrap) {
+		b.profiler = profiler.New(profile.CPUProfile)
+	}
+}
+
+func WithConfig(s string) (OptionFn, error) {
+	data, err := ioutil.ReadFile(s)
+	if err != nil {
+		return nil, err
+	}
+
+	return func(b *Honeytrap) {
+		if err := b.config.Load(bytes.NewBuffer(data)); err != nil {
+			fmt.Println(color.RedString("Configuration error: %s", err.Error()))
+			return
+		}
+	}, nil
+}
+
+func WithToken() OptionFn {
+	uid := xid.New().String()
+
+	var err error
+	var usr *user.User
+	if usr, err = user.Current(); err != nil {
+		panic(err)
+	}
+
+	p := path.Join(usr.HomeDir, ".honeytrap")
+
+	_, err = os.Stat(p)
+
+	switch {
+	case err == nil:
+		break
+	case os.IsNotExist(err):
+		if err = os.Mkdir(p, 0755); err != nil {
+			panic(err)
+		}
+	default:
+		panic(err)
+
+	}
+
+	p = path.Join(p, "token")
+
+	_, err = os.Stat(p)
+	if err == nil {
+		data, err := ioutil.ReadFile(p)
+		if err != nil {
+			uid = string(data)
+		}
+	} else if os.IsNotExist(err) {
+		ioutil.WriteFile(p, []byte(uid), 0600)
+	}
+
+	return func(h *Honeytrap) {
+		h.token = uid
+	}
+}

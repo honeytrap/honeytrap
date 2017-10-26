@@ -1,0 +1,257 @@
+# ########################################################################### #
+#                           Honeytrap configuration                           #
+# ########################################################################### #
+# 
+# Honeytrap architecture 
+# ----------------------
+#
+# Honeytrap presents two ways to capture an attacker who connects to it. 
+#  - Present a (simulated) service where the attacker interacts with
+#  - Direct the attacker via a proxy to a designated environment
+# Both methods can be used simultaneous.
+#
+# The events generated are captured and sent via channels  to the specific 
+# destinations
+# 
+# The honeytrap framework consist of 6 components:  
+#
+#               ====> proxy  ====> director
+# listener ====|         |                
+#               ====> service        |
+#     |                              |
+#     |                  |           |
+#      -----------------------------------> channel 
+#
+# Every components has a configuration section in this config file. Next to 
+# these five sections, there is a filter configuration section that defines
+# which data is send to the channels.
+#
+# Configuration conventions
+# -------------------------
+#
+# name: Can be chosen and is referenced in channel. Only proxy director must
+#       match a director name. 
+# type: Select one of the predefined types. type values are uniq in honeytrap 
+#       framework
+# port: <PROTO/#> or <PROTO/#-#>. example TCP/80 or UDP/9001-9003    
+#
+# ########################################################################### #
+
+
+# ####################### LISTENER BEGIN #################################### #
+
+[listener]
+# Select an interface to listen on. this can be physical ethernet devices or
+# tap/tun devices. There can only be one listener
+
+interface="eth0"
+
+
+# Select the listener type. This can be raw or socket. raw will listen on all 
+# ports of the interface. When chosen socket, only the configured ports in the
+# services and proxies sections are listened on.
+
+type="socket"
+
+
+# Select capture capabilities. 
+# Defaults to none, but can be list of the following options: 
+#     quick       (capture protocol, ip, port)
+#     sniffer     (capture the first X bytes from each packet)  
+#     full        (makes a full network dump)
+# 
+# A filter and channel needs to be configured to process the output of each
+# capture item.
+
+capture = ["sniffer","quick"]
+
+# ####################### LISTENER END ####################################### #
+
+
+# ####################### SERVICES BEGIN ##################################### #
+# Enable services. The services are defined by starting with a [[service]] field.
+# Each service requires that the "name" a "type" value are set. The name can be
+# freely chosen and is referred by in the channel output.
+# A complete list of available services and their specific configuration options 
+# can be found in <.....>. All services have the port and canary configuration
+# option. With the port options the service is connected to the specific port.
+# If no "port" value is given, it will connect to the default service type port
+# which can be found in <...>. The canary option is a boolean to enable or 
+# disable the usage of canaries, which will trigger alerts.
+
+
+[[service]]
+name="telnet01"
+type="telnet"
+port="TCP/23"
+banner="test"
+canary="true" 
+
+[[service]]
+name="telnet02"
+type="telnet"
+port="TCP/8023"
+banner="Extra telnet deamon"
+
+[[service]]
+name="ssh-auth"
+type="ssh-auth"
+banner="BLABLA"
+canary="false"
+username="test"
+password="test"
+
+[[service]]
+name="elasticsearch01"
+type="http"
+port="TCP/8080"
+
+[[service]]
+name="elasticsearch01"
+type="elasticsearch"
+port="TCP/9200"
+banner="test"
+
+# ####################### SERVICES BEGIN ##################################### #
+
+
+# ####################### PROXIES BEGIN ###################################### #
+# Proxies reside between the listener and director and can intervene with the 
+# network traffic flow. For every proxy you need to set the name, type and
+# director value. The proxy name can be freely chosen and is referenced in the 
+# channel. Available proxy types can be found in <.......>, which also list the
+# specific configuration options for this proxy type. The director value should
+# match a configured director name in the next section.
+# Every proxy has a port configuration options. If no port is given, it defaults 
+# to the standard proxy type port which can be found in <....>. 
+# The proxies are initiated sequential, so we can end with a proxy type "all" that
+# passes the remaining traffic to one director.
+
+
+[[proxy]]
+name="ssh01"
+type="ssh"
+director="single-server01"
+banner="bla" #-> should clone from dest
+certificate=""
+
+[[proxy]]
+name="ssh02"
+type="ssh"
+port="TCP/8022"
+director="lxc"
+banner="bla" #-> should clone from dest
+certificate=""
+
+[[proxy]]
+name="ssh03"
+type="ssh"
+port="TCP/22"
+director="single-server02"
+banner="bla" #-> should clone from dest
+certificate=""
+
+
+[[proxy]]
+name="forwardallremaining"
+director="all"
+
+# ####################### PROXIES END ######################################## #
+
+
+# ####################### DIRECTORS BEGIN #################################### #
+# Directors direct the network traffic to a specific destination. This can be
+# a container or vm managed by honeytrap or an other remote IP address. Each 
+# director must have a name and type defined. The director name should match the
+# director option in the proxy configuration. Available directors, with their
+# default configuration values, can be found in <......>
+
+[director.single-server01]
+type="remote"
+host="8.8.8.8"
+
+[director.single-server01]
+type="remote"
+host="4.4.4.4."
+dport="22"
+
+[director.lxc]
+type="lxc"
+template="sshtrap"
+
+[director.all]
+type="qemu"
+image="generic"
+snapshot="20170101"
+
+# ####################### DIRECTORS END ###################################### #
+
+
+# ####################### CHANNELS BEGIN ##################################### #
+# The listener and every proxy, director and service generate events, alters and 
+# logging. These are send to channels. To define a channel you should select a  
+# type and give it a name. The specific configuration options per type can be 
+# found in <.....>. 
+
+[channel.honeytrap]
+type="file"
+directory="/var/log/honeytrap/"
+
+[channel.capture]
+type="file"
+directory="/var/log/honeytraffic/"
+
+[channel.teamslack]
+type="slack"
+token=""
+
+[channel.elasticsearch01]
+type="elasticsearch"
+url="http://127.0.0.1:9200/"
+
+[channel.elasticsearch02]
+type="elasticsearch"
+url="http://127.0.0.1:9200/"
+
+
+# ####################### CHANNELS END ####################################### #
+
+
+# ####################### FILTERS BEGIN ###################################### #
+# A filter selects the data that is send to a previously defined channel. There 
+# are three types of data that can be collected with the honeytrap framework:
+# - events    generated events triggered by connections to the honeypot
+# - alerts    output of a canaries
+# - logging   framework system logging
+
+[[filter]]
+type="event"
+channel=["elasticsearch01"]
+component = ["proxy.*","service.*","director.*"]
+
+[[filter]]
+type="event"
+channel=["teamslack"]
+
+[[filter]]
+type="logging"
+channel=["honeytrap"]
+component=["proxy.*","service.*"]
+level="DEBUG"
+
+[[filter]]
+type="alert"
+channel=["elasticsearch02","teamslack"]
+component=["proxy.*","service.*","director.*"]
+
+[[filter]]
+type="event"
+channel=["networkdump"]
+component=["listener.*"]
+
+# ####################### LOGGING END ####################################### #
+
+[[logging]]
+output = "stdout"
+level = "debug"
+

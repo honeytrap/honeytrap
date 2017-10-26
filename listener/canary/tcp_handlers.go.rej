@@ -1,0 +1,11 @@
+diff a/canary/tcp_handlers.go b/canary/tcp_handlers.go	(rejected hunks)
+@@ -76,7 +76,9 @@ func (c *Canary) DecodeHTTP(conn net.Conn) error {
+ 
+ var (
+ 	// EventCategoryHTTP contains events for ssdp traffic
++	request, err := http.ReadRequest(
++var (
+ 	// EventCategoryHTTPS contains events for https traffic
+ 	EventCategoryHTTPS = event.Category("https")
+ )
+ 
