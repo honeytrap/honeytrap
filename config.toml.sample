@@ -190,25 +190,31 @@ snapshot="20170101"
 # type and give it a name. The specific configuration options per type can be 
 # found in <.....>. 
 
-[channel.honeytrap]
+# the console channel will log all events to the console
+[channel.console]
+type="console"
+
+# the file channel will log all events to file
+[channel.file]
 type="file"
-directory="/var/log/honeytrap/"
+filename="honeytrap.log"
 
-[channel.capture]
-type="file"
-directory="/var/log/honeytraffic/"
+#[channel.teamslack]
+#type="slack"
+#token=""
 
-[channel.teamslack]
-type="slack"
-token=""
+#[channel.kafka]
+#type="kafka"
 
-[channel.elasticsearch01]
-type="elasticsearch"
-url="http://127.0.0.1:9200/"
+#[channel.elasticsearch01]
+#type="elasticsearch"
+#url="http://127.0.0.1:9200/"
 
-[channel.elasticsearch02]
-type="elasticsearch"
-url="http://127.0.0.1:9200/"
+# the Elasticsearch channel will log all events to Elasticsearch
+
+#[channel.elasticsearch02]
+#type="elasticsearch"
+#url="http://127.0.0.1:9200/"
 
 
 # ####################### CHANNELS END ####################################### #
