@@ -37,6 +37,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"sync"
 	"time"
 
@@ -68,8 +69,16 @@ func New(options ...func(pushers.Channel) error) (pushers.Channel, error) {
 		optionFn(&fc)
 	}
 
-	// todo: toml decoder?
-	fc.timeout = config.MakeDuration(fc.config.Timeout, int(defaultWaitTime))
+	if fc.File == "" {
+		return nil, errors.New("File channel: filename not set")
+	}
+
+	// relative to current working directory
+	if pwd, err := os.Getwd(); err == nil {
+		fc.File = path.Join(pwd, fc.File)
+	}
+
+	fc.timeout = config.MakeDuration(fc.Timeout, int(defaultWaitTime))
 
 	return &fc, nil
 }
@@ -77,7 +86,7 @@ func New(options ...func(pushers.Channel) error) (pushers.Channel, error) {
 // FileConfig defines the config used to setup the FileBackend.
 type FileConfig struct {
 	MaxSize int    `toml:"maxsize"`
-	File    string `toml:"file"`
+	File    string `toml:"filename"`
 	Timeout string `toml:"timeout"`
 }
 
@@ -89,7 +98,7 @@ type FileConfig struct {
 // there exists a max size set in configuration, then that will be used instead,
 // also the old file will be renamed with the current timestamp and a new file created.
 type FileBackend struct {
-	config  FileConfig
+	FileConfig
 	timeout time.Duration
 	dest    *os.File
 	request chan map[string]interface{}
@@ -146,7 +155,7 @@ func (f *FileBackend) syncWrites() error {
 
 	var err error
 
-	f.dest, err = newFile(f.config.File, f.config.MaxSize)
+	f.dest, err = newFile(f.File, f.MaxSize)
 	if err != nil {
 		log.Debug("FileBackend.syncWrites : Completed : Failed create destination file")
 		return err
@@ -210,11 +219,10 @@ func (f *FileBackend) syncLoop() {
 // newFile returns a new file with the giving target path and returns the
 // new file object.
 func newFile(targetPath string, maxSize int) (*os.File, error) {
-
 	// Attempt to stat file, if it does not exists then create a new one.
 	stat, err := os.Stat(targetPath)
 	if err != nil {
-		dest, err := os.Create(targetPath)
+		dest, err := os.OpenFile(targetPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 		if err != nil {
 			return nil, err
 		}
@@ -241,5 +249,5 @@ func newFile(targetPath string, maxSize int) (*os.File, error) {
 		return nil, err
 	}
 
-	return os.Create(targetPath)
+	return os.OpenFile(targetPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 }
