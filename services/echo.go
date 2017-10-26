@@ -34,6 +34,7 @@ import (
 	"io"
 	"net"
 
+	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/listener"
 	"github.com/honeytrap/honeytrap/pushers"
 )
@@ -69,6 +70,13 @@ func (s *echoService) Handle(conn net.Conn) error {
 		if err != nil {
 			return err
 		}
+		s.c.Send(event.New(
+			EventOptions,
+			event.Category("echo"),
+			event.SourceAddr(conn.RemoteAddr()),
+			event.DestinationAddr(conn.LocalAddr()),
+			event.Payload(buff[:n]),
+		))
 
 		if _, err = conn.Write(buff[:n]); err != nil {
 			return err
