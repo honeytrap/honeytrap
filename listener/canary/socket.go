@@ -142,7 +142,7 @@ func (s Socket) Read(p []byte) (n int, err error) {
 	select {
 	case <-s.rchan:
 	case <-time.After(time.Second * 60):
-		return 0, errors.New("Readtimeout occured")
+		return 0, errors.New("Read timeout occurred")
 	}
 
 	n, _ = s.rbuffer.Read(p)

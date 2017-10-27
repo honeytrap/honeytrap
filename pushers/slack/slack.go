@@ -120,7 +120,7 @@ func (b SlackBackend) run() {
 		}
 
 		var newMessage Message
-		newMessage.Text = fmt.Sprintf("Event with Category %q of Type %q for Sensor %q occured", category, etype, sensor)
+		newMessage.Text = fmt.Sprintf("Event with category %q of type %q for sensor %q occurred", category, etype, sensor)
 
 		if m, ok := ev["message"].(string); ok {
 			newMessage.Text = m

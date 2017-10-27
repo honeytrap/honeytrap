@@ -281,7 +281,7 @@ func (h *Honeycast) Sessions(w http.ResponseWriter, r *http.Request, params map[
 }
 
 // Events handles response for all `/events` target endpoint and returns all giving events
-// and expects a giving filter paramter which will be used to filter out the needed events.
+// and expects a giving filter parameter which will be used to filter out the needed events.
 func (h *Honeycast) Events(w http.ResponseWriter, r *http.Request, params map[string]string) {
 	h.bucketFind(eventsBucket, w, r, params)
 }
@@ -603,7 +603,7 @@ func (socket *Socketcast) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		for {
 			messageType, message, err := conn.ReadMessage()
 			if err != nil {
-				// Error possibly occured, so we need to stop here.
+				// Error possibly occurred, so we need to stop here.
 				log.Error("Honeycast API : Connection read failed abruptly : %+q", err)
 				socket.closeClients <- conn
 				return

@@ -223,7 +223,7 @@ func (c *lxcContainer) start() error {
 
 	/*
 		if err := c.sf.Start(c.idevice); err != nil {
-			log.Errorf("Error occured while attaching sniffer for %s to %s: %s", c.name, c.idevice, err.Error())
+			log.Errorf("Error occurred while attaching sniffer for %s to %s: %s", c.name, c.idevice, err.Error())
 		}
 	*/
 
@@ -246,7 +246,7 @@ func (c *lxcContainer) unfreeze() error {
 
 	/*
 		if err := c.sf.Start(c.idevice); err != nil {
-			log.Errorf("Error occured while attaching sniffer for %s to %s: %s", c.name, c.idevice, err.Error())
+			log.Errorf("Error occurred while attaching sniffer for %s to %s: %s", c.name, c.idevice, err.Error())
 		}
 	*/
 

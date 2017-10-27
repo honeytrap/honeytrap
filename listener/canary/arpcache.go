@@ -54,7 +54,7 @@ func (ac ARPCache) Get(ip net.IP) *ARPEntry {
 	return nil
 }
 
-// ARPEntry defines a type for containg address and interface detail.
+// ARPEntry defines a type for containing address and interface detail.
 type ARPEntry struct {
 	IP              net.IP
 	HardwareAddress net.HardwareAddr

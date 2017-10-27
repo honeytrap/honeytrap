@@ -82,7 +82,7 @@ func RegexFilterFunc(field string, expressions []string) FilterFunc {
 }
 
 // FilterChannel defines a struct which handles the delivery of giving
-// messages to a specific sets of backend channels based on specific criterias.
+// messages to a specific sets of backend channels based on specific criteria.
 func FilterChannel(channel Channel, fn FilterFunc) Channel {
 	return filterChannel{
 		Channel:  channel,
