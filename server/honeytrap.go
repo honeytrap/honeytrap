@@ -414,11 +414,13 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		}
 	}()
 
-	select {
-	case <-ctx.Done():
-		return
-	case conn := <-incoming:
-		hc.handle(conn)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case conn := <-incoming:
+			hc.handle(conn)
+		}
 	}
 }
 
