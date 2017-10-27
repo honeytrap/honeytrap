@@ -62,7 +62,6 @@ func (s *httpService) SetChannel(c pushers.Channel) {
 }
 
 func (s *httpService) Handle(conn net.Conn) error {
-	// impement keep alive
 	for {
 		br := bufio.NewReader(conn)
 
