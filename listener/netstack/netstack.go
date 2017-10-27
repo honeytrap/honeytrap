@@ -31,5 +31,5 @@
 package netstack
 
 import (
-	_ "github.com/google/netstack"
+	_ "github.com/google/netstack/tcpip"
 )
