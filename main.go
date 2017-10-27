@@ -30,9 +30,18 @@
  */
 package main
 
-import "github.com/honeytrap/honeytrap/cmd"
+import (
+	"math/rand"
+	"time"
+
+	"github.com/honeytrap/honeytrap/cmd/honeytrap"
+)
+
+func init() {
+	rand.Seed(time.Now().UTC().UnixNano())
+}
 
 func main() {
-	app := cmd.New()
+	app := honeytrap.New()
 	app.RunAndExitOnError()
 }

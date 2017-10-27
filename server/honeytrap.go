@@ -89,7 +89,7 @@ type Honeytrap struct {
 
 	token string
 
-	cancel func()
+	matchers []ServiceMap
 }
 
 // New returns a new instance of a Honeytrap struct.
@@ -164,9 +164,6 @@ func (hc *Honeytrap) heartbeat() {
 // Run will start honeytrap
 func (hc *Honeytrap) Run(ctx context.Context) {
 	fmt.Println(color.YellowString("Honeytrap starting..."))
-	defer fmt.Println(color.YellowString("Honeytrap stopped."))
-
-	log.Info("Honeytrap started")
 
 	go hc.heartbeat()
 
@@ -304,9 +301,6 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		log.Fatalf("Error initializing listener %s: %s", x.Type, err)
 	}
 
-	// initialize services
-	matchers := []ServiceMap{}
-
 	// same for proxies
 	for key, s := range hc.config.Services {
 		x := struct {
@@ -369,7 +363,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 						}
 					}
 
-					matchers = append(matchers, ServiceMap{
+					hc.matchers = append(hc.matchers, ServiceMap{
 						Name:    key,
 						Type:    x.Type,
 						Matcher: fn(addr.Port),
@@ -392,7 +386,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 						}
 					}
 
-					matchers = append(matchers, ServiceMap{
+					hc.matchers = append(hc.matchers, ServiceMap{
 						Name:    key,
 						Type:    x.Type,
 						Matcher: fn(addr.Port),
@@ -403,33 +397,45 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		}
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-	hc.cancel = cancel
-
 	if err := l.Start(); err != nil {
 		fmt.Println(color.RedString("Error starting listener: %s", err.Error()))
 	}
 
-	for {
-		conn, err := l.Accept()
-		if err != nil {
-			panic(err)
-		}
+	incoming := make(chan net.Conn)
 
-		for _, sm := range matchers {
-			if !sm.Matcher(conn.LocalAddr()) {
-				continue
+	go func() {
+		for {
+			conn, err := l.Accept()
+			if err != nil {
+				panic(err)
 			}
 
-			log.Debug("Handling connection for %s => %s %s(%s)", conn.RemoteAddr(), conn.LocalAddr(), sm.Name, sm.Type)
-
-			go func(service services.Servicer) {
-				err := service.Handle(conn)
-				if err != nil {
-					fmt.Println(color.RedString(err.Error()))
-				}
-			}(sm.Service)
+			incoming <- conn
 		}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return
+	case conn := <-incoming:
+		hc.handle(conn)
+	}
+}
+
+func (hc *Honeytrap) handle(conn net.Conn) {
+	for _, sm := range hc.matchers {
+		if !sm.Matcher(conn.LocalAddr()) {
+			continue
+		}
+
+		log.Debug("Handling connection for %s => %s %s(%s)", conn.RemoteAddr(), conn.LocalAddr(), sm.Name, sm.Type)
+
+		go func(service services.Servicer) {
+			err := service.Handle(conn)
+			if err != nil {
+				fmt.Println(color.RedString(err.Error()))
+			}
+		}(sm.Service)
 	}
 }
 
@@ -437,13 +443,5 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 func (hc *Honeytrap) Stop() {
 	hc.profiler.Stop()
 
-	hc.cancel()
-
-	// stopping listener
-	// hc.l.Stop()
-
-	// stopping director
-	// hc.d.Stop()
-
-	log.Info("Honeytrap stopped")
+	fmt.Println(color.YellowString("Honeytrap stopped."))
 }

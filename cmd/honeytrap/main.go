@@ -28,13 +28,11 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package main
+package honeytrap
 
 import (
 	"context"
 	"fmt"
-	"math/rand"
-	"time"
 
 	"os"
 	"os/signal"
@@ -109,20 +107,24 @@ func serve(c *cli.Context) {
 		options...,
 	)
 
-	server.Run(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
 
-	s := make(chan os.Signal, 1)
-	signal.Notify(s, os.Interrupt)
-	signal.Notify(s, syscall.SIGTERM)
+	go func() {
+		s := make(chan os.Signal, 1)
+		signal.Notify(s, os.Interrupt)
+		signal.Notify(s, syscall.SIGTERM)
 
-	<-s
+		select {
+		case <-s:
+			cancel()
+		}
+	}()
 
+	server.Run(ctx)
 	server.Stop()
 }
 
-func main() {
-	rand.Seed(time.Now().UTC().UnixNano())
-
+func New() *cli.App {
 	app := cli.NewApp()
 	app.Name = "honeytrap"
 	app.Author = ""
@@ -138,5 +140,5 @@ func main() {
 
 	app.Action = serve
 
-	app.RunAndExitOnError()
+	return app
 }
