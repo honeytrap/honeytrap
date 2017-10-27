@@ -108,6 +108,4 @@ func (s *httpService) Handle(conn net.Conn) error {
 			return err
 		}
 	}
-
-	return nil
 }
