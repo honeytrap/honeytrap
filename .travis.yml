@@ -1,25 +1,43 @@
 language: go
 
-notifications:
-  slack: honeycast:P9gQukyVSKgFEyoGh2efeK1H
+go:
+- 1.9.1
+
+sudo: required
+dist: trusty
+
+go_import_path: github.com/honeytrap/honeytrap
 
 services:
-  - docker
+ - docker
 
-before_install:
-  - docker build -f test.Dockerfile -t honeytrap/travis-build ./ 
-  - docker run -d -p 8022:8022 -p 3000:3000 honeytrap/travis-build /bin/sh -C "cd /honeytrap; honeytrap"
+os:
+- linux
 
 env:
-  - GIMME_OS=linux GIMME_ARCH=amd64
+- ARCH=x86_64
 
-go:
-  - master
+addons:
+  apt:
+    packages:
+    - lxc
 
 install:
-  - docker ps -a
-
+  - sudo apt-get install -y software-properties-common python-software-properties
+  - sudo add-apt-repository -y ppa:ubuntu-lxc/stable
+  - sudo apt-get update -qq
+  - sudo apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confnew" lxc-dev
+  - go get -u -v github.com/alecthomas/gometalinter
+  - go get -u -v github.com/honeytrap/honeytrap
+  - gometalinter --install
 
 script:
-  - ls  
-  - echo "Done!"
+  # - gometalinter --deadline 2m --errors --vendor ./...
+  - go test -v ./...
+  - go build ./...
+
+after_success:
+- bash <(curl -s https://codecov.io/bash)
+
+-notifications:
+  slack: honeycast:P9gQukyVSKgFEyoGh2efeK1H 
