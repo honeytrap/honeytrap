@@ -57,8 +57,8 @@ type socketConfig struct {
 	Addresses []net.Addr
 }
 
-func (nc *socketConfig) AddAddress(a net.Addr) {
-	nc.Addresses = append(nc.Addresses, a)
+func (sc *socketConfig) AddAddress(a net.Addr) {
+	sc.Addresses = append(sc.Addresses, a)
 }
 
 func New(options ...func(listener.Listener) error) (listener.Listener, error) {
@@ -76,8 +76,8 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 	return &l, nil
 }
 
-func (nl *socketListener) Start() error {
-	for _, address := range nl.Addresses {
+func (sl *socketListener) Start() error {
+	for _, address := range sl.Addresses {
 		if _, ok := address.(*net.TCPAddr); ok {
 			l, err := net.Listen(address.Network(), address.String())
 			if err != nil {
@@ -95,7 +95,7 @@ func (nl *socketListener) Start() error {
 						continue
 					}
 
-					nl.ch <- c
+					sl.ch <- c
 				}
 			}()
 		} else if ua, ok := address.(*net.UDPAddr); ok {
@@ -118,7 +118,7 @@ func (nl *socketListener) Start() error {
 						continue
 					}
 
-					nl.ch <- &listener.DummyUDPConn{
+					sl.ch <- &listener.DummyUDPConn{
 						Buffer: buf[:n],
 						Laddr:  ua,
 						Raddr:  raddr,
@@ -132,7 +132,7 @@ func (nl *socketListener) Start() error {
 	return nil
 }
 
-func (l *socketListener) Accept() (net.Conn, error) {
-	c := <-l.ch
+func (sl *socketListener) Accept() (net.Conn, error) {
+	c := <-sl.ch
 	return c, nil
 }
