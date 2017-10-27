@@ -17,9 +17,9 @@ type PointerRingBuf struct {
 }
 
 // constructor. NewPointerRingBuf will allocate internally
-// a slice of size maxViewInBytes.
-func NewPointerRingBuf(maxViewInBytes int) *PointerRingBuf {
-	n := maxViewInBytes
+// a slice of size sliceN
+func NewPointerRingBuf(sliceN int) *PointerRingBuf {
+	n := sliceN
 	r := &PointerRingBuf{
 		N:        n,
 		Beg:      0,
@@ -33,7 +33,7 @@ func NewPointerRingBuf(maxViewInBytes int) *PointerRingBuf {
 // TwoContig returns all readable pointers, but in two separate slices,
 // to avoid copying. The two slices are from the same buffer, but
 // are not contiguous. Either or both may be empty slices.
-func (b *PointerRingBuf) TwoContig(makeCopy bool) (first []interface{}, second []interface{}) {
+func (b *PointerRingBuf) TwoContig() (first []interface{}, second []interface{}) {
 
 	extent := b.Beg + b.Readable
 	if extent <= b.N {
@@ -169,4 +169,68 @@ func (b *PointerRingBuf) Adopt(me []interface{}) {
 		b.Beg = 0
 		b.Readable = n
 	}
+}
+
+// Push writes len(p) pointers from p to the ring.
+// It returns the number of elements written from p (0 <= n <= len(p))
+// and any error encountered that caused the write to stop early.
+// Push must return a non-nil error if it returns n < len(p).
+//
+func (b *PointerRingBuf) Push(p []interface{}) (n int, err error) {
+	for {
+		if len(p) == 0 {
+			// nothing (left) to copy in; notice we shorten our
+			// local copy p (below) as we read from it.
+			return
+		}
+
+		writeCapacity := b.N - b.Readable
+		if writeCapacity <= 0 {
+			// we are all full up already.
+			return n, io.ErrShortWrite
+		}
+		if len(p) > writeCapacity {
+			err = io.ErrShortWrite
+			// leave err set and
+			// keep going, write what we can.
+		}
+
+		writeStart := (b.Beg + b.Readable) % b.N
+
+		upperLim := intMin(writeStart+writeCapacity, b.N)
+
+		k := copy(b.A[writeStart:upperLim], p)
+
+		n += k
+		b.Readable += k
+		p = p[k:]
+
+		// we can fill from b.A[0:something] from
+		// p's remainder, so loop
+	}
+}
+
+// PushAndMaybeOverwriteOldestData always consumes the full
+// slice p, even if that means blowing away the oldest
+// unread pointers in the ring to make room. In reality, only the last
+// min(len(p),b.N) bytes of p will end up being written to the ring.
+//
+// This allows the ring to act as a record of the most recent
+// b.N bytes of data -- a kind of temporal LRU cache, so the
+// speak. The linux kernel's dmesg ring buffer is similar.
+//
+func (b *PointerRingBuf) PushAndMaybeOverwriteOldestData(p []interface{}) (n int, err error) {
+	writeCapacity := b.N - b.Readable
+	if len(p) > writeCapacity {
+		b.Advance(len(p) - writeCapacity)
+	}
+	startPos := 0
+	if len(p) > b.N {
+		startPos = len(p) - b.N
+	}
+	n, err = b.Push(p[startPos:])
+	if err != nil {
+		return n, err
+	}
+	return len(p), nil
 }

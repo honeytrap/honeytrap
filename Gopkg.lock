@@ -16,14 +16,8 @@
 [[projects]]
   name = "github.com/boltdb/bolt"
   packages = ["."]
-  revision = "583e8937c61f1af6513608ccc75c97b6abdf4ff9"
-  version = "v1.3.0"
-
-[[projects]]
-  name = "github.com/coreos/go-semver"
-  packages = ["semver"]
-  revision = "8ab6407b697782a06568d4b7f1db25550ec2e4c6"
-  version = "v0.2.0"
+  revision = "2f1ce7a837dcb8da3ec595b1dac9d0632f0f99e8"
+  version = "v1.3.1"
 
 [[projects]]
   name = "github.com/davecgh/go-spew"
@@ -34,14 +28,8 @@
 [[projects]]
   name = "github.com/dimfeld/httptreemux"
   packages = ["."]
-  revision = "86f7c217d9043ebc6adfd8e2ed04a0bb1e1db651"
-  version = "v3.8.0"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/dutchcoders/releaser"
-  packages = ["."]
-  revision = "ff306a34892b7494e44efeacbddbcd8aff30fdbc"
+  revision = "13dde8a00d96b369e7398490fd8a3af9ca114b84"
+  version = "v3.9.0"
 
 [[projects]]
   name = "github.com/eapache/go-resiliency"
@@ -77,13 +65,13 @@
   branch = "master"
   name = "github.com/glycerine/rbuf"
   packages = ["."]
-  revision = "e57eda7aada105c8b00090b66e338a6413c3fbe9"
+  revision = "9e41ac02ea26845b942ab8517583e964bdd8365d"
 
 [[projects]]
   branch = "master"
   name = "github.com/golang/protobuf"
   packages = ["proto"]
-  revision = "9f174c986221c608fb5143bd623b6076a71feae3"
+  revision = "1643683e1b54a9e88ad26d98f81400c8c9d9f4f9"
 
 [[projects]]
   branch = "master"
@@ -94,14 +82,20 @@
 [[projects]]
   name = "github.com/google/gopacket"
   packages = [".","layers","pcap","pcapgo"]
-  revision = "b83f94714c36e30ce851be1d5a0a5226f9f1bca4"
-  version = "v1.1.12"
+  revision = "11c65f1ca9081dfea43b4f9643f5c155583b73ba"
+  version = "v1.1.14"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/google/netstack"
+  packages = ["ilist","tcpip","tcpip/buffer","waiter"]
+  revision = "edcfca33ca347f59a1393986a5d216a5f183ae28"
 
 [[projects]]
   name = "github.com/gorilla/websocket"
   packages = ["."]
-  revision = "3ab3a8b8831546bd18fd182c20687ca853b2bb13"
-  version = "v1.1.0"
+  revision = "ea4d1f681babbce9545c9c5f3d5194a789c89f5b"
+  version = "v1.2.0"
 
 [[projects]]
   branch = "v3"
@@ -116,34 +110,22 @@
   revision = "40a3ac1628261e59b1dcb1fddd650e3040e87165"
 
 [[projects]]
-  branch = "master"
-  name = "github.com/honeytrap/namecon"
-  packages = ["."]
-  revision = "a0ff2ecde6914b6e6050422c1fe9a3275c7afd86"
-
-[[projects]]
-  name = "github.com/imdario/mergo"
-  packages = ["."]
-  revision = "3e95a51e0639b4cf372f2ccf74c86749d747fbdc"
-  version = "0.2.2"
-
-[[projects]]
   name = "github.com/mattn/go-colorable"
   packages = ["."]
-  revision = "d228849504861217f796da67fae4f6e347643f15"
-  version = "v0.0.7"
+  revision = "167de6bfdfba052fa6b2d3664c8f5272e23c9072"
+  version = "v0.0.9"
 
 [[projects]]
   name = "github.com/mattn/go-isatty"
   packages = ["."]
-  revision = "fc9e8d8ef48496124e79ae0df75490096eccf6fe"
-  version = "v0.0.2"
+  revision = "0360b2af4f38e8d38c7fce2a9f4e702702d73a39"
+  version = "v0.0.3"
 
 [[projects]]
   name = "github.com/mattn/go-sqlite3"
   packages = ["."]
-  revision = "ca5e3819723d8eeaf170ad510e7da1d6d2e94a08"
-  version = "v1.2.0"
+  revision = "5160b48509cf5c877bc22c11c373f8c7738cdb38"
+  version = "v1.3.0"
 
 [[projects]]
   name = "github.com/op/go-logging"
@@ -209,31 +191,31 @@
   branch = "master"
   name = "golang.org/x/crypto"
   packages = ["curve25519","ed25519","ed25519/internal/edwards25519","ssh"]
-  revision = "7e9105388ebff089b3f99f0ef676ea55a6da3a7e"
+  revision = "2509b142fb2b797aa7587dad548f113b2c0f20ce"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/net"
   packages = ["context"]
-  revision = "1087133bc4af3073e18add999345c6ae75918503"
+  revision = "7b572d500b0702f1ea30a47083ce2e1e5c61edba"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/sync"
   packages = ["syncmap"]
-  revision = "f52d1811a62927559de87708c8913c1650ce4f26"
+  revision = "8e0aa688b654ef28caa72506fa5ec8dba9fc7690"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/sys"
   packages = ["unix","windows","windows/registry"]
-  revision = "b90f89a1e7a9c1f6b918820b3daa7f08488c8594"
+  revision = "0649f9fe46d917da5591af4d4784b6badd31d7e5"
 
 [[projects]]
   name = "gopkg.in/olivere/elastic.v5"
-  packages = [".","uritemplates"]
-  revision = "f1fd7305d0b6270192b27010fe1193568b18e4b6"
-  version = "v5.0.39"
+  packages = [".","config","uritemplates"]
+  revision = "171ce647da4acfb30ffc99981d66d80bdea6bcee"
+  version = "v5.0.53"
 
 [[projects]]
   name = "gopkg.in/urfave/cli.v1"
@@ -244,6 +226,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "cd9dd16154697fbaa86828721c0203319c7eff357f7ff0ae850e9507213baa43"
+  inputs-digest = "50470d6e41b9e8b7c9dfd3bda748452f5178cec9aaee3e4df961d7b1f57f1385"
   solver-name = "gps-cdcl"
   solver-version = 1

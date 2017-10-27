@@ -15,6 +15,47 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+func TestFchmodat(t *testing.T) {
+	defer chtmpdir(t)()
+
+	touch(t, "file1")
+	os.Symlink("file1", "symlink1")
+
+	err := unix.Fchmodat(unix.AT_FDCWD, "symlink1", 0444, 0)
+	if err != nil {
+		t.Fatalf("Fchmodat: unexpected error: %v", err)
+	}
+
+	fi, err := os.Stat("file1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if fi.Mode() != 0444 {
+		t.Errorf("Fchmodat: failed to change mode: expected %v, got %v", 0444, fi.Mode())
+	}
+
+	err = unix.Fchmodat(unix.AT_FDCWD, "symlink1", 0444, unix.AT_SYMLINK_NOFOLLOW)
+	if err != unix.EOPNOTSUPP {
+		t.Fatalf("Fchmodat: unexpected error: %v, expected EOPNOTSUPP", err)
+	}
+}
+
+func TestIoctlGetInt(t *testing.T) {
+	f, err := os.Open("/dev/random")
+	if err != nil {
+		t.Fatalf("failed to open device: %v", err)
+	}
+	defer f.Close()
+
+	v, err := unix.IoctlGetInt(int(f.Fd()), unix.RNDGETENTCNT)
+	if err != nil {
+		t.Fatalf("failed to perform ioctl: %v", err)
+	}
+
+	t.Logf("%d bits of entropy available", v)
+}
+
 func TestPoll(t *testing.T) {
 	f, cleanup := mktmpfifo(t)
 	defer cleanup()
@@ -143,11 +184,50 @@ func TestUtime(t *testing.T) {
 	}
 }
 
+func TestUtimesNanoAt(t *testing.T) {
+	defer chtmpdir(t)()
+
+	symlink := "symlink1"
+	os.Remove(symlink)
+	err := os.Symlink("nonexisting", symlink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ts := []unix.Timespec{
+		{Sec: 1111, Nsec: 2222},
+		{Sec: 3333, Nsec: 4444},
+	}
+	err = unix.UtimesNanoAt(unix.AT_FDCWD, symlink, ts, unix.AT_SYMLINK_NOFOLLOW)
+	if err != nil {
+		t.Fatalf("UtimesNanoAt: %v", err)
+	}
+
+	var st unix.Stat_t
+	err = unix.Lstat(symlink, &st)
+	if err != nil {
+		t.Fatalf("Lstat: %v", err)
+	}
+	if st.Atim != ts[0] {
+		t.Errorf("UtimesNanoAt: wrong atime: %v", st.Atim)
+	}
+	if st.Mtim != ts[1] {
+		t.Errorf("UtimesNanoAt: wrong mtime: %v", st.Mtim)
+	}
+}
+
 func TestGetrlimit(t *testing.T) {
 	var rlim unix.Rlimit
 	err := unix.Getrlimit(unix.RLIMIT_AS, &rlim)
 	if err != nil {
 		t.Fatalf("Getrlimit: %v", err)
+	}
+}
+
+func TestSelect(t *testing.T) {
+	_, err := unix.Select(0, nil, nil, nil, &unix.Timeval{0, 0})
+	if err != nil {
+		t.Fatalf("Select: %v", err)
 	}
 }
 
