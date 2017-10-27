@@ -46,14 +46,26 @@ var (
 
 // Http is a placeholder
 func HTTP(options ...ServicerFunc) Servicer {
-	s := &httpService{}
+	s := &httpService{
+		httpServiceConfig: httpServiceConfig{
+			Server: "Apache",
+		},
+	}
+
 	for _, o := range options {
 		o(s)
 	}
+
 	return s
 }
 
+type httpServiceConfig struct {
+	Server string `toml:"server"`
+}
+
 type httpService struct {
+	httpServiceConfig
+
 	c pushers.Channel
 }
 
@@ -89,7 +101,7 @@ func (s *httpService) Handle(conn net.Conn) error {
 			ProtoMinor: req.ProtoMinor,
 			Request:    req,
 			Header: http.Header{
-				"Server": []string{"Apache"},
+				"Server": []string{s.Server},
 			},
 		}
 		if err := resp.Write(conn); err != nil {
