@@ -156,9 +156,8 @@ If you want to run the high interaction container, you need to setup a base imag
 lxc-create -t download -n honeytrap -- --dist ubuntu --release trusty --arch amd64
 ```
 
-## Contribute
-
-Contributions are welcome.
+## Contribute to Honeytrap
+Please follow [Honeytrap Contributor's Guide](contributing.md)
 
 ### Setup your Honeytrap Github Repository
 
