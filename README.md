@@ -72,13 +72,10 @@ The web interface is being used as a dashboard, but also for configuration. Here
 
 ### Listeners
 
-* Dummy: used for initialization
-* Network: this is the network listener for specific ports
-* RawNetwork: this listener will listen for all traffic on all ports
-
-* TAP (Linux)
-
-* TUN (MacOS, Linux)
+* Socket(socket): this is the network listener for specific ports
+* Raw(raw): this listener will listen for all traffic on all ports
+* TAP (Linux) (not implemented yet)
+* TUN (MacOS, Linux) (not implemented yet)
 
 ```
 https://serverfault.com/questions/523236/how-do-i-forward-nat-all-traffic-to-one-interface-ip-to-a-remote-ip
@@ -98,19 +95,20 @@ http://brezular.com/2011/06/19/bridging-qemu-image-to-the-real-network-using-tap
 
 ### Directors
 
-* Canary: the canary will detect all originating traffic 
+* LXC(lxc): director for containing traffic into a personalized lxc container
+* Remote(remote): will forward the traffic to a remote host
+* Qemu(qemu): will start and forward traffic to qemu machines (not implemented yet)
 
-* LXC: director for containing traffic into lxc containers
+## Services
 
-* Low: this contains of small specific responses, like capturing SSH usernames and passwords
-- smb share
-- cifs
-- webdav
-- email
-- http image
-- 9200 elasticsearch
+* HTTP(http)
+* cifs
+* webdav
+* email
+* http image
+* 9200 elasticsearch
 
-### Events 
+### Channels 
 
 Events can be send to several channels, to be configured in the configuration file. All channels can be filtered, for example you'll be able to filter specific messages to be sent to Slack, others to Elasticsearch.
 
