@@ -96,7 +96,7 @@ type icmpv4TypeCodeInfoStruct struct {
 
 var (
 	icmpv4TypeCodeInfo = map[uint8]icmpv4TypeCodeInfoStruct{
-		ICMPv4TypeDestinationUnreachable: icmpv4TypeCodeInfoStruct{
+		ICMPv4TypeDestinationUnreachable: {
 			"DestinationUnreachable", &map[uint8]string{
 				ICMPv4CodeNet:                 "Net",
 				ICMPv4CodeHost:                "Host",
@@ -116,23 +116,23 @@ var (
 				ICMPv4CodePrecedenceCutoff:    "PrecedenceCutoff",
 			},
 		},
-		ICMPv4TypeTimeExceeded: icmpv4TypeCodeInfoStruct{
+		ICMPv4TypeTimeExceeded: {
 			"TimeExceeded", &map[uint8]string{
 				ICMPv4CodeTTLExceeded:                    "TTLExceeded",
 				ICMPv4CodeFragmentReassemblyTimeExceeded: "FragmentReassemblyTimeExceeded",
 			},
 		},
-		ICMPv4TypeParameterProblem: icmpv4TypeCodeInfoStruct{
+		ICMPv4TypeParameterProblem: {
 			"ParameterProblem", &map[uint8]string{
 				ICMPv4CodePointerIndicatesError: "PointerIndicatesError",
 				ICMPv4CodeMissingOption:         "MissingOption",
 				ICMPv4CodeBadLength:             "BadLength",
 			},
 		},
-		ICMPv4TypeSourceQuench: icmpv4TypeCodeInfoStruct{
+		ICMPv4TypeSourceQuench: {
 			"SourceQuench", nil,
 		},
-		ICMPv4TypeRedirect: icmpv4TypeCodeInfoStruct{
+		ICMPv4TypeRedirect: {
 			"Redirect", &map[uint8]string{
 				ICMPv4CodeNet:     "Net",
 				ICMPv4CodeHost:    "Host",
@@ -140,34 +140,34 @@ var (
 				ICMPv4CodeTOSHost: "TOS+Host",
 			},
 		},
-		ICMPv4TypeEchoRequest: icmpv4TypeCodeInfoStruct{
+		ICMPv4TypeEchoRequest: {
 			"EchoRequest", nil,
 		},
-		ICMPv4TypeEchoReply: icmpv4TypeCodeInfoStruct{
+		ICMPv4TypeEchoReply: {
 			"EchoReply", nil,
 		},
-		ICMPv4TypeTimestampRequest: icmpv4TypeCodeInfoStruct{
+		ICMPv4TypeTimestampRequest: {
 			"TimestampRequest", nil,
 		},
-		ICMPv4TypeTimestampReply: icmpv4TypeCodeInfoStruct{
+		ICMPv4TypeTimestampReply: {
 			"TimestampReply", nil,
 		},
-		ICMPv4TypeInfoRequest: icmpv4TypeCodeInfoStruct{
+		ICMPv4TypeInfoRequest: {
 			"InfoRequest", nil,
 		},
-		ICMPv4TypeInfoReply: icmpv4TypeCodeInfoStruct{
+		ICMPv4TypeInfoReply: {
 			"InfoReply", nil,
 		},
-		ICMPv4TypeRouterSolicitation: icmpv4TypeCodeInfoStruct{
+		ICMPv4TypeRouterSolicitation: {
 			"RouterSolicitation", nil,
 		},
-		ICMPv4TypeRouterAdvertisement: icmpv4TypeCodeInfoStruct{
+		ICMPv4TypeRouterAdvertisement: {
 			"RouterAdvertisement", nil,
 		},
-		ICMPv4TypeAddressMaskRequest: icmpv4TypeCodeInfoStruct{
+		ICMPv4TypeAddressMaskRequest: {
 			"AddressMaskRequest", nil,
 		},
-		ICMPv4TypeAddressMaskReply: icmpv4TypeCodeInfoStruct{
+		ICMPv4TypeAddressMaskReply: {
 			"AddressMaskReply", nil,
 		},
 	}
