@@ -30,9 +30,483 @@
  */
 package services
 
+import (
+	"bytes"
+	"crypto/sha1"
+	"crypto/tls"
+	"fmt"
+	"io"
+	"io/ioutil"
+	"net"
+	"net/mail"
+	"net/textproto"
+	"strconv"
+	"strings"
+
+	"github.com/honeytrap/honeytrap/event"
+	"github.com/honeytrap/honeytrap/pushers"
+)
+
+var (
+	_ = Register("smtp", SMTP)
+)
+
+///////////////smtpd.go///////////////////
+
+var receiveChan chan mail.Message
+
 /*
-// SMTP is a placeholder
-func (d *lowDirector) SMTP() func(net.Conn) {
-	return d.Echo()
+type Handler interface {
+	Serve(msg Message) error
+}
+
+type HandlerFunc func(msg Message) error
+
+type ServeMux struct {
+	m  []HandlerFunc
+	mu sync.RWMutex
+}
+
+func (mux *ServeMux) HandleFunc(handler func(msg Message) error) {
+	mux.mu.Lock()
+	defer mux.mu.Unlock()
+
+	mux.m = append(mux.m, handler)
+}
+
+func HandleFunc(handler func(msg Message) error) *ServeMux {
+	DefaultServeMux.HandleFunc(handler)
+	return DefaultServeMux
+}
+
+var DefaultServeMux = NewServeMux()
+
+func NewServeMux() *ServeMux { return &ServeMux{m: make([]HandlerFunc, 0)} }
+
+type Server struct {
+	*Config
+	Handler Handler
+}
+
+//FIX: Do not need this, only the serve part
+func (s *Server) ListenAndServe(handler Handler) error {
+	ln, err := net.Listen("tcp", s.ListenAddr)
+	if err != nil {
+		return err
+	}
+
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			log.Error("Error accept: %s", err.Error())
+			continue
+		}
+
+		c, err := s.newConn(conn)
+		if err != nil {
+			continue
+		}
+		go c.serve()
+	}
+
+	return nil
+}
+
+func NewServer(options ...func(*Config) error) (*Server, error) {
+	cfg := &Config{
+		Banner: func() string {
+			return "DutchCoders SMTPd"
+		},
+		TLSConfig: nil,
+	}
+
+	for _, optionFn := range options {
+		if err := optionFn(cfg); err != nil {
+			return nil, err
+		}
+	}
+
+	server := &Server{
+		Config: cfg,
+	}
+
+	return server, nil
+}
+
+func (s *ServeMux) Serve(msg Message) error {
+	for _, h := range s.m {
+		if err := h(msg); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Server) newConn(rwc net.Conn) (c *conn, err error) {
+	c = &conn{
+		server: s,
+		rwc:    rwc,
+		i:      0,
+	}
+
+	c.msg = c.newMessage()
+	return c, nil
+}
+
+type serverHandler struct {
+	srv *Server
+}
+
+func (sh serverHandler) Serve(msg Message) {
+	handler := sh.srv.Handler
+	if handler == nil {
+		handler = DefaultServeMux
+	}
+
+	handler.Serve(msg)
 }
 */
+
+///////////////message.go///////////////
+
+type Message struct {
+	From *mail.Address
+	To   []*mail.Address
+
+	Domain     string
+	RemoteAddr string
+
+	Header mail.Header
+	Buffer *bytes.Buffer
+	Body   *bytes.Buffer
+}
+
+func (c *SMTPService) newMessage() *Message {
+	//id, _ := uuid.NewUUID()
+
+	return &Message{
+		//MessageID:  id,
+		To:         []*mail.Address{},
+		Body:       &bytes.Buffer{},
+		Buffer:     &bytes.Buffer{},
+		Domain:     c.domain,
+		RemoteAddr: c.RemoteAddr().String(),
+	}
+}
+
+func (m *Message) Read(r io.Reader) error {
+	buff, err := ioutil.ReadAll(r)
+	if err != nil {
+		return err
+	}
+
+	msg, err := mail.ReadMessage(bytes.NewReader(buff))
+	if err != nil {
+		m.Body = bytes.NewBuffer(buff)
+		return err
+	}
+
+	m.Header = msg.Header
+
+	buff, err = ioutil.ReadAll(msg.Body)
+	if err != nil {
+		return err
+	}
+
+	m.Body = bytes.NewBuffer(buff)
+	return err
+}
+
+/////////conn.go/////////
+
+func (c *SMTPService) RemoteAddr() net.Addr {
+	return c.rwc.RemoteAddr()
+}
+
+type stateFn func(c *SMTPService) stateFn
+
+func (c *SMTPService) PrintfLine(format string, args ...interface{}) error {
+	fmt.Printf("< ")
+	fmt.Printf(format, args...)
+	fmt.Println("")
+	return c.Text.PrintfLine(format, args...)
+}
+
+func (c *SMTPService) ReadLine() (string, error) {
+	s, err := c.Text.ReadLine()
+	fmt.Printf("> ")
+	fmt.Println(s)
+	return s, err
+}
+
+func startState(c *SMTPService) stateFn {
+	c.PrintfLine("220 %s", c.banner)
+	return helloState
+}
+
+func unrecognizedState(c *SMTPService) stateFn {
+	c.PrintfLine("500 unrecognized command")
+	return loopState
+}
+
+func errorState(format string, args ...interface{}) stateFn {
+	msg := fmt.Sprintf(format, args...)
+	return func(c *SMTPService) stateFn {
+		c.PrintfLine("500 %s", msg)
+		return nil
+	}
+}
+
+func outOfSequenceState() stateFn {
+	return func(c *SMTPService) stateFn {
+		c.PrintfLine("503 command out of sequence")
+		return nil
+	}
+}
+
+func isCommand(line string, cmd string) bool {
+	return strings.HasPrefix(strings.ToUpper(line), cmd)
+}
+
+func mailFromState(c *SMTPService) stateFn {
+	line, err := c.ReadLine()
+	if err != nil {
+		log.Error("[mailFromState] error: %s", err.Error())
+		return nil
+	}
+
+	if line == "" {
+		return loopState
+	}
+
+	if isCommand(line, "RSET") {
+		c.PrintfLine("250 Ok")
+
+		c.msg = c.newMessage()
+		return loopState
+	} else if isCommand(line, "RCPT TO") {
+		addr, _ := mail.ParseAddress(line[8:])
+
+		c.msg.To = append(c.msg.To, addr)
+
+		c.PrintfLine("250 Ok")
+		return mailFromState
+	} else if isCommand(line, "BDAT") {
+		parts := strings.Split(line, " ")
+
+		count := int64(0)
+		var err error
+		if count, err = strconv.ParseInt(parts[1], 10, 32); err != nil {
+			return errorState("[bdat]: error %s", err)
+		}
+
+		if _, err = io.CopyN(c.msg.Buffer, c.Text.R, count); err != nil {
+			return errorState("[bdat]: error %s", err)
+		}
+
+		last := (len(parts) == 3 && parts[2] == "LAST")
+		if !last {
+			c.PrintfLine("250 Ok")
+			return mailFromState
+		}
+
+		hasher := sha1.New()
+		if err := c.msg.Read(io.TeeReader(c.msg.Buffer, hasher)); err != nil {
+			return errorState("[bdat]: error %s", err)
+		}
+
+		c.PrintfLine("250 Ok : queued as +%x", hasher.Sum(nil))
+
+		/*
+			serverHandler{c.server}.Serve(*c.msg)
+				if err = c.muxer.Handle(*c.msg); err != nil {
+					return errorState(err.Error())
+				}
+		*/
+
+		c.msg = c.newMessage()
+		return loopState
+	} else if isCommand(line, "DATA") {
+		c.PrintfLine("354 Enter message, ending with \".\" on a line by itself")
+
+		hasher := sha1.New()
+		err := c.msg.Read(io.TeeReader(c.Text.DotReader(), hasher))
+		if err != nil {
+			return errorState("[data]: error %s", err)
+		}
+
+		c.PrintfLine("250 Ok : queued as +%x", hasher.Sum(nil))
+
+		/*
+			serverHandler{c.server}.Serve(*c.msg)
+
+				if err = c.muxer.Handle(*c.msg); err != nil {
+					return errorState(err.Error())
+				}
+		*/
+
+		c.msg = c.newMessage()
+		return loopState
+	} else {
+		return unrecognizedState
+	}
+}
+
+func loopState(c *SMTPService) stateFn {
+	line, err := c.ReadLine()
+	if err != nil {
+		log.Error("[loopState] error: %s", err.Error())
+		return nil
+	}
+
+	if line == "" {
+		return loopState
+	}
+
+	c.i++
+
+	if c.i > 100 {
+		return errorState("Error: invalid.")
+	}
+
+	if isCommand(line, "MAIL FROM") {
+		c.msg.From, _ = mail.ParseAddress(line[10:])
+		c.PrintfLine("250 Ok")
+		return mailFromState
+	} else if isCommand(line, "STARTTLS") {
+		c.PrintfLine("220 Ready to start TLS")
+
+		tlsconn := tls.Server(c.rwc, c.TLSConfig)
+
+		if err := tlsconn.Handshake(); err != nil {
+			log.Error("Error during tls handshake: %s", err.Error())
+			return nil
+		}
+
+		c.Text = textproto.NewConn(tlsconn)
+		return helloState
+	} else if isCommand(line, "RSET") {
+		c.msg = c.newMessage()
+		c.PrintfLine("250 Ok")
+		return loopState
+	} else if isCommand(line, "QUIT") {
+		c.PrintfLine("221 Bye")
+		return nil
+	} else if isCommand(line, "NOOP") {
+		c.PrintfLine("250 Ok")
+		return loopState
+	} else if strings.Trim(line, " \r\n") == "" {
+		return loopState
+	} else {
+		return unrecognizedState
+	}
+}
+
+func parseHelloArgument(arg string) (string, error) {
+	domain := arg
+	if idx := strings.IndexRune(arg, ' '); idx >= 0 {
+		domain = arg[idx+1:]
+	}
+	if domain == "" {
+		return "", fmt.Errorf("Invalid domain")
+	}
+	return domain, nil
+}
+
+func helloState(c *SMTPService) stateFn {
+	line, _ := c.ReadLine()
+
+	if isCommand(line, "HELO") {
+		domain, err := parseHelloArgument(line)
+		if err != nil {
+			return errorState(err.Error())
+		}
+
+		c.domain = domain
+		c.msg.Domain = domain
+
+		c.PrintfLine("250 Hello %s, I am glad to meet you", domain)
+		return loopState
+	} else if isCommand(line, "EHLO") {
+		domain, err := parseHelloArgument(line)
+		if err != nil {
+			return errorState(err.Error())
+		}
+
+		c.domain = domain
+		c.msg.Domain = domain
+
+		c.PrintfLine("250-Hello %s", domain)
+		c.PrintfLine("250-SIZE 35882577")
+		c.PrintfLine("250-8BITMIME")
+		c.PrintfLine("250-STARTTLS")
+		c.PrintfLine("250-ENHANCEDSTATUSCODES")
+		c.PrintfLine("250-PIPELINING")
+		c.PrintfLine("250-CHUNKING")
+		c.PrintfLine("250 SMTPUTF8")
+		return loopState
+	} else {
+		return errorState("Before we shake hands it will be appropriate to tell me who you are.")
+	}
+}
+
+func (c *SMTPService) serve() {
+	c.Text = textproto.NewConn(c.rwc)
+	defer c.Text.Close()
+
+	// todo add idle timeout here
+
+	for state := startState; state != nil; {
+		state = state(c)
+	}
+}
+
+// SMTP
+func SMTP(options ...ServicerFunc) Servicer {
+
+	s := &SMTPService{
+		banner: "SMTPd",
+	}
+
+	for _, o := range options {
+		o(s)
+	}
+	return s
+}
+
+type SMTPService struct {
+	c         pushers.Channel
+	TLSConfig *tls.Config
+	rwc       net.Conn
+	Text      *textproto.Conn
+	domain    string
+	msg       *Message
+	Banner    string `toml:"banner"`
+	i         int
+}
+
+func (s *SMTPService) SetChannel(c pushers.Channel) {
+	s.c = c
+}
+
+func (s *SMTPService) Handle(conn net.Conn) error {
+
+	s.rwc = conn
+	s.msg = s.newMessage()
+	// Use a go routine here???
+	s.serve()
+
+	fmt.Println("msg: ", s.msg)
+
+	s.c.Send(event.New(
+		EventOptions,
+		event.Category("smtp"),
+		event.Type("mail"),
+		event.SourceAddr(conn.RemoteAddr()),
+		event.DestinationAddr(conn.LocalAddr()),
+		event.Custom("smtp.From", s.msg.From),
+		event.Custom("smtp.To", s.msg.To),
+		event.Custom("smtp.Body", s.msg.Body),
+	))
+	return nil
+}
