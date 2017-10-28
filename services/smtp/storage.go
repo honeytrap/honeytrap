@@ -28,11 +28,65 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package services
+package smtp
 
-/*
-// SMTP is a placeholder
-func (d *lowDirector) SMTP() func(net.Conn) {
-	return d.Echo()
+import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
+
+	"github.com/honeytrap/honeytrap/storage"
+)
+
+func Storage() (*smtpStorage, error) {
+	if s, err := storage.Namespace("smtp"); err == nil {
+		return &smtpStorage{
+			s,
+		}, nil
+	} else {
+		return nil, err
+	}
 }
-*/
+
+type smtpStorage struct {
+	storage.Storage
+}
+
+//Returns a TLS Certificate or nil on error
+func (s *smtpStorage) Certificate() *tls.Certificate {
+
+	priv_b, err := s.Get("private-key")
+	if err != nil {
+		priv_b, err = generateKey()
+		if err != nil {
+			return nil
+		}
+		if err := s.Set("private-key", priv_b); err != nil {
+			log.Errorf("Could not persist private-key: %s", err.Error())
+		}
+	}
+
+	cert, err := generateCert(priv_b)
+	if err != nil {
+		log.Errorf("Could not generate a Certificate. %s", err)
+		return nil
+	}
+
+	return cert
+}
+
+func generateKey() ([]byte, error) {
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, err
+	}
+
+	if cerr := priv.Validate(); cerr != nil {
+		return nil, cerr
+	}
+
+	data := x509.MarshalPKCS1PrivateKey(priv)
+
+	return data, nil
+}
