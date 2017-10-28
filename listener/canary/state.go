@@ -124,7 +124,7 @@ type StateTable [65535]*State
 
 // Add adds the state into the table.
 func (st *StateTable) Add(state *State) {
-	for i, _ := range *st {
+	for i := range *st {
 		if (*st)[i] == nil {
 			// slot not taken
 		} else if (*st)[i].State == SocketTimeWait {
@@ -171,7 +171,7 @@ func (st *StateTable) Get(SrcIP, DestIP net.IP, SrcPort, DestPort uint16) *State
 }
 
 func (st *StateTable) Remove(s *State) {
-	for i, _ := range *st {
+	for i := range *st {
 		if (*st)[i] != s {
 			continue
 		}
