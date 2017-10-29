@@ -363,8 +363,6 @@ func (s *SMTPService) Handle(conn net.Conn) error {
 	// Use a go routine here???
 	s.sconn.serve()
 
-	fmt.Printf("jerry msg: From name %s address %s To %v Body %s\n", s.sconn.msg.From.Name, s.sconn.msg.From.Address, s.sconn.msg.To, s.sconn.msg.Body.String())
-
 	s.c.Send(event.New(
 		EventOptions,
 		event.Category("smtp"),
@@ -373,7 +371,7 @@ func (s *SMTPService) Handle(conn net.Conn) error {
 		event.DestinationAddr(conn.LocalAddr()),
 		event.Custom("smtp.From", s.sconn.msg.From),
 		event.Custom("smtp.To", s.sconn.msg.To),
-		event.Custom("smtp.Body", s.sconn.msg.Body),
+		event.Custom("smtp.Body", s.sconn.msg.Body.String()),
 	))
 	return nil
 }
