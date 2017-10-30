@@ -30,8 +30,6 @@
  */
 package kafka
 
-var ()
-
 // Config defines a struct which holds configuration values for a SearchBackend.
 type Config struct {
 	Topic string
