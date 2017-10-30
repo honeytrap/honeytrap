@@ -50,6 +50,7 @@ import (
 	"github.com/honeytrap/honeytrap/pushers/eventbus"
 
 	"github.com/honeytrap/honeytrap/services"
+	_ "github.com/honeytrap/honeytrap/services/vnc"
 
 	"github.com/honeytrap/honeytrap/listener"
 	_ "github.com/honeytrap/honeytrap/listener/canary"
