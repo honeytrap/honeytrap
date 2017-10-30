@@ -58,7 +58,7 @@ const (
 	cmdFramebufferUpdate = 0
 )
 
-func newConn(width, height int, serverName string, c net.Conn) *Conn {
+func newConn(width, height int, c net.Conn) *Conn {
 	feed := make(chan *LockableImage, 16)
 	event := make(chan interface{}, 16)
 	conn := &Conn{
