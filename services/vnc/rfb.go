@@ -28,7 +28,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"image"
-	"log"
 	"net"
 	"strconv"
 	"sync"
@@ -59,21 +58,22 @@ const (
 	cmdFramebufferUpdate = 0
 )
 
-func newConn(width, height int, c net.Conn) *Conn {
+func newConn(width, height int, serverName string, c net.Conn) *Conn {
 	feed := make(chan *LockableImage, 16)
 	event := make(chan interface{}, 16)
 	conn := &Conn{
-		height: height,
-		width:  width,
-		c:      c,
-		br:     bufio.NewReader(c),
-		bw:     bufio.NewWriter(c),
-		fbupc:  make(chan FrameBufferUpdateRequest, 128),
-		closec: make(chan bool),
-		feed:   feed,
-		Feed:   feed, // the send-only version
-		event:  event,
-		Event:  event, // the recieve-only version
+		height:     height,
+		width:      width,
+		c:          c,
+		serverName: serverName,
+		br:         bufio.NewReader(c),
+		bw:         bufio.NewWriter(c),
+		fbupc:      make(chan FrameBufferUpdateRequest, 128),
+		closec:     make(chan bool),
+		feed:       feed,
+		Feed:       feed, // the send-only version
+		event:      event,
+		Event:      event, // the recieve-only version
 	}
 	return conn
 }
@@ -84,6 +84,8 @@ type LockableImage struct {
 }
 
 type Conn struct {
+	serverName string
+
 	c      net.Conn
 	br     *bufio.Reader
 	bw     *bufio.Writer
@@ -161,7 +163,7 @@ func (c *Conn) serve() {
 	defer func() {
 		e := recover()
 		if e != nil {
-			log.Printf("Client disconnect: %v", e)
+			log.Debugf("Client disconnect: %v", e)
 		}
 	}()
 
@@ -172,7 +174,7 @@ func (c *Conn) serve() {
 		c.failf("reading client protocol version: %v", err)
 	}
 	ver := string(sl)
-	log.Printf("client wants: %q", ver)
+	log.Debugf("client wants: %q", ver)
 	switch ver {
 	case v3, v7, v8: // cool.
 	default:
@@ -200,7 +202,7 @@ func (c *Conn) serve() {
 		c.flush()
 	}
 
-	log.Printf("reading client init")
+	log.Debugf("reading client init")
 
 	// ClientInit
 	wantShared := c.readByte("shared-flag") != 0
@@ -236,15 +238,14 @@ func (c *Conn) serve() {
 	c.w(uint8(0)) // pad1
 	c.w(uint8(0)) // pad2
 	c.w(uint8(0)) // pad3
-	serverName := "rfb-go"
-	c.w(int32(len(serverName)))
-	c.bw.WriteString(serverName)
+	c.w(int32(len(c.serverName)))
+	c.bw.WriteString(c.serverName)
 	c.flush()
 
 	for {
-		//log.Printf("awaiting command byte from client...")
+		//log.Debugf("awaiting command byte from client...")
 		cmd := c.readByte("6.4:client-server-packet-type")
-		//log.Printf("got command type %d from client", int(cmd))
+		//log.Debugf("got command type %d from client", int(cmd))
 		switch cmd {
 		case cmdSetPixelFormat:
 			c.handleSetPixelFormat()
@@ -295,7 +296,7 @@ func (c *Conn) pushFrame(ur FrameBufferUpdateRequest) {
 		b := im.Bounds()
 		width, height := b.Dx(), b.Dy()
 
-		//log.Printf("Client wants incremental update, sending none. %#v", ur)
+		//log.Debugf("Client wants incremental update, sending none. %#v", ur)
 		c.w(uint8(cmdFramebufferUpdate))
 		c.w(uint8(0))      // padding byte
 		c.w(uint16(1))     // no rectangles
@@ -327,7 +328,7 @@ func (c *Conn) pushImage(li *LockableImage) {
 	c.w(uint8(0))  // padding byte
 	c.w(uint16(1)) // 1 rectangle
 
-	//log.Printf("sending %d x %d pixels", width, height)
+	//log.Debugf("sending %d x %d pixels", width, height)
 
 	if c.format.TrueColour == 0 {
 		c.failf("only true-colour supported")
@@ -435,7 +436,7 @@ func (f *PixelFormat) isScreensThousands() bool {
 
 // 6.4.1
 func (c *Conn) handleSetPixelFormat() {
-	log.Printf("handling setpixel format")
+	log.Debugf("handling setpixel format")
 	c.readPadding("SetPixelFormat padding", 3)
 	var pf PixelFormat
 	c.read("pixelformat.bpp", &pf.BPP)
@@ -449,7 +450,7 @@ func (c *Conn) handleSetPixelFormat() {
 	c.read("pixelformat.greenshift", &pf.GreenShift)
 	c.read("pixelformat.blueshift", &pf.BlueShift)
 	c.readPadding("SetPixelFormat pixel format padding", 3)
-	log.Printf("Client wants pixel format: %#v", pf)
+	log.Debugf("Client wants pixel format: %#v", pf)
 	c.format = pf
 
 	// TODO: send PixelFormat event? would clients care?
@@ -467,7 +468,7 @@ func (c *Conn) handleSetEncodings() {
 		c.read("encoding-type", &t)
 		encType = append(encType, t)
 	}
-	log.Printf("Client encodings: %#v", encType)
+	log.Debugf("Client encodings: %#v", encType)
 
 }
 

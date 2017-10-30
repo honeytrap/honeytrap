@@ -31,36 +31,66 @@
 package vnc
 
 import (
-	"image"
-	"math"
 	"net"
+	"os"
+	"path/filepath"
 	"time"
+
+	"image/png"
+
+	logging "github.com/op/go-logging"
 
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/services"
 )
 
+var log = logging.MustGetLogger("services/vnc")
+
 var (
 	_ = services.Register("vnc", Vnc)
 )
 
-const (
-	width  = 1280
-	height = 720
-)
-
-// Vnc is a placeholder
 func Vnc(options ...services.ServicerFunc) services.Servicer {
 	s := &vncService{}
 	for _, o := range options {
 		o(s)
 	}
+
+	if pwd, err := os.Getwd(); err != nil {
+	} else if s.ImagePath, err = filepath.Rel(pwd, s.ImagePath); err != nil {
+		log.Errorf("Error joining paths: %s %s", pwd, s.ImagePath)
+	} else {
+	}
+
+	r, err := os.Open(s.ImagePath)
+	if err != nil {
+		log.Errorf("Could not open vnc image: %s", s.ImagePath)
+		return nil
+	}
+
+	defer r.Close()
+
+	im, err := png.Decode(r)
+	if err != nil {
+		log.Errorf("Could not decode png image: %s", s.ImagePath)
+		return nil
+	}
+
+	s.li = &LockableImage{
+		Img: im,
+	}
+
 	return s
 }
 
 type vncService struct {
 	c pushers.Channel
+
+	li *LockableImage
+
+	ImagePath  string `toml:"image"`
+	ServerName string `toml:"server-name"`
 }
 
 func (s *vncService) SetChannel(c pushers.Channel) {
@@ -70,7 +100,11 @@ func (s *vncService) SetChannel(c pushers.Channel) {
 func (s *vncService) Handle(conn net.Conn) error {
 	defer conn.Close()
 
-	c := newConn(width, height, conn)
+	bounds := s.li.Img.Bounds()
+
+	c := newConn(bounds.Dx(), bounds.Dy(), conn)
+	c.serverName = s.ServerName
+
 	go c.serve()
 
 	s.c.Send(event.New(
@@ -81,9 +115,6 @@ func (s *vncService) Handle(conn net.Conn) error {
 		event.SourceAddr(conn.RemoteAddr()),
 		event.DestinationAddr(conn.LocalAddr()),
 	))
-
-	im := image.NewRGBA(image.Rect(0, 0, width, height))
-	li := &LockableImage{Img: im}
 
 	closec := make(chan bool)
 	go func() {
@@ -99,15 +130,13 @@ func (s *vncService) Handle(conn net.Conn) error {
 			}
 			_ = feed
 			select {
-			case feed <- li:
+			case feed <- s.li:
 				haveNewFrame = false
 			case <-closec:
 				return
 			case <-tick.C:
 				slide++
-				li.Lock()
-				drawImage(im, slide)
-				li.Unlock()
+
 				haveNewFrame = true
 			}
 		}
@@ -130,31 +159,4 @@ func (s *vncService) Handle(conn net.Conn) error {
 	close(closec)
 
 	return nil
-}
-
-func drawImage(im *image.RGBA, anim int) {
-	pos := 0
-	const border = 50
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			var r, g, b uint8
-			switch {
-			case x < border*2.5 && x < int((1.1+math.Sin(float64(y+anim*2)/40))*border):
-				r = 255
-			case x > width-border*2.5 && x > width-int((1.1+math.Sin(math.Pi+float64(y+anim*2)/40))*border):
-				g = 255
-			case y < border*2.5 && y < int((1.1+math.Sin(float64(x+anim*2)/40))*border):
-				r, g = 255, 255
-			case y > height-border*2.5 && y > height-int((1.1+math.Sin(math.Pi+float64(x+anim*2)/40))*border):
-				b = 255
-			default:
-				r, g, b = uint8(x+anim), uint8(y+anim), uint8(x+y+anim*3)
-			}
-			im.Pix[pos] = r
-			im.Pix[pos+1] = g
-			im.Pix[pos+2] = b
-
-			pos += 4 // skipping alpha
-		}
-	}
 }
