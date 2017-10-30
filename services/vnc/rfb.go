@@ -65,7 +65,7 @@ func newConn(width, height int, c net.Conn) *Conn {
 		height:     height,
 		width:      width,
 		c:          c,
-		serverName: serverName,
+		serverName: "",
 		br:         bufio.NewReader(c),
 		bw:         bufio.NewWriter(c),
 		fbupc:      make(chan FrameBufferUpdateRequest, 128),
