@@ -46,9 +46,12 @@ The following platforms are supported:
 
 ## Arguments
 
-Argument | Description | Value
---- | --- | ---
-i | interface | 
+Argument | Description | Value | Default
+--- | --- | --- | ---
+--list-services | enumerate the available services | |
+--list-listeners | enumerate the available listeners | | 
+--list-channels | enumerate the available channels | |
+--config {file}| use configuration from file | | config.toml
 
 # Development
 
