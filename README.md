@@ -10,6 +10,8 @@ Usages:
 
 * sinkholing
 * canaries
+* within internal network to detect malicious activities
+* public facing networks to catch activities 
 
 ## Platforms
 
@@ -34,32 +36,23 @@ Argument | Description | Value | Default
 --list-channels | enumerate the available channels | |
 --config {file}| use configuration from file | | config.toml
 
-# Development
+## Honeytrap
 
-If you want to write your own listener, director or event channel, you'll need to start here.
-
-## Compilation
-
-Honeytrap compiles on several platforms, depending on the support for the platform functionality is being enabled. As an example, the high interaction honeypot LXC runs only under Linux. 
-
-Make sure the GOPATH is correctly and run this command:
-
-```sh
-go build -o "bin/honeytrap-serve-linux-amd64" -ldflags "$LDFLAGS" cmd/honeytrap-serve/main.go; and bin/honeytrap-serve-linux-amd64
-```
-
-## Components
-
-### Web
-
-The web interface is being used as a dashboard, but also for configuration. Here you can enable responders, events etc. 
+Honeytrap consists of listeners, directors, channels and services. 
 
 ### Listeners
 
-* Socket(socket): this is the network listener for specific ports
-* Raw(raw): this listener will listen for all traffic on all ports
-* TAP (Linux) (not implemented yet)
-* TUN (MacOS, Linux) (not implemented yet)
+#### Socket(socket)
+this is the network listener for specific ports
+
+
+#### Raw(raw)
+this listener will listen for all traffic on all ports
+
+#### TAP (Linux) 
+(not implemented yet)
+
+#### TUN (MacOS, Linux) (not implemented yet)
 
 ```
 https://serverfault.com/questions/523236/how-do-i-forward-nat-all-traffic-to-one-interface-ip-to-a-remote-ip
@@ -79,30 +72,55 @@ http://brezular.com/2011/06/19/bridging-qemu-image-to-the-real-network-using-tap
 
 ### Directors
 
-* LXC(lxc): director for containing traffic into a personalized lxc container
-* Remote(remote): will forward the traffic to a remote host
-* Qemu(qemu): will start and forward traffic to qemu machines (not implemented yet)
+#### LXC(lxc)
+director for containing traffic into a personalized lxc container
 
-## Services
+#### Remote(remote)
+will forward the traffic to a remote host
 
-* HTTP(http)
-* cifs
-* webdav
-* email
-* http image
-* 9200 elasticsearch
+#### Qemu(qemu)
+will start and forward traffic to qemu machines (not implemented yet)
+
+### Services
+
+##### http
+
+##### htttps
+
+##### ssh-auth
 
 ### Channels 
 
 Events can be send to several channels, to be configured in the configuration file. All channels can be filtered, for example you'll be able to filter specific messages to be sent to Slack, others to Elasticsearch.
 
-* Dummy: this is just a dummy channel and will be used as default
-* Slack: send events into Slack channels
-* Elasticsearch: send events to Elasticsearch index
-* Console: output events to console
-* File: output events to file
-* Honeyhive: output events to Honeyhive
-* Kafka: put events on kafka queue
+##### Slack
+send events into Slack channels
+
+##### Elasticsearch
+send events to Elasticsearch index
+
+##### Console
+output events to console
+
+##### File
+Output events to file
+
+##### Honeyhive
+Output events to Honeyhive
+
+##### Kafka
+Put events on kafka queue.
+
+Configuration: 
+
+* brokers
+* topic
+
+
+
+### Web
+
+The web interface is being used as a dashboard, but also for configuration. Here you can enable responders, events etc. 
 
 ## Installation
 
@@ -138,6 +156,20 @@ If you want to run the high interaction container, you need to setup a base imag
 
 ```sh
 lxc-create -t download -n honeytrap -- --dist ubuntu --release trusty --arch amd64
+```
+
+# Development
+
+If you want to write your own listener, director or event channel, you'll need to start here.
+
+## Compilation
+
+Honeytrap compiles on several platforms, depending on the support for the platform functionality is being enabled. As an example, the high interaction honeypot LXC runs only under Linux. 
+
+Make sure the GOPATH is correctly and run this command:
+
+```sh
+go build -o "bin/honeytrap-serve-linux-amd64" -ldflags "$LDFLAGS" cmd/honeytrap-serve/main.go; and bin/honeytrap-serve-linux-amd64
 ```
 
 ## Contribute to Honeytrap
