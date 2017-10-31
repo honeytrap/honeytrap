@@ -40,7 +40,10 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/honeytrap/honeytrap/cmd"
+	"github.com/honeytrap/honeytrap/listener"
+	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/server"
+	"github.com/honeytrap/honeytrap/services"
 	cli "gopkg.in/urfave/cli.v1"
 
 	logging "github.com/op/go-logging"
@@ -76,6 +79,10 @@ var globalFlags = []cli.Flag{
 	cli.BoolFlag{Name: "cpu-profile", Usage: "Enable cpu profiler"},
 	cli.BoolFlag{Name: "mem-profile", Usage: "Enable memory profiler"},
 	cli.BoolFlag{Name: "profiler", Usage: "Enable web profiler"},
+
+	cli.BoolFlag{Name: "list-services", Usage: "List the available services"},
+	cli.BoolFlag{Name: "list-channels", Usage: "List the available channels"},
+	cli.BoolFlag{Name: "list-listeners", Usage: "List the available listeners"},
 }
 
 // Cmd defines a struct for defining a command.
@@ -106,6 +113,36 @@ func serve(c *cli.Context) {
 	var server = server.New(
 		options...,
 	)
+
+	// enumerate the available services
+	if c.GlobalBool("list-services") {
+		fmt.Println("services")
+		fmt.Println("=======")
+		services.Range(func(name string) {
+			fmt.Printf("* %s\n", name)
+		})
+		return
+	}
+
+	// enumerate the available channels
+	if c.GlobalBool("list-channels") {
+		fmt.Println("channels")
+		fmt.Println("=======")
+		pushers.Range(func(name string) {
+			fmt.Printf("* %s\n", name)
+		})
+		return
+	}
+
+	// enumerate the available listeners
+	if c.GlobalBool("list-listeners") {
+		fmt.Println("listeners")
+		fmt.Println("=======")
+		listener.Range(func(name string) {
+			fmt.Printf("* %s\n", name)
+		})
+		return
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
