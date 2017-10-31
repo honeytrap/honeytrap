@@ -31,85 +31,67 @@
 package kafka
 
 import (
-	"encoding/json"
+	"fmt"
+	"testing"
 
-	sarama "github.com/Shopify/sarama"
-
+	"github.com/BurntSushi/toml"
+	"github.com/Shopify/sarama"
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
-
-	logging "github.com/op/go-logging"
 )
 
-var (
-	_ = pushers.Register("kafka", New)
-)
+const config = `
+[P]
+brokers = ["%s"]
+topic = "my_topic"
+`
 
-var log = logging.MustGetLogger("channels/kafka")
+func TestChannelsKafkaSend(t *testing.T) {
+	seedBroker := sarama.NewMockBroker(t, 1)
+	defer seedBroker.Close()
 
-// KafkaBackend defines a struct which provides a channel for delivery
-// push messages to an elasticsearch api.
-type KafkaBackend struct {
-	Config
+	leader := sarama.NewMockBroker(t, 2)
+	defer leader.Close()
 
-	producer sarama.AsyncProducer
+	metadataResponse := new(sarama.MetadataResponse)
+	metadataResponse.AddBroker(leader.Addr(), leader.BrokerID())
+	metadataResponse.AddTopicPartition("my_topic", 0, leader.BrokerID(), nil, nil, sarama.ErrNoError)
 
-	ch chan map[string]interface{}
-}
+	seedBroker.Returns(metadataResponse)
 
-func New(options ...func(pushers.Channel) error) (pushers.Channel, error) {
-	ch := make(chan map[string]interface{}, 100)
+	prodSuccess := new(sarama.ProduceResponse)
+	prodSuccess.AddTopicPartition("my_topic", 0, sarama.ErrNoError)
 
-	c := KafkaBackend{
-		ch: ch,
+	leader.Returns(prodSuccess)
+
+	s := struct {
+		P toml.Primitive
+	}{}
+
+	_, err := toml.Decode(fmt.Sprintf(config, seedBroker.Addr()), &s)
+
+	if err != nil {
+		t.Error(err)
 	}
 
-	for _, optionFn := range options {
-		optionFn(&c)
+	c, err := New(
+		pushers.WithConfig(s.P),
+	)
+
+	if err != nil {
+		t.Error(err)
 	}
 
-	config := sarama.NewConfig()
-	config.Producer.Return.Successes = true
+	c.Send(event.New())
 
-	if producer, err := sarama.NewAsyncProducer(c.Brokers, config); err != nil {
-		return nil, err
-	} else {
-		c.producer = producer
+	kb := c.(*KafkaBackend)
+
+	select {
+	case _ = <-kb.producer.Successes():
+	case msg := <-kb.producer.Errors():
+		t.Error(msg.Err)
 	}
 
-	go c.run()
+	close(kb.ch)
 
-	return &c, nil
-}
-
-func (hc KafkaBackend) run() {
-	defer hc.producer.AsyncClose()
-
-	for doc := range <-hc.ch {
-		data, err := json.Marshal(doc)
-		if err != nil {
-			log.Errorf("Error marshaling event: %s", err.Error())
-			continue
-		}
-
-		hc.producer.Input() <- &sarama.ProducerMessage{
-			Topic: hc.Topic,
-			Key:   nil,
-			Value: sarama.ByteEncoder(data),
-		}
-	}
-}
-
-// Send delivers the giving push messages into the internal elastic search endpoint.
-func (hc KafkaBackend) Send(message event.Event) {
-	mp := make(map[string]interface{})
-
-	message.Range(func(key, value interface{}) bool {
-		if keyName, ok := key.(string); ok {
-			mp[keyName] = value
-		}
-		return true
-	})
-
-	hc.ch <- mp
 }
