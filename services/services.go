@@ -54,6 +54,12 @@ func Register(key string, fn func(...ServicerFunc) Servicer) func(...ServicerFun
 	return fn
 }
 
+func Range(fn func(string)) {
+	for k, _ := range services {
+		fn(k)
+	}
+}
+
 func Get(key string) (func(...ServicerFunc) Servicer, bool) {
 	d := Dummy
 
