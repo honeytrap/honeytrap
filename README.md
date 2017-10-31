@@ -4,51 +4,35 @@
 Honeytrap is an extensible and opensource system for running, monitoring and managing honeypots. 
 ----
 
-Using honeytrap you can create custom honeypots, consisting of simple services, containers and real hosts.
-
-Honeytrap has three modes, sensor mode, high- and low interaction mode. The sensor mode just detects traffic, this will be ideally used for detection of movement within your network. Low interaction mode will reply with predefined default responses to requests, following playbooks. High interaction honeypots will be 
+Using honeytrap you can create custom honeypots, consisting of simple services, containers and real hosts combined. Every event will be recorded and send to the configured event channels. 
 
 Usages:
 
 * sinkholing
-
-* directors: this will define the functionality 
-* listeners: mode to listen, this can be specific port, raw or using tap/tun interface
-* channels: how to send events (elasticsearch, splunk, slack, web interface)
-
-## Sensor
-Sensor listens on all ports and receives payloads.
-
-```
-$ honeytrap sensor
-```
-
-## Low Interaction
-Low Interaction listen on specific ports and are being handled by specific protocol implementations. SCADA
-
-```
-$ honeytrap low-interaction
-```
-
-## High Interaction
-High Interaction spawns a container per attacker.
-
-```
-$ honeytrap high-interaction
-```
+* canaries
 
 ## Platforms
-The following platforms are supported:
 
-* Linux
-* Mac OS
+Honeytrap will run on several platforms and architectures. Depending on the platform and architecture functionality will be available.
+
+* Linux (amd64, i386 and arm)
+* MacOS
+* FreeBSD
 * Windows
 
 ## Arguments
 
-Argument | Description | Value
---- | --- | ---
-i | interface | 
+Argument | Description | Value | Default
+--- | --- | --- | ---
+--help | show help | | 
+--version | show version | | 
+--cpu-profiler | run with cpu profiler | | 
+--mem-profiler | run with memory profiler | | 
+--profiler | start profiler web handler | | 
+--list-services | enumerate the available services | |
+--list-listeners | enumerate the available listeners | | 
+--list-channels | enumerate the available channels | |
+--config {file}| use configuration from file | | config.toml
 
 # Development
 
@@ -157,46 +141,8 @@ lxc-create -t download -n honeytrap -- --dist ubuntu --release trusty --arch amd
 ```
 
 ## Contribute to Honeytrap
-Please follow [Honeytrap Contributor's Guide](contributing.md)
 
-### Setup your Honeytrap Github Repository
-
-Fork Honeytrap upstream source repository to your own personal repository. Copy the URL for marija from your personal github repo (you will need it for the git clone command below).
-
-```sh
-mkdir -p $GOPATH/src/github.com/honeytrap/honeytrap
-cd $GOPATH/src/github.com/honeytrap/honeytrap
-git clone <paste saved URL for personal forked honeytrap repo>
-cd honeytrap/honeytrap
-```
-
-###  Developer Guidelines
-``Honeytrap`` community welcomes your contribution. To make the process as seamless as possible, we ask for the following:
-* Go ahead and fork the project and make your changes. We encourage pull requests to discuss code changes.
-    - Fork it
-    - Create your feature branch (git checkout -b my-new-feature)
-    - Commit your changes (git commit -am 'Add some feature')
-    - Push to the branch (git push origin my-new-feature)
-    - Create new Pull Request
-
-* If you have additional dependencies for ``Honeytrap``, ``Honeytrap`` manages its dependencies using [govendor](https://github.com/kardianos/govendor)
-    - Run `go get foo/bar`
-    - Edit your code to import foo/bar
-    - Run `make pkg-add PKG=foo/bar` from top-level directory
-
-* If you have dependencies for ``Honeytrap`` which needs to be removed
-    - Edit your code to not import foo/bar
-    - Run `make pkg-remove PKG=foo/bar` from top-level directory
-
-* When you're ready to create a pull request, be sure to:
-    - Have test cases for the new code. If you have questions about how to do it, please ask in your pull request.
-    - Run `make verifiers`
-    - Squash your commits into a single commit. `git rebase -i`. It's okay to force update your pull request.
-    - Make sure `go test -race ./...` and `go build` completes.
-
-* Read [Effective Go](https://github.com/golang/go/wiki/CodeReviewComments) article from Golang project
-    - `Honeytrap` project is fully conformant with Golang style
-    - if you happen to observe offending code, please feel free to send a pull request
+Please follow [Honeytrap Contributor's Guide](CONTRIBUTING.md)
 
 ## Creators
 
