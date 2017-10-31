@@ -36,36 +36,26 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/mail"
 	"net/textproto"
 	"strconv"
 	"strings"
-
-	"github.com/honeytrap/honeytrap/event"
-	"github.com/honeytrap/honeytrap/pushers"
 )
 
-var (
-	_ = Register("smtp", SMTP)
-)
-
-type Message struct {
-	From *mail.Address
-	To   []*mail.Address
-
-	Domain     string
-	RemoteAddr string
-
-	Header mail.Header
-	Buffer *bytes.Buffer
-	Body   *bytes.Buffer
+type conn struct {
+	rwc       net.Conn
+	TLSConfig *tls.Config
+	Text      *textproto.Conn
+	domain    string
+	msg       *message
+	banner    string `toml:"banner"`
+	i         int
 }
 
-func (c *smtpconn) newMessage() *Message {
+func (c *conn) newMessage() *message {
 
-	return &Message{
+	return &message{
 		To:         []*mail.Address{},
 		Body:       &bytes.Buffer{},
 		Buffer:     &bytes.Buffer{},
@@ -74,69 +64,46 @@ func (c *smtpconn) newMessage() *Message {
 	}
 }
 
-func (m *Message) Read(r io.Reader) error {
-	buff, err := ioutil.ReadAll(r)
-	if err != nil {
-		return err
-	}
-
-	msg, err := mail.ReadMessage(bytes.NewReader(buff))
-	if err != nil {
-		m.Body = bytes.NewBuffer(buff)
-		return err
-	}
-
-	m.Header = msg.Header
-
-	buff, err = ioutil.ReadAll(msg.Body)
-	if err != nil {
-		return err
-	}
-
-	m.Body = bytes.NewBuffer(buff)
-	return err
-}
-
-func (c *smtpconn) RemoteAddr() net.Addr {
+func (c *conn) RemoteAddr() net.Addr {
 	return c.rwc.RemoteAddr()
 }
 
-type stateFn func(c *smtpconn) stateFn
+type stateFn func(c *conn) stateFn
 
-func (c *smtpconn) PrintfLine(format string, args ...interface{}) error {
+func (c *conn) PrintfLine(format string, args ...interface{}) error {
 	fmt.Printf("< ")
 	fmt.Printf(format, args...)
 	fmt.Println("")
 	return c.Text.PrintfLine(format, args...)
 }
 
-func (c *smtpconn) ReadLine() (string, error) {
+func (c *conn) ReadLine() (string, error) {
 	s, err := c.Text.ReadLine()
 	fmt.Printf("> ")
 	fmt.Println(s)
 	return s, err
 }
 
-func startState(c *smtpconn) stateFn {
+func startState(c *conn) stateFn {
 	c.PrintfLine("220 %s", c.banner)
 	return helloState
 }
 
-func unrecognizedState(c *smtpconn) stateFn {
+func unrecognizedState(c *conn) stateFn {
 	c.PrintfLine("500 unrecognized command")
 	return loopState
 }
 
 func errorState(format string, args ...interface{}) stateFn {
 	msg := fmt.Sprintf(format, args...)
-	return func(c *smtpconn) stateFn {
+	return func(c *conn) stateFn {
 		c.PrintfLine("500 %s", msg)
 		return nil
 	}
 }
 
 func outOfSequenceState() stateFn {
-	return func(c *smtpconn) stateFn {
+	return func(c *conn) stateFn {
 		c.PrintfLine("503 command out of sequence")
 		return nil
 	}
@@ -146,7 +113,7 @@ func isCommand(line string, cmd string) bool {
 	return strings.HasPrefix(strings.ToUpper(line), cmd)
 }
 
-func mailFromState(c *smtpconn) stateFn {
+func mailFromState(c *conn) stateFn {
 	line, err := c.ReadLine()
 	if err != nil {
 		log.Error("[mailFromState] error: %s", err.Error())
@@ -213,7 +180,7 @@ func mailFromState(c *smtpconn) stateFn {
 	}
 }
 
-func loopState(c *smtpconn) stateFn {
+func loopState(c *conn) stateFn {
 	line, err := c.ReadLine()
 	if err != nil {
 		log.Error("[loopState] error: %s", err.Error())
@@ -274,7 +241,7 @@ func parseHelloArgument(arg string) (string, error) {
 	return domain, nil
 }
 
-func helloState(c *smtpconn) stateFn {
+func helloState(c *conn) stateFn {
 	line, _ := c.ReadLine()
 
 	if isCommand(line, "HELO") {
@@ -311,7 +278,7 @@ func helloState(c *smtpconn) stateFn {
 	}
 }
 
-func (c *smtpconn) serve() {
+func (c *conn) serve() {
 	c.Text = textproto.NewConn(c.rwc)
 	defer c.Text.Close()
 
@@ -324,58 +291,4 @@ func (c *smtpconn) serve() {
 		}
 		state = state(c)
 	}
-}
-
-type smtpconn struct {
-	rwc       net.Conn
-	TLSConfig *tls.Config
-	Text      *textproto.Conn
-	domain    string
-	msg       *Message
-	banner    string `toml:"banner"`
-	i         int
-}
-
-// SMTP
-func SMTP(options ...ServicerFunc) Servicer {
-
-	s := &SMTPService{
-		sconn: &smtpconn{
-			TLSConfig: nil,
-		},
-	}
-
-	for _, o := range options {
-		o(s)
-	}
-	return s
-}
-
-type SMTPService struct {
-	c     pushers.Channel
-	sconn *smtpconn
-}
-
-func (s *SMTPService) SetChannel(c pushers.Channel) {
-	s.c = c
-}
-
-func (s *SMTPService) Handle(conn net.Conn) error {
-
-	s.sconn.rwc = conn
-	s.sconn.msg = s.sconn.newMessage()
-	// Use a go routine here???
-	s.sconn.serve()
-
-	s.c.Send(event.New(
-		EventOptions,
-		event.Category("smtp"),
-		event.Type("mail"),
-		event.SourceAddr(conn.RemoteAddr()),
-		event.DestinationAddr(conn.LocalAddr()),
-		event.Custom("smtp.From", s.sconn.msg.From),
-		event.Custom("smtp.To", s.sconn.msg.To),
-		event.Custom("smtp.Body", s.sconn.msg.Body.String()),
-	))
-	return nil
 }
