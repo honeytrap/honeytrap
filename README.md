@@ -127,27 +127,27 @@ The web interface is being used as a dashboard, but also for configuration. Here
 ## Install Go 
 
 ```sh
-cd /usr/local
-wget https://storage.googleapis.com/golang/go1.9.linux-amd64.tar.gz
-tar vxf go1.9.linux-amd64.tar.gz
+$ cd /usr/local
+$ wget https://storage.googleapis.com/golang/go1.9.linux-amd64.tar.gz
+$ tar vxf go1.9.linux-amd64.tar.gz
 ```
 
 ## Installation from source
 
 
 ```sh
-apt install -y libpcap-dev lxc-dev
+$ apt install -y libpcap-dev lxc-dev
 
-mkdir /opt/honeytrap
-cd /opt/honeytrap/
+$ mkdir /opt/honeytrap
+$ cd /opt/honeytrap/
 
-export GOPATH=/opt/honeytrap
-export PATH=$PATH:/usr/local/go/bin/
+$ export GOPATH=/opt/honeytrap
+$ export PATH=$PATH:/usr/local/go/bin/
 
-go get github.com/honeytrap/honeytrap/...
+$ go get github.com/honeytrap/honeytrap/...
 
-cp config.toml.sample config.toml
-$GOPATH/bin/honeytrap
+$ cp config.toml.sample config.toml
+$ $GOPATH/bin/honeytrap
 ```
 
 ## Create Honeytrap template
@@ -155,7 +155,7 @@ $GOPATH/bin/honeytrap
 If you want to run the high interaction container, you need to setup a base image to be used as container template.
 
 ```sh
-lxc-create -t download -n honeytrap -- --dist ubuntu --release trusty --arch amd64
+$ lxc-create -t download -n honeytrap -- --dist ubuntu --release trusty --arch amd64
 ```
 
 # Development
