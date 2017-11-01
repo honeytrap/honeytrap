@@ -164,7 +164,7 @@ func (hc *Honeytrap) heartbeat() {
 
 // Run will start honeytrap
 func (hc *Honeytrap) Run(ctx context.Context) {
-	fmt.Println(color.YellowString("Honeytrap%c  starting...", 127855))
+	fmt.Println(color.YellowString("Honeytrap%c  starting (%s)...", 127855, hc.token))
 
 	go hc.heartbeat()
 
