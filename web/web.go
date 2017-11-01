@@ -47,7 +47,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-var log = logging.MustGetLogger("honeytrap:web")
+var log = logging.MustGetLogger("web")
 
 const (
 	// Time allowed to write a message to the peer
@@ -105,8 +105,6 @@ func New(options ...func(*web)) *web {
 		optionFn(&hc)
 	}
 
-	log.Infof("Web interface started: %s", "8089")
-
 	sh := http.FileServer(&assetfs.AssetFS{
 		Asset:     assets.Asset,
 		AssetDir:  assets.AssetDir,
@@ -155,6 +153,12 @@ func New(options ...func(*web)) *web {
 	*/
 
 	return &hc
+}
+
+func (w *web) ListenAndServe() {
+	log.Infof("Web interface started: %s", "8089")
+
+	w.Server.ListenAndServe()
 }
 
 type Metadata struct {

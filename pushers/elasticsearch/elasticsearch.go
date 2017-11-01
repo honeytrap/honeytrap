@@ -119,7 +119,7 @@ func (hc ElasticSearchBackend) run() {
 				log.Errorf("Error indexing item: %s with error: %+v", item.Id, *item.Error)
 			}
 
-			log.Infof("Bulk indexing: %d total %d.\n", len(indexed), count)
+			log.Debugf("Bulk indexing: %d total %d.\n", len(indexed), count)
 		}
 	}
 }
