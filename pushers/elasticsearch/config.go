@@ -86,6 +86,8 @@ func (c *Config) UnmarshalTOML(p interface{}) error {
 		// remove path
 		u.Path = ""
 		c.options = append(c.options, elastic.SetURL(u.String()))
+
+		log.Debugf("Using URL: %s with index: %s", u.String(), c.Index)
 	}
 
 	if username, ok := data["username"]; !ok {
@@ -94,6 +96,8 @@ func (c *Config) UnmarshalTOML(p interface{}) error {
 		username := username.(string)
 		password := password.(string)
 		c.options = append(c.options, elastic.SetBasicAuth(username, password))
+
+		log.Debugf("Using authentication with username: %s and password.", username)
 	}
 
 	return nil

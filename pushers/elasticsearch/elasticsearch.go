@@ -49,13 +49,14 @@ var (
 	_ = pushers.Register("elasticsearch", New)
 )
 
-var log = logging.MustGetLogger("honeytrap:channels:elasticsearch")
+var log = logging.MustGetLogger("channels/elasticsearch")
 
 // ElasticSearchBackend defines a struct which provides a channel for delivery
 // push messages to an elasticsearch api.
 type ElasticSearchBackend struct {
 	Config
 
+	es *elastic.Client
 	ch chan map[string]interface{}
 }
 
@@ -70,6 +71,15 @@ func New(options ...func(pushers.Channel) error) (pushers.Channel, error) {
 		optionFn(&c)
 	}
 
+	es, err := elastic.NewClient(
+		c.options...,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	c.es = es
+
 	go c.run()
 
 	return &c, nil
@@ -79,15 +89,7 @@ func (hc ElasticSearchBackend) run() {
 	log.Debug("Indexer started...")
 	defer log.Debug("Indexer stopped...")
 
-	es, err := elastic.NewClient(
-		hc.options...,
-	)
-	if err != nil {
-		log.Fatalf("Could not connect to Elasticsearch: %s", err.Error())
-		return
-	}
-
-	bulk := es.Bulk()
+	bulk := hc.es.Bulk()
 
 	count := 0
 	for {
