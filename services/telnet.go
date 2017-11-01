@@ -61,7 +61,7 @@ func (s *telnetService) SetChannel(c pushers.Channel) {
 }
 
 func (s *telnetService) Handle(conn net.Conn) error {
-	conn.Close()
+	defer conn.Close()
 
 	b := bufio.NewReader(conn)
 	for {
@@ -70,6 +70,7 @@ func (s *telnetService) Handle(conn net.Conn) error {
 			break
 		} else if err != nil {
 			log.Error(err.Error())
+			continue
 		}
 
 		s.c.Send(event.New(
