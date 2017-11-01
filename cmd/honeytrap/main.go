@@ -38,6 +38,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/fatih/color"
 	"github.com/honeytrap/honeytrap/cmd"
 	"github.com/honeytrap/honeytrap/listener"
 	"github.com/honeytrap/honeytrap/pushers"
@@ -96,7 +97,6 @@ func serve(c *cli.Context) error {
 
 	if v := c.String("config"); v == "" {
 	} else if fn, err := server.WithConfig(v); err != nil {
-		//fmt.Println(color.RedString("Error opening config file: %s", err.Error()))
 		ec := cli.NewExitError(err.Error(), 1)
 		return ec
 	} else {
