@@ -41,7 +41,7 @@ import (
 	logging "github.com/op/go-logging"
 )
 
-var log = logging.MustGetLogger("director/low")
+var log = logging.MustGetLogger("services")
 
 var (
 	services = map[string]func(...ServicerFunc) Servicer{}
