@@ -32,6 +32,7 @@ package main
 
 import (
 	"math/rand"
+	"os"
 	"time"
 
 	"github.com/honeytrap/honeytrap/cmd/honeytrap"
@@ -43,5 +44,5 @@ func init() {
 
 func main() {
 	app := honeytrap.New()
-	app.RunAndExitOnError()
+	app.Run(os.Args)
 }

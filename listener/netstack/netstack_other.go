@@ -1,3 +1,5 @@
+// +build !linux
+
 /*
 * Honeytrap
 * Copyright (C) 2016-2017 DutchSec (https://dutchsec.com/)
@@ -28,8 +30,14 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package netstack
+package canary
 
 import (
-	_ "github.com/google/netstack/tcpip"
+	"fmt"
+
+	"github.com/honeytrap/honeytrap/listener"
 )
+
+func New(options ...func(listener.Listener) error) (listener.Listener, error) {
+	return nil, fmt.Errorf("Netstack is only supported on Linux")
+}

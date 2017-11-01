@@ -32,7 +32,6 @@ package server
 
 import (
 	"bytes"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"os/user"
@@ -40,24 +39,25 @@ import (
 
 	_ "net/http/pprof"
 
-	"github.com/fatih/color"
 	"github.com/pkg/profile"
 	"github.com/rs/xid"
 
 	"github.com/honeytrap/honeytrap/server/profiler"
 )
 
-type OptionFn func(*Honeytrap)
+type OptionFn func(*Honeytrap) error
 
 func WithMemoryProfiler() OptionFn {
-	return func(b *Honeytrap) {
+	return func(b *Honeytrap) error {
 		b.profiler = profiler.New(profile.MemProfile)
+		return nil
 	}
 }
 
 func WithCPUProfiler() OptionFn {
-	return func(b *Honeytrap) {
+	return func(b *Honeytrap) error {
 		b.profiler = profiler.New(profile.CPUProfile)
+		return nil
 	}
 }
 
@@ -67,11 +67,8 @@ func WithConfig(s string) (OptionFn, error) {
 		return nil, err
 	}
 
-	return func(b *Honeytrap) {
-		if err := b.config.Load(bytes.NewBuffer(data)); err != nil {
-			fmt.Println(color.RedString("Configuration error: %s", err.Error()))
-			return
-		}
+	return func(b *Honeytrap) error {
+		return b.config.Load(bytes.NewBuffer(data))
 	}, nil
 }
 
@@ -112,7 +109,8 @@ func WithToken() OptionFn {
 		ioutil.WriteFile(p, []byte(uid), 0600)
 	}
 
-	return func(h *Honeytrap) {
+	return func(h *Honeytrap) error {
 		h.token = uid
+		return nil
 	}
 }
