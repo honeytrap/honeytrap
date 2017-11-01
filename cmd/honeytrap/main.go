@@ -90,14 +90,15 @@ type Cmd struct {
 	*cli.App
 }
 
-func serve(c *cli.Context) {
+func serve(c *cli.Context) error {
 	options := []server.OptionFn{
 		server.WithToken(),
 	}
 
 	if v := c.String("config"); v == "" {
 	} else if fn, err := server.WithConfig(v); err != nil {
-		fmt.Println(color.RedString("Error opening config file: %s", err.Error()))
+		ec := cli.NewExitError(err.Error(), 1)
+		return ec
 	} else {
 		options = append(options, fn)
 	}
@@ -110,7 +111,7 @@ func serve(c *cli.Context) {
 		options = append(options, server.WithMemoryProfiler())
 	}
 
-	var server = server.New(
+	srvr, err := server.New(
 		options...,
 	)
 
@@ -121,7 +122,7 @@ func serve(c *cli.Context) {
 		services.Range(func(name string) {
 			fmt.Printf("* %s\n", name)
 		})
-		return
+		return nil
 	}
 
 	// enumerate the available channels
@@ -131,7 +132,7 @@ func serve(c *cli.Context) {
 		pushers.Range(func(name string) {
 			fmt.Printf("* %s\n", name)
 		})
-		return
+		return nil
 	}
 
 	// enumerate the available listeners
@@ -141,7 +142,12 @@ func serve(c *cli.Context) {
 		listener.Range(func(name string) {
 			fmt.Printf("* %s\n", name)
 		})
-		return
+		return nil
+	}
+
+	if err != nil {
+		ec := cli.NewExitError(err.Error(), 1)
+		return ec
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -157,11 +163,20 @@ func serve(c *cli.Context) {
 		}
 	}()
 
-	server.Run(ctx)
-	server.Stop()
+	srvr.Run(ctx)
+	srvr.Stop()
+	return nil
 }
 
 func New() *cli.App {
+	cli.VersionPrinter = func(c *cli.Context) {
+		fmt.Fprintf(c.App.Writer,
+			`Version: %s
+Release-Tag: %s
+Commit-ID: %s
+`, color.YellowString(cmd.Version), color.YellowString(cmd.ReleaseTag), color.YellowString(cmd.CommitID))
+	}
+
 	app := cli.NewApp()
 	app.Name = "honeytrap"
 	app.Author = ""
@@ -170,7 +185,6 @@ func New() *cli.App {
 	app.Description = `honeytrap: The honeypot server.`
 	app.CustomAppHelpTemplate = helpTemplate
 	app.Commands = []cli.Command{}
-
 	app.Before = func(c *cli.Context) error {
 		return nil
 	}
