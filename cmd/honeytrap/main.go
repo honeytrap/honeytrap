@@ -162,6 +162,14 @@ func serve(c *cli.Context) {
 }
 
 func New() *cli.App {
+	cli.VersionPrinter = func(c *cli.Context) {
+		fmt.Fprintf(c.App.Writer,
+			`Version: %s
+Release-Tag: %s
+Commit-ID: %s
+`, color.YellowString(cmd.Version), color.YellowString(cmd.ReleaseTag), color.YellowString(cmd.CommitID))
+	}
+
 	app := cli.NewApp()
 	app.Name = "honeytrap"
 	app.Author = ""
@@ -170,7 +178,6 @@ func New() *cli.App {
 	app.Description = `honeytrap: The honeypot server.`
 	app.CustomAppHelpTemplate = helpTemplate
 	app.Commands = []cli.Command{}
-
 	app.Before = func(c *cli.Context) error {
 		return nil
 	}
