@@ -95,7 +95,7 @@ type Honeytrap struct {
 
 // New returns a new instance of a Honeytrap struct.
 // func New(conf *config.Config) *Honeytrap {
-func New(options ...OptionFn) *Honeytrap {
+func New(options ...OptionFn) (*Honeytrap, error) {
 	bus := eventbus.New()
 
 	// Initialize all channels within the provided config.
@@ -109,10 +109,12 @@ func New(options ...OptionFn) *Honeytrap {
 	}
 
 	for _, fn := range options {
-		fn(h)
+		if err := fn(h); err != nil {
+			return nil, err
+		}
 	}
 
-	return h
+	return h, nil
 }
 
 func (hc *Honeytrap) startAgentServer() {
