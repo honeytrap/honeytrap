@@ -49,7 +49,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-var log = logging.MustGetLogger("honeytrap:web")
+var log = logging.MustGetLogger("web")
 
 func AcceptAllOrigins(r *http.Request) bool { return true }
 
@@ -92,8 +92,6 @@ func New(options ...func(*web)) *web {
 	for _, optionFn := range options {
 		optionFn(&hc)
 	}
-
-	log.Infof("Web interface started: %s", "8089")
 
 	sh := http.FileServer(&assetfs.AssetFS{
 		Asset:     assets.Asset,
@@ -143,6 +141,12 @@ func New(options ...func(*web)) *web {
 	*/
 
 	return &hc
+}
+
+func (w *web) ListenAndServe() {
+	log.Infof("Web interface started: %s", "8089")
+
+	w.Server.ListenAndServe()
 }
 
 type Metadata struct {
