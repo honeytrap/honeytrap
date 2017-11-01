@@ -1,3 +1,6 @@
+// +build linux
+// +build arm
+
 /*
 * Honeytrap
 * Copyright (C) 2016-2017 DutchSec (https://dutchsec.com/)
@@ -31,11 +34,43 @@
 package web
 
 import (
+	"net/http"
+
+	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers/eventbus"
+
+	logging "github.com/op/go-logging"
 )
 
-func WithEventBus(bus *eventbus.EventBus) func(*web) {
-	return func(w *web) {
-		w.SetEventBus(bus)
+var log = logging.MustGetLogger("honeytrap:web")
+
+type web struct {
+	*http.Server
+}
+
+func New(options ...func(*web)) *web {
+	handler := http.NewServeMux()
+
+	// TODO(nl5887): make configurable
+	server := &http.Server{
+		Addr:    ":8089",
+		Handler: handler,
 	}
+
+	hc := web{
+		Server: server,
+	}
+
+	for _, optionFn := range options {
+		optionFn(&hc)
+	}
+
+	return &hc
+}
+
+func (web *web) SetEventBus(eb *eventbus.EventBus) {
+	eb.Subscribe(web)
+}
+
+func (web *web) Send(e event.Event) {
 }
