@@ -1,3 +1,5 @@
+// +build !arm
+
 /*
 * Honeytrap
 * Copyright (C) 2016-2017 DutchSec (https://dutchsec.com/)
@@ -48,20 +50,6 @@ import (
 )
 
 var log = logging.MustGetLogger("web")
-
-const (
-	// Time allowed to write a message to the peer
-	writeWait = 10 * time.Second
-
-	// Time allowed to read the next pong message from the peer
-	pongWait = 60 * time.Second
-
-	// Send pings to peer with this period. Must be less than pongWait
-	pingPeriod = 1 * time.Second
-
-	// Maximum message size allowed from peer
-	maxMessageSize = 512
-)
 
 func AcceptAllOrigins(r *http.Request) bool { return true }
 
