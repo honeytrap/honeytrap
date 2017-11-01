@@ -49,10 +49,5 @@ func (l *dummyListener) Start() error {
 }
 
 func (l *dummyListener) Accept() (net.Conn, error) {
-	// infinite wait
-	// return DummyConnection{}, nil
 	return nil, nil
-}
-
-type dummyConnection struct {
 }
