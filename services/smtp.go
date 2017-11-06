@@ -45,14 +45,18 @@ var (
 // SMTP
 func SMTP(options ...ServicerFunc) Servicer {
 
+	server, err := New()
+	if err != nil {
+		return nil
+	}
+
 	s := &SMTPService{
-		cn: &conn{
-			TLSConfig: nil},
+		srv: server,
 	}
 	//TODO: make certificate configurable
 	cert, err := tls.LoadX509KeyPair("server.crt", "server.key")
 	if err == nil {
-		s.cn.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
+		s.srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
 	}
 
 	for _, o := range options {
@@ -62,8 +66,8 @@ func SMTP(options ...ServicerFunc) Servicer {
 }
 
 type SMTPService struct {
-	ch pushers.Channel
-	cn conn
+	ch  pushers.Channel
+	srv *Server
 }
 
 func (s *SMTPService) SetChannel(c pushers.Channel) {
@@ -72,20 +76,40 @@ func (s *SMTPService) SetChannel(c pushers.Channel) {
 
 func (s *SMTPService) Handle(conn net.Conn) error {
 
-	s.cn.rwc = conn
-	s.cn.msg = s.cn.newMessage()
-	// Use a go routine here???
-	s.cn.serve()
+	receiveChan := make(chan Message)
 
-	s.ch.Send(event.New(
-		EventOptions,
-		event.Category("smtp"),
-		event.Type("mail"),
-		event.SourceAddr(conn.RemoteAddr()),
-		event.DestinationAddr(conn.LocalAddr()),
-		event.Custom("smtp.From", s.cn.msg.From),
-		event.Custom("smtp.To", s.cn.msg.To),
-		event.Custom("smtp.Body", s.cn.msg.Body.String()),
-	))
+	go func() {
+		for {
+			select {
+			case message := <-receiveChan:
+				log.Debug("Message Received")
+				s.ch.Send(event.New(
+					EventOptions,
+					event.Category("smtp"),
+					event.Type("mail"),
+					event.SourceAddr(conn.RemoteAddr()),
+					event.DestinationAddr(conn.LocalAddr()),
+					event.Custom("smtp.From", message.From),
+					event.Custom("smtp.To", message.To),
+					event.Custom("smtp.Body", message.Body.String()),
+				))
+			}
+		}
+	}()
+
+	handler := HandleFunc(func(msg Message) error {
+		receiveChan <- msg
+		return nil
+	})
+	s.srv.Handler = handler
+
+	c, err := s.srv.NewConn(conn)
+	if err != nil {
+		return err
+	}
+
+	// Use a go routine here???
+	c.serve()
+
 	return nil
 }

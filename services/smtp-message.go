@@ -37,7 +37,7 @@ import (
 	"net/mail"
 )
 
-type message struct {
+type Message struct {
 	From *mail.Address
 	To   []*mail.Address
 
@@ -49,7 +49,7 @@ type message struct {
 	Body   *bytes.Buffer
 }
 
-func (m *message) Read(r io.Reader) error {
+func (m *Message) Read(r io.Reader) error {
 	buff, err := ioutil.ReadAll(r)
 	if err != nil {
 		return err

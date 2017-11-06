@@ -43,19 +43,20 @@ import (
 	"strings"
 )
 
+const loopTreshold = 100
+
 type conn struct {
-	rwc       net.Conn
-	TLSConfig *tls.Config
-	Text      *textproto.Conn
-	domain    string
-	msg       *message
-	banner    string `toml:"banner"`
-	i         int
+	rwc    net.Conn
+	Text   *textproto.Conn
+	domain string
+	msg    *Message
+	server *Server
+	i      int
 }
 
-func (c *conn) newMessage() *message {
+func (c *conn) newMessage() *Message {
 
-	return &message{
+	return &Message{
 		To:         []*mail.Address{},
 		Body:       &bytes.Buffer{},
 		Buffer:     &bytes.Buffer{},
@@ -85,7 +86,7 @@ func (c *conn) ReadLine() (string, error) {
 }
 
 func startState(c *conn) stateFn {
-	c.PrintfLine("220 %s", c.banner)
+	c.PrintfLine("220 %s", c.server.Banner)
 	return helloState
 }
 
@@ -160,6 +161,10 @@ func mailFromState(c *conn) stateFn {
 			return errorState("[bdat]: error %s", err)
 		}
 
+		c.PrintfLine("250 Ok : queued as +%x", hasher.Sum(nil))
+
+		serverHandler{c.server}.Serve(*c.msg)
+
 		c.msg = c.newMessage()
 		return loopState
 	} else if isCommand(line, "DATA") {
@@ -172,6 +177,8 @@ func mailFromState(c *conn) stateFn {
 		}
 
 		c.PrintfLine("250 Ok : queued as +%x", hasher.Sum(nil))
+
+		serverHandler{c.server}.Serve(*c.msg)
 
 		c.msg = c.newMessage()
 		return loopState
@@ -193,7 +200,7 @@ func loopState(c *conn) stateFn {
 
 	c.i++
 
-	if c.i > 100 {
+	if c.i > loopTreshold {
 		return errorState("Error: invalid.")
 	}
 
@@ -204,14 +211,14 @@ func loopState(c *conn) stateFn {
 	} else if isCommand(line, "STARTTLS") {
 		c.PrintfLine("220 Ready to start TLS")
 
-		tlsconn := tls.Server(c.rwc, c.TLSConfig)
+		tlsConn := tls.Server(c.rwc, c.server.TLSConfig)
 
-		if err := tlsconn.Handshake(); err != nil {
+		if err := tlsConn.Handshake(); err != nil {
 			log.Error("Error during tls handshake: %s", err.Error())
 			return nil
 		}
 
-		c.Text = textproto.NewConn(tlsconn)
+		c.Text = textproto.NewConn(tlsConn)
 		return helloState
 	} else if isCommand(line, "RSET") {
 		c.msg = c.newMessage()
@@ -285,10 +292,7 @@ func (c *conn) serve() {
 	// todo add idle timeout here
 
 	state := startState
-	for {
-		if state == nil {
-			break
-		}
+	for state != nil {
 		state = state(c)
 	}
 }
