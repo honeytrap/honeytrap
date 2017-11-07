@@ -117,8 +117,6 @@ func (f *FileBackend) Wait() {
 // Send delivers the giving if it passes all filtering criteria into the
 // FileBackend write queue.
 func (f *FileBackend) Send(message event.Event) {
-	log.Debug("FileBackend.Send : Started")
-
 	if err := f.syncWrites(); err != nil {
 		log.Errorf("Error syncing writes: %+q", err)
 		return
@@ -138,10 +136,7 @@ func (f *FileBackend) Send(message event.Event) {
 
 // syncWrites startups the channel procedure to listen for new writes to giving file.
 func (f *FileBackend) syncWrites() error {
-	log.Debug("FileBackend.syncWrites : Started")
-
 	if f.dest != nil && f.request != nil {
-		log.Debug("FileBackend.syncWrites : Completed : Already Running")
 		return nil
 	}
 
@@ -160,14 +155,13 @@ func (f *FileBackend) syncWrites() error {
 
 	f.dest, err = newFile(f.File, f.MaxSize)
 	if err != nil {
-		log.Debug("FileBackend.syncWrites : Completed : Failed create destination file")
+		log.Errorf("Failed create destination file: %s", err)
 		return err
 	}
 
 	f.wg.Add(1)
 	go f.syncLoop()
 
-	log.Debug("FileBackend.syncWrites : Completed")
 	return nil
 }
 
@@ -200,16 +194,16 @@ func (f *FileBackend) syncLoop() {
 				}
 
 				if err := json.NewEncoder(&buf).Encode(req); err != nil {
-					log.Errorf("FileBackend.syncWrites : Failed to marshal PushMessage to JSON : %+q", err)
+					log.Errorf("Failed to marshal PushMessage to JSON : %+q", err)
 					continue writeSync
 				}
 
 				if _, err := io.Copy(f.dest, &buf); err != nil && err != io.EOF {
-					log.Errorf("FileBackend.syncWrites : Failed to copy data to File : %+q", err)
+					log.Errorf("Failed to copy data to File : %+q", err)
 				}
 
 				if err := f.dest.Sync(); err != nil {
-					log.Errorf("FileBackend.syncWrites : Failed to sync Write to File : %+q", err)
+					log.Errorf("Failed to sync Write to File : %+q", err)
 				}
 
 				// Reset the buffer for reuse.
