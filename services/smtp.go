@@ -53,12 +53,14 @@ func SMTP(options ...ServicerFunc) Servicer {
 	s := &SMTPService{
 		srv: server,
 	}
+	// Use root certificates of server
+	//s.srv.TLSConfig = &tls.Config{RootCAs: nil, InsecureSkipVerify: true}
+
 	//TODO: make certificate configurable
 	cert, err := tls.LoadX509KeyPair("server.crt", "server.key")
 	if err == nil {
 		s.srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
 	}
-
 	for _, o := range options {
 		o(s)
 	}
