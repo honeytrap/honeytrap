@@ -341,7 +341,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		} else if d, ok := directors[x.Director]; ok {
 			options = append(options, services.WithDirector(d))
 		} else {
-			log.Error(color.RedString("Could not find director=%s for service=%s\n", x.Director, key))
+			log.Error(color.RedString("Could not find director=%s for service=%s", x.Director, key))
 			continue
 		}
 
@@ -349,7 +349,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 
 		parts := strings.Split(x.Port, "/")
 		if len(parts) == 2 {
-			log.Infof("Mapping port %s(%s) to service %s (%s)\n", parts[1], strings.ToLower(parts[0]), x.Type, key)
+			log.Infof("Mapping port %s(%s) to service %s (%s)", parts[1], strings.ToLower(parts[0]), x.Type, key)
 
 			// add address to listener and create mapping between
 			// port and service
