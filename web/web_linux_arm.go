@@ -1,3 +1,6 @@
+// +build linux
+// +build arm
+
 /*
 * Honeytrap
 * Copyright (C) 2016-2017 DutchSec (https://dutchsec.com/)
@@ -28,37 +31,46 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package services
+package web
 
 import (
-	"net"
+	"net/http"
 
-	"github.com/honeytrap/honeytrap/pushers"
+	"github.com/honeytrap/honeytrap/event"
+	"github.com/honeytrap/honeytrap/pushers/eventbus"
+
+	logging "github.com/op/go-logging"
 )
 
-var (
-	_ = Register("vnc", Vnc)
-)
+var log = logging.MustGetLogger("honeytrap:web")
 
-// Vnc is a placeholder
-func Vnc(options ...ServicerFunc) Servicer {
-	s := &vncService{}
-	for _, o := range options {
-		o(s)
+type web struct {
+	*http.Server
+}
+
+func New(options ...func(*web)) *web {
+	handler := http.NewServeMux()
+
+	// TODO(nl5887): make configurable
+	server := &http.Server{
+		Addr:    ":8089",
+		Handler: handler,
 	}
-	return s
+
+	hc := web{
+		Server: server,
+	}
+
+	for _, optionFn := range options {
+		optionFn(&hc)
+	}
+
+	return &hc
 }
 
-type vncService struct {
-	c pushers.Channel
+func (web *web) SetEventBus(eb *eventbus.EventBus) {
+	eb.Subscribe(web)
 }
 
-func (s *vncService) SetChannel(c pushers.Channel) {
-	s.c = c
-}
-
-func (s *vncService) Handle(conn net.Conn) error {
-	defer conn.Close()
-
-	return nil
+func (web *web) Send(e event.Event) {
 }

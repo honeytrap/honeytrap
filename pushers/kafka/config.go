@@ -32,15 +32,6 @@ package kafka
 
 // Config defines a struct which holds configuration values for a SearchBackend.
 type Config struct {
-	Topic string
-	Addrs []string
-}
-
-// UnmarshalTOML deserializes the giving data into the config.
-func (c *Config) UnmarshalTOML(p interface{}) error {
-	data, _ := p.(map[string]interface{})
-
-	_ = data
-
-	return nil
+	Brokers []string `toml:"brokers"`
+	Topic   string   `toml:"topic"`
 }

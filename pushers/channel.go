@@ -50,6 +50,12 @@ var (
 	channels = map[string]ChannelFunc{}
 )
 
+func Range(fn func(string)) {
+	for k, _ := range channels {
+		fn(k)
+	}
+}
+
 func Register(key string, fn ChannelFunc) ChannelFunc {
 	channels[key] = fn
 	return fn

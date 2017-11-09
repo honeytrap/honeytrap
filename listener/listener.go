@@ -57,6 +57,12 @@ func Get(key string) (func(...func(Listener) error) (Listener, error), bool) {
 	return d, false
 }
 
+func Range(fn func(string)) {
+	for k, _ := range listeners {
+		fn(k)
+	}
+}
+
 type Listener interface {
 	Start() error
 	Accept() (net.Conn, error)

@@ -32,8 +32,6 @@ package web
 
 import (
 	"github.com/honeytrap/honeytrap/pushers/eventbus"
-
-	_ "github.com/mattn/go-sqlite3"
 )
 
 func WithEventBus(bus *eventbus.EventBus) func(*web) {

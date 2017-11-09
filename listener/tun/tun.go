@@ -47,7 +47,7 @@ var (
 	EventCategoryUDP = event.Category("udp")
 )
 
-var log = logging.MustGetLogger("honeytrap:listener:tun")
+var log = logging.MustGetLogger("listener/tun")
 
 var (
 	_ = listener.Register("tun", New)

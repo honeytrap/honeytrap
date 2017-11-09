@@ -50,9 +50,11 @@ import (
 	"github.com/honeytrap/honeytrap/pushers/eventbus"
 
 	"github.com/honeytrap/honeytrap/services"
+	_ "github.com/honeytrap/honeytrap/services/vnc"
 
 	"github.com/honeytrap/honeytrap/listener"
 	_ "github.com/honeytrap/honeytrap/listener/canary"
+	_ "github.com/honeytrap/honeytrap/listener/netstack"
 	_ "github.com/honeytrap/honeytrap/listener/socket"
 	_ "github.com/honeytrap/honeytrap/listener/tap"
 	_ "github.com/honeytrap/honeytrap/listener/tun"
@@ -94,7 +96,7 @@ type Honeytrap struct {
 
 // New returns a new instance of a Honeytrap struct.
 // func New(conf *config.Config) *Honeytrap {
-func New(options ...OptionFn) *Honeytrap {
+func New(options ...OptionFn) (*Honeytrap, error) {
 	bus := eventbus.New()
 
 	// Initialize all channels within the provided config.
@@ -108,10 +110,12 @@ func New(options ...OptionFn) *Honeytrap {
 	}
 
 	for _, fn := range options {
-		fn(h)
+		if err := fn(h); err != nil {
+			return nil, err
+		}
 	}
 
-	return h
+	return h, nil
 }
 
 func (hc *Honeytrap) startAgentServer() {
@@ -163,7 +167,7 @@ func (hc *Honeytrap) heartbeat() {
 
 // Run will start honeytrap
 func (hc *Honeytrap) Run(ctx context.Context) {
-	fmt.Println(color.YellowString("Honeytrap%c  starting...", 127855))
+	fmt.Println(color.YellowString("Honeytrap%c  starting (%s)...", 127855, hc.token))
 
 	go hc.heartbeat()
 
@@ -349,50 +353,49 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			// add address to listener and create mapping between
 			// port and service
 			if strings.ToLower(parts[0]) == "tcp" {
+				addr, _ := net.ResolveTCPAddr("tcp", ":"+parts[1])
 				if a, ok := l.(listener.AddAddresser); ok {
-					addr, _ := net.ResolveTCPAddr("tcp", ":"+parts[1])
 					a.AddAddress(addr)
-
-					fn := func(port int) func(net.Addr) bool {
-						return func(a net.Addr) bool {
-							if ta, ok := a.(*net.TCPAddr); ok {
-								return ta.Port == port
-							}
-
-							return false
-						}
-					}
-
-					hc.matchers = append(hc.matchers, ServiceMap{
-						Name:    key,
-						Type:    x.Type,
-						Matcher: fn(addr.Port),
-						Service: service,
-					})
 				}
+
+				fn := func(port int) func(net.Addr) bool {
+					return func(a net.Addr) bool {
+						if ta, ok := a.(*net.TCPAddr); ok {
+							return ta.Port == port
+						}
+
+						return false
+					}
+				}
+
+				hc.matchers = append(hc.matchers, ServiceMap{
+					Name:    key,
+					Type:    x.Type,
+					Matcher: fn(addr.Port),
+					Service: service,
+				})
 			} else if strings.ToLower(parts[0]) == "udp" {
+				addr, _ := net.ResolveUDPAddr("udp", ":"+parts[1])
 				if a, ok := l.(listener.AddAddresser); ok {
-					addr, _ := net.ResolveUDPAddr("udp", ":"+parts[1])
 					a.AddAddress(addr)
-
-					fn := func(port int) func(net.Addr) bool {
-
-						return func(a net.Addr) bool {
-							if ta, ok := a.(*net.UDPAddr); ok {
-								return ta.Port == port
-							}
-
-							return false
-						}
-					}
-
-					hc.matchers = append(hc.matchers, ServiceMap{
-						Name:    key,
-						Type:    x.Type,
-						Matcher: fn(addr.Port),
-						Service: service,
-					})
 				}
+
+				fn := func(port int) func(net.Addr) bool {
+					return func(a net.Addr) bool {
+						if ta, ok := a.(*net.UDPAddr); ok {
+							return ta.Port == port
+						}
+
+						return false
+					}
+				}
+
+				hc.matchers = append(hc.matchers, ServiceMap{
+					Name:    key,
+					Type:    x.Type,
+					Matcher: fn(addr.Port),
+					Service: service,
+				})
 			}
 		}
 	}

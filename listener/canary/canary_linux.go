@@ -57,7 +57,7 @@ import (
 	logging "github.com/op/go-logging"
 )
 
-var log = logging.MustGetLogger("raw")
+var log = logging.MustGetLogger("listeners/raw")
 
 var (
 	_ = listener.Register("raw", New)

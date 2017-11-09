@@ -41,7 +41,7 @@ import (
 	logging "github.com/op/go-logging"
 )
 
-var log = logging.MustGetLogger("director/low")
+var log = logging.MustGetLogger("services")
 
 var (
 	services = map[string]func(...ServicerFunc) Servicer{}
@@ -52,6 +52,12 @@ type ServicerFunc func(Servicer) error
 func Register(key string, fn func(...ServicerFunc) Servicer) func(...ServicerFunc) Servicer {
 	services[key] = fn
 	return fn
+}
+
+func Range(fn func(string)) {
+	for k, _ := range services {
+		fn(k)
+	}
 }
 
 func Get(key string) (func(...ServicerFunc) Servicer, bool) {

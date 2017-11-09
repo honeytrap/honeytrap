@@ -45,7 +45,7 @@ var log = logging.MustGetLogger("honeytrap:config")
 var elapso = regexp.MustCompile(`(\d+)(\w+)`)
 
 var format = logging.MustStringFormatter(
-	"%{color}%{time:15:04:05.000} %{shortfunc} ▶ %{level:.4s} %{id:03x}%{color:reset} %{message}",
+	"%{color}%{time:15:04:05.000} %{module} ▶ %{level:.4s} %{id:03x} %{message}%{color:reset}",
 )
 
 // Config defines the central type where all configuration is umarhsalled to.
