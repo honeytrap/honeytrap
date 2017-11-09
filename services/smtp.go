@@ -78,12 +78,12 @@ func (s *SMTPService) SetChannel(c pushers.Channel) {
 
 func (s *SMTPService) Handle(conn net.Conn) error {
 
-	receiveChan := make(chan Message)
+	ReceiveChan := make(chan Message)
 
 	go func() {
 		for {
 			select {
-			case message := <-receiveChan:
+			case message := <-ReceiveChan:
 				log.Debug("Message Received")
 				s.ch.Send(event.New(
 					EventOptions,
@@ -100,7 +100,7 @@ func (s *SMTPService) Handle(conn net.Conn) error {
 	}()
 
 	handler := HandleFunc(func(msg Message) error {
-		receiveChan <- msg
+		ReceiveChan <- msg
 		return nil
 	})
 	s.srv.Handler = handler
