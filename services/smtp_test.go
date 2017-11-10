@@ -8,8 +8,10 @@ import (
 )
 
 const (
-	hostname = "testing.com"
-	sender   = "sender@testing.com"
+	hostname  = "testing.com"
+	sender    = "sender@testing.com"
+	recipient = "recipient@example.net"
+	body      = "Subject: test message\r\nDate: Wed, 11 May 2011 16:19:57 -0400\r\n\r\nTESTING...\r\n.\r\n"
 )
 
 func TestSMTP(t *testing.T) {
@@ -48,10 +50,10 @@ func TestSMTP(t *testing.T) {
 		}
 	*/
 	// Set the sender and recipient first
-	if err := smtpClient.Mail("sender@example.org"); err != nil {
+	if err := smtpClient.Mail(sender); err != nil {
 		t.Fatal(err)
 	}
-	if err := smtpClient.Rcpt("recipient@example.net"); err != nil {
+	if err := smtpClient.Rcpt(recipient); err != nil {
 		t.Fatal(err)
 	}
 
@@ -60,7 +62,7 @@ func TestSMTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = fmt.Fprintf(wc, "From: John Smith <jsmith@port25.com>\r\nTo: Jane Doe <jdoe@port25.com>\r\nSubject: test message\r\nDate: Wed, 11 May 2011 16:19:57 -0400\r\n\r\n.\r\n")
+	_, err = fmt.Fprintf(wc, body)
 	if err != nil {
 		t.Fatal(err)
 	}

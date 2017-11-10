@@ -39,7 +39,8 @@ import (
 )
 
 var (
-	_ = Register("smtp", SMTP)
+	_           = Register("smtp", SMTP)
+	receiveChan = make(chan Message)
 )
 
 // SMTP
@@ -61,6 +62,13 @@ func SMTP(options ...ServicerFunc) Servicer {
 	if err == nil {
 		s.srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
 	}
+
+	handler := HandleFunc(func(msg Message) error {
+		receiveChan <- msg
+		return nil
+	})
+	s.srv.Handler = handler
+
 	for _, o := range options {
 		o(s)
 	}
@@ -78,12 +86,10 @@ func (s *SMTPService) SetChannel(c pushers.Channel) {
 
 func (s *SMTPService) Handle(conn net.Conn) error {
 
-	ReceiveChan := make(chan Message)
-
 	go func() {
 		for {
 			select {
-			case message := <-ReceiveChan:
+			case message := <-receiveChan:
 				log.Debug("Message Received")
 				s.ch.Send(event.New(
 					EventOptions,
@@ -98,12 +104,6 @@ func (s *SMTPService) Handle(conn net.Conn) error {
 			}
 		}
 	}()
-
-	handler := HandleFunc(func(msg Message) error {
-		ReceiveChan <- msg
-		return nil
-	})
-	s.srv.Handler = handler
 
 	c, err := s.srv.NewConn(conn)
 	if err != nil {
