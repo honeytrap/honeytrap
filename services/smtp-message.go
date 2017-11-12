@@ -31,87 +31,43 @@
 package services
 
 import (
-	"crypto/tls"
-	"net"
-
-	"github.com/honeytrap/honeytrap/event"
-	"github.com/honeytrap/honeytrap/pushers"
+	"bytes"
+	"io"
+	"io/ioutil"
+	"net/mail"
 )
 
-var (
-	_           = Register("smtp", SMTP)
-	receiveChan = make(chan Message)
-)
+type Message struct {
+	From *mail.Address
+	To   []*mail.Address
 
-// SMTP
-func SMTP(options ...ServicerFunc) Servicer {
+	Domain     string
+	RemoteAddr string
 
-	server, err := New()
-	if err != nil {
-		return nil
-	}
-
-	s := &SMTPService{
-		srv: server,
-	}
-	// Use root certificates of server
-	//s.srv.TLSConfig = &tls.Config{RootCAs: nil, InsecureSkipVerify: true}
-
-	//TODO: make certificate configurable
-	cert, err := tls.LoadX509KeyPair("server.crt", "server.key")
-	if err == nil {
-		s.srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
-	}
-
-	handler := HandleFunc(func(msg Message) error {
-		receiveChan <- msg
-		return nil
-	})
-	s.srv.Handler = handler
-
-	for _, o := range options {
-		o(s)
-	}
-	return s
+	Header mail.Header
+	Buffer *bytes.Buffer
+	Body   *bytes.Buffer
 }
 
-type SMTPService struct {
-	ch  pushers.Channel
-	srv *Server
-}
-
-func (s *SMTPService) SetChannel(c pushers.Channel) {
-	s.ch = c
-}
-
-func (s *SMTPService) Handle(conn net.Conn) error {
-
-	go func() {
-		for {
-			select {
-			case message := <-receiveChan:
-				log.Debug("Message Received")
-				s.ch.Send(event.New(
-					EventOptions,
-					event.Category("smtp"),
-					event.Type("mail"),
-					event.SourceAddr(conn.RemoteAddr()),
-					event.DestinationAddr(conn.LocalAddr()),
-					event.Custom("smtp.From", message.From),
-					event.Custom("smtp.To", message.To),
-					event.Custom("smtp.Body", message.Body.String()),
-				))
-			}
-		}
-	}()
-
-	c, err := s.srv.NewConn(conn)
+func (m *Message) Read(r io.Reader) error {
+	buff, err := ioutil.ReadAll(r)
 	if err != nil {
 		return err
 	}
 
-	// Use a go routine here???
-	c.serve()
+	msg, err := mail.ReadMessage(bytes.NewReader(buff))
+	if err != nil {
+		m.Body = bytes.NewBuffer(buff)
+		return err
+	}
 
-	return nil
+	m.Header = msg.Header
+
+	buff, err = ioutil.ReadAll(msg.Body)
+	if err != nil {
+		return err
+	}
+
+	m.Body = bytes.NewBuffer(buff)
+	return err
 }
