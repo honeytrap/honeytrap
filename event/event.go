@@ -163,8 +163,10 @@ func Sensor(s string) Option {
 // SourceAddr returns an option for setting the source-ip value.
 func SourceAddr(addr net.Addr) Option {
 	return func(m Event) {
-		m.Store("source-ip", addr.(*net.TCPAddr).IP.String())
-		m.Store("source-port", addr.(*net.TCPAddr).Port)
+		if _, ok := addr.(*net.TCPAddr); ok {
+			m.Store("source-ip", addr.(*net.TCPAddr).IP.String())
+			m.Store("source-port", addr.(*net.TCPAddr).Port)
+		}
 	}
 }
 
