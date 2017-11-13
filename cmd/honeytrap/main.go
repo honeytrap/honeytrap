@@ -115,6 +115,11 @@ func serve(c *cli.Context) error {
 		options...,
 	)
 
+	if err != nil {
+		ec := cli.NewExitError(err.Error(), 1)
+		return ec
+	}
+
 	// enumerate the available services
 	if c.GlobalBool("list-services") {
 		fmt.Println("services")
@@ -143,11 +148,6 @@ func serve(c *cli.Context) error {
 			fmt.Printf("* %s\n", name)
 		})
 		return nil
-	}
-
-	if err != nil {
-		ec := cli.NewExitError(err.Error(), 1)
-		return ec
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
