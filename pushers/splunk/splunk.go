@@ -111,7 +111,7 @@ func (hc Backend) run() {
 		} else {
 			count += len(batch)
 
-			log.Infof("Bulk indexing: %d total %d.\n", len(batch), count)
+			log.Infof("Bulk indexing: %d total %d", len(batch), count)
 
 			batch = []*hec.Event{}
 		}
