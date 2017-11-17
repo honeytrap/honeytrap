@@ -58,9 +58,8 @@ func Vnc(options ...services.ServicerFunc) services.Servicer {
 	}
 
 	if pwd, err := os.Getwd(); err != nil {
-	} else if s.ImagePath, err = filepath.Rel(pwd, s.ImagePath); err != nil {
-		log.Errorf("Error joining paths: %s %s", pwd, s.ImagePath)
-	} else {
+	} else if !filepath.IsAbs(s.ImagePath) {
+		s.ImagePath = filepath.Join(pwd, s.ImagePath)
 	}
 
 	r, err := os.Open(s.ImagePath)
