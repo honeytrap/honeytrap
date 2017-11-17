@@ -71,6 +71,7 @@ import (
 	_ "github.com/honeytrap/honeytrap/pushers/file"          // Registers file backend.
 	_ "github.com/honeytrap/honeytrap/pushers/kafka"         // Registers kafka backend.
 	_ "github.com/honeytrap/honeytrap/pushers/slack"         // Registers slack backend.
+	_ "github.com/honeytrap/honeytrap/pushers/splunk"        // Registers splunk backend.
 
 	logging "github.com/op/go-logging"
 )
