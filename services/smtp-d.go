@@ -33,85 +33,107 @@ package services
 import (
 	"crypto/tls"
 	"net"
-
-	"github.com/honeytrap/honeytrap/event"
-	"github.com/honeytrap/honeytrap/pushers"
+	"sync"
 )
 
-var (
-	_ = Register("smtp", SMTP)
-)
+//var receiveChan chan mail.Message
 
-// SMTP
-func SMTP(options ...ServicerFunc) Servicer {
-
-	server, err := New()
-	if err != nil {
-		return nil
-	}
-
-	s := &SMTPService{
-		srv: server,
-	}
-	// Use root certificates of server
-	//s.srv.TLSConfig = &tls.Config{RootCAs: nil, InsecureSkipVerify: true}
-
-	//TODO: make certificate configurable
-	cert, err := tls.LoadX509KeyPair("server.crt", "server.key")
-	if err == nil {
-		s.srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
-	}
-	for _, o := range options {
-		o(s)
-	}
-	return s
+type Handler interface {
+	Serve(msg Message) error
 }
 
-type SMTPService struct {
-	ch  pushers.Channel
-	srv *Server
+type HandlerFunc func(msg Message) error
+
+type ServeMux struct {
+	m  []HandlerFunc
+	mu sync.RWMutex
 }
 
-func (s *SMTPService) SetChannel(c pushers.Channel) {
-	s.ch = c
+func (mux *ServeMux) HandleFunc(handler func(msg Message) error) {
+	mux.mu.Lock()
+	defer mux.mu.Unlock()
+
+	mux.m = append(mux.m, handler)
 }
 
-func (s *SMTPService) Handle(conn net.Conn) error {
+func HandleFunc(handler func(msg Message) error) *ServeMux {
+	DefaultServeMux.HandleFunc(handler)
+	return DefaultServeMux
+}
 
-	ReceiveChan := make(chan Message)
+var DefaultServeMux = NewServeMux()
 
-	go func() {
-		for {
-			select {
-			case message := <-ReceiveChan:
-				log.Debug("Message Received")
-				s.ch.Send(event.New(
-					EventOptions,
-					event.Category("smtp"),
-					event.Type("mail"),
-					event.SourceAddr(conn.RemoteAddr()),
-					event.DestinationAddr(conn.LocalAddr()),
-					event.Custom("smtp.From", message.From),
-					event.Custom("smtp.To", message.To),
-					event.Custom("smtp.Body", message.Body.String()),
-				))
-			}
-		}
-	}()
+func NewServeMux() *ServeMux { return &ServeMux{m: make([]HandlerFunc, 0)} }
 
-	handler := HandleFunc(func(msg Message) error {
-		ReceiveChan <- msg
-		return nil
-	})
-	s.srv.Handler = handler
+type Server struct {
+	Banner    string `toml:"banner"`
+	TLSConfig *tls.Config
+	Handler   Handler
+}
 
-	c, err := s.srv.NewConn(conn)
+/*
+func (s *Server) ListenAndServe(handler Handler) error {
+	ln, err := net.Listen("tcp", s.ListenAddr)
 	if err != nil {
 		return err
 	}
 
-	// Use a go routine here???
-	c.serve()
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			log.Error("Error accept: %s", err.Error())
+			continue
+		}
+
+		c, err := s.newConn(conn)
+		if err != nil {
+			continue
+		}
+
+		go c.serve()
+	}
 
 	return nil
+}
+*/
+func New() (*Server, error) {
+
+	server := &Server{
+		TLSConfig: nil,
+	}
+
+	return server, nil
+}
+
+func (s *ServeMux) Serve(msg Message) error {
+	for _, h := range s.m {
+		if err := h(msg); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Server) NewConn(rwc net.Conn) (c *conn, err error) {
+	c = &conn{
+		server: s,
+		rwc:    rwc,
+		i:      0,
+	}
+
+	c.msg = c.newMessage()
+	return c, nil
+}
+
+type serverHandler struct {
+	srv *Server
+}
+
+func (sh serverHandler) Serve(msg Message) {
+	handler := sh.srv.Handler
+	if handler == nil {
+		handler = DefaultServeMux
+	}
+
+	handler.Serve(msg)
 }

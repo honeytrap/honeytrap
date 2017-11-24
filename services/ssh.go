@@ -105,8 +105,8 @@ func SSHAuth(options ...ServicerFunc) Servicer {
 	banner := "SSH-2.0-OpenSSH_6.6.1p1 2020Ubuntu-2ubuntu2"
 
 	s := &sshAuthService{
-		key:    key,
-		Banner: banner,
+		key: key,
+		//Banner: banner,
 	}
 
 	s.config = ssh.ServerConfig{
