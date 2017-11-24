@@ -104,7 +104,7 @@ func WithConfig(c toml.Primitive) ServicerFunc {
 }
 
 var (
-	SensorLow = event.Sensor("low-interaction")
+	SensorLow = event.Sensor("services")
 
 	EventOptions = event.NewWith(
 		SensorLow,

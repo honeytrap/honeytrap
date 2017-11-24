@@ -62,6 +62,12 @@
   version = "v1.5.0"
 
 [[projects]]
+  name = "github.com/fuyufjh/splunk-hec-go"
+  packages = ["."]
+  revision = "69956d6a6cbd511dade209563c3256c204c9ae51"
+  version = "v0.3.3"
+
+[[projects]]
   branch = "master"
   name = "github.com/glycerine/rbuf"
   packages = ["."]
@@ -226,6 +232,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "50470d6e41b9e8b7c9dfd3bda748452f5178cec9aaee3e4df961d7b1f57f1385"
+  inputs-digest = "bb6f1bf2575f76cde2964844e15effa727ca4a005362bd04a6707b60d44288d4"
   solver-name = "gps-cdcl"
   solver-version = 1
