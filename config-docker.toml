@@ -1,0 +1,120 @@
+# ########################################################################### #
+#                           Honeytrap configuration                           #
+# ########################################################################### #
+# 
+# Honeytrap architecture 
+# ----------------------
+#
+# Honeytrap presents two ways to capture an attacker who connects to it. 
+#  - Present a (simulated) service where the attacker interacts with
+#  - Direct the attacker via a proxy to a designated environment
+# Both methods can be used simultaneous.
+#
+# The events generated are captured and sent via channels  to the specific 
+# destinations
+# 
+# The honeytrap framework consist of 6 components:  
+#
+#               ====> proxy  ====> director
+# listener ====|         |                
+#               ====> service        |
+#     |                              |
+#     |                  |           |
+#      -----------------------------------> channel 
+#
+# Every components has a configuration section in this config file. Next to 
+# these five sections, there is a filter configuration section that defines
+# which data is send to the channels.
+#
+# Configuration conventions
+# -------------------------
+#
+# name: Can be chosen and is referenced in channel. Only proxy director must
+#       match a director name. 
+# type: Select one of the predefined types. type values are uniq in honeytrap 
+#       framework
+# port: <PROTO/#> or <PROTO/#-#>. example TCP/80 or UDP/9001-9003    
+#
+# ########################################################################### #
+
+
+# ####################### LISTENER BEGIN #################################### #
+
+[listener]
+type="socket"
+
+
+# Select capture capabilities. 
+# Defaults to none, but can be list of the following options: 
+#     quick       (capture protocol, ip, port)
+#     sniffer     (capture the first X bytes from each packet)  
+#     full        (makes a full network dump)
+# 
+# A filter and channel needs to be configured to process the output of each
+# capture item.
+
+capture = ["sniffer","quick"]
+
+# ####################### LISTENER END ####################################### #
+
+
+# ####################### SERVICES BEGIN ##################################### #
+# Enable services. The services are defined by starting with a [[service]] field.
+# Each service requires that the "name" a "type" value are set. The name can be
+# freely chosen and is referred by in the channel output.
+# A complete list of available services and their specific configuration options 
+# can be found in <.....>. All services have the port and canary configuration
+# option. With the port options the service is connected to the specific port.
+# If no "port" value is given, it will connect to the default service type port
+# which can be found in <...>. The canary option is a boolean to enable or 
+# disable the usage of canaries, which will trigger alerts.
+
+[service.ssh-simulator]
+type="ssh-simulator"
+port="tcp/8022"
+
+[service.vnc]
+type="vnc"
+port="tcp/5900"
+image="/data/screenshot-20171030174349.png"
+server-name="WS-3244"
+
+
+# ####################### SERVICES BEGIN ##################################### #
+
+# ####################### CHANNELS BEGIN ##################################### #
+# The listener and every proxy, director and service generate events, alters and 
+# logging. These are send to channels. To define a channel you should select a  
+# type and give it a name. The specific configuration options per type can be 
+# found in <.....>. 
+
+[channel.console]
+type="console"
+
+#[channel.raven]
+##type="raven"
+#token="b8e0mel59lqh8hnvjoig"
+#server="wss://172.16.84.1:5052/ws"
+
+#[channel.file]
+#type="file"
+#filename="logs/honeytrap.log"
+
+# ####################### CHANNELS END ####################################### #
+
+
+# ####################### FILTERS BEGIN ###################################### #
+# A filter selects the data that is send to a previously defined channel. There 
+# are three types of data that can be collected with the honeytrap framework:
+# - events    generated events triggered by connections to the honeypot
+# - alerts    output of a canaries
+# - logging   framework system logging
+
+[[filter]]
+channel=["console"]
+
+# ####################### LOGGING END ####################################### #
+
+[[logging]]
+output = "stdout"
+level = "debug"
