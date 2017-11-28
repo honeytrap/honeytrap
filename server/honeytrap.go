@@ -51,6 +51,7 @@ import (
 	"github.com/honeytrap/honeytrap/pushers/eventbus"
 
 	"github.com/honeytrap/honeytrap/services"
+	_ "github.com/honeytrap/honeytrap/services/ssh"
 	_ "github.com/honeytrap/honeytrap/services/vnc"
 
 	"github.com/honeytrap/honeytrap/listener"

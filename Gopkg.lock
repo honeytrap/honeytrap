@@ -2,6 +2,12 @@
 
 
 [[projects]]
+  branch = "master"
+  name = "github.com/AndreasBriese/bbloom"
+  packages = ["."]
+  revision = "28f7e881ca57bc00e028f9ede9f0d9104cfeef5e"
+
+[[projects]]
   name = "github.com/BurntSushi/toml"
   packages = ["."]
   revision = "b26d9c308763d68093482582cea63d69be07a0f0"
@@ -24,6 +30,18 @@
   packages = ["spew"]
   revision = "346938d642f2ec3594ed81d874461961cd0faa76"
   version = "v1.1.0"
+
+[[projects]]
+  name = "github.com/dgraph-io/badger"
+  packages = [".","options","protos","skl","table","y"]
+  revision = "c7225883aa76fb3dd4707923c67c64bc1b4631bc"
+  version = "v1.1.0"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/dgryski/go-farm"
+  packages = ["."]
+  revision = "78658e5234cd0441f634c663fae5badf239dc817"
 
 [[projects]]
   name = "github.com/dimfeld/httptreemux"
@@ -94,7 +112,7 @@
 [[projects]]
   branch = "master"
   name = "github.com/google/netstack"
-  packages = ["ilist","tcpip","tcpip/buffer","waiter"]
+  packages = ["ilist","sleep","tcpip","tcpip/buffer","tcpip/header","tcpip/link/fdbased","tcpip/link/rawfile","tcpip/link/tun","tcpip/network/fragmentation","tcpip/network/hash","tcpip/network/ipv4","tcpip/network/ipv6","tcpip/ports","tcpip/seqnum","tcpip/stack","tcpip/transport/tcp","tmutex","waiter"]
   revision = "edcfca33ca347f59a1393986a5d216a5f183ae28"
 
 [[projects]]
@@ -202,7 +220,7 @@
 [[projects]]
   branch = "master"
   name = "golang.org/x/net"
-  packages = ["context"]
+  packages = ["context","internal/timeseries","trace"]
   revision = "7b572d500b0702f1ea30a47083ce2e1e5c61edba"
 
 [[projects]]
@@ -232,6 +250,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "bb6f1bf2575f76cde2964844e15effa727ca4a005362bd04a6707b60d44288d4"
+  inputs-digest = "0b3e24e88211cfed2fc48edd3992ef14329be4af6ac285fb02520e3a97b6f0ed"
   solver-name = "gps-cdcl"
   solver-version = 1

@@ -28,49 +28,24 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package server
+package storage
 
 import (
-	"bytes"
-	"io/ioutil"
+	"log"
 	"os"
 	"os/user"
 	"path"
+	"path/filepath"
 
-	_ "net/http/pprof"
-
-	"github.com/pkg/profile"
-	"github.com/rs/xid"
-
-	"github.com/honeytrap/honeytrap/server/profiler"
+	"github.com/dgraph-io/badger"
 )
 
-type OptionFn func(*Honeytrap) error
-
-func WithMemoryProfiler() OptionFn {
-	return func(b *Honeytrap) error {
-		b.profiler = profiler.New(profile.MemProfile)
-		return nil
-	}
+type storage interface {
+	Get(string) error
+	Set(string, []byte) error
 }
 
-func WithCPUProfiler() OptionFn {
-	return func(b *Honeytrap) error {
-		b.profiler = profiler.New(profile.CPUProfile)
-		return nil
-	}
-}
-
-func WithConfig(s string) (OptionFn, error) {
-	data, err := ioutil.ReadFile(s)
-	if err != nil {
-		return nil, err
-	}
-
-	return func(b *Honeytrap) error {
-		return b.config.Load(bytes.NewBuffer(data))
-	}, nil
-}
+var db = MustDB()
 
 func HomeDir() string {
 	var err error
@@ -97,25 +72,63 @@ func HomeDir() string {
 	return p
 }
 
-func WithToken() OptionFn {
-	uid := xid.New().String()
+func MustDB() *badger.DB {
+	opts := badger.DefaultOptions
 
 	p := HomeDir()
-	p = path.Join(p, "token")
+	p = filepath.Join(p, "badger.db")
 
-	if _, err := os.Stat(p); os.IsNotExist(err) {
-		ioutil.WriteFile(p, []byte(uid), 0600)
-	} else if err != nil {
-		// other error
-		panic(err)
-	} else if data, err := ioutil.ReadFile(p); err == nil {
-		uid = string(data)
-	} else {
-		panic(err)
-	}
+	opts.Dir = p
+	opts.ValueDir = p
 
-	return func(h *Honeytrap) error {
-		h.token = uid
+	db, err := badger.Open(opts)
+	if err != nil {
+		log.Fatal(err)
 		return nil
 	}
+
+	return db
+}
+
+type Storage interface {
+	Get(key string) ([]byte, error)
+	Set(key string, data []byte) error
+}
+
+func Namespace(namespace string) (*badgeStorage, error) {
+	return &badgeStorage{
+		db: db,
+	}, nil
+}
+
+type badgeStorage struct {
+	db *badger.DB
+}
+
+func (s *badgeStorage) Get(key string) ([]byte, error) {
+	val := []byte{}
+
+	err := s.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get([]byte(key))
+		if err != nil {
+			return err
+		}
+
+		v, err := item.Value()
+		if err != nil {
+			return err
+		}
+
+		val = v
+		return nil
+	})
+
+	return val, err
+}
+
+func (s *badgeStorage) Set(key string, data []byte) error {
+	return s.db.Update(func(txn *badger.Txn) error {
+		err := txn.Set([]byte(key), data)
+		return err
+	})
 }
