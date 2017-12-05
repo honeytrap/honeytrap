@@ -31,8 +31,12 @@
 package services
 
 import (
+	"bufio"
+	"io"
 	"net"
+	"net/http"
 
+	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
 )
 
@@ -49,12 +53,70 @@ func IPP(options ...ServicerFunc) Servicer {
 }
 
 type ippService struct {
-	c pushers.Channel
+	httpServiceConfig
+
+	ch pushers.Channel
 }
 
 func (s *ippService) SetChannel(c pushers.Channel) {
-	s.c = c
+	s.ch = c
 }
 
 func (s *ippService) Handle(conn net.Conn) error {
+
+	for {
+		br := bufio.NewReader(conn)
+
+		req, err := http.ReadRequest(br)
+		if err == io.EOF || req.Method != "POST" || req.Header.Get("Content-Type") != "application/ipp" {
+			return nil
+		} else if err != nil {
+			return err
+		}
+
+		var body []byte
+		n, err := req.Body.Read(body)
+
+		s.c.Send(event.New(
+			EventOptions,
+			event.Category("http"),
+			event.Type("request"),
+			event.SourceAddr(conn.RemoteAddr()),
+			event.DestinationAddr(conn.LocalAddr()),
+			event.Custom("http.url", req.URL.String()),
+		))
+
+		resp := http.Response{
+			StatusCode: http.StatusOK,
+			Status:     http.StatusText(http.StatusOK),
+			Proto:      req.Proto,
+			ProtoMajor: req.ProtoMajor,
+			ProtoMinor: req.ProtoMinor,
+			Request:    req,
+			Header: http.Header{
+				"Server": []string{s.Server},
+			},
+		}
+		if err := resp.Write(conn); err != nil {
+			return err
+		}
+	}
+	// Wait for a IPPMessage and push it in the eventbus
+	go func() {
+		for {
+			select {
+			case message := <-ippChan:
+				log.Debug("IPP: Message received")
+				s.ch.Send(event.New(
+					EventOptions,
+					event.Category("ipp"),
+					event.Type("print"),
+					event.SourceAddr(conn.RemoteAddr()),
+					event.DestinationAddr(conn.LocalAddr()),
+					event.Custom("ipp.user", message.User),
+				))
+			}
+		}
+	}()
+
 }
