@@ -74,9 +74,11 @@ func RegexFilterFunc(field string, expressions []string) FilterFunc {
 	return func(e event.Event) bool {
 		for _, rx := range matchers {
 			val := e.Get(field)
-			return rx.MatchString(val)
+			// Only return on successful match, continue loop otherwise
+			if rx.MatchString(val) {
+				return true
+			}
 		}
-
 		return false
 	}
 }
