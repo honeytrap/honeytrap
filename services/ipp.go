@@ -32,6 +32,7 @@ package services
 
 import (
 	"bufio"
+	"bytes"
 	"io"
 	"net"
 	"net/http"
@@ -74,8 +75,10 @@ func (s *ippService) Handle(conn net.Conn) error {
 			return err
 		}
 
-		var body []byte
-		n, err := req.Body.Read(body)
+		breq := bytes.Buffer
+		n, err := req.Body.Read(breq)
+
+		bresp := ippHandler(&b)
 
 		s.c.Send(event.New(
 			EventOptions,
@@ -94,8 +97,10 @@ func (s *ippService) Handle(conn net.Conn) error {
 			ProtoMinor: req.ProtoMinor,
 			Request:    req,
 			Header: http.Header{
-				"Server": []string{s.Server},
+				"Server":       []string{s.Server},
+				"Content-Type": "application/ipp",
 			},
+			Body: bresp,
 		}
 		if err := resp.Write(conn); err != nil {
 			return err
