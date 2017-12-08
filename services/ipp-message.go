@@ -2,11 +2,10 @@ package services
 
 import (
 	"bytes"
-	"errors"
 )
 
 const (
-	// Delimiter tag values
+	// Delimiter tag values / begin-attribute-group-tag
 	opAttribTag      byte = 0x01 //operation-attributes-tag
 	jobAttribTag     byte = 0x02 //job-attributes-tag
 	endAttribTag     byte = 0x03 //end-of-attributes-tag
@@ -54,7 +53,7 @@ type ippMessage struct {
 }
 
 type attribGroup struct {
-	attribGroupTag int8 //begin-attribute-tag
+	attribGroupTag int8 //begin-attribute-group-tag
 	val            attribOneValue
 	additionalVal  []additionalValue
 }
@@ -75,40 +74,21 @@ type additionalValue struct { //additional-value
 }
 
 // Returns a IPP response based on the IPP request
-func ippHandler(ippBody []byte) *bytes.Buffer {
-	msg := &ippMessage{}
-	if err := msg.Read(ippBody); err != nil {
-		return err
+func ippHandler(ippBody *[]byte) *bytes.Buffer {
+	body := &ippMessage{
+		versionMajor: ippBody[0],
+		versionMinor: ippBody[1],
+		statusCode:   0, //Ok code
+		requestId:    ippBody[4:7],
+		endTag:       endAttribTag,
 	}
-}
-
-func (msg *ippMessage) Read(buf *bytes.Buffer) error {
-
-	if msg.versionMajor, err = buf.ReadByte(); err != nil {
-		return err
+	opId := int16(ippBody[2:3])
+	switch opId {
+	case opPrintJob:
+	case opValidateJob:
+	case opCreateJob:
+	case opGetJobAttrib:
+	case opGetPrinterAttrib:
+	default:
 	}
-	if msg.versionMinor, err = buf.ReadByte(); err != nil {
-		return err
-	}
-	if buf.Len() == 0 {
-		return errors.New("EOF")
-	}
-	msg.statusCode = int16(buf.Next(2))
-	if buf.Len() == 0 {
-		return errors.New("EOF")
-	}
-	msg.requestId = int32(buf.Next(4))
-	if buf.Len() == 0 {
-		return errors.New("EOF")
-	}
-
-	// Check end-of-attribute-tag
-	if buf.ReadByte() != 0x03 {
-		return errors.New("IPP Request malformed")
-	}
-	// Read rest of the data if any
-	if buf.Len() > 0 {
-		msg.data = buf.Next(buf.Len())
-	}
-	return nil
 }
