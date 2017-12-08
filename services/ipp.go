@@ -32,8 +32,8 @@ package services
 
 import (
 	"bufio"
-	"bytes"
 	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
 
@@ -75,10 +75,16 @@ func (s *ippService) Handle(conn net.Conn) error {
 			return err
 		}
 
-		breq := bytes.Buffer
-		n, err := req.Body.Read(breq)
+		//FIX: This could exhaust memory!
+		ippRequest, err := ioutil.ReadAll(req.Body)
+		if err != nil {
+			return err
+		}
+		if err := req.Body.Close(); err != nil {
+			return err
+		}
 
-		bresp := ippHandler(&b)
+		ippRespons := ippHandler(&ippRequest)
 
 		s.c.Send(event.New(
 			EventOptions,
@@ -100,28 +106,10 @@ func (s *ippService) Handle(conn net.Conn) error {
 				"Server":       []string{s.Server},
 				"Content-Type": "application/ipp",
 			},
-			Body: bresp,
+			Body: ioutil.NopCloser(*ippRespons), //need io.ReadCloser
 		}
 		if err := resp.Write(conn); err != nil {
 			return err
 		}
 	}
-	// Wait for a IPPMessage and push it in the eventbus
-	go func() {
-		for {
-			select {
-			case message := <-ippChan:
-				log.Debug("IPP: Message received")
-				s.ch.Send(event.New(
-					EventOptions,
-					event.Category("ipp"),
-					event.Type("print"),
-					event.SourceAddr(conn.RemoteAddr()),
-					event.DestinationAddr(conn.LocalAddr()),
-					event.Custom("ipp.user", message.User),
-				))
-			}
-		}
-	}()
-
 }
