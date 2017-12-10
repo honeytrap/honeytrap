@@ -28,94 +28,60 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package server
+package ssh
 
 import (
-	"bytes"
-	"io/ioutil"
-	"os"
-	"os/user"
-	"path"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 
-	_ "net/http/pprof"
-
-	"github.com/pkg/profile"
-	"github.com/rs/xid"
-
-	"github.com/honeytrap/honeytrap/server/profiler"
+	"golang.org/x/crypto/ssh"
 )
 
-type OptionFn func(*Honeytrap) error
+func PrivateKey(data []byte) *privateKey {
+	privblk := pem.Block{
+		Type:    "RSA PRIVATE KEY",
+		Headers: nil,
+		Bytes:   data,
+	}
 
-func WithMemoryProfiler() OptionFn {
-	return func(b *Honeytrap) error {
-		b.profiler = profiler.New(profile.MemProfile)
+	privateBytes := pem.EncodeToMemory(&privblk)
+
+	private, err := ssh.ParsePrivateKey(privateBytes)
+	if err != nil {
 		return nil
 	}
+
+	return &privateKey{private}
 }
 
-func WithCPUProfiler() OptionFn {
-	return func(b *Honeytrap) error {
-		b.profiler = profiler.New(profile.CPUProfile)
-		return nil
+// PrivateKey holds the ssh.Signer instance to unsign received data.
+type privateKey struct {
+	ssh.Signer
+}
+
+// UnmarshalText unmarshalls the giving text as the Signers data.
+func (t *privateKey) UnmarshalText(data []byte) (err error) {
+	private, err := ssh.ParsePrivateKey(data)
+	if err != nil {
+		return err
 	}
+
+	(*t) = privateKey{private}
+	return err
 }
 
-func WithConfig(s string) (OptionFn, error) {
-	data, err := ioutil.ReadFile(s)
+func generateKey() ([]byte, error) {
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return nil, err
 	}
 
-	return func(b *Honeytrap) error {
-		return b.config.Load(bytes.NewBuffer(data))
-	}, nil
-}
-
-func HomeDir() string {
-	var err error
-	var usr *user.User
-	if usr, err = user.Current(); err != nil {
-		panic(err)
+	if cerr := priv.Validate(); cerr != nil {
+		return nil, cerr
 	}
 
-	p := path.Join(usr.HomeDir, ".honeytrap")
-
-	_, err = os.Stat(p)
-
-	switch {
-	case err == nil:
-		break
-	case os.IsNotExist(err):
-		if err = os.Mkdir(p, 0755); err != nil {
-			panic(err)
-		}
-	default:
-		panic(err)
-	}
-
-	return p
-}
-
-func WithToken() OptionFn {
-	uid := xid.New().String()
-
-	p := HomeDir()
-	p = path.Join(p, "token")
-
-	if _, err := os.Stat(p); os.IsNotExist(err) {
-		ioutil.WriteFile(p, []byte(uid), 0600)
-	} else if err != nil {
-		// other error
-		panic(err)
-	} else if data, err := ioutil.ReadFile(p); err == nil {
-		uid = string(data)
-	} else {
-		panic(err)
-	}
-
-	return func(h *Honeytrap) error {
-		h.token = uid
-		return nil
-	}
+	data := x509.MarshalPKCS1PrivateKey(priv)
+	return data, nil
 }

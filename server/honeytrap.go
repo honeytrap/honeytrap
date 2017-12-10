@@ -40,6 +40,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/fatih/color"
 
+	"github.com/honeytrap/honeytrap/cmd"
 	"github.com/honeytrap/honeytrap/config"
 
 	"github.com/honeytrap/honeytrap/director"
@@ -50,6 +51,7 @@ import (
 	"github.com/honeytrap/honeytrap/pushers/eventbus"
 
 	"github.com/honeytrap/honeytrap/services"
+	_ "github.com/honeytrap/honeytrap/services/ssh"
 	_ "github.com/honeytrap/honeytrap/services/vnc"
 
 	"github.com/honeytrap/honeytrap/listener"
@@ -70,6 +72,7 @@ import (
 	_ "github.com/honeytrap/honeytrap/pushers/elasticsearch" // Registers elasticsearch backend.
 	_ "github.com/honeytrap/honeytrap/pushers/file"          // Registers file backend.
 	_ "github.com/honeytrap/honeytrap/pushers/kafka"         // Registers kafka backend.
+	_ "github.com/honeytrap/honeytrap/pushers/raven"         // Registers raven backend.
 	_ "github.com/honeytrap/honeytrap/pushers/slack"         // Registers slack backend.
 	_ "github.com/honeytrap/honeytrap/pushers/splunk"        // Registers splunk backend.
 
@@ -169,6 +172,7 @@ func (hc *Honeytrap) heartbeat() {
 // Run will start honeytrap
 func (hc *Honeytrap) Run(ctx context.Context) {
 	fmt.Println(color.YellowString("Honeytrap%c  starting (%s)...", 127855, hc.token))
+	fmt.Println(color.YellowString("Version: %s (%s)", cmd.Version, cmd.ShortCommitID))
 
 	go hc.heartbeat()
 

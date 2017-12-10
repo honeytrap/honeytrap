@@ -1,3 +1,5 @@
+// +build ignore
+
 /*
 * Honeytrap
 * Copyright (C) 2016-2017 DutchSec (https://dutchsec.com/)
@@ -28,94 +30,56 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package server
+package main
 
 import (
-	"bytes"
-	"io/ioutil"
+	"fmt"
 	"os"
-	"os/user"
-	"path"
-
-	_ "net/http/pprof"
-
-	"github.com/pkg/profile"
-	"github.com/rs/xid"
-
-	"github.com/honeytrap/honeytrap/server/profiler"
+	"os/exec"
+	"strings"
+	"time"
 )
 
-type OptionFn func(*Honeytrap) error
-
-func WithMemoryProfiler() OptionFn {
-	return func(b *Honeytrap) error {
-		b.profiler = profiler.New(profile.MemProfile)
-		return nil
-	}
+func genLDFlags(version string) string {
+	var ldflagsStr string
+	ldflagsStr = "-X github.com/honeytrap/honeytrap/cmd.Version=" + version
+	ldflagsStr += " -X github.com/honeytrap/honeytrap/cmd.ReleaseTag=" + releaseTag(version)
+	ldflagsStr += " -X github.com/honeytrap/honeytrap/cmd.CommitID=" + commitID()
+	ldflagsStr += " -X github.com/honeytrap/honeytrap/cmd.ShortCommitID=" + commitID()[:12]
+	ldflagsStr += " -X github.com/honeytrap/honeytrap/cmd.GOPATH=" + os.Getenv("GOPATH")
+	return ldflagsStr
 }
 
-func WithCPUProfiler() OptionFn {
-	return func(b *Honeytrap) error {
-		b.profiler = profiler.New(profile.CPUProfile)
-		return nil
+// genReleaseTag prints release tag to the console for easy git tagging.
+func releaseTag(version string) string {
+	relPrefix := "DEVELOPMENT"
+	if prefix := os.Getenv("HONEYTRAP_RELEASE"); prefix != "" {
+		relPrefix = prefix
 	}
+
+	relTag := strings.Replace(version, " ", "-", -1)
+	relTag = strings.Replace(relTag, ":", "-", -1)
+	relTag = strings.Replace(relTag, ",", "", -1)
+	return relPrefix + "." + relTag
 }
 
-func WithConfig(s string) (OptionFn, error) {
-	data, err := ioutil.ReadFile(s)
-	if err != nil {
-		return nil, err
+// commitID returns the abbreviated commit-id hash of the last commit.
+func commitID() string {
+	// git log --format="%h" -n1
+	var (
+		commit []byte
+		e      error
+	)
+	cmdName := "git"
+	cmdArgs := []string{"log", "--format=%H", "-n1"}
+	if commit, e = exec.Command(cmdName, cmdArgs...).Output(); e != nil {
+		fmt.Fprintln(os.Stderr, "Error generating git commit-id: ", e)
+		os.Exit(1)
 	}
 
-	return func(b *Honeytrap) error {
-		return b.config.Load(bytes.NewBuffer(data))
-	}, nil
+	return strings.TrimSpace(string(commit))
 }
 
-func HomeDir() string {
-	var err error
-	var usr *user.User
-	if usr, err = user.Current(); err != nil {
-		panic(err)
-	}
-
-	p := path.Join(usr.HomeDir, ".honeytrap")
-
-	_, err = os.Stat(p)
-
-	switch {
-	case err == nil:
-		break
-	case os.IsNotExist(err):
-		if err = os.Mkdir(p, 0755); err != nil {
-			panic(err)
-		}
-	default:
-		panic(err)
-	}
-
-	return p
-}
-
-func WithToken() OptionFn {
-	uid := xid.New().String()
-
-	p := HomeDir()
-	p = path.Join(p, "token")
-
-	if _, err := os.Stat(p); os.IsNotExist(err) {
-		ioutil.WriteFile(p, []byte(uid), 0600)
-	} else if err != nil {
-		// other error
-		panic(err)
-	} else if data, err := ioutil.ReadFile(p); err == nil {
-		uid = string(data)
-	} else {
-		panic(err)
-	}
-
-	return func(h *Honeytrap) error {
-		h.token = uid
-		return nil
-	}
+func main() {
+	fmt.Println(genLDFlags(time.Now().UTC().Format(time.RFC3339)))
 }

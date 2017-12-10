@@ -1,0 +1,23 @@
+[listener]
+type="socket"
+
+[service.ssh-simulator]
+type="ssh-simulator"
+port="tcp/8022"
+credentials=["root:root", "root:password"]
+
+[service.vnc]
+type="vnc"
+port="tcp/5900"
+image="/data/screenshot-20171030174349.png"
+server-name="WS-3244"
+
+[channel.console]
+type="console"
+
+[[filter]]
+channel=["console"]
+
+[[logging]]
+output = "stdout"
+level = "debug"

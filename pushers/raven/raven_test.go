@@ -28,94 +28,60 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package server
+package raven
 
-import (
-	"bytes"
-	"io/ioutil"
-	"os"
-	"os/user"
-	"path"
+const config = `
+[P]
+`
 
-	_ "net/http/pprof"
+/*
+func TestChannelsRavenSend(t *testing.T) {
+	seedBroker := sarama.NewMockBroker(t, 1)
+	defer seedBroker.Close()
 
-	"github.com/pkg/profile"
-	"github.com/rs/xid"
+	leader := sarama.NewMockBroker(t, 2)
+	defer leader.Close()
 
-	"github.com/honeytrap/honeytrap/server/profiler"
-)
+	metadataResponse := new(sarama.MetadataResponse)
+	metadataResponse.AddBroker(leader.Addr(), leader.BrokerID())
+	metadataResponse.AddTopicPartition("my_topic", 0, leader.BrokerID(), nil, nil, sarama.ErrNoError)
 
-type OptionFn func(*Honeytrap) error
+	seedBroker.Returns(metadataResponse)
 
-func WithMemoryProfiler() OptionFn {
-	return func(b *Honeytrap) error {
-		b.profiler = profiler.New(profile.MemProfile)
-		return nil
-	}
-}
+	prodSuccess := new(sarama.ProduceResponse)
+	prodSuccess.AddTopicPartition("my_topic", 0, sarama.ErrNoError)
 
-func WithCPUProfiler() OptionFn {
-	return func(b *Honeytrap) error {
-		b.profiler = profiler.New(profile.CPUProfile)
-		return nil
-	}
-}
+	leader.Returns(prodSuccess)
 
-func WithConfig(s string) (OptionFn, error) {
-	data, err := ioutil.ReadFile(s)
+	s := struct {
+		P toml.Primitive
+	}{}
+
+	_, err := toml.Decode(fmt.Sprintf(config, seedBroker.Addr()), &s)
+
 	if err != nil {
-		return nil, err
+		t.Error(err)
 	}
 
-	return func(b *Honeytrap) error {
-		return b.config.Load(bytes.NewBuffer(data))
-	}, nil
+	c, err := New(
+		pushers.WithConfig(s.P),
+	)
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	c.Send(event.New())
+
+	kb := c.(*RavenBackend)
+
+	select {
+	case _ = <-kb.producer.Successes():
+	case msg := <-kb.producer.Errors():
+		t.Error(msg.Err)
+	}
+
+	close(kb.ch)
+
 }
-
-func HomeDir() string {
-	var err error
-	var usr *user.User
-	if usr, err = user.Current(); err != nil {
-		panic(err)
-	}
-
-	p := path.Join(usr.HomeDir, ".honeytrap")
-
-	_, err = os.Stat(p)
-
-	switch {
-	case err == nil:
-		break
-	case os.IsNotExist(err):
-		if err = os.Mkdir(p, 0755); err != nil {
-			panic(err)
-		}
-	default:
-		panic(err)
-	}
-
-	return p
-}
-
-func WithToken() OptionFn {
-	uid := xid.New().String()
-
-	p := HomeDir()
-	p = path.Join(p, "token")
-
-	if _, err := os.Stat(p); os.IsNotExist(err) {
-		ioutil.WriteFile(p, []byte(uid), 0600)
-	} else if err != nil {
-		// other error
-		panic(err)
-	} else if data, err := ioutil.ReadFile(p); err == nil {
-		uid = string(data)
-	} else {
-		panic(err)
-	}
-
-	return func(h *Honeytrap) error {
-		h.token = uid
-		return nil
-	}
-}
+*/

@@ -1,13 +1,14 @@
-FROM influx6/lxcontains-ubuntu
+FROM golang:latest
 
 ADD . /go/src/github.com/honeytrap/honeytrap
 
-RUN bash -c "mkdir -p /honeytrap"
-RUN cp config.toml.sample /honeytrap/config.toml
+ARG LDFLAGS=""
+RUN mkdir /config/
+ADD config-docker.toml /config/config.toml
+RUN go build -tags="" -ldflags="$LDFLAGS" -o /go/bin/app github.com/honeytrap/honeytrap
 
-WORKDIR /honeytrap
+WORKDIR /go/src/github.com/honeytrap/honeytrap
 
-EXPOSE 8022
-EXPOSE 3000
+ENTRYPOINT ["/go/bin/app", "--config", "/config/config.toml"]
 
-ENTRYPOINT honeytrap
+EXPOSE 8022 5900

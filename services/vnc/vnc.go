@@ -58,7 +58,7 @@ func Vnc(options ...services.ServicerFunc) services.Servicer {
 	}
 
 	if pwd, err := os.Getwd(); err != nil {
-	} else {
+	} else if !filepath.IsAbs(s.ImagePath) {
 		s.ImagePath = filepath.Join(pwd, s.ImagePath)
 	}
 
