@@ -2,10 +2,13 @@ package services
 
 import (
 	"bytes"
+	"encoding/binary"
+
+	"github.com/honeytrap/honeytrap/services/decoder"
 )
 
 const (
-	// Delimiter tag values / begin-attribute-group-tag
+	// Delimiter tags , begin-attribute-group-tag
 	opAttribTag      byte = 0x01 //operation-attributes-tag
 	jobAttribTag     byte = 0x02 //job-attributes-tag
 	endAttribTag     byte = 0x03 //end-of-attributes-tag
@@ -29,8 +32,8 @@ const (
 	valKeyword       byte = 0x44
 	valUri           byte = 0x45
 	valUriScheme     byte = 0x46
-	valCharSet       byte = 0x47
-	naturelLang      byte = 0x48
+	valCharSet       byte = 0x47 //attributes-charset
+	naturelLang      byte = 0x48 //attributes-naturel-language
 	mimeMediaType    byte = 0x49
 	memberAttribName byte = 0x4a
 
@@ -43,8 +46,8 @@ const (
 )
 
 type ippMessage struct {
-	versionMajor int8
-	versionMinor int8
+	versionMajor byte
+	versionMinor byte
 	statusCode   int16 // is operation-id in request
 	requestId    int32
 	attributes   []attribGroup
@@ -74,16 +77,14 @@ type additionalValue struct { //additional-value
 }
 
 // Returns a IPP response based on the IPP request
-func ippHandler(ippBody *[]byte) *bytes.Buffer {
-	body := &ippMessage{
-		versionMajor: ippBody[0],
-		versionMinor: ippBody[1],
-		statusCode:   0, //Ok code
-		requestId:    ippBody[4:7],
-		endTag:       endAttribTag,
+func ippHandler(ippBody []byte) *bytes.Buffer {
+	body := &ippMessage{}
+	err := body.Read(ippBody)
+	if err != nil {
+		return nil
 	}
-	opId := int16(ippBody[2:3])
-	switch opId {
+
+	switch body.statusCode {
 	case opPrintJob:
 	case opValidateJob:
 	case opCreateJob:
@@ -91,4 +92,19 @@ func ippHandler(ippBody *[]byte) *bytes.Buffer {
 	case opGetPrinterAttrib:
 	default:
 	}
+}
+
+func (m *ippMessage) Read(raw []byte) error {
+	dec := decoder.NewDefaultDecoder(raw, binary.BigEndian)
+	if err := dec.HasBytes(8); err != nil {
+		return err
+	}
+	m.versionMajor, _ = dec.Byte()
+	m.versionMinor, _ = dec.Byte()
+	m.statusCode, _ = dec.Int16()
+	m.requestId, _ = dec.Int32()
+	return nil
+}
+
+func (m *ippMessage) Response() *[]byte {
 }
