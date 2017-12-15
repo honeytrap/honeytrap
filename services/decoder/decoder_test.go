@@ -132,18 +132,6 @@ func TestSkip(t *testing.T) {
 	}
 }
 
-func TestAlign(t *testing.T) {
-	bs := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
-	dec := NewDefaultDecoder(bs, binary.BigEndian)
-
-	_, _ = dec.Seek(2)
-	dec.Align(4)
-	want := byte(0x04)
-	if got, _ := dec.PeekByte(); got != want {
-		t.Errorf("Align(4): got %d, expected %d", got, want)
-	}
-}
-
 func TestAString(t *testing.T) {
 	bs := []byte{74, 69, 82, 82, 89, 65}
 	dec := NewDefaultDecoder(bs, binary.BigEndian)
@@ -169,5 +157,50 @@ func TestCString(t *testing.T) {
 	want = "A"
 	if got := dec.CString(); got != want {
 		t.Errorf("CString: got %v, want %v", got, want)
+	}
+}
+
+func TestCopyAll(t *testing.T) {
+	bs := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
+	dec := NewDefaultDecoder(bs, binary.BigEndian)
+
+	c := dec.Copy(dec.Available())
+	if len(c) != len(bs) {
+		t.Errorf("Copy: len copy: %v != len orig: %v", len(c), len(bs))
+	}
+}
+
+func TestCopy2(t *testing.T) {
+	bs := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
+	dec := NewDefaultDecoder(bs, binary.BigEndian)
+
+	sz := 2
+	c := dec.Copy(sz)
+	if len(c) != sz {
+		t.Errorf("Copy: len copy: %v != len orig: %v", len(c), sz)
+	}
+	if c[1] != 0x02 {
+		t.Errorf("Copy2: copied wrong bytes, got %v want 2", c[1])
+	}
+}
+
+func TestCopyTooMuch(t *testing.T) {
+	bs := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
+	dec := NewDefaultDecoder(bs, binary.BigEndian)
+
+	c := dec.Copy(len(bs) + 1)
+	if c != nil {
+		t.Errorf("Copy: is not nil after asking for too much bytes")
+	}
+}
+
+func TestCopyOffset(t *testing.T) {
+	bs := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
+	dec := NewDefaultDecoder(bs, binary.BigEndian)
+
+	_ = dec.Copy(2)
+	cc := dec.Copy(2)
+	if cc[0] != 0x03 {
+		t.Errorf("CopyOffset: Offset wrong with second copy. Got %v want 0x03", cc[0])
 	}
 }

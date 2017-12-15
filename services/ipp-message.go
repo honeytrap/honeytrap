@@ -43,26 +43,29 @@ const (
 	opCreateJob        int16 = 0x0005
 	opGetJobAttrib     int16 = 0x0009
 	opGetPrinterAttrib int16 = 0x000b
+
+	// Status values
+	sOk int16 = 0x0000 //successful-ok
 )
 
 type ippMessage struct {
 	versionMajor byte
 	versionMinor byte
-	statusCode   int16 // is operation-id in request
+	statusCode   int16 //is operation-id in request
 	requestId    int32
 	attributes   []attribGroup
-	endTag       byte   // is always endAttribTag (3)
-	data         []byte // if there is data otherwise nil
+	endTag       byte   //is always endAttribTag (3)
+	data         []byte //if there is data otherwise nil
 }
 
 type attribGroup struct {
-	attribGroupTag int8 //begin-attribute-group-tag
+	attribGroupTag byte //begin-attribute-group-tag
 	val            attribOneValue
 	additionalVal  []additionalValue
 }
 
 type attribOneValue struct { //Atrribute-with-one-value
-	valueTag int8  //value-tag
+	valueTag byte  //value-tag
 	nameLen  int16 //name-length
 	name     []byte
 	valueLen int16 //value-length
@@ -70,28 +73,40 @@ type attribOneValue struct { //Atrribute-with-one-value
 }
 
 type additionalValue struct { //additional-value
-	valueTag int8  //value-tag
+	valueTag byte  //value-tag
 	nameLen  int16 //name-length should always be 0x0
 	valueLen int16 //value-length
 	value    []byte
 }
 
 // Returns a IPP response based on the IPP request
-func ippHandler(ippBody []byte) *bytes.Buffer {
+func ippHandler(ippBody []byte) (*bytes.Buffer, []byte) {
 	body := &ippMessage{}
+
 	err := body.Read(ippBody)
 	if err != nil {
 		return nil
 	}
 
-	switch body.statusCode {
+	rbody := &ippMessage{}
+	rbody.versionMajor = body.versionMajor
+	rbody.versionMinor = body.versionMinor
+	rbody.requestId = body.requestId
+	rbody.statusCode = sOk //We have the ultimate printer
+
+	var print []byte //nil slice, the print data if any
+
+	switch body.statusCode { //operation-id
 	case opPrintJob:
+		print := body.data
 	case opValidateJob:
 	case opCreateJob:
 	case opGetJobAttrib:
 	case opGetPrinterAttrib:
 	default:
 	}
+
+	return rbody.Response(), print
 }
 
 func (m *ippMessage) Read(raw []byte) error {
@@ -103,8 +118,24 @@ func (m *ippMessage) Read(raw []byte) error {
 	m.versionMinor, _ = dec.Byte()
 	m.statusCode, _ = dec.Int16()
 	m.requestId, _ = dec.Int32()
+
+	//Find the end tag
+	for end, err := dec.Byte(); end == endAttribTag; end, err = dec.Byte() {
+		if err != nil {
+			break
+		}
+	}
+	m.data = dec.Copy(dec.Available())
+
 	return nil
 }
 
-func (m *ippMessage) Response() *[]byte {
+func (m *ippMessage) Response() *bytes.Buffer {
+	buf := new(bytes.Buffer)
+	_ := binary.Write(buf, binary.BigEndian, m.versionMajor)
+	_ := binary.Write(buf, binary.BigEndian, m.versionMinor)
+	_ := binary.Write(buf, binary.BigEndian, m.statusCode)
+	_ := binary.Write(buf, binary.BigEndian, m.requestId)
+
+	return buf
 }
