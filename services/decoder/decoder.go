@@ -6,15 +6,6 @@ import (
 	"math"
 )
 
-type ErrDecoderTooShort struct {
-	Got  int
-	Want int
-}
-
-func (e ErrDecoderTooShort) Error() string {
-	return fmt.Sprintf("Decoding: length %v too short, %v required", e.Got, e.Want)
-}
-
 type ErrOutOfBounds struct {
 	Min int
 	Max int
@@ -46,9 +37,9 @@ type Decoder interface {
 	AString(size int) (string, error)
 	CString() string
 	Data() []byte
+	Copy(size int) []byte
 
 	Skip(int) error
-	Align(int)
 	Seek(int) (int, error)
 	Offset() int
 	StartOffset() int
@@ -104,16 +95,17 @@ func (d *DefaultDecoder) Available() int {
 
 /* Check if size bytes are available
  * Zero or negative sizes are not allowed
- *   Use Seek if you wanna go back
+ * nb. Use Seek if you wanna go back
  */
 func (d *DefaultDecoder) HasBytes(size int) error {
 	if size > 0 && len(d.data) >= d.offset+size {
 		return nil
 	}
 
-	return ErrDecoderTooShort{
-		Got:  len(d.data) - d.offset,
-		Want: size,
+	return ErrOutOfBounds{
+		Min: 0,
+		Max: len(d.data),
+		Got: size,
 	}
 }
 
@@ -237,6 +229,20 @@ func (d *DefaultDecoder) IEEE754_Float64() (float64, error) {
 	}
 }
 
+/* Copy size bytes from offset to new byte slice
+ * Returns nil if size is 0 or larger then data size.
+ * offset is set accordingly
+ */
+func (d *DefaultDecoder) Copy(size int) []byte {
+	if size < 0 || d.offset+size > len(d.data) {
+		return nil
+	}
+	c := make([]byte, size)
+	copy(c, d.data[d.offset:d.offset+size])
+	d.offset += size
+	return c
+}
+
 // Read a byte string of given size
 func (d *DefaultDecoder) AString(size int) (string, error) {
 	if err := d.HasBytes(size); err != nil {
@@ -268,6 +274,7 @@ func (d *DefaultDecoder) CString() string {
 	}
 
 	defer func() {
+		// Step over terminating zero
 		d.offset += size + 1
 	}()
 
@@ -309,21 +316,11 @@ func (d *DefaultDecoder) Skip(n int) error {
 	return nil
 }
 
-// Aligns offset to n
-func (d *DefaultDecoder) Align(n int) {
-	if d.offset%n == 0 {
-		return
-	}
-
-	d.offset += n - (d.offset % n) - 1
-}
-
 func (d *DefaultDecoder) Data() []byte {
 	return d.data[:]
 }
 
 func (d *DefaultDecoder) Dump() {
-	// debug.PrintStack()
 
 	fmt.Printf("Offset: %d\n% #x \n", d.offset, d.data[d.offset:])
 }
