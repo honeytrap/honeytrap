@@ -55,6 +55,7 @@ import (
 	_ "github.com/honeytrap/honeytrap/services/vnc"
 
 	"github.com/honeytrap/honeytrap/listener"
+	_ "github.com/honeytrap/honeytrap/listener/agent"
 	_ "github.com/honeytrap/honeytrap/listener/canary"
 	_ "github.com/honeytrap/honeytrap/listener/netstack"
 	_ "github.com/honeytrap/honeytrap/listener/socket"
@@ -427,12 +428,14 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case conn := <-incoming:
-			hc.handle(conn)
+			go hc.handle(conn)
 		}
 	}
 }
 
 func (hc *Honeytrap) handle(conn net.Conn) {
+	defer conn.Close()
+
 	for _, sm := range hc.matchers {
 		if !sm.Matcher(conn.LocalAddr()) {
 			continue
@@ -440,7 +443,7 @@ func (hc *Honeytrap) handle(conn net.Conn) {
 
 		log.Debug("Handling connection for %s => %s %s(%s)", conn.RemoteAddr(), conn.LocalAddr(), sm.Name, sm.Type)
 
-		go func(service services.Servicer) {
+		func(service services.Servicer) {
 			err := service.Handle(conn)
 			if err != nil {
 				fmt.Println(color.RedString(err.Error()))
