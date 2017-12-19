@@ -32,7 +32,6 @@ package agent
 
 import (
 	"encoding"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
@@ -79,180 +78,87 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 	return &l, nil
 }
 
-type conn2 struct {
-	net.Conn
-
-	al *agentListener
-}
-
-func (c *conn2) Handshake() error {
-	buff := make([]byte, 2)
-
+func (sl *agentListener) serv(c *conn2) {
 	log.Debugf("Agent connecting from remote address: %s", c.RemoteAddr())
 
-	n, err := c.Read(buff[:])
-	if err != nil {
-		return err
-	}
-
-	size := binary.LittleEndian.Uint16(buff)
-
-	buff = make([]byte, size)
-	n, err = c.Read(buff[:])
-	if err != nil {
-		return err
-	}
-
-	h := Handshake{}
-
-	if err := h.UnmarshalBinary(buff[:n]); err != nil {
-		return err
-	}
-
-	fmt.Println("Handhake received")
-
-	p := HandshakeResponse{
-		c.al.Addresses,
-	}
-
-	if data, err := p.MarshalBinary(); err == nil {
-		buff := make([]byte, 2)
-		binary.LittleEndian.PutUint16(buff[0:2], uint16(len(data)))
-
-		c.Write(buff)
-		c.Write(data)
-	} else {
-		return err
-	}
-
-	return nil
-}
-
-func (ac conn2) send(o encoding.BinaryMarshaler) error {
-	data, err := o.MarshalBinary()
-	if err != nil {
-		return err
-	}
-
-	buff := make([]byte, 2)
-	binary.LittleEndian.PutUint16(buff[0:2], uint16(len(data)))
-
-	if _, err := ac.Conn.Write(buff); err != nil {
-		return err
-	}
-
-	if _, err := ac.Conn.Write(data); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (sl *agentListener) serv(c conn2) {
-	conns := Connections{}
-
-	if err := c.Handshake(); err == io.EOF {
+	if p, err := c.receive(); err == io.EOF {
 		return
 	} else if err != nil {
-		fmt.Println(color.RedString(err.Error()))
+		log.Errorf("Error receiving object: %s", err.Error())
+		return
+	} else if _, ok := p.(*Handshake); !ok {
+		log.Errorf("Expected handshake from Agent")
 		return
 	}
+
+	c.send(HandshakeResponse{
+		sl.Addresses,
+	})
 
 	fmt.Println("Agent connected...")
 	defer fmt.Println("Agent disconnected...")
 
-	out := make(chan ReadWrite)
-	go func(ch chan ReadWrite) {
-		for p := range ch {
-			err := c.send(p)
-			if err != nil {
-				log.Error("Error marshaling hello: %s", err.Error())
+	conns := Connections{}
+
+	defer func() {
+		for _, conn := range conns {
+			conn.Close()
+		}
+	}()
+
+	out := make(chan interface{})
+
+	go func() {
+		for p := range out {
+			if bm, ok := p.(encoding.BinaryMarshaler); !ok {
+				log.Errorf("Error marshalling object")
+				break
+			} else if err := c.send(bm); err != nil {
+				log.Errorf("Error sending object: %s", err.Error())
 				break
 			}
 		}
-	}(out)
+	}()
 
-	func(ch chan ReadWrite) {
-		for {
-			buff := make([]byte, 2)
-
-			n, err := c.Read(buff[:])
-			if err == io.EOF {
-				log.Errorf("REMCO EOF", err.Error())
-			} else if err != nil {
-				log.Errorf("REMCO ", err.Error())
-				return
-			}
-
-			size := binary.LittleEndian.Uint16(buff)
-
-			buff = make([]byte, size)
-			n, err = c.Read(buff[:])
-			if err != nil {
-				log.Errorf(err.Error())
-				return
-			}
-
-			if int(buff[0]) == TypeHello {
-				h := Hello{}
-
-				err := h.UnmarshalBinary(buff[:n])
-				if err != nil {
-					log.Errorf(err.Error())
-					return
-				}
-
-				ac := &agentConnection{
-					Laddr: h.Laddr,
-					Raddr: h.Raddr,
-					in:    make(chan []byte),
-					out:   ch,
-				}
-
-				conns = append(conns, ac)
-
-				sl.ch <- ac
-
-			} else if int(buff[0]) == TypeReadWrite {
-				r := ReadWrite{}
-
-				err := r.UnmarshalBinary(buff[:n])
-				if err != nil {
-					log.Errorf(err.Error())
-					return
-				}
-
-				conn := conns.Get(r.Laddr, r.Raddr)
-				if conn == nil {
-					continue
-				}
-
-				conn.in <- r.Payload
-			} else if int(buff[0]) == TypeEOF {
-				// read
-				fmt.Println("EOF")
-				r := EOF{}
-
-				err := r.UnmarshalBinary(buff[:n])
-				if err != nil {
-					log.Errorf(err.Error())
-					return
-				}
-
-				conn := conns.Get(r.Laddr, r.Raddr)
-				if conn == nil {
-					continue
-				}
-
-				// remove connection
-
-				conn.closed = true
-				close(conn.in)
-			} else if int(buff[0]) == TypePing {
-				log.Debugf("Received ping from agent: %s", c.RemoteAddr())
-			}
+	for {
+		o, err := c.receive()
+		if err == io.EOF {
+			return
+		} else if err != nil {
+			log.Errorf("Error receiving object: %s", err.Error())
+			return
 		}
-	}(out)
+
+		switch v := o.(type) {
+		case *Hello:
+			ac := &agentConnection{
+				Laddr: v.Laddr,
+				Raddr: v.Raddr,
+				in:    make(chan []byte),
+				out:   out,
+			}
+
+			conns.Add(ac)
+
+			sl.ch <- ac
+		case *ReadWrite:
+			conn := conns.Get(v.Laddr, v.Raddr)
+			if conn == nil {
+				break
+			}
+
+			conn.in <- v.Payload
+		case *EOF:
+			conn := conns.Get(v.Laddr, v.Raddr)
+			if conn == nil {
+				continue
+			}
+
+			conn.Close()
+		case *Ping:
+			log.Debugf("Received ping from agent: %s", c.RemoteAddr())
+		}
+	}
 
 	return
 }
@@ -274,10 +180,7 @@ func (sl *agentListener) Start() error {
 				continue
 			}
 
-			sl.serv(conn2{
-				c,
-				sl,
-			})
+			sl.serv(Conn2(c))
 		}
 	}()
 

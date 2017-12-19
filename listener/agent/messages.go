@@ -31,7 +31,6 @@
 package agent
 
 import (
-	"errors"
 	"net"
 )
 
@@ -50,16 +49,12 @@ type Handshake struct {
 func (r *Handshake) UnmarshalBinary(data []byte) error {
 	d := NewDecoder(data)
 
-	if d.ReadUint8() != TypeHandshake {
-		return errors.New("Not a handshake packet")
-	}
-
+	_ = d
 	return nil
 }
 
 func (h Handshake) MarshalBinary() ([]byte, error) {
 	e := Encoder{}
-	e.WriteUint8(TypeHandshake)
 	return e.Bytes(), nil
 }
 
@@ -69,11 +64,6 @@ type HandshakeResponse struct {
 
 func (h *HandshakeResponse) UnmarshalBinary(data []byte) error {
 	d := NewDecoder(data)
-
-	if d.ReadUint8() != TypeHandshakeResponse {
-		return errors.New("Not a handshake packet")
-	}
-
 	n := d.ReadUint8()
 
 	h.Addresses = make([]net.Addr, n)
@@ -87,7 +77,6 @@ func (h *HandshakeResponse) UnmarshalBinary(data []byte) error {
 
 func (h HandshakeResponse) MarshalBinary() ([]byte, error) {
 	e := Encoder{}
-	e.WriteUint8(TypeHandshakeResponse)
 	e.WriteUint8(len(h.Addresses))
 
 	for _, address := range h.Addresses {
@@ -106,7 +95,6 @@ type Hello struct {
 func (h Hello) MarshalBinary() ([]byte, error) {
 	e := Encoder{}
 
-	e.WriteUint8(TypeHello)
 	e.WriteUint8(0)
 
 	e.WriteString(h.Token)
@@ -119,10 +107,6 @@ func (h Hello) MarshalBinary() ([]byte, error) {
 
 func (h *Hello) UnmarshalBinary(data []byte) error {
 	decoder := NewDecoder(data)
-
-	if decoder.ReadUint8() != TypeHello {
-		return errors.New("Not a hello packet")
-	}
 
 	_ = decoder.ReadUint8() /* protocol */
 
@@ -138,10 +122,20 @@ type Ping struct {
 	Raddr net.Addr
 }
 
+func (h *Ping) UnmarshalBinary(data []byte) error {
+	decoder := NewDecoder(data)
+
+	_ = decoder.ReadUint8() /* protocol */
+
+	h.Token = decoder.ReadString()
+	h.Laddr = decoder.ReadAddr()
+	h.Raddr = decoder.ReadAddr()
+	return nil
+}
+
 func (h Ping) MarshalBinary() ([]byte, error) {
 	e := Encoder{}
 
-	e.WriteUint8(TypePing)
 	e.WriteUint8(0)
 
 	e.WriteString(h.Token)
@@ -160,10 +154,6 @@ type EOF struct {
 func (r *EOF) UnmarshalBinary(data []byte) error {
 	decoder := NewDecoder(data)
 
-	if decoder.ReadUint8() != TypeEOF {
-		return errors.New("Not a eof packet")
-	}
-
 	decoder.ReadUint8()
 
 	r.Laddr = decoder.ReadAddr()
@@ -175,7 +165,6 @@ func (r *EOF) UnmarshalBinary(data []byte) error {
 func (h EOF) MarshalBinary() ([]byte, error) {
 	e := Encoder{}
 
-	e.WriteUint8(TypeEOF)
 	e.WriteUint8(0)
 
 	e.WriteAddr(h.Laddr)
@@ -194,7 +183,6 @@ type ReadWrite struct {
 func (h ReadWrite) MarshalBinary() ([]byte, error) {
 	e := Encoder{}
 
-	e.WriteUint8(TypeReadWrite)
 	e.WriteUint8(0)
 
 	e.WriteAddr(h.Laddr)
@@ -207,10 +195,6 @@ func (h ReadWrite) MarshalBinary() ([]byte, error) {
 
 func (r *ReadWrite) UnmarshalBinary(data []byte) error {
 	decoder := NewDecoder(data)
-
-	if decoder.ReadUint8() != TypeReadWrite {
-		return errors.New("Not a read packet")
-	}
 
 	decoder.ReadUint8()
 

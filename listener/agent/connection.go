@@ -31,6 +31,7 @@
 package agent
 
 import (
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -46,7 +47,7 @@ type agentConnection struct {
 
 	in chan []byte
 
-	out chan ReadWrite
+	out chan interface{}
 
 	m sync.Mutex
 }
@@ -64,6 +65,7 @@ func (dc *agentConnection) Read(b []byte) (int, error) {
 
 	data, ok := <-dc.in
 	if !ok {
+		fmt.Println("NOT OK, RETURN EOF")
 		return 0, io.EOF
 	}
 
@@ -109,12 +111,7 @@ func (dc *agentConnection) Close() error {
 		Raddr: dc.RemoteAddr(),
 	}
 
-	if data, err := p.MarshalBinary(); err == nil {
-		dc.in <- data
-	} else {
-		log.Error("Error marshaling hello: %s", err.Error())
-		return err
-	}
+	dc.out <- p
 
 	close(dc.in)
 

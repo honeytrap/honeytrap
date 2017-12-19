@@ -36,6 +36,13 @@ import (
 
 type Connections []*agentConnection
 
+func (c *Connections) Add(ac *agentConnection) {
+	*c = append(*c, ac)
+}
+
+func (c *Connections) Delete(*agentConnection) {
+}
+
 func (c Connections) Get(laddr net.Addr, raddr net.Addr) *agentConnection {
 	for _, conn := range c {
 		if conn.Laddr.String() != laddr.String() {
