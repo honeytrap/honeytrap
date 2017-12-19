@@ -152,6 +152,18 @@
   version = "v1.3.0"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/mimoo/StrobeGo"
+  packages = ["strobe"]
+  revision = "43f0c284a7f9a40527b14a06a93a1a69f480cf91"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/mimoo/disco"
+  packages = ["libdisco"]
+  revision = "911dedbad3878426881579e4d2d6c4169981089c"
+
+[[projects]]
   name = "github.com/op/go-logging"
   packages = ["."]
   revision = "b2cb9fa56473e98db8caba80237377e83fe44db5"
@@ -214,7 +226,7 @@
 [[projects]]
   branch = "master"
   name = "golang.org/x/crypto"
-  packages = ["curve25519","ed25519","ed25519/internal/edwards25519","ssh"]
+  packages = ["curve25519","ed25519","ed25519/internal/edwards25519","ssh","ssh/terminal"]
   revision = "2509b142fb2b797aa7587dad548f113b2c0f20ce"
 
 [[projects]]
@@ -250,6 +262,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "0b3e24e88211cfed2fc48edd3992ef14329be4af6ac285fb02520e3a97b6f0ed"
+  inputs-digest = "dbe9f804425d37fcbb3532772bf82df9a6fc30d03a01ed874739e6d043f2ba4a"
   solver-name = "gps-cdcl"
   solver-version = 1

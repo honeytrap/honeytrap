@@ -32,12 +32,16 @@ package agent
 
 import (
 	"encoding"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
 
 	"github.com/fatih/color"
 	"github.com/honeytrap/honeytrap/listener"
+	"github.com/mimoo/disco/libdisco"
+
+	"github.com/honeytrap/honeytrap/storage"
 	logging "github.com/op/go-logging"
 )
 
@@ -82,6 +86,7 @@ func (sl *agentListener) serv(c *conn2) {
 	log.Debugf("Agent connecting from remote address: %s", c.RemoteAddr())
 
 	if p, err := c.receive(); err == io.EOF {
+		fmt.Println("EOF")
 		return
 	} else if err != nil {
 		log.Errorf("Error receiving object: %s", err.Error())
@@ -164,7 +169,38 @@ func (sl *agentListener) serv(c *conn2) {
 }
 
 func (sl *agentListener) Start() error {
-	l, err := net.Listen("tcp", ":1339")
+	s, err := storage.Namespace("agent")
+	if err != nil {
+		return err
+	}
+
+	key := make([]byte, 128)
+
+	if v, err := s.Get("key"); err == nil {
+		key = v
+	} else {
+		keyPair := libdisco.GenerateKeypair(nil)
+
+		hex.Encode(key[:64], keyPair.PrivateKey[:])
+		hex.Encode(key[64:], keyPair.PublicKey[:])
+
+		s.Set("key", key[:])
+	}
+
+	var keyPair libdisco.KeyPair
+	if _, err = hex.Decode(keyPair.PublicKey[:], key[64:]); err != nil {
+	} else if _, err = hex.Decode(keyPair.PrivateKey[:], key[:64]); err != nil {
+	} else {
+	}
+
+	fmt.Println(color.YellowString("Honeytrap Agent Server public key: %s", keyPair.ExportPublicKey()))
+
+	serverConfig := libdisco.Config{
+		HandshakePattern: libdisco.Noise_NK,
+		KeyPair:          &keyPair,
+	}
+
+	listener, err := libdisco.Listen("tcp", ":1339", &serverConfig)
 	if err != nil {
 		fmt.Println(color.RedString("Error starting listener: %s", err.Error()))
 		return err
@@ -174,7 +210,7 @@ func (sl *agentListener) Start() error {
 
 	go func() {
 		for {
-			c, err := l.Accept()
+			c, err := listener.Accept()
 			if err != nil {
 				log.Errorf("Error accepting connection: %s", err.Error())
 				continue
