@@ -54,8 +54,8 @@ type ippMessage struct {
 	statusCode   int16 //is operation-id in request
 	requestId    int32
 	attributes   []attribGroup
-	endTag       byte   //is always endAttribTag (3)
 	data         []byte //if there is data otherwise nil
+	username     string
 }
 
 type attribGroup struct {
@@ -64,78 +64,103 @@ type attribGroup struct {
 }
 
 type attribOneValue struct { //Atrribute-with-one-value
-	valueTag byte  //value-tag
-	nameLen  int16 //name-length
-	name     []byte
-	valueLen int16 //value-length
-	value    []byte
+	valueTag byte //value-tag
+	name     string
+	value    string
 	aVal     []additionalValue
 }
 
 type additionalValue struct { //additional-value
-	valueTag byte  //value-tag
-	nameLen  int16 //name-length should always be 0x0
-	valueLen int16 //value-length
-	value    []byte
+	valueTag byte //value-tag
+	value    string
 }
 
-func (ao attribOneValue) decode(dec decoder.Decoder) error {
-	var err error
+func (ao *attribOneValue) decode(dec *decoder.DefaultDecoder) error {
 
+	var err error
 	vtag, err := dec.Byte()
-	nlen, err := dec.Int16()
-	if nlen == 0 { //Additional value
-		vlen, err := dec.Int16()
-		v := dec.Copy(int(vlen))
+	if l, _ := dec.Int16(); l == 0 { //This is an Additional value
+		s, _ := dec.Data()
+
 		a := additionalValue{
 			valueTag: vtag,
-			nameLen:  nlen,
-			valueLen: vlen,
-			value:    v,
+			value:    s,
 		}
 		ao.aVal = append(ao.aVal, a)
 		return err
+
 	} else {
 		ao.valueTag = vtag
-		ao.nameLen = nlen
-		ao.name = dec.Copy(int(ao.nameLen))
-		ao.valueLen, err = dec.Int16()
-		ao.value = dec.Copy(int(ao.valueLen))
+		ao.name, _ = dec.Data()
+		ao.value, _ = dec.Data()
 	}
 	return err
 }
 
+func (v *additionalValue) encode(buf *decoder.Encoder) {
+	buf.WriteUint8(v.valueTag)
+	buf.WriteUint16(int16(0))
+	buf.WriteData(v.value)
+}
+
+func (v *attribOneValue) encode(buf *decoder.Encoder) {
+	buf.WriteUint8(v.valueTag)
+	buf.WriteData(v.name)
+	buf.WriteData(v.value)
+	if v.aVal != nil {
+		for _, av := range v.aVal {
+			av.encode(buf)
+		}
+	}
+}
+
+func (v *attribGroup) encode(buf *decoder.Encoder) {
+	buf.WriteUint8(v.attribGroupTag)
+	if v.val != nil {
+		for _, aov := range v.val {
+			aov.encode(buf)
+		}
+	}
+}
+
+func (v *ippMessage) encode(buf *decoder.Encoder) {
+	buf.WriteUint8(v.versionMajor)
+	buf.WriteUint8(v.versionMinor)
+	buf.WriteUint16(v.statusCode)
+	buf.WriteUint32(v.requestId)
+	if v.attributes != nil {
+		for _, im := range v.attributes {
+			im.encode(buf)
+		}
+	}
+}
+
 // Returns a IPP response based on the IPP request
-func ippHandler(ippBody []byte) (*bytes.Buffer, []byte) {
+func IPPHandler(ippBody []byte) (*ippMessage, error) {
 	body := &ippMessage{}
 
 	err := body.Read(ippBody)
 	if err != nil {
-		return nil, nil
+		return nil, err
 	}
 
-	rbody := &ippMessage{}
-	rbody.versionMajor = body.versionMajor
-	rbody.versionMinor = body.versionMinor
-	rbody.requestId = body.requestId
-	rbody.statusCode = sOk //We have the ultimate printer
-
-	print := []byte{}
+	//Response structure
+	rbody := &ippMessage{
+		versionMajor: body.versionMajor,
+		versionMinor: body.versionMinor,
+		statusCode:   sOk,
+		requestId:    body.requestId,
+	}
 
 	switch body.statusCode { //operation-id
 	case opPrintJob:
-		print = body.data
 	case opValidateJob:
 	case opCreateJob:
 	case opGetJobAttrib:
 	case opGetPrinterAttrib:
 	default:
 	}
-
-	if len(print) > 0 {
-		return rbody.Response(), print
-	}
-	return rbody.Response(), nil
+	return rbody, nil
 }
 
 func (m *ippMessage) Read(raw []byte) error {
@@ -169,40 +194,17 @@ func (m *ippMessage) Read(raw []byte) error {
 
 		m.attributes = append(m.attributes, group)
 	}
+	// Append required end tag
+	m.attributes = append(m.attributes, attribGroup{attribGroupTag: endAttribTag})
 
-	m.endTag = endAttribTag
+	// Copy remaining data (printdata)
 	m.data = dec.Copy(dec.Available())
 
 	return nil
 }
 
 func (m *ippMessage) Response() *bytes.Buffer {
-	buf := new(bytes.Buffer)
-	var err error
-	err = binary.Write(buf, binary.BigEndian, m.versionMajor)
-	err = binary.Write(buf, binary.BigEndian, m.versionMinor)
-	err = binary.Write(buf, binary.BigEndian, m.statusCode)
-	err = binary.Write(buf, binary.BigEndian, m.requestId)
-	if m.attributes[0].attribGroupTag == opAttribTag {
-		err = binary.Write(buf, binary.BigEndian, opAttribTag)
-		//write charset
-		err = binary.Write(buf, binary.BigEndian, m.attributes[0].val[0].valueTag)
-		err = binary.Write(buf, binary.BigEndian, m.attributes[0].val[0].nameLen)
-		err = binary.Write(buf, binary.BigEndian, m.attributes[0].val[0].name)
-		err = binary.Write(buf, binary.BigEndian, m.attributes[0].val[0].valueLen)
-		err = binary.Write(buf, binary.BigEndian, m.attributes[0].val[0].value)
-
-		//write language
-		err = binary.Write(buf, binary.BigEndian, m.attributes[0].val[1].valueTag)
-		err = binary.Write(buf, binary.BigEndian, m.attributes[0].val[1].nameLen)
-		err = binary.Write(buf, binary.BigEndian, m.attributes[0].val[1].name)
-		err = binary.Write(buf, binary.BigEndian, m.attributes[0].val[1].valueLen)
-		err = binary.Write(buf, binary.BigEndian, m.attributes[0].val[1].value)
-	}
-
-	err = binary.Write(buf, binary.BigEndian, endAttribTag)
-	if err != nil {
-		return nil
-	}
-	return buf
+	buf := &decoder.Encoder{}
+	m.encode(buf)
+	return &buf.Buffer
 }

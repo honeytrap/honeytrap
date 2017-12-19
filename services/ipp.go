@@ -89,10 +89,13 @@ func (s *ippService) Handle(conn net.Conn) error {
 		return err
 	}
 
-	ippRespons, printData := ippHandler(ippRequest)
-	if printData != nil {
-		//Handle print
-		log.Debug("IPP: print received")
+	ipp, err := IPPHandler(ippRequest)
+	if err != nil {
+		return err
+	}
+
+	if ipp.data != nil {
+		log.Debug("IPP: Print received")
 	}
 
 	s.ch.Send(event.New(
@@ -102,6 +105,7 @@ func (s *ippService) Handle(conn net.Conn) error {
 		event.SourceAddr(conn.RemoteAddr()),
 		event.DestinationAddr(conn.LocalAddr()),
 		event.Custom("http.url", req.URL.String()),
+		event.Custom("ipp.user", ipp.username),
 	))
 
 	resp := http.Response{
@@ -115,7 +119,7 @@ func (s *ippService) Handle(conn net.Conn) error {
 			"Server":       []string{s.Server},
 			"Content-Type": []string{"application/ipp"},
 		},
-		Body: ioutil.NopCloser(ippRespons), //need io.ReadCloser
+		Body: ioutil.NopCloser(ipp.Response()), //need io.ReadCloser
 	}
 	if err := resp.Write(conn); err != nil {
 		log.Debug("IPP: error writing respons!")
