@@ -54,16 +54,17 @@ var (
 type agentListener struct {
 	agentConfig
 
-	ch chan net.Conn
+	ch        chan net.Conn
+	Addresses []net.Addr
 
 	net.Listener
 }
 
 type agentConfig struct {
-	Addresses []net.Addr
+	Listen string `toml:"listen"`
 }
 
-func (sc *agentConfig) AddAddress(a net.Addr) {
+func (sc *agentListener) AddAddress(a net.Addr) {
 	sc.Addresses = append(sc.Addresses, a)
 }
 
@@ -200,13 +201,18 @@ func (sl *agentListener) Start() error {
 		KeyPair:          &keyPair,
 	}
 
-	listener, err := libdisco.Listen("tcp", ":1339", &serverConfig)
+	listen := ":1339"
+	if sl.Listen != "" {
+		listen = sl.Listen
+	}
+
+	listener, err := libdisco.Listen("tcp", listen, &serverConfig)
 	if err != nil {
 		fmt.Println(color.RedString("Error starting listener: %s", err.Error()))
 		return err
 	}
 
-	log.Infof("Listener started: %s", ":1339")
+	log.Infof("Listener started: %s", listen)
 
 	go func() {
 		for {
