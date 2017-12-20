@@ -31,20 +31,17 @@
 package ssh
 
 import (
-	"bytes"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
 	"net"
-	"strings"
-	"time"
 
 	"github.com/honeytrap/honeytrap/director"
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/services"
 
+	"github.com/rs/xid"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -91,6 +88,8 @@ func (s *sshProxyService) SetDirector(d director.Director) {
 }
 
 func (s *sshProxyService) Handle(conn net.Conn) error {
+	id := xid.New()
+
 	var client *ssh.Client
 
 	config := ssh.ServerConfig{
@@ -102,6 +101,7 @@ func (s *sshProxyService) Handle(conn net.Conn) error {
 				event.Type("publickey-authentication"),
 				event.SourceAddr(conn.RemoteAddr()),
 				event.DestinationAddr(conn.LocalAddr()),
+				event.Custom("ssh.sessionid", id.String()),
 				event.Custom("ssh.publickey-type", key.Type()),
 				event.Custom("ssh.publickey", hex.EncodeToString(key.Marshal())),
 			))
@@ -115,6 +115,7 @@ func (s *sshProxyService) Handle(conn net.Conn) error {
 				event.Type("password-authentication"),
 				event.SourceAddr(cm.RemoteAddr()),
 				event.DestinationAddr(cm.LocalAddr()),
+				event.Custom("ssh.sessionid", id.String()),
 				event.Custom("ssh.username", cm.User()),
 				event.Custom("ssh.password", string(password)),
 			))
@@ -192,7 +193,8 @@ func (s *sshProxyService) Handle(conn net.Conn) error {
 			event.Type("ssh-channel"),
 			event.SourceAddr(conn.RemoteAddr()),
 			event.DestinationAddr(conn.LocalAddr()),
-			event.Custom("type", newChannel.ChannelType()),
+			event.Custom("ssh.sessionid", id.String()),
+			event.Custom("ssh.channel-type", newChannel.ChannelType()),
 		))
 
 		requestFn := func(in <-chan *ssh.Request, dst ssh.Channel) {
@@ -215,8 +217,9 @@ func (s *sshProxyService) Handle(conn net.Conn) error {
 					event.Type("ssh-request"),
 					event.SourceAddr(conn.RemoteAddr()),
 					event.DestinationAddr(conn.LocalAddr()),
-					event.Custom("type", req.Type),
-					event.Custom("payload", req.Payload),
+					event.Custom("ssh.sessionid", id.String()),
+					event.Custom("ssh.request-type", req.Type),
+					event.Custom("ssh.payload", req.Payload),
 				))
 
 				switch req.Type {
@@ -255,50 +258,24 @@ func (s *sshProxyService) Handle(conn net.Conn) error {
 		}
 
 		var wrappedChannel io.ReadCloser = channel
-		var wrappedChannel2 io.ReadCloser = NewTypeWriterReadCloser(channel2)
+
+		twrc := NewTypeWriterReadCloser(channel2)
+		var wrappedChannel2 io.ReadCloser = twrc
 
 		go copyFn(channel2, wrappedChannel)
-		go copyFn(channel, wrappedChannel2)
+		copyFn(channel, wrappedChannel2)
+
+		s.c.Send(event.New(
+			services.EventOptions,
+			event.Category("ssh"),
+			event.Type("ssh-session"),
+			event.SourceAddr(conn.RemoteAddr()),
+			event.DestinationAddr(conn.LocalAddr()),
+			event.Custom("ssh.sessionid", id.String()),
+			event.Custom("ssh.recording", twrc.String()),
+		))
+
 	}
 
 	return nil
-}
-
-func NewTypeWriterReadCloser(r io.ReadCloser) io.ReadCloser {
-	return &TypeWriterReadCloser{ReadCloser: r, time: time.Now()}
-}
-
-type TypeWriterReadCloser struct {
-	io.ReadCloser
-
-	time   time.Time
-	buffer bytes.Buffer
-}
-
-func sanitize(s string) string {
-	s = strings.Replace(s, "\r", "", -1)
-	s = strings.Replace(s, "\n", "<br/>", -1)
-	s = strings.Replace(s, "'", "\\'", -1)
-	s = strings.Replace(s, "\b", "<backspace>", -1)
-	return s
-}
-
-func (lr *TypeWriterReadCloser) Read(p []byte) (n int, err error) {
-	n, err = lr.ReadCloser.Read(p)
-
-	now := time.Now()
-	lr.buffer.WriteString(fmt.Sprintf(".wait(%d)", int(now.Sub(lr.time).Seconds()*1000)))
-	lr.buffer.WriteString(fmt.Sprintf(".put('%s')", sanitize(string(p[:n]))))
-	lr.time = now
-
-	log.Debugf(sanitize(string(p[:n])))
-	return n, err
-}
-
-func (lr *TypeWriterReadCloser) String() string {
-	return lr.buffer.String()
-}
-
-func (lr *TypeWriterReadCloser) Close() error {
-	return lr.ReadCloser.Close()
 }
