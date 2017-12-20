@@ -134,6 +134,12 @@
   revision = "40a3ac1628261e59b1dcb1fddd650e3040e87165"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/honeytrap/protocol"
+  packages = ["."]
+  revision = "b1ce3685e6dbd9d813b76ee47ca2ce08de8aa530"
+
+[[projects]]
   name = "github.com/mattn/go-colorable"
   packages = ["."]
   revision = "167de6bfdfba052fa6b2d3664c8f5272e23c9072"
@@ -262,6 +268,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "dbe9f804425d37fcbb3532772bf82df9a6fc30d03a01ed874739e6d043f2ba4a"
+  inputs-digest = "711b36c045751858455df80e5365674e5814ad97565d573e5be618405948b94b"
   solver-name = "gps-cdcl"
   solver-version = 1

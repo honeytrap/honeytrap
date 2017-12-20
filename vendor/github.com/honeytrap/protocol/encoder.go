@@ -28,44 +28,33 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package agent
+package protocol
 
 import (
+	"bufio"
 	"encoding/binary"
 	"io"
-	"net"
-
-	"github.com/honeytrap/protocol"
 )
 
 func NewEncoder(w io.Writer, bo binary.ByteOrder) *Encoder {
 	return &Encoder{
-		protocol.NewEncoder(w, bo),
+		bufio.NewWriter(w),
+		bo,
 	}
 }
 
 type Encoder struct {
-	*protocol.Encoder
+	*bufio.Writer
+
+	bo binary.ByteOrder
 }
 
-func (e *Encoder) WriteString(s string) {
-	e.WriteData([]byte(s))
+func (e *Encoder) WriteUint8(v int) {
+	e.WriteByte(uint8(v))
 }
 
-func (e *Encoder) WriteData(data []byte) {
-	e.WriteUint16(len(data))
-	e.Write(data)
-}
-
-func (e *Encoder) WriteAddr(address net.Addr) {
-	var ip net.IP
-	var port int
-
-	if ta, ok := address.(*net.TCPAddr); ok {
-		ip = ta.IP
-		port = ta.Port
-	}
-
-	e.WriteData(ip)
-	e.WriteUint16(port)
+func (e *Encoder) WriteUint16(v int) {
+	b := [2]byte{}
+	e.bo.PutUint16(b[:], uint16(v))
+	e.Write(b[:])
 }

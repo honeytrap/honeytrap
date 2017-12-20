@@ -34,19 +34,18 @@ import (
 	"bytes"
 	"encoding/binary"
 	"net"
+
+	"github.com/honeytrap/protocol"
 )
 
 func NewDecoder(data []byte) *Decoder {
 	return &Decoder{
-		Buffer:    bytes.NewBuffer(data),
-		LastError: nil,
+		protocol.NewDecoder(bytes.NewBuffer(data), binary.LittleEndian),
 	}
 }
 
 type Decoder struct {
-	*bytes.Buffer
-
-	LastError error
+	*protocol.Decoder
 }
 
 func (d *Decoder) ReadData() []byte {
@@ -79,33 +78,6 @@ func (d *Decoder) ReadString() string {
 	}
 
 	return string(buffer)
-}
-
-func (d *Decoder) ReadUint16() int {
-	if d.LastError != nil {
-		return 0
-	}
-
-	buffer := [2]byte{}
-	if _, err := d.Read(buffer[:]); err != nil {
-		d.LastError = err
-		return 0
-	}
-
-	return int(binary.LittleEndian.Uint16(buffer[:]))
-}
-
-func (d *Decoder) ReadUint8() int {
-	if d.LastError != nil {
-		return 0
-	}
-
-	b, err := d.ReadByte()
-	if err != nil {
-		d.LastError = err
-	}
-
-	return int(b)
 }
 
 func (d *Decoder) ReadAddr() net.Addr {

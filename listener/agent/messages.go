@@ -31,6 +31,8 @@
 package agent
 
 import (
+	"bytes"
+	"encoding/binary"
 	"net"
 )
 
@@ -54,8 +56,8 @@ func (r *Handshake) UnmarshalBinary(data []byte) error {
 }
 
 func (h Handshake) MarshalBinary() ([]byte, error) {
-	e := Encoder{}
-	return e.Bytes(), nil
+	buff := bytes.Buffer{}
+	return buff.Bytes(), nil
 }
 
 type HandshakeResponse struct {
@@ -76,14 +78,19 @@ func (h *HandshakeResponse) UnmarshalBinary(data []byte) error {
 }
 
 func (h HandshakeResponse) MarshalBinary() ([]byte, error) {
-	e := Encoder{}
+	buff := bytes.Buffer{}
+
+	e := NewEncoder(&buff, binary.LittleEndian)
+
 	e.WriteUint8(len(h.Addresses))
 
 	for _, address := range h.Addresses {
 		e.WriteAddr(address)
 	}
 
-	return e.Bytes(), nil
+	e.Flush()
+
+	return buff.Bytes(), nil
 }
 
 type Hello struct {
@@ -93,7 +100,9 @@ type Hello struct {
 }
 
 func (h Hello) MarshalBinary() ([]byte, error) {
-	e := Encoder{}
+	buff := bytes.Buffer{}
+
+	e := NewEncoder(&buff, binary.LittleEndian)
 
 	e.WriteUint8(0)
 
@@ -102,7 +111,9 @@ func (h Hello) MarshalBinary() ([]byte, error) {
 	e.WriteAddr(h.Laddr)
 	e.WriteAddr(h.Raddr)
 
-	return e.Bytes(), nil
+	e.Flush()
+
+	return buff.Bytes(), nil
 }
 
 func (h *Hello) UnmarshalBinary(data []byte) error {
@@ -134,7 +145,9 @@ func (h *Ping) UnmarshalBinary(data []byte) error {
 }
 
 func (h Ping) MarshalBinary() ([]byte, error) {
-	e := Encoder{}
+	buff := bytes.Buffer{}
+
+	e := NewEncoder(&buff, binary.LittleEndian)
 
 	e.WriteUint8(0)
 
@@ -143,7 +156,9 @@ func (h Ping) MarshalBinary() ([]byte, error) {
 	e.WriteAddr(h.Laddr)
 	e.WriteAddr(h.Raddr)
 
-	return e.Bytes(), nil
+	e.Flush()
+
+	return buff.Bytes(), nil
 }
 
 type EOF struct {
@@ -163,14 +178,18 @@ func (r *EOF) UnmarshalBinary(data []byte) error {
 }
 
 func (h EOF) MarshalBinary() ([]byte, error) {
-	e := Encoder{}
+	buff := bytes.Buffer{}
+
+	e := NewEncoder(&buff, binary.LittleEndian)
 
 	e.WriteUint8(0)
 
 	e.WriteAddr(h.Laddr)
 	e.WriteAddr(h.Raddr)
 
-	return e.Bytes(), nil
+	e.Flush()
+
+	return buff.Bytes(), nil
 }
 
 type ReadWrite struct {
@@ -181,7 +200,9 @@ type ReadWrite struct {
 }
 
 func (h ReadWrite) MarshalBinary() ([]byte, error) {
-	e := Encoder{}
+	buff := bytes.Buffer{}
+
+	e := NewEncoder(&buff, binary.LittleEndian)
 
 	e.WriteUint8(0)
 
@@ -190,7 +211,9 @@ func (h ReadWrite) MarshalBinary() ([]byte, error) {
 
 	e.WriteData(h.Payload)
 
-	return e.Bytes(), nil
+	e.Flush()
+
+	return buff.Bytes(), nil
 }
 
 func (r *ReadWrite) UnmarshalBinary(data []byte) error {

@@ -28,44 +28,52 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package agent
+package protocol
 
 import (
+	"bufio"
 	"encoding/binary"
 	"io"
-	"net"
-
-	"github.com/honeytrap/protocol"
 )
 
-func NewEncoder(w io.Writer, bo binary.ByteOrder) *Encoder {
-	return &Encoder{
-		protocol.NewEncoder(w, bo),
+func NewDecoder(r io.Reader, bo binary.ByteOrder) *Decoder {
+	return &Decoder{
+		Reader:    bufio.NewReader(r),
+		bo:        bo,
+		LastError: nil,
 	}
 }
 
-type Encoder struct {
-	*protocol.Encoder
+type Decoder struct {
+	*bufio.Reader
+
+	bo        binary.ByteOrder
+	LastError error
 }
 
-func (e *Encoder) WriteString(s string) {
-	e.WriteData([]byte(s))
-}
-
-func (e *Encoder) WriteData(data []byte) {
-	e.WriteUint16(len(data))
-	e.Write(data)
-}
-
-func (e *Encoder) WriteAddr(address net.Addr) {
-	var ip net.IP
-	var port int
-
-	if ta, ok := address.(*net.TCPAddr); ok {
-		ip = ta.IP
-		port = ta.Port
+func (d *Decoder) ReadUint8() int {
+	if d.LastError != nil {
+		return 0
 	}
 
-	e.WriteData(ip)
-	e.WriteUint16(port)
+	b, err := d.ReadByte()
+	if err != nil {
+		d.LastError = err
+	}
+
+	return int(b)
+}
+
+func (d *Decoder) ReadUint16() int {
+	if d.LastError != nil {
+		return 0
+	}
+
+	buffer := [2]byte{}
+	if _, err := d.Read(buffer[:]); err != nil {
+		d.LastError = err
+		return 0
+	}
+
+	return int(d.bo.Uint16(buffer[:]))
 }
