@@ -172,7 +172,16 @@ func (hc *Honeytrap) heartbeat() {
 
 // Run will start honeytrap
 func (hc *Honeytrap) Run(ctx context.Context) {
-	fmt.Println(color.YellowString("Honeytrap%c  starting (%s)...", 127855, hc.token))
+	fmt.Println(color.YellowString(`
+ _   _                       _____                %c
+| | | | ___  _ __   ___ _   |_   _| __ __ _ _ __
+| |_| |/ _ \| '_ \ / _ \ | | || || '__/ _' | '_ \
+|  _  | (_) | | | |  __/ |_| || || | | (_| | |_) |
+|_| |_|\___/|_| |_|\___|\__, ||_||_|  \__,_| .__/
+                        |___/              |_|
+`, 127855))
+
+	fmt.Println(color.YellowString("Honeytrap starting (%s)...", hc.token))
 	fmt.Println(color.YellowString("Version: %s (%s)", cmd.Version, cmd.ShortCommitID))
 
 	go hc.heartbeat()

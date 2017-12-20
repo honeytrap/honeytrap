@@ -60,38 +60,6 @@ func SSHAuth(options ...services.ServicerFunc) services.Servicer {
 		Banner: banner,
 	}
 
-	config := ssh.ServerConfig{
-		ServerVersion: banner,
-		PublicKeyCallback: func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
-			srvc.c.Send(event.New(
-				services.EventOptions,
-				event.Category("ssh"),
-				event.Type("publickey-authentication"),
-				event.SourceAddr(conn.RemoteAddr()),
-				event.DestinationAddr(conn.LocalAddr()),
-				event.Custom("ssh.publickey-type", key.Type()),
-				event.Custom("ssh.publickey", hex.EncodeToString(key.Marshal())),
-			))
-
-			return nil, errors.New("Unknown key")
-		},
-		PasswordCallback: func(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
-			srvc.c.Send(event.New(
-				services.EventOptions,
-				event.Category("ssh"),
-				event.Type("password-authentication"),
-				event.SourceAddr(conn.RemoteAddr()),
-				event.DestinationAddr(conn.LocalAddr()),
-				event.Custom("ssh.username", conn.User()),
-				event.Custom("ssh.password", string(password)),
-			))
-
-			return nil, errors.New("Unknown username or password")
-		},
-	}
-
-	config.AddHostKey(srvc.key)
-
 	for _, o := range options {
 		o(srvc)
 	}
@@ -115,7 +83,39 @@ func (s *sshAuthService) SetChannel(c pushers.Channel) {
 func (s *sshAuthService) Handle(conn net.Conn) error {
 	defer conn.Close()
 
-	sconn, chans, reqs, err := ssh.NewServerConn(conn, &s.config)
+	config := ssh.ServerConfig{
+		ServerVersion: s.Banner,
+		PublicKeyCallback: func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+			s.c.Send(event.New(
+				services.EventOptions,
+				event.Category("ssh"),
+				event.Type("publickey-authentication"),
+				event.SourceAddr(conn.RemoteAddr()),
+				event.DestinationAddr(conn.LocalAddr()),
+				event.Custom("ssh.publickey-type", key.Type()),
+				event.Custom("ssh.publickey", hex.EncodeToString(key.Marshal())),
+			))
+
+			return nil, errors.New("Unknown key")
+		},
+		PasswordCallback: func(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
+			s.c.Send(event.New(
+				services.EventOptions,
+				event.Category("ssh"),
+				event.Type("password-authentication"),
+				event.SourceAddr(conn.RemoteAddr()),
+				event.DestinationAddr(conn.LocalAddr()),
+				event.Custom("ssh.username", conn.User()),
+				event.Custom("ssh.password", string(password)),
+			))
+
+			return nil, errors.New("Unknown username or password")
+		},
+	}
+
+	config.AddHostKey(s.key)
+
+	sconn, chans, reqs, err := ssh.NewServerConn(conn, &config)
 	if err == io.EOF {
 		// server closed connection
 		return nil
