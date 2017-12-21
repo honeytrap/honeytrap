@@ -42,17 +42,10 @@ import (
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/services"
 
+	"github.com/rs/xid"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/terminal"
 )
-
-/*
-Configuration
-
-type="ssh-simulator"
-port="tcp/8022"
-credentials=["root:root"]
-*/
 
 var (
 	_ = services.Register("ssh-simulator", SSHSimulator)
@@ -92,6 +85,8 @@ func (s *sshSimulatorService) SetChannel(c pushers.Channel) {
 }
 
 func (s *sshSimulatorService) Handle(conn net.Conn) error {
+	id := xid.New()
+
 	config := ssh.ServerConfig{
 		ServerVersion: s.Banner,
 		PublicKeyCallback: func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
@@ -101,6 +96,7 @@ func (s *sshSimulatorService) Handle(conn net.Conn) error {
 				event.Type("publickey-authentication"),
 				event.SourceAddr(conn.RemoteAddr()),
 				event.DestinationAddr(conn.LocalAddr()),
+				event.Custom("ssh.sessionid", id.String()),
 				event.Custom("ssh.publickey-type", key.Type()),
 				event.Custom("ssh.publickey", hex.EncodeToString(key.Marshal())),
 			))
@@ -114,6 +110,7 @@ func (s *sshSimulatorService) Handle(conn net.Conn) error {
 				event.Type("password-authentication"),
 				event.SourceAddr(cm.RemoteAddr()),
 				event.DestinationAddr(cm.LocalAddr()),
+				event.Custom("ssh.sessionid", id.String()),
 				event.Custom("ssh.username", cm.User()),
 				event.Custom("ssh.password", string(password)),
 			))
@@ -172,7 +169,8 @@ func (s *sshSimulatorService) Handle(conn net.Conn) error {
 			event.Type("ssh-channel"),
 			event.SourceAddr(conn.RemoteAddr()),
 			event.DestinationAddr(conn.LocalAddr()),
-			event.Custom("type", newChannel.ChannelType()),
+			event.Custom("ssh.sessionid", id.String()),
+			event.Custom("ssh.channel-type", newChannel.ChannelType()),
 		))
 
 		requestFn := func(in <-chan *ssh.Request, dst ssh.Channel) {
@@ -187,8 +185,9 @@ func (s *sshSimulatorService) Handle(conn net.Conn) error {
 					event.Type("ssh-request"),
 					event.SourceAddr(conn.RemoteAddr()),
 					event.DestinationAddr(conn.LocalAddr()),
-					event.Custom("type", req.Type),
-					event.Custom("payload", req.Payload),
+					event.Custom("ssh.sessionid", id.String()),
+					event.Custom("ssh.request-type", req.Type),
+					event.Custom("ssh.payload", req.Payload),
 				))
 
 				b := false
@@ -217,7 +216,8 @@ func (s *sshSimulatorService) Handle(conn net.Conn) error {
 
 		go requestFn(requests, channel)
 
-		var wrappedChannel io.ReadWriteCloser = channel
+		twrc := NewTypeWriterReadCloser(channel)
+		var wrappedChannel io.ReadWriteCloser = twrc
 
 		prompt := "root@host:~$ "
 
@@ -265,11 +265,22 @@ last login: Sun Nov 19 19:40:44 2017 from 172.16.84.1
 					event.Type("ssh-channel"),
 					event.SourceAddr(conn.RemoteAddr()),
 					event.DestinationAddr(conn.LocalAddr()),
-					event.Custom("command", line),
+					event.Custom("ssh.sessionid", id.String()),
+					event.Custom("ssh.command", line),
 				))
 
 				term.Write([]byte(fmt.Sprintf("%s: command not found\n", line)))
 			}
+
+			s.c.Send(event.New(
+				services.EventOptions,
+				event.Category("ssh"),
+				event.Type("ssh-session"),
+				event.SourceAddr(conn.RemoteAddr()),
+				event.DestinationAddr(conn.LocalAddr()),
+				event.Custom("ssh.sessionid", id.String()),
+				event.Custom("ssh.recording", twrc.String()),
+			))
 		}()
 
 	}
