@@ -10,7 +10,7 @@ See our documentation on [docs.honeytrap.io](http://docs.honeytrap.io/docs/home/
 
 ## Creators
 
-DutchSec’s mission is to safeguard the evolution of technology and therewith humanity. By delivering  groundbreaking and solid, yet affordable security solutions we make sure no people, companies or institutes are harmed while using technology. We aim to make cyber security available for everyone.
+[DutchSec](https://dutchsec.com)’s mission is to safeguard the evolution of technology and therewith humanity. By delivering  groundbreaking and solid, yet affordable security solutions we make sure no people, companies or institutes are harmed while using technology. We aim to make cyber security available for everyone.
 
 Our team consists of boundary pushing cyber crime experts, grey hat hackers and developers specialized in big data, machine learning, data- and context driven security. By building open source and custom-made security tooling we protect and defend data, both offensively and proactively. 
 
