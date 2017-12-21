@@ -36,6 +36,7 @@ import (
 	"net"
 
 	"github.com/honeytrap/honeytrap/director"
+	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/listener"
 	"github.com/honeytrap/honeytrap/pushers"
 )
@@ -69,8 +70,15 @@ func (s *copyService) SetChannel(c pushers.Channel) {
 
 func (s *copyService) Handle(ctx context.Context, conn net.Conn) error {
 	defer conn.Close()
-
 	if _, ok := conn.(*listener.DummyUDPConn); ok {
+		defer s.c.Send(event.New(
+			EventOptions,
+			event.Category("copy"),
+			event.Type("tcp"),
+			event.SourceAddr(conn.RemoteAddr()),
+			event.DestinationAddr(conn.LocalAddr()),
+		))
+
 		conn2, err := s.d.Dial(conn)
 		if err != nil {
 			return err
@@ -83,6 +91,14 @@ func (s *copyService) Handle(ctx context.Context, conn net.Conn) error {
 
 		return nil
 	} else if _, ok := conn.(*net.TCPConn); ok {
+		defer s.c.Send(event.New(
+			EventOptions,
+			event.Category("copy"),
+			event.Type("udp"),
+			event.SourceAddr(conn.RemoteAddr()),
+			event.DestinationAddr(conn.LocalAddr()),
+		))
+
 		conn2, err := s.d.Dial(conn)
 		if err != nil {
 			return err
