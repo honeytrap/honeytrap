@@ -32,6 +32,7 @@ package services
 
 import (
 	"bufio"
+	"context"
 	"io"
 	"net"
 
@@ -60,7 +61,7 @@ func (s *telnetService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
-func (s *telnetService) Handle(conn net.Conn) error {
+func (s *telnetService) Handle(ctx context.Context, conn net.Conn) error {
 	defer conn.Close()
 
 	b := bufio.NewReader(conn)

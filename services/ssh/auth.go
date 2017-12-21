@@ -31,6 +31,7 @@
 package ssh
 
 import (
+	"context"
 	"encoding/hex"
 	"errors"
 	"io"
@@ -80,7 +81,7 @@ func (s *sshAuthService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
-func (s *sshAuthService) Handle(conn net.Conn) error {
+func (s *sshAuthService) Handle(ctx context.Context, conn net.Conn) error {
 	defer conn.Close()
 
 	config := ssh.ServerConfig{

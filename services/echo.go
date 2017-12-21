@@ -31,6 +31,7 @@
 package services
 
 import (
+	"context"
 	"io"
 	"net"
 
@@ -60,7 +61,7 @@ func (s *echoService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
-func (s *echoService) Handle(conn net.Conn) error {
+func (s *echoService) Handle(ctx context.Context, conn net.Conn) error {
 	if _, ok := conn.(*listener.DummyUDPConn); ok {
 		defer conn.Close()
 

@@ -454,7 +454,11 @@ func (hc *Honeytrap) handle(conn net.Conn) {
 		log.Debug("Handling connection for %s => %s %s(%s)", conn.RemoteAddr(), conn.LocalAddr(), sm.Name, sm.Type)
 
 		func(service services.Servicer) {
-			err := service.Handle(conn)
+			defer conn.Close()
+
+			ctx := context.Background()
+
+			err := service.Handle(ctx, conn)
 			if err != nil {
 				fmt.Println(color.RedString(err.Error()))
 			}

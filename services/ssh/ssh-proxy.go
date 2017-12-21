@@ -31,6 +31,7 @@
 package ssh
 
 import (
+	"context"
 	"encoding/hex"
 	"errors"
 	"io"
@@ -89,7 +90,7 @@ func (s *sshProxyService) SetDirector(d director.Director) {
 	s.d = d
 }
 
-func (s *sshProxyService) Handle(conn net.Conn) error {
+func (s *sshProxyService) Handle(ctx context.Context, conn net.Conn) error {
 	id := xid.New()
 
 	var client *ssh.Client

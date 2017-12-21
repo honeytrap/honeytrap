@@ -32,6 +32,7 @@ package services
 
 import (
 	"bufio"
+	"context"
 	"io"
 	"net"
 	"net/http"
@@ -73,7 +74,7 @@ func (s *httpService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
-func (s *httpService) Handle(conn net.Conn) error {
+func (s *httpService) Handle(ctx context.Context, conn net.Conn) error {
 	for {
 		br := bufio.NewReader(conn)
 

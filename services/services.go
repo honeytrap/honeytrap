@@ -31,6 +31,7 @@
 package services
 
 import (
+	"context"
 	"net"
 
 	"github.com/BurntSushi/toml"
@@ -71,7 +72,7 @@ func Get(key string) (func(...ServicerFunc) Servicer, bool) {
 }
 
 type Servicer interface {
-	Handle(net.Conn) error
+	Handle(context.Context, net.Conn) error
 
 	SetChannel(pushers.Channel)
 }

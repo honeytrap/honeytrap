@@ -33,6 +33,7 @@ package services
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"io"
 	"net"
 	"net/http"
@@ -72,7 +73,7 @@ func (s *httpProxy) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
-func (s *httpProxy) Handle(conn net.Conn) error {
+func (s *httpProxy) Handle(ctx context.Context, conn net.Conn) error {
 	defer conn.Close()
 
 	conn2, err := s.d.Dial(conn)

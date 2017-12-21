@@ -32,6 +32,7 @@ package services
 
 import (
 	"bytes"
+	"context"
 	"net"
 	"testing"
 )
@@ -42,7 +43,7 @@ func TestEcho(t *testing.T) {
 	defer client.Close()
 
 	c := Echo()
-	go c.Handle(server)
+	go c.Handle(context.TODO(), server)
 
 	test := []byte("test")
 	if _, err := client.Write(test); err != nil {

@@ -31,6 +31,7 @@
 package ssh
 
 import (
+	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -84,7 +85,7 @@ func (s *sshSimulatorService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
-func (s *sshSimulatorService) Handle(conn net.Conn) error {
+func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 	id := xid.New()
 
 	config := ssh.ServerConfig{
