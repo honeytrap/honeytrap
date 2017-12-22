@@ -222,7 +222,7 @@ func (sl *agentListener) Start() error {
 				continue
 			}
 
-			sl.serv(Conn2(c))
+			go sl.serv(Conn2(c))
 		}
 	}()
 
