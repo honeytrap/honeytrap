@@ -153,6 +153,10 @@ func (sl *agentListener) serv(c *conn2) {
 				break
 			}
 
+			if conn.closed {
+				continue
+			}
+
 			conn.in <- v.Payload
 		case *EOF:
 			conn := conns.Get(v.Laddr, v.Raddr)
