@@ -2,7 +2,6 @@ package services
 
 import (
 	"bytes"
-	"encoding/binary"
 
 	"github.com/honeytrap/honeytrap/services/decoder"
 )
@@ -48,154 +47,94 @@ const (
 	sOk int16 = 0x0000 //successful-ok
 )
 
-type ippMessage struct {
+// Wraps a complete ipp object
+type ippMsg struct {
 	versionMajor byte
 	versionMinor byte
 	statusCode   int16 //is operation-id in request
 	requestId    int32
-	attributes   []attribGroup
+	attributes   []*attribGroup
 	data         []byte //if there is data otherwise nil
 	username     string
 }
 
 type attribGroup struct {
-	attribGroupTag byte //begin-attribute-group-tag
-	val            []attribOneValue
+	tag byte //begin-attribute-group-tag
+	val []ippValueType
 }
 
-type attribOneValue struct { //Atrribute-with-one-value
-	valueTag byte //value-tag
-	name     string
-	value    string
-	aVal     []additionalValue
-}
+func (ag *attribGroup) decode(dec decoder.Decoder) error {
 
-type additionalValue struct { //additional-value
-	valueTag byte //value-tag
-	value    string
-}
-
-func (ao *attribOneValue) decode(dec *decoder.DefaultDecoder) error {
-
-	var err error
-	vtag, err := dec.Byte()
-	if l, _ := dec.Int16(); l == 0 { //This is an Additional value
-		s, _ := dec.Data()
-
-		a := additionalValue{
-			valueTag: vtag,
-			value:    s,
-		}
-		ao.aVal = append(ao.aVal, a)
-		return err
-
-	} else {
-		ao.valueTag = vtag
-		ao.name, _ = dec.Data()
-		ao.value, _ = dec.Data()
-	}
-	return err
-}
-
-func (v *additionalValue) encode(buf *decoder.Encoder) {
-	buf.WriteUint8(v.valueTag)
-	buf.WriteUint16(int16(0))
-	buf.WriteData(v.value)
-}
-
-func (v *attribOneValue) encode(buf *decoder.Encoder) {
-	buf.WriteUint8(v.valueTag)
-	buf.WriteData(v.name)
-	buf.WriteData(v.value)
-	if v.aVal != nil {
-		for _, av := range v.aVal {
-			av.encode(buf)
-		}
-	}
-}
-
-func (v *attribGroup) encode(buf *decoder.Encoder) {
-	buf.WriteUint8(v.attribGroupTag)
-	if v.val != nil {
-		for _, aov := range v.val {
-			aov.encode(buf)
-		}
-	}
-}
-
-func (v *ippMessage) encode(buf *decoder.Encoder) {
-	buf.WriteUint8(v.versionMajor)
-	buf.WriteUint8(v.versionMinor)
-	buf.WriteUint16(v.statusCode)
-	buf.WriteUint32(v.requestId)
-	if v.attributes != nil {
-		for _, im := range v.attributes {
-			im.encode(buf)
-		}
-	}
-}
-
-// Returns a IPP response based on the IPP request
-func IPPHandler(ippBody []byte) (*ippMessage, error) {
-	body := &ippMessage{}
-
-	err := body.Read(ippBody)
-	if err != nil {
-		return nil, err
-	}
-
-	//Response structure
-	rbody := &ippMessage{
-		versionMajor: body.versionMajor,
-		versionMinor: body.versionMinor,
-		statusCode:   sOk,
-		requestId:    body.requestId,
-	}
-
-	switch body.statusCode { //operation-id
-	case opPrintJob:
-	case opValidateJob:
-	case opCreateJob:
-	case opGetJobAttrib:
-	case opGetPrinterAttrib:
-	default:
-	}
-	return rbody, nil
-}
-
-func (m *ippMessage) Read(raw []byte) error {
-	dec := decoder.NewDefaultDecoder(raw, binary.BigEndian)
-	if err := dec.HasBytes(8); err != nil {
-		return err
-	}
-	m.versionMajor, _ = dec.Byte()
-	m.versionMinor, _ = dec.Byte()
-	m.statusCode, _ = dec.Int16()
-	m.requestId, _ = dec.Int32()
-
-	for dtag, err := dec.Byte(); dtag != endAttribTag; dtag, err = dec.Byte() {
-		if err != nil {
+	for vtag := dec.Byte(); vtag > unsupAttribTag; vtag = dec.Byte() { //Not a delimiter tag
+		if err := dec.LastError(); err != nil {
 			return err
 		}
 
-		group := attribGroup{}
-		group.attribGroupTag = dtag
-		for dp, err := dec.PeekByte(); dp > unsupAttribTag; dp, err = dec.PeekByte() { //Not a delimiter tag
-			if err != nil {
-				return err
-			}
+		var v ippValueType
 
-			aov := attribOneValue{}
-			if err := aov.decode(dec); err != nil {
-				return err
-			}
-			group.val = append(group.val, aov)
+		switch vtag {
+		case valInteger:
+			v = &valInt{tag: vtag}
+		case valBoolean:
+			v = &valBool{tag: vtag}
+		case valKeyword:
+			v = &valStr{tag: vtag}
+		case valCharSet:
+			v = &valStr{tag: vtag}
+		case valUri:
+			v = &valStr{tag: vtag}
+		case valRangeOfInt:
+			v = &valInt{tag: vtag}
+		case naturelLang:
+			v = &valStr{tag: vtag}
+		case mimeMediaType:
+			v = &valStr{tag: vtag}
+		case textWithoutLang:
+			v = &valStr{tag: vtag}
+		}
+
+		v.decode(dec)
+		ag.val = append(ag.val, v)
+	}
+
+	// Put back last read byte, because it is a delimiter tag
+	dec.Seek(-1)
+
+	return nil
+}
+
+func (ag *attribGroup) encode(buf decoder.EncoderType) error {
+	buf.WriteUint8(ag.tag)
+
+	if ag.val != nil {
+		for _, vals := range ag.val {
+			vals.encode(buf)
+		}
+	}
+	return nil
+}
+
+func (m *ippMsg) read(raw []byte) error {
+	dec := decoder.NewDecoder(raw)
+
+	m.versionMajor = dec.Byte()
+	m.versionMinor = dec.Byte()
+	m.statusCode = dec.Int16()
+	m.requestId = dec.Int32()
+
+	// Groups, dtag is a delimiter(group) tag
+	for dtag := dec.Byte(); dtag != endAttribTag; dtag = dec.Byte() {
+
+		group := &attribGroup{tag: dtag}
+		if err := group.decode(dec); err != nil {
+			return err
 		}
 
 		m.attributes = append(m.attributes, group)
 	}
-	// Append required end tag
-	m.attributes = append(m.attributes, attribGroup{attribGroupTag: endAttribTag})
+
+	// Append required endtag
+	m.attributes = append(m.attributes, &attribGroup{tag: endAttribTag})
 
 	// Copy remaining data (printdata)
 	m.data = dec.Copy(dec.Available())
@@ -203,8 +142,81 @@ func (m *ippMessage) Read(raw []byte) error {
 	return nil
 }
 
-func (m *ippMessage) Response() *bytes.Buffer {
-	buf := &decoder.Encoder{}
+// Encodes the ipp response message suitable for http transport
+func (m *ippMsg) encode() *bytes.Buffer {
+	buf := decoder.NewEncoder()
+
 	m.encode(buf)
 	return &buf.Buffer
+}
+
+func (v *ippMsg) encode(buf decoder.EncoderType) {
+
+	// Header
+	buf.WriteUint8(v.versionMajor)
+	buf.WriteUint8(v.versionMinor)
+	buf.WriteUint16(v.statusCode)
+	buf.WriteUint32(v.requestId)
+
+	if v.attributes != nil {
+		for _, group := range v.attributes {
+			group.encode(buf)
+		}
+	}
+}
+
+func (gout *ippMsg) setGroupResponse(gin *attribGroup) {
+	grp := &attribGroup{attribGroupTag: gin.tag}
+
+	switch gin.tag {
+	case opAttribTag:
+		for _, v := range gin.val {
+			switch v.Tag() {
+			case valCharSet:
+				grp.val = append(grp.val, v)
+			case naturelLang:
+				grp.val = append(grp.val, v)
+			case nameWithoutLang:
+				if v.name == "requesting-user-name" {
+					gout.username = v.value
+				}
+			}
+		}
+	case printerAttribTag:
+	case jobAttribTag:
+	case endAttribTag:
+	}
+
+	gout.attributes = append(gout.attributes, grp)
+}
+
+// Returns a IPP response based on the IPP request
+func IPPHandler(ippBody []byte) (*ippMsg, error) {
+	body := &ippMsg{}
+
+	err := body.read(ippBody)
+	if err != nil {
+		return nil, err
+	}
+
+	//Response structure
+	rbody := &ippMsg{
+		versionMajor: body.versionMajor,
+		versionMinor: body.versionMinor,
+		statusCode:   sOk,
+		requestId:    body.requestId,
+		data:         body.data,
+	}
+
+	switch body.statusCode { //operation-id
+	case opPrintJob:
+		for _, g := range body.attributes {
+			rbody.setGroupResponse(g)
+		}
+	case opValidateJob:
+	case opGetJobAttrib:
+	case opGetPrinterAttrib:
+	}
+
+	return rbody, nil
 }
