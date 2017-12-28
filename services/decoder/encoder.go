@@ -7,13 +7,19 @@ import (
 
 type EncoderType interface {
 	WriteUint8(b byte)
+
 	WriteUint16(v int16)
 	WriteUint32(v int32)
-	WriteData(v string)
+
+	WriteData(v string, zero bool)
 }
 
 type Encoder struct {
 	bytes.Buffer
+}
+
+func NewEncoder() *Encoder {
+	return &Encoder{}
 }
 
 func (e *Encoder) WriteUint8(b byte) {
@@ -32,8 +38,13 @@ func (e *Encoder) WriteUint32(v int32) {
 	e.Write(b[:])
 }
 
-func (e *Encoder) WriteData(v string) {
+// if zero is true, write zero lenght
+func (e *Encoder) WriteData(v string, zero bool) {
 
-	e.WriteUint16(int16(len(v)))
-	e.Write([]byte(v))
+	if zero {
+		e.WriteUint16(0)
+	} else {
+		e.WriteUint16(int16(len(v)))
+		e.Write([]byte(v))
+	}
 }
