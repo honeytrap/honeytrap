@@ -96,9 +96,7 @@ type Cmd struct {
 }
 
 func serve(c *cli.Context) error {
-	options := []server.OptionFn{
-		server.WithToken(),
-	}
+	var options []server.OptionFn
 
 	if v := c.String("config"); v == "" {
 	} else if fn, err := server.WithConfig(v); err != nil {
@@ -115,6 +113,8 @@ func serve(c *cli.Context) error {
 	} else {
 		options = append(options, fn)
 	}
+
+	options = append(options, server.WithToken())
 
 	if c.GlobalBool("cpu-profile") {
 		options = append(options, server.WithCPUProfiler())

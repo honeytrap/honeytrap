@@ -36,6 +36,7 @@ import (
 	"os"
 	"os/user"
 	"path"
+	"path/filepath"
 
 	_ "net/http/pprof"
 
@@ -79,7 +80,12 @@ func WithHomeDir(s string) (OptionFn, error) {
 		return nil, err
 	}
 
-	p := path.Join(usr.HomeDir, s)
+	var p string
+	if s == ".honeytrap" {
+		p = path.Join(usr.HomeDir, s)
+	} else {
+		p, err = filepath.Abs(s)
+	}
 
 	_, err = os.Stat(p)
 
