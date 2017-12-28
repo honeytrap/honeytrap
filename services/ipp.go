@@ -66,65 +66,73 @@ func (s *ippService) SetChannel(c pushers.Channel) {
 func (s *ippService) Handle(conn net.Conn) error {
 
 	log.Debug("IPP handler started")
+	for {
+		br := bufio.NewReader(conn)
+		req, err := http.ReadRequest(br)
 
-	br := bufio.NewReader(conn)
+		if err == io.EOF || req.Method != "POST" || req.Header.Get("Content-Type") != "application/ipp" {
+			log.Debug("IPP: Bad ipp request")
+			return nil
+		} else if err != nil {
+			log.Debug("IPP: error reading http Request")
+			return err
+		}
 
-	req, err := http.ReadRequest(br)
-	if err == io.EOF || req.Method != "POST" || req.Header.Get("Content-Type") != "application/ipp" {
-		log.Debug("IPP: Bad http request")
+		//TODO: This could exhaust memory!
+		ippReq, err := ioutil.ReadAll(req.Body)
+		if err != nil {
+			log.Debug("IPP: error reading request body!")
+			return err
+		}
+		if err := req.Body.Close(); err != nil {
+			log.Debug("IPP: error closing request body!")
+			return err
+		}
+
+		ippResp, err := IPPHandler(ippReq)
+		if err != nil {
+			return err
+		}
+
+		log.Debugf("%v", ippResp)
+
+		if l := len(ippResp.data); l > 0 {
+			log.Debug("IPP: Print received", len(ippResp.data))
+		}
+
+		s.ch.Send(event.New(
+			EventOptions,
+			event.Category("ipp"),
+			event.Type("request"),
+			event.SourceAddr(conn.RemoteAddr()),
+			event.DestinationAddr(conn.LocalAddr()),
+			event.Custom("http.url", req.URL.String()),
+			event.Custom("ipp.user", ippResp.username),
+			event.Custom("ipp.data", string(ippResp.data)),
+		))
+
+		rbody := ippResp.encode()
+
+		resp := http.Response{
+			StatusCode:    http.StatusOK,
+			Status:        http.StatusText(http.StatusOK),
+			Proto:         req.Proto,
+			ProtoMajor:    req.ProtoMajor,
+			ProtoMinor:    req.ProtoMinor,
+			Request:       req,
+			ContentLength: int64(rbody.Len()),
+			Header: map[string][]string{
+				"Server":       []string{"Jerry-IPP"},
+				"Content-Type": []string{"application/ipp"},
+			},
+			Body: ioutil.NopCloser(rbody), //need io.ReadCloser,
+		}
+
+		if err := resp.Write(conn); err != nil {
+			log.Debug("IPP: error writing respons!")
+			return err
+		}
+		log.Debug("IPP: http response written")
 		return nil
-	} else if err != nil {
-		log.Debug("IPP: error reading http Request")
-		return err
 	}
-
-	//FIX: This could exhaust memory!
-	ippRequest, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		log.Debug("IPP: error reading request body!")
-		return err
-	}
-	if err := req.Body.Close(); err != nil {
-		log.Debug("IPP: error closing request body!")
-		return err
-	}
-
-	ipp, err := IPPHandler(ippRequest)
-	if err != nil {
-		return err
-	}
-
-	if ipp.data != nil {
-		log.Debug("IPP: Print received")
-	}
-
-	s.ch.Send(event.New(
-		EventOptions,
-		event.Category("ipp"),
-		event.Type("request"),
-		event.SourceAddr(conn.RemoteAddr()),
-		event.DestinationAddr(conn.LocalAddr()),
-		event.Custom("http.url", req.URL.String()),
-		event.Custom("ipp.user", ipp.username),
-	))
-
-	resp := http.Response{
-		StatusCode: http.StatusOK,
-		Status:     http.StatusText(http.StatusOK),
-		Proto:      req.Proto,
-		ProtoMajor: req.ProtoMajor,
-		ProtoMinor: req.ProtoMinor,
-		Request:    req,
-		Header: http.Header{
-			"Server":       []string{s.Server},
-			"Content-Type": []string{"application/ipp"},
-		},
-		Body: ioutil.NopCloser(ipp.Response()), //need io.ReadCloser
-	}
-	if err := resp.Write(conn); err != nil {
-		log.Debug("IPP: error writing respons!")
-		return err
-	}
-	log.Debug("IPP: http response written")
-	return nil
 }
