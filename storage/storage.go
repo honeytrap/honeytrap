@@ -32,9 +32,6 @@ package storage
 
 import (
 	"log"
-	"os"
-	"os/user"
-	"path"
 	"path/filepath"
 
 	"github.com/dgraph-io/badger"
@@ -45,38 +42,18 @@ type storage interface {
 	Set(string, []byte) error
 }
 
-var db = MustDB()
+var db *badger.DB
+var homeDir string
 
-func HomeDir() string {
-	var err error
-	var usr *user.User
-	if usr, err = user.Current(); err != nil {
-		panic(err)
-	}
-
-	p := path.Join(usr.HomeDir, ".honeytrap")
-
-	_, err = os.Stat(p)
-
-	switch {
-	case err == nil:
-		break
-	case os.IsNotExist(err):
-		if err = os.Mkdir(p, 0755); err != nil {
-			panic(err)
-		}
-	default:
-		panic(err)
-	}
-
-	return p
+func SetHomeDir(s string) {
+	homeDir = s
+	db = MustDB()
 }
 
 func MustDB() *badger.DB {
 	opts := badger.DefaultOptions
 
-	p := HomeDir()
-	p = filepath.Join(p, "badger.db")
+	p := filepath.Join(homeDir, "badger.db")
 
 	opts.Dir = p
 	opts.ValueDir = p

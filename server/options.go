@@ -40,6 +40,7 @@ import (
 
 	_ "net/http/pprof"
 
+	"github.com/honeytrap/honeytrap/storage"
 	"github.com/pkg/profile"
 	"github.com/rs/xid"
 
@@ -102,6 +103,7 @@ func WithHomeDir(s string) (OptionFn, error) {
 
 	return func(b *Honeytrap) error {
 		b.homeDir = p
+		storage.SetHomeDir(p)
 		return nil
 	}, nil
 }
