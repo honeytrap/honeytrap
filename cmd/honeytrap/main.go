@@ -76,6 +76,11 @@ var globalFlags = []cli.Flag{
 		Value: "config.toml",
 		Usage: "Load configuration from `FILE`",
 	},
+	cli.StringFlag{
+		Name:  "data, d",
+		Value: ".honeytrap",
+		Usage: "Store data in `DIR`",
+	},
 	cli.BoolFlag{Name: "cpu-profile", Usage: "Enable cpu profiler"},
 	cli.BoolFlag{Name: "mem-profile", Usage: "Enable memory profiler"},
 	cli.BoolFlag{Name: "profiler", Usage: "Enable web profiler"},
@@ -97,6 +102,14 @@ func serve(c *cli.Context) error {
 
 	if v := c.String("config"); v == "" {
 	} else if fn, err := server.WithConfig(v); err != nil {
+		ec := cli.NewExitError(err.Error(), 1)
+		return ec
+	} else {
+		options = append(options, fn)
+	}
+
+	if d := c.String("data"); d == "" {
+	} else if fn, err := server.WithHomeDir(d); err != nil {
 		ec := cli.NewExitError(err.Error(), 1)
 		return ec
 	} else {
