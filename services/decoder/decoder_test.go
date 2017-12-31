@@ -1,13 +1,12 @@
 package decoder
 
 import (
-	"encoding/binary"
 	"testing"
 )
 
 func TestHasBytes(t *testing.T) {
 	bs := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
-	dec := NewDefaultDecoder(bs, binary.BigEndian)
+	dec := NewDecoder(bs)
 
 	if err := dec.HasBytes(1); err != nil {
 		t.Error(err)
@@ -25,40 +24,40 @@ func TestHasBytes(t *testing.T) {
 
 func TestByte(t *testing.T) {
 	bs := []byte{0xff, 0x01, 0, 0, 0, 0, 0, 0, 0x01}
-	dec := NewDefaultDecoder(bs, binary.BigEndian)
+	dec := NewDecoder(bs)
 
-	if b, _ := dec.PeekByte(); b != 0xff {
+	if b := dec.PeekByte(); b != 0xff {
 		t.Errorf("PeekByte: expected 0xff, got %d", b)
 	}
-	if b, _ := dec.Byte(); b != 0xff { // Read the fist byte again
+	if b := dec.Byte(); b != 0xff { // Read the fist byte again
 		t.Errorf("Byte: expected 0xff, got %d", b)
 	}
 }
 
 func TestInt16(t *testing.T) {
 	bs := []byte{0, 0x01, 0, 0x02, 0, 0x03}
-	dec := NewDefaultDecoder(bs, binary.BigEndian)
+	dec := NewDecoder(bs)
 
-	if b, _ := dec.Int16(); b != 1 {
+	if b := dec.Int16(); b != 1 {
 		t.Errorf("int16: expected 1, got %d", b)
 	}
 }
 
 func TestInt32(t *testing.T) {
 	bs := []byte{0, 0, 0, 0x01, 0, 0, 0, 0x02}
-	dec := NewDefaultDecoder(bs, binary.BigEndian)
+	dec := NewDecoder(bs)
 
-	if b, _ := dec.Int32(); b != 1 {
+	if b := dec.Int32(); b != 1 {
 		t.Errorf("expect 1, got %v", b)
 	}
 }
 
 func TestNew(t *testing.T) {
 	bs := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
-	dec := NewDefaultDecoder(bs, binary.BigEndian)
+	dec := NewDecoder(bs)
 
-	if dec.offset != 0 || dec.startOffset != 0 {
-		t.Errorf("NewDefaultDecoder: offset: %d, startoffset: %d, expected 0 for both!", dec.offset, dec.startOffset)
+	if dec.offset != 0 {
+		t.Errorf("NewDecoder: offset: %d, expected 0!", dec.offset)
 	}
 
 	if avail := dec.Available(); avail != len(bs) {
@@ -69,32 +68,28 @@ func TestNew(t *testing.T) {
 
 func TestSeek(t *testing.T) {
 	bs := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
-	dec := NewDefaultDecoder(bs, binary.BigEndian)
+	dec := NewDecoder(bs)
 
-	_, _ = dec.Seek(2)
+	dec.Seek(2)
 	want := byte(0x03)
-	if got, _ := dec.PeekByte(); got != want {
+	if got := dec.PeekByte(); got != want {
 		t.Errorf("Seek(2): got %d, expected %d", got, want)
 	}
 
-	_, _ = dec.Seek(len(bs) - 1) // Seek to the end of data
-	want = 0x05
-	if got, _ := dec.PeekByte(); got != want {
-		t.Errorf("Seek(max): got %d, expected %d", got, want)
+	dec.Seek(len(bs)) //Seek past the end
+	if err := dec.LastError(); err == nil {
+		t.Errorf("Seek(past the end): No error return! Decoder: %v", dec)
 	}
 
-	if _, err := dec.Seek(len(bs)); err == nil {
-		t.Errorf("Seek(max): No error return! Decoder: %v", dec)
-	}
-
-	if _, err := dec.Seek(-1); err == nil {
-		t.Errorf("Seek(-1): No error return! Decoder: %v", dec)
+	dec.Seek(-100) //Seek before start
+	if err := dec.LastError(); err == nil {
+		t.Errorf("Seek(before start): No error return! Decoder: %v", dec)
 	}
 }
 
 func TestCopyAll(t *testing.T) {
 	bs := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
-	dec := NewDefaultDecoder(bs, binary.BigEndian)
+	dec := NewDecoder(bs)
 
 	c := dec.Copy(dec.Available())
 	if len(c) != len(bs) {
@@ -104,7 +99,7 @@ func TestCopyAll(t *testing.T) {
 
 func TestCopy2(t *testing.T) {
 	bs := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
-	dec := NewDefaultDecoder(bs, binary.BigEndian)
+	dec := NewDecoder(bs)
 
 	sz := 2
 	c := dec.Copy(sz)
@@ -118,7 +113,7 @@ func TestCopy2(t *testing.T) {
 
 func TestCopyTooMuch(t *testing.T) {
 	bs := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
-	dec := NewDefaultDecoder(bs, binary.BigEndian)
+	dec := NewDecoder(bs)
 
 	c := dec.Copy(len(bs) + 1)
 	if c != nil {
@@ -128,7 +123,7 @@ func TestCopyTooMuch(t *testing.T) {
 
 func TestCopyOffset(t *testing.T) {
 	bs := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
-	dec := NewDefaultDecoder(bs, binary.BigEndian)
+	dec := NewDecoder(bs)
 
 	_ = dec.Copy(2)
 	cc := dec.Copy(2)
