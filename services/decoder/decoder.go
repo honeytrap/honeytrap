@@ -57,14 +57,14 @@ func (d *Decode) Available() int {
 }
 
 func (d *Decode) HasBytes(size int) error {
-	if size > 0 && len(d.data) >= d.offset+size {
+	if size > 0 && d.offset+size <= len(d.data) {
 		return nil
 	}
 
 	return ErrOutOfBounds{
 		Min: 0,
 		Max: len(d.data),
-		Got: size,
+		Got: d.offset + size,
 	}
 }
 
