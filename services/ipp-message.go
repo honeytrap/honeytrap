@@ -54,67 +54,15 @@ type ippMsg struct {
 	statusCode   int16 //is operation-id in request
 	requestId    int32
 	attributes   []*attribGroup
-	data         []byte //if there is data otherwise nil
-	username     string
-}
 
-type attribGroup struct {
-	tag byte //begin-attribute-group-tag
-	val []ippValueType
-}
-
-func (ag *attribGroup) decode(dec decoder.Decoder) error {
-
-	for vtag := dec.Byte(); vtag > unsupAttribTag; vtag = dec.Byte() { //Not a delimiter tag
-		if err := dec.LastError(); err != nil {
-			return err
-		}
-
-		var v ippValueType
-
-		switch vtag {
-		case valInteger:
-			v = &valInt{tag: vtag}
-		case valBoolean:
-			v = &valBool{tag: vtag}
-		case valKeyword:
-			v = &valStr{tag: vtag}
-		case valCharSet:
-			v = &valStr{tag: vtag}
-		case valUri:
-			v = &valStr{tag: vtag}
-		case valRangeOfInt:
-			v = &valInt{tag: vtag}
-		case naturelLang:
-			v = &valStr{tag: vtag}
-		case mimeMediaType:
-			v = &valStr{tag: vtag}
-		case textWithoutLang:
-			v = &valStr{tag: vtag}
-		}
-
-		v.decode(dec)
-		ag.val = append(ag.val, v)
-	}
-
-	// Put back last read byte, because it is a delimiter tag
-	dec.Seek(-1)
-
-	return nil
-}
-
-func (ag *attribGroup) encode(buf decoder.EncoderType) error {
-	buf.WriteUint8(ag.tag)
-
-	if ag.val != nil {
-		for _, vals := range ag.val {
-			vals.encode(buf)
-		}
-	}
-	return nil
+	data     []byte //if there is data otherwise nil
+	username string
+	uri      string
+	format   string
 }
 
 func (m *ippMsg) read(raw []byte) error {
+	log.Debug("START ippMsg.read([]byte)")
 	dec := decoder.NewDecoder(raw)
 
 	m.versionMajor = dec.Byte()
@@ -143,14 +91,9 @@ func (m *ippMsg) read(raw []byte) error {
 }
 
 // Encodes the ipp response message suitable for http transport
-func (m *ippMsg) encode() *bytes.Buffer {
+func (v *ippMsg) encode() *bytes.Buffer {
+	log.Debug("START ippMsg.encode()")
 	buf := decoder.NewEncoder()
-
-	m.encode(buf)
-	return &buf.Buffer
-}
-
-func (v *ippMsg) encode(buf decoder.EncoderType) {
 
 	// Header
 	buf.WriteUint8(v.versionMajor)
@@ -163,35 +106,54 @@ func (v *ippMsg) encode(buf decoder.EncoderType) {
 			group.encode(buf)
 		}
 	}
+	return &buf.Buffer
 }
 
-func (gout *ippMsg) setGroupResponse(gin *attribGroup) {
-	grp := &attribGroup{attribGroupTag: gin.tag}
+func (r *ippMsg) setOpAttribResponse(gin *attribGroup) {
+	log.Debug("START ippMsg.setOpAttribResponse(*attribGroup)")
+	grp := &attribGroup{tag: gin.tag}
 
-	switch gin.tag {
-	case opAttribTag:
-		for _, v := range gin.val {
-			switch v.Tag() {
-			case valCharSet:
-				grp.val = append(grp.val, v)
-			case naturelLang:
-				grp.val = append(grp.val, v)
-			case nameWithoutLang:
-				if v.name == "requesting-user-name" {
-					gout.username = v.value
+	for _, v := range gin.val {
+		switch v.Tag() {
+		case valCharSet:
+			grp.val = append(grp.val, v)
+		case naturelLang:
+			grp.val = append(grp.val, v)
+		}
+	}
+	r.attributes = append(r.attributes, grp)
+}
+
+func (r *ippMsg) setGetPrinterResponse() {
+	log.Debug("START ippMsg.setGetPrinterResponse()")
+	//Append a printer profile
+	r.attributes = append(r.attributes, model)
+}
+
+func (r *ippMsg) setPrintJobResponse(b *ippMsg) {
+	log.Debug("START ippMsg.setPrintJobResponse(*ippMsg)")
+	for _, g := range b.attributes {
+		if g.tag == opAttribTag {
+			for _, val := range g.val {
+				v, _ := val.(*valStr)
+				if v.name == "printer-uri" {
+					r.uri = v.val[0]
+				} else if v.name == "requesting-user-name" {
+					r.uri = v.val[0]
+				} else if v.name == "document-format" {
+					r.format = v.val[0]
 				}
 			}
+			break
 		}
-	case printerAttribTag:
-	case jobAttribTag:
-	case endAttribTag:
 	}
-
-	gout.attributes = append(gout.attributes, grp)
+	r.data = b.data
 }
 
 // Returns a IPP response based on the IPP request
 func IPPHandler(ippBody []byte) (*ippMsg, error) {
+	log.Debug("IPP handler started")
+
 	body := &ippMsg{}
 
 	err := body.read(ippBody)
@@ -208,15 +170,30 @@ func IPPHandler(ippBody []byte) (*ippMsg, error) {
 		data:         body.data,
 	}
 
-	switch body.statusCode { //operation-id
-	case opPrintJob:
-		for _, g := range body.attributes {
-			rbody.setGroupResponse(g)
+	//Set operation attributes
+	log.Debug("SET operation attributes ID:", body.requestId)
+	for _, g := range body.attributes {
+		if g.tag == opAttribTag {
+			rbody.setOpAttribResponse(g)
+			break
 		}
-	case opValidateJob:
-	case opGetJobAttrib:
-	case opGetPrinterAttrib:
 	}
+
+	switch body.statusCode { //operation-id
+	case opGetPrinterAttrib:
+		log.Debug("Get Printer Attributes")
+		rbody.setGetPrinterResponse()
+	case opPrintJob:
+		log.Debug("Print Job")
+		rbody.setPrintJobResponse(body)
+	case opValidateJob:
+		log.Debug("Validate Job")
+	case opGetJobAttrib:
+		log.Debug("Get Job Attributes")
+	}
+
+	//Set end tag
+	rbody.attributes = append(rbody.attributes, &attribGroup{tag: endAttribTag})
 
 	return rbody, nil
 }
