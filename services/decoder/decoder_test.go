@@ -1,7 +1,6 @@
 package decoder
 
 import (
-	"encoding/binary"
 	"testing"
 )
 
@@ -135,7 +134,7 @@ func TestCopyOffset(t *testing.T) {
 
 func TestCopyAll(t *testing.T) {
 	bs := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
-	dec := NewDefaultDecoder(bs, binary.BigEndian)
+	dec := NewDecoder(bs)
 
 	c := dec.Copy(dec.Available())
 	if len(c) != len(bs) {
@@ -145,7 +144,7 @@ func TestCopyAll(t *testing.T) {
 
 func TestCopy2(t *testing.T) {
 	bs := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
-	dec := NewDefaultDecoder(bs, binary.BigEndian)
+	dec := NewDecoder(bs)
 
 	sz := 2
 	c := dec.Copy(sz)
@@ -159,7 +158,7 @@ func TestCopy2(t *testing.T) {
 
 func TestCopyTooMuch(t *testing.T) {
 	bs := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
-	dec := NewDefaultDecoder(bs, binary.BigEndian)
+	dec := NewDecoder(bs)
 
 	c := dec.Copy(len(bs) + 1)
 	if c != nil {
@@ -169,7 +168,7 @@ func TestCopyTooMuch(t *testing.T) {
 
 func TestCopyOffset(t *testing.T) {
 	bs := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
-	dec := NewDefaultDecoder(bs, binary.BigEndian)
+	dec := NewDecoder(bs)
 
 	_ = dec.Copy(2)
 	cc := dec.Copy(2)
