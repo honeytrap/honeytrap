@@ -30,6 +30,38 @@
  */
 package lxc
 
-import logging "github.com/op/go-logging"
+import (
+	"time"
+
+	logging "github.com/op/go-logging"
+)
 
 var log = logging.MustGetLogger("director/lxc")
+
+type Delays struct {
+	FreezeDelay      Delay `toml:"freeze_every"`
+	StopDelay        Delay `toml:"stop_every"`
+	HousekeeperDelay Delay `toml:"housekeeper_every"`
+}
+
+// Delay defines a duration type.
+type Delay time.Duration
+
+// Duration returns the type of the giving duration from the provided pointer.
+func (t *Delay) Duration() time.Duration {
+	return time.Duration(*t)
+}
+
+// UnmarshalText handles unmarshalling duration values from the provided slice.
+func (t *Delay) UnmarshalText(text []byte) error {
+	s := string(text)
+
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		log.Errorf("Error parsing duration (%s): %s", s, err.Error())
+		return err
+	}
+
+	*t = Delay(d)
+	return nil
+}
