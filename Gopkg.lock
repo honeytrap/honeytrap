@@ -2,6 +2,12 @@
 
 
 [[projects]]
+  branch = "master"
+  name = "github.com/AndreasBriese/bbloom"
+  packages = ["."]
+  revision = "28f7e881ca57bc00e028f9ede9f0d9104cfeef5e"
+
+[[projects]]
   name = "github.com/BurntSushi/toml"
   packages = ["."]
   revision = "b26d9c308763d68093482582cea63d69be07a0f0"
@@ -24,6 +30,18 @@
   packages = ["spew"]
   revision = "346938d642f2ec3594ed81d874461961cd0faa76"
   version = "v1.1.0"
+
+[[projects]]
+  name = "github.com/dgraph-io/badger"
+  packages = [".","options","protos","skl","table","y"]
+  revision = "c7225883aa76fb3dd4707923c67c64bc1b4631bc"
+  version = "v1.1.0"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/dgryski/go-farm"
+  packages = ["."]
+  revision = "78658e5234cd0441f634c663fae5badf239dc817"
 
 [[projects]]
   name = "github.com/dimfeld/httptreemux"
@@ -94,7 +112,7 @@
 [[projects]]
   branch = "master"
   name = "github.com/google/netstack"
-  packages = ["ilist","tcpip","tcpip/buffer","waiter"]
+  packages = ["ilist","sleep","tcpip","tcpip/buffer","tcpip/header","tcpip/link/fdbased","tcpip/link/rawfile","tcpip/link/tun","tcpip/network/fragmentation","tcpip/network/hash","tcpip/network/ipv4","tcpip/network/ipv6","tcpip/ports","tcpip/seqnum","tcpip/stack","tcpip/transport/tcp","tmutex","waiter"]
   revision = "edcfca33ca347f59a1393986a5d216a5f183ae28"
 
 [[projects]]
@@ -116,6 +134,12 @@
   revision = "40a3ac1628261e59b1dcb1fddd650e3040e87165"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/honeytrap/protocol"
+  packages = ["."]
+  revision = "b1ce3685e6dbd9d813b76ee47ca2ce08de8aa530"
+
+[[projects]]
   name = "github.com/mattn/go-colorable"
   packages = ["."]
   revision = "167de6bfdfba052fa6b2d3664c8f5272e23c9072"
@@ -132,6 +156,18 @@
   packages = ["."]
   revision = "5160b48509cf5c877bc22c11c373f8c7738cdb38"
   version = "v1.3.0"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/mimoo/StrobeGo"
+  packages = ["strobe"]
+  revision = "43f0c284a7f9a40527b14a06a93a1a69f480cf91"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/mimoo/disco"
+  packages = ["libdisco"]
+  revision = "911dedbad3878426881579e4d2d6c4169981089c"
 
 [[projects]]
   name = "github.com/op/go-logging"
@@ -196,13 +232,13 @@
 [[projects]]
   branch = "master"
   name = "golang.org/x/crypto"
-  packages = ["curve25519","ed25519","ed25519/internal/edwards25519","ssh"]
+  packages = ["curve25519","ed25519","ed25519/internal/edwards25519","ssh","ssh/terminal"]
   revision = "2509b142fb2b797aa7587dad548f113b2c0f20ce"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/net"
-  packages = ["context"]
+  packages = ["context","internal/timeseries","trace"]
   revision = "7b572d500b0702f1ea30a47083ce2e1e5c61edba"
 
 [[projects]]
@@ -232,6 +268,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "bb6f1bf2575f76cde2964844e15effa727ca4a005362bd04a6707b60d44288d4"
+  inputs-digest = "711b36c045751858455df80e5365674e5814ad97565d573e5be618405948b94b"
   solver-name = "gps-cdcl"
   solver-version = 1

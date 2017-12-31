@@ -28,92 +28,66 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package services
+package ssh
 
 import (
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
 	"encoding/hex"
-	"encoding/pem"
 	"errors"
 	"io"
 	"net"
 
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
+	"github.com/honeytrap/honeytrap/services"
+
 	"golang.org/x/crypto/ssh"
 )
 
 var (
-	_ = Register("ssh-auth", SSHAuth)
+	_ = services.Register("ssh-auth", SSHAuth)
 )
 
-func generateKey() (*PrivateKey, error) {
-	// TODO: cache generated key
-	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+func SSHAuth(options ...services.ServicerFunc) services.Servicer {
+	s, err := Storage()
 	if err != nil {
-		return nil, err
+		log.Errorf("Could not initialize storage: ", err.Error())
 	}
 
-	if cerr := priv.Validate(); cerr != nil {
-		return nil, cerr
-	}
-
-	privder := x509.MarshalPKCS1PrivateKey(priv)
-
-	privblk := pem.Block{
-		Type:    "RSA PRIVATE KEY",
-		Headers: nil,
-		Bytes:   privder,
-	}
-
-	privateBytes := pem.EncodeToMemory(&privblk)
-
-	private, err := ssh.ParsePrivateKey(privateBytes)
-	if err != nil {
-		return nil, err
-	}
-
-	return &PrivateKey{private}, nil
-}
-
-// PrivateKey holds the ssh.Signer instance to unsign received data.
-type PrivateKey struct {
-	ssh.Signer
-}
-
-// UnmarshalText unmarshalls the giving text as the Signers data.
-func (t *PrivateKey) UnmarshalText(data []byte) (err error) {
-	private, err := ssh.ParsePrivateKey(data)
-	if err != nil {
-		return err
-	}
-
-	(*t) = PrivateKey{private}
-	return err
-}
-
-func SSHAuth(options ...ServicerFunc) Servicer {
-	key, err := generateKey()
-	if err != nil {
-		log.Errorf("Could not generate ssh key: %s", err.Error())
-		return nil
-	}
-
-	// TODO(nl5887): from configuration file
 	banner := "SSH-2.0-OpenSSH_6.6.1p1 2020Ubuntu-2ubuntu2"
 
-	s := &sshAuthService{
-		key:    key,
+	srvc := &sshAuthService{
+		key:    s.PrivateKey(),
 		Banner: banner,
 	}
 
-	s.config = ssh.ServerConfig{
-		ServerVersion: banner,
+	for _, o := range options {
+		o(srvc)
+	}
+
+	return srvc
+}
+
+type sshAuthService struct {
+	c pushers.Channel
+
+	Banner string `toml:"banner"`
+
+	key    *privateKey `toml:"private-key"`
+	config ssh.ServerConfig
+}
+
+func (s *sshAuthService) SetChannel(c pushers.Channel) {
+	s.c = c
+}
+
+func (s *sshAuthService) Handle(conn net.Conn) error {
+	defer conn.Close()
+
+	config := ssh.ServerConfig{
+		ServerVersion: s.Banner,
 		PublicKeyCallback: func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
 			s.c.Send(event.New(
-				EventOptions,
+				services.EventOptions,
 				event.Category("ssh"),
 				event.Type("publickey-authentication"),
 				event.SourceAddr(conn.RemoteAddr()),
@@ -126,7 +100,7 @@ func SSHAuth(options ...ServicerFunc) Servicer {
 		},
 		PasswordCallback: func(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
 			s.c.Send(event.New(
-				EventOptions,
+				services.EventOptions,
 				event.Category("ssh"),
 				event.Type("password-authentication"),
 				event.SourceAddr(conn.RemoteAddr()),
@@ -139,32 +113,9 @@ func SSHAuth(options ...ServicerFunc) Servicer {
 		},
 	}
 
-	s.config.AddHostKey(key)
+	config.AddHostKey(s.key)
 
-	for _, o := range options {
-		o(s)
-	}
-
-	return s
-}
-
-type sshAuthService struct {
-	c pushers.Channel
-
-	Banner string `toml:"banner"`
-
-	key    *PrivateKey
-	config ssh.ServerConfig
-}
-
-func (s *sshAuthService) SetChannel(c pushers.Channel) {
-	s.c = c
-}
-
-func (s *sshAuthService) Handle(conn net.Conn) error {
-	defer conn.Close()
-
-	sconn, chans, reqs, err := ssh.NewServerConn(conn, &s.config)
+	sconn, chans, reqs, err := ssh.NewServerConn(conn, &config)
 	if err == io.EOF {
 		// server closed connection
 		return nil

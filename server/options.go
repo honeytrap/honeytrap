@@ -72,9 +72,7 @@ func WithConfig(s string) (OptionFn, error) {
 	}, nil
 }
 
-func WithToken() OptionFn {
-	uid := xid.New().String()
-
+func HomeDir() string {
 	var err error
 	var usr *user.User
 	if usr, err = user.Current(); err != nil {
@@ -94,19 +92,26 @@ func WithToken() OptionFn {
 		}
 	default:
 		panic(err)
-
 	}
 
+	return p
+}
+
+func WithToken() OptionFn {
+	uid := xid.New().String()
+
+	p := HomeDir()
 	p = path.Join(p, "token")
 
-	_, err = os.Stat(p)
-	if err == nil {
-		data, err := ioutil.ReadFile(p)
-		if err != nil {
-			uid = string(data)
-		}
-	} else if os.IsNotExist(err) {
+	if _, err := os.Stat(p); os.IsNotExist(err) {
 		ioutil.WriteFile(p, []byte(uid), 0600)
+	} else if err != nil {
+		// other error
+		panic(err)
+	} else if data, err := ioutil.ReadFile(p); err == nil {
+		uid = string(data)
+	} else {
+		panic(err)
 	}
 
 	return func(h *Honeytrap) error {
