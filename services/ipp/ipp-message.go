@@ -1,4 +1,4 @@
-package services
+package ipp
 
 import (
 	"bytes"
@@ -47,22 +47,24 @@ const (
 	sOk int16 = 0x0000 //successful-ok
 )
 
-// Wraps a complete ipp object
 type ippMsg struct {
+
+	//IPP message, request and response
 	versionMajor byte
 	versionMinor byte
 	statusCode   int16 //is operation-id in request
 	requestId    int32
 	attributes   []*attribGroup
 
+	//Extra, for our own use
 	data     []byte //if there is data otherwise nil
 	username string
 	uri      string
 	format   string
+	jobname  string
 }
 
-func (m *ippMsg) read(raw []byte) error {
-	log.Debug("START ippMsg.read([]byte)")
+func (m *ippMsg) decode(raw []byte) error {
 	dec := decoder.NewDecoder(raw)
 
 	m.versionMajor = dec.Byte()
@@ -92,7 +94,6 @@ func (m *ippMsg) read(raw []byte) error {
 
 // Encodes the ipp response message suitable for http transport
 func (v *ippMsg) encode() *bytes.Buffer {
-	log.Debug("START ippMsg.encode()")
 	buf := decoder.NewEncoder()
 
 	// Header
@@ -110,7 +111,6 @@ func (v *ippMsg) encode() *bytes.Buffer {
 }
 
 func (r *ippMsg) setOpAttribResponse(gin *attribGroup) {
-	log.Debug("START ippMsg.setOpAttribResponse(*attribGroup)")
 	grp := &attribGroup{tag: gin.tag}
 
 	for _, v := range gin.val {
@@ -125,13 +125,12 @@ func (r *ippMsg) setOpAttribResponse(gin *attribGroup) {
 }
 
 func (r *ippMsg) setGetPrinterResponse() {
-	log.Debug("START ippMsg.setGetPrinterResponse()")
 	//Append a printer profile
 	r.attributes = append(r.attributes, model)
 }
 
 func (r *ippMsg) setPrintJobResponse(b *ippMsg) {
-	log.Debug("START ippMsg.setPrintJobResponse(*ippMsg)")
+
 	for _, g := range b.attributes {
 		if g.tag == opAttribTag {
 			for _, val := range g.val {
@@ -139,9 +138,11 @@ func (r *ippMsg) setPrintJobResponse(b *ippMsg) {
 				if v.name == "printer-uri" {
 					r.uri = v.val[0]
 				} else if v.name == "requesting-user-name" {
-					r.uri = v.val[0]
+					r.username = v.val[0]
 				} else if v.name == "document-format" {
 					r.format = v.val[0]
+				} else if v.name == "job-name" {
+					r.jobname = v.val[0]
 				}
 			}
 			break
@@ -152,11 +153,10 @@ func (r *ippMsg) setPrintJobResponse(b *ippMsg) {
 
 // Returns a IPP response based on the IPP request
 func IPPHandler(ippBody []byte) (*ippMsg, error) {
-	log.Debug("IPP handler started")
 
 	body := &ippMsg{}
 
-	err := body.read(ippBody)
+	err := body.decode(ippBody)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +171,6 @@ func IPPHandler(ippBody []byte) (*ippMsg, error) {
 	}
 
 	//Set operation attributes
-	log.Debug("SET operation attributes ID:", body.requestId)
 	for _, g := range body.attributes {
 		if g.tag == opAttribTag {
 			rbody.setOpAttribResponse(g)
@@ -181,15 +180,15 @@ func IPPHandler(ippBody []byte) (*ippMsg, error) {
 
 	switch body.statusCode { //operation-id
 	case opGetPrinterAttrib:
-		log.Debug("Get Printer Attributes")
+		log.Debug("IPP: Get Printer Attributes")
 		rbody.setGetPrinterResponse()
 	case opPrintJob:
-		log.Debug("Print Job")
+		log.Debug("IPP: Print Job")
 		rbody.setPrintJobResponse(body)
 	case opValidateJob:
-		log.Debug("Validate Job")
+		log.Debug("IPP: Validate Job")
 	case opGetJobAttrib:
-		log.Debug("Get Job Attributes")
+		log.Debug("IPP: Get Job Attributes")
 	}
 
 	//Set end tag
