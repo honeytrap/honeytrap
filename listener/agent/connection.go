@@ -31,19 +31,29 @@
 package agent
 
 import (
-	"fmt"
 	"io"
 	"net"
 	"sync"
 	"time"
 )
 
+type errorTimeout struct {
+}
+
+func (e *errorTimeout) Error() string {
+	return "i/o timeout"
+}
+func (e *errorTimeout) Timeout() bool {
+	return true
+}
+
 type agentConnection struct {
 	Laddr net.Addr
 	Raddr net.Addr
 
-	buff   []byte
-	closed bool
+	buff        []byte
+	closed      bool
+	readTimeout time.Time
 
 	in chan []byte
 
@@ -63,21 +73,24 @@ func (dc *agentConnection) Read(b []byte) (int, error) {
 		return n, nil
 	}
 
-	data, ok := <-dc.in
-	if !ok {
-		fmt.Println("NOT OK, RETURN EOF")
-		return 0, io.EOF
+	select {
+	case <-time.After(time.Until(dc.readTimeout)):
+		return 0, &errorTimeout{}
+	case data, ok := <-dc.in:
+		if !ok {
+			log.Errorf("Error reading from channel, return EOF")
+			return 0, io.EOF
+		}
+		dc.m.Lock()
+		defer dc.m.Unlock()
+
+		dc.buff = append(dc.buff, data[:]...)
+
+		n := copy(b[:], dc.buff[0:])
+		dc.buff = dc.buff[n:]
+
+		return n, nil
 	}
-
-	dc.m.Lock()
-	defer dc.m.Unlock()
-
-	dc.buff = append(dc.buff, data[:]...)
-
-	n := copy(b[:], dc.buff[0:])
-	dc.buff = dc.buff[n:]
-
-	return n, nil
 }
 
 func (dc *agentConnection) Write(b []byte) (int, error) {
@@ -128,10 +141,13 @@ func (dc *agentConnection) RemoteAddr() net.Addr {
 }
 
 func (dc *agentConnection) SetDeadline(t time.Time) error {
+	dc.SetWriteDeadline(t)
+	dc.SetReadDeadline(t)
 	return nil
 }
 
 func (dc *agentConnection) SetReadDeadline(t time.Time) error {
+	dc.readTimeout = t
 	return nil
 }
 
