@@ -74,7 +74,7 @@ func WithConfig(s string) (OptionFn, error) {
 	}, nil
 }
 
-func WithHomeDir(s string) (OptionFn, error) {
+func WithDataDir(s string) (OptionFn, error) {
 	var err error
 	var usr *user.User
 	if usr, err = user.Current(); err != nil {
@@ -102,8 +102,8 @@ func WithHomeDir(s string) (OptionFn, error) {
 	}
 
 	return func(b *Honeytrap) error {
-		b.homeDir = p
-		storage.SetHomeDir(p)
+		b.dataDir = p
+		storage.SetDataDir(p)
 		return nil
 	}, nil
 }
@@ -113,7 +113,7 @@ func WithToken() OptionFn {
 
 	return func(h *Honeytrap) error {
 		h.token = uid
-		p := h.homeDir
+		p := h.dataDir
 		p = path.Join(p, "token")
 
 		if _, err := os.Stat(p); os.IsNotExist(err) {

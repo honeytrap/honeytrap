@@ -107,7 +107,7 @@ func serve(c *cli.Context) error {
 	}
 
 	if d := c.String("data"); d == "" {
-	} else if fn, err := server.WithHomeDir(d); err != nil {
+	} else if fn, err := server.WithDataDir(d); err != nil {
 		ec := cli.NewExitError(err.Error(), 1)
 		return ec
 	} else {

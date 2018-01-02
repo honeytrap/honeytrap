@@ -43,17 +43,17 @@ type storage interface {
 }
 
 var db *badger.DB
-var homeDir string
+var dataDir string
 
-func SetHomeDir(s string) {
-	homeDir = s
+func SetDataDir(s string) {
+	dataDir = s
 	db = MustDB()
 }
 
 func MustDB() *badger.DB {
 	opts := badger.DefaultOptions
 
-	p := filepath.Join(homeDir, "badger.db")
+	p := filepath.Join(dataDir, "badger.db")
 
 	opts.Dir = p
 	opts.ValueDir = p
