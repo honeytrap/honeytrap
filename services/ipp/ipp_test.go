@@ -1,4 +1,4 @@
-package services
+package ipp
 
 import (
 	"testing"
