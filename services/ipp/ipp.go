@@ -28,7 +28,7 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package services
+package ipp
 
 import (
 	"bufio"
@@ -39,13 +39,17 @@ import (
 
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
+	"github.com/honeytrap/honeytrap/services"
+	logging "github.com/op/go-logging"
 )
+
+var log = logging.MustGetLogger("services")
 
 var (
-	_ = Register("ipp", IPP)
+	_ = services.Register("ipp", IPP)
 )
 
-func IPP(options ...ServicerFunc) Servicer {
+func IPP(options ...services.ServicerFunc) services.Servicer {
 	s := &ippService{}
 	for _, o := range options {
 		o(s)
@@ -53,8 +57,14 @@ func IPP(options ...ServicerFunc) Servicer {
 	return s
 }
 
+type Config struct {
+	HttpServer string `toml:"server"`
+
+	SizeLimit int `toml:"size-treshold"`
+}
+
 type ippService struct {
-	httpServiceConfig
+	Config
 
 	ch pushers.Channel
 }
@@ -65,45 +75,27 @@ func (s *ippService) SetChannel(c pushers.Channel) {
 
 func (s *ippService) Handle(conn net.Conn) error {
 
-	log.Debug("START: (s *ippService) Handle(net.Conn)")
-
 	br := bufio.NewReader(conn)
 	req, err := http.ReadRequest(br)
 
-	if err == io.EOF || req.Method != "POST" || req.Header.Get("Content-Type") != "application/ipp" {
+	if err == io.EOF {
 		log.Debug("IPP: Bad ipp request")
 		return nil
 	} else if err != nil {
-		log.Debug("IPP: error reading http Request")
 		return err
 	}
-	/*
-			cont := http.Response{
-				StatusCode: http.StatusContinue,
-				Status:     http.StatusText(http.StatusContinue),
-				Proto:      req.Proto,
-				ProtoMajor: req.ProtoMajor,
-				ProtoMinor: req.ProtoMinor,
-				Request:    req,
-				Header: map[string][]string{
-					"Server":       []string{"Jerry-IPP"},
-					"Content-Type": []string{"application/ipp"},
-				},
-			}
+	if req.Method != "POST" || req.Header.Get("Content-Type") != "application/ipp" {
+		log.Debug("IPP: Bad ipp request")
+		return nil
+	}
 
-		if err := cont.Write(conn); err != nil {
-			log.Debug("HTTP: Error writing Continue response")
-			return err
-		}
-	*/
 	//TODO: This could exhaust memory!
 	ippReq, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		log.Debug("IPP: error reading request body!")
+		log.Debug("IPP: error reading IPP request!")
 		return err
 	}
 	if err := req.Body.Close(); err != nil {
-		log.Debug("IPP: error closing request body!")
 		return err
 	}
 
@@ -112,15 +104,32 @@ func (s *ippService) Handle(conn net.Conn) error {
 		return err
 	}
 
-	//Dump Response
-	log.Debugf("Dump Response: %q", ippResp)
+	//Check for print
+	if ippResp.data != nil {
+		log.Debug("IPP: Print received")
 
-	if l := len(ippResp.data); l > 0 {
-		log.Debug("IPP: Print received", len(ippResp.data))
+		dir := "/tmp/"
+		ext := ""
+
+		switch ippResp.format {
+		case "application/pdf":
+			ext = ".pdf"
+		case "image/pwg-raster":
+			ext = ".ras"
+		case "application/octet-stream":
+			ext = ".raw"
+		}
+
+		if len(ippResp.data) > s.SizeLimit {
+			fname := dir + ippResp.jobname + ext
+			ioutil.WriteFile(fname, ippResp.data, 0600)
+			ippResp.data = []byte("Print data stored as " + fname)
+		}
+
 	}
 
 	s.ch.Send(event.New(
-		EventOptions,
+		services.EventOptions,
 		event.Category("ipp"),
 		event.Type("request"),
 		event.SourceAddr(conn.RemoteAddr()),
@@ -128,6 +137,7 @@ func (s *ippService) Handle(conn net.Conn) error {
 		event.Custom("http.url", req.URL.String()),
 		event.Custom("ipp.uri", ippResp.uri),
 		event.Custom("ipp.user", ippResp.username),
+		event.Custom("ipp.job-name", string(ippResp.jobname)),
 		event.Custom("ipp.data", string(ippResp.data)),
 	))
 
@@ -142,7 +152,7 @@ func (s *ippService) Handle(conn net.Conn) error {
 		Request:       req,
 		ContentLength: int64(rbody.Len()),
 		Header: map[string][]string{
-			"Server":        []string{"Jerry-IPP"},
+			"Server":        []string{s.HttpServer},
 			"Content-Type":  []string{"application/ipp"},
 			"Cache-Control": []string{"no-cache"},
 			"Pragma":        []string{"no-cache"},
@@ -155,6 +165,6 @@ func (s *ippService) Handle(conn net.Conn) error {
 		log.Debug("IPP: error writing respons!")
 		return err
 	}
-	log.Debug("IPP: http response written")
+
 	return nil
 }
