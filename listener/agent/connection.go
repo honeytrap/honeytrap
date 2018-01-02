@@ -73,6 +73,11 @@ func (dc *agentConnection) Read(b []byte) (int, error) {
 		return n, nil
 	}
 
+	// Don't timeout when deadline is 0
+	if dc.readTimeout.IsZero() {
+		dc.readTimeout = time.Now().Add(24 * time.Hour)
+	}
+
 	select {
 	case <-time.After(time.Until(dc.readTimeout)):
 		return 0, &errorTimeout{}
