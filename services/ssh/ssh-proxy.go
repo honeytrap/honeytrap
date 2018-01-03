@@ -41,6 +41,8 @@ import (
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/services"
 
+	"encoding/base64"
+
 	"github.com/rs/xid"
 	"golang.org/x/crypto/ssh"
 )
@@ -211,7 +213,7 @@ func (s *sshProxyService) Handle(conn net.Conn) error {
 					return
 				}
 
-				s.c.Send(event.New(
+				options := []event.Option{
 					services.EventOptions,
 					event.Category("ssh"),
 					event.Type("ssh-request"),
@@ -220,7 +222,7 @@ func (s *sshProxyService) Handle(conn net.Conn) error {
 					event.Custom("ssh.sessionid", id.String()),
 					event.Custom("ssh.request-type", req.Type),
 					event.Custom("ssh.payload", req.Payload),
-				))
+				}
 
 				switch req.Type {
 				case "exit-status":
@@ -230,6 +232,10 @@ func (s *sshProxyService) Handle(conn net.Conn) error {
 				case "pty-req":
 					fallthrough
 				case "exec":
+					if v, err := base64.StdEncoding.DecodeString(string(req.Payload)); err == nil {
+						options = append(options, event.Custom("ssh.exec", string(v)))
+					}
+
 					fallthrough
 				case "subsystem":
 					log.Debugf("request type=%s payload=%s", req.Type, string(req.Payload))
@@ -241,6 +247,10 @@ func (s *sshProxyService) Handle(conn net.Conn) error {
 					log.Errorf("wantreply: ", err)
 				} else {
 				}
+
+				s.c.Send(event.New(
+					options...,
+				))
 			}
 		}
 
