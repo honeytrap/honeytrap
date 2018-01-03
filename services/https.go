@@ -31,6 +31,7 @@
 package services
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -141,7 +142,7 @@ func (s *httpsService) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 	return cert, nil
 }
 
-func (s *httpsService) Handle(conn net.Conn) error {
+func (s *httpsService) Handle(ctx context.Context, conn net.Conn) error {
 	tlsConn := tls.Server(conn, &tls.Config{
 		Certificates:   []tls.Certificate{},
 		GetCertificate: s.getCertificate,
@@ -151,5 +152,5 @@ func (s *httpsService) Handle(conn net.Conn) error {
 		return err
 	}
 
-	return s.httpService.Handle(tlsConn)
+	return s.httpService.Handle(ctx, tlsConn)
 }

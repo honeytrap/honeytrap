@@ -32,6 +32,7 @@ package services
 
 import (
 	"bufio"
+	"context"
 	"net"
 
 	"github.com/honeytrap/honeytrap/event"
@@ -55,7 +56,7 @@ func (s *dummyService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
-func (s *dummyService) Handle(conn net.Conn) error {
+func (s *dummyService) Handle(ctx context.Context, conn net.Conn) error {
 	b := bufio.NewReader(conn)
 	for {
 		line, err := b.ReadBytes('\n')

@@ -31,6 +31,7 @@
 package services
 
 import (
+	"context"
 	"io"
 	"net"
 	"os"
@@ -59,7 +60,7 @@ func (s *dnsService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
-func (s *dnsService) Handle(conn net.Conn) error {
+func (s *dnsService) Handle(ctx context.Context, conn net.Conn) error {
 	_, err := io.Copy(os.Stdout, conn)
 	return err
 }

@@ -31,6 +31,7 @@
 package vnc
 
 import (
+	"context"
 	"net"
 	"os"
 	"path/filepath"
@@ -96,7 +97,7 @@ func (s *vncService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
-func (s *vncService) Handle(conn net.Conn) error {
+func (s *vncService) Handle(ctx context.Context, conn net.Conn) error {
 	defer conn.Close()
 
 	bounds := s.li.Img.Bounds()

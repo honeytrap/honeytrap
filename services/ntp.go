@@ -31,6 +31,7 @@
 package services
 
 import (
+	"context"
 	"io"
 	"net"
 	"os"
@@ -59,7 +60,7 @@ func (s *ntpService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
-func (s *ntpService) Handle(conn net.Conn) error {
+func (s *ntpService) Handle(ctx context.Context, conn net.Conn) error {
 	// TODO: implement protocol support
 	_, err := io.Copy(os.Stdout, conn)
 	return err
