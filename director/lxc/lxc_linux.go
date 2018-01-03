@@ -107,10 +107,14 @@ func (d *lxcDirector) Dial(conn net.Conn) (net.Conn, error) {
 		return nil, err
 	}
 
+	go c.(*lxcContainer).housekeeper()
+
 	if ta, ok := conn.LocalAddr().(*net.TCPAddr); ok {
-		return c.(*lxcContainer).Dial("tcp", ta.Port)
+		connection, err := c.(*lxcContainer).Dial("tcp", ta.Port)
+		return lxcContainerConn{Conn: connection, container: c.(*lxcContainer)}, err
 	} else if ta, ok := conn.LocalAddr().(*net.UDPAddr); ok {
-		return c.(*lxcContainer).Dial("udp", ta.Port)
+		connection, err := c.(*lxcContainer).Dial("udp", ta.Port)
+		return lxcContainerConn{Conn: connection, container: c.(*lxcContainer)}, err
 	} else {
 		return nil, errors.New("Unsupported protocol")
 	}
@@ -153,8 +157,6 @@ func (d *lxcDirector) newContainer(name string, template string) (*lxcContainer,
 	if err := c.clone(); err != nil {
 		return nil, err
 	}
-
-	go c.housekeeper()
 	return &c, nil
 }
 
@@ -177,6 +179,7 @@ func (c *lxcContainer) housekeeper() {
 		if time.Since(c.idle) > time.Duration(c.Delays.StopDelay) && c.isFrozen() {
 			// stop
 			c.c.Stop()
+			return
 		} else if time.Since(c.idle) > time.Duration(c.Delays.FreezeDelay) && c.isRunning() {
 			// freeze
 			c.c.Freeze()
