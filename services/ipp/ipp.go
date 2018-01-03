@@ -73,6 +73,8 @@ type Config struct {
 
 	StorageDir string `toml:"storage-dir"`
 
+	PrinterName string `toml:"printer-name"`
+
 	SizeLimit int `toml:"size-treshold"`
 }
 
@@ -87,6 +89,8 @@ func (s *ippService) SetChannel(c pushers.Channel) {
 }
 
 func (s *ippService) Handle(ctx context.Context, conn net.Conn) error {
+
+	model.val = append(model.val, &valStr{nameWithoutLang, "printer-name", []string{s.PrinterName}})
 
 	br := bufio.NewReader(conn)
 	req, err := http.ReadRequest(br)

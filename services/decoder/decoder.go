@@ -158,12 +158,15 @@ func (d *Decode) Copy(size int) []byte {
 
 // Seeking relative to current offset
 func (d *Decode) Seek(pos int) {
-	d.offset += pos
-	if d.offset < 0 || d.offset > len(d.data) {
+	n := d.offset + pos
+
+	if n < 0 || n > len(d.data) {
 		d.lasterror = ErrOutOfBounds{
 			Min: 0,
 			Max: len(d.data),
-			Got: d.offset,
+			Got: n,
 		}
+	} else {
+		d.offset = n
 	}
 }
