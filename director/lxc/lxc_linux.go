@@ -107,6 +107,7 @@ func (d *lxcDirector) Dial(conn net.Conn) (net.Conn, error) {
 		return nil, err
 	}
 
+	// Housekeeper only runs in Running containers, so start it always
 	go c.(*lxcContainer).housekeeper()
 
 	if ta, ok := conn.LocalAddr().(*net.TCPAddr); ok {
@@ -142,9 +143,9 @@ func (d *lxcDirector) newContainer(name string, template string) (*lxcContainer,
 		eb:       d.eb,
 		d:        d,
 		Delays: Delays{
-			FreezeDelay:      Delay(1 * time.Minute),
-			StopDelay:        Delay(2 * time.Minute),
-			HousekeeperDelay: Delay(30 * time.Second),
+			FreezeDelay:      Delay(15 * time.Minute),
+			StopDelay:        Delay(30 * time.Minute),
+			HousekeeperDelay: Delay(1 * time.Minute),
 		},
 	}
 
@@ -160,7 +161,7 @@ func (d *lxcDirector) newContainer(name string, template string) (*lxcContainer,
 	return &c, nil
 }
 
-// housekeeper handls the needed process of handling internal logic
+// housekeeper handles the needed process of handling internal logic
 // in maintaining the provided lxc.Container.
 func (c *lxcContainer) housekeeper() {
 	// container lifetime function
@@ -174,14 +175,12 @@ func (c *lxcContainer) housekeeper() {
 			continue
 		}
 
-		log.Debugf("LxcContainer %s: idle for %s with current state %s", c.name, time.Now().Sub(c.idle).String(), c.c.State().String())
-
 		if time.Since(c.idle) > time.Duration(c.Delays.StopDelay) && c.isFrozen() {
-			// stop
+			log.Debugf("LxcContainer %s: idle for %s, stopping container", c.name, time.Now().Sub(c.idle).String())
 			c.c.Stop()
 			return
 		} else if time.Since(c.idle) > time.Duration(c.Delays.FreezeDelay) && c.isRunning() {
-			// freeze
+			log.Debugf("LxcContainer %s: idle for %s, freezing container", c.name, time.Now().Sub(c.idle).String())
 			c.c.Freeze()
 		}
 	}
@@ -339,6 +338,8 @@ func (c *lxcContainer) settle() error {
 	c.idevice = isets[0]
 
 	log.Debugf("Using network device %s to %s", c.idevice, c.name)
+
+	c.idle = time.Now()
 
 	return nil
 }
