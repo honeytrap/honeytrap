@@ -72,6 +72,7 @@ const (
 	opCreateJob        int16 = 0x0005
 	opGetJobAttrib     int16 = 0x0009
 	opGetPrinterAttrib int16 = 0x000b
+	opCupsGetDevices   int16 = 0x400b
 
 	// Status values
 	sOk int16 = 0x0000 //successful-ok
@@ -181,6 +182,11 @@ func (r *ippMsg) setPrintJobResponse(b *ippMsg) {
 	r.data = b.data
 }
 
+func (r *ippMsg) setGetDevices() {
+	grp := &attribGroup{tag: printerAttribTag}
+	r.attributes = append(r.attributes, grp)
+}
+
 // Returns a IPP response based on the IPP request
 func IPPHandler(ippBody []byte) (*ippMsg, error) {
 
@@ -219,6 +225,9 @@ func IPPHandler(ippBody []byte) (*ippMsg, error) {
 		log.Debug("IPP: Validate Job")
 	case opGetJobAttrib:
 		log.Debug("IPP: Get Job Attributes")
+	case opCupsGetDevices:
+		log.Debug("IPP: CUPS Get Devices")
+		rbody.setGetDevices()
 	}
 
 	//Set end tag
