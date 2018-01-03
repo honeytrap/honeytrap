@@ -33,9 +33,11 @@ package services
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"strings"
 
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
@@ -74,6 +76,22 @@ func (s *httpService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
+func Headers(headers map[string][]string) event.Option {
+	return func(m event.Event) {
+		for name, h := range headers {
+			m.Store(fmt.Sprintf("http.header.%s", strings.ToLower(name)), h)
+		}
+	}
+}
+
+func Cookies(cookies []*http.Cookie) event.Option {
+	return func(m event.Event) {
+		for _, c := range cookies {
+			m.Store(fmt.Sprintf("http.cookie.%s", strings.ToLower(c.Name)), c.Value)
+		}
+	}
+}
+
 func (s *httpService) Handle(ctx context.Context, conn net.Conn) error {
 	for {
 		br := bufio.NewReader(conn)
@@ -91,7 +109,12 @@ func (s *httpService) Handle(ctx context.Context, conn net.Conn) error {
 			event.Type("request"),
 			event.SourceAddr(conn.RemoteAddr()),
 			event.DestinationAddr(conn.LocalAddr()),
+			event.Custom("http.method", req.Method),
+			event.Custom("http.proto", req.Proto),
+			event.Custom("http.host", req.Host),
 			event.Custom("http.url", req.URL.String()),
+			Headers(req.Header),
+			Cookies(req.Cookies()),
 		))
 
 		resp := http.Response{
@@ -105,6 +128,7 @@ func (s *httpService) Handle(ctx context.Context, conn net.Conn) error {
 				"Server": []string{s.Server},
 			},
 		}
+
 		if err := resp.Write(conn); err != nil {
 			return err
 		}
