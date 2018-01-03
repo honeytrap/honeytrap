@@ -183,7 +183,6 @@ func (r *ippMsg) setPrintJobResponse(b *ippMsg) {
 
 // Returns a IPP response based on the IPP request
 func IPPHandler(ippBody []byte) (*ippMsg, error) {
-
 	body := &ippMsg{}
 
 	err := body.decode(ippBody)
@@ -210,15 +209,15 @@ func IPPHandler(ippBody []byte) (*ippMsg, error) {
 
 	switch body.statusCode { //operation-id
 	case opGetPrinterAttrib:
-		log.Debug("IPP: Get Printer Attributes")
+		log.Debug("Get Printer Attributes")
 		rbody.setGetPrinterResponse()
 	case opPrintJob:
-		log.Debug("IPP: Print Job")
+		log.Debug("Print Job")
 		rbody.setPrintJobResponse(body)
 	case opValidateJob:
-		log.Debug("IPP: Validate Job")
+		log.Debug("Validate Job")
 	case opGetJobAttrib:
-		log.Debug("IPP: Get Job Attributes")
+		log.Debug("Get Job Attributes")
 	}
 
 	//Set end tag

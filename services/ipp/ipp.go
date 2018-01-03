@@ -32,10 +32,13 @@ package ipp
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
+	"path"
+	"time"
 
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
@@ -43,14 +46,21 @@ import (
 	logging "github.com/op/go-logging"
 )
 
-var log = logging.MustGetLogger("services")
+var log = logging.MustGetLogger("services/ipp")
 
 var (
 	_ = services.Register("ipp", IPP)
 )
 
 func IPP(options ...services.ServicerFunc) services.Servicer {
-	s := &ippService{}
+	s := &ippService{
+		Config: Config{
+			Banner:     "hplj1020",
+			StorageDir: "",
+			SizeLimit:  104857600,
+		},
+	}
+
 	for _, o := range options {
 		o(s)
 	}
@@ -58,7 +68,9 @@ func IPP(options ...services.ServicerFunc) services.Servicer {
 }
 
 type Config struct {
-	HttpServer string `toml:"server"`
+	Banner string `toml:"server"`
+
+	StorageDir string `toml:"storage-dir"`
 
 	SizeLimit int `toml:"size-treshold"`
 }
@@ -79,22 +91,27 @@ func (s *ippService) Handle(conn net.Conn) error {
 	req, err := http.ReadRequest(br)
 
 	if err == io.EOF {
-		log.Debug("IPP: Bad ipp request")
 		return nil
 	} else if err != nil {
+		log.Error("Bad ipp request: %s", err.Error())
 		return err
 	}
-	if req.Method != "POST" || req.Header.Get("Content-Type") != "application/ipp" {
-		log.Debug("IPP: Bad ipp request")
+
+	if req.Method != "POST" {
+		log.Error("Bad ipp request, request method: %s", req.Method)
+		return nil
+	} else if contentType := req.Header.Get("Content-Type"); contentType != "application/ipp" {
+		log.Error("Bad ipp request, content-type: %s", contentType)
 		return nil
 	}
 
 	//TODO: This could exhaust memory!
 	ippReq, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		log.Debug("IPP: error reading IPP request!")
+		log.Error("Error reading request: %s", err.Error())
 		return err
 	}
+
 	if err := req.Body.Close(); err != nil {
 		return err
 	}
@@ -104,11 +121,12 @@ func (s *ippService) Handle(conn net.Conn) error {
 		return err
 	}
 
-	//Check for print
-	if ippResp.data != nil {
-		log.Debug("IPP: Print received")
-
-		dir := "/tmp/"
+	if ippResp.data == nil {
+		// no print data
+	} else if s.StorageDir == "" {
+	} else if len(ippResp.data) > s.SizeLimit {
+		log.Error("data exceeds size limit")
+	} else {
 		ext := ""
 
 		switch ippResp.format {
@@ -117,15 +135,14 @@ func (s *ippService) Handle(conn net.Conn) error {
 		case "image/pwg-raster":
 			ext = ".ras"
 		case "application/octet-stream":
-			ext = ".raw"
+			ext = ".ps"
 		}
 
-		if len(ippResp.data) > s.SizeLimit {
-			fname := dir + ippResp.jobname + ext
-			ioutil.WriteFile(fname, ippResp.data, 0600)
-			ippResp.data = []byte("Print data stored as " + fname)
-		}
+		p := path.Join(s.StorageDir, fmt.Sprintf("%s%s", time.Now().Format("ipp-20060102150405"), ext))
 
+		ioutil.WriteFile(p, ippResp.data, 0600)
+
+		ippResp.data = []byte("Print data stored to " + p)
 	}
 
 	s.ch.Send(event.New(
@@ -152,7 +169,7 @@ func (s *ippService) Handle(conn net.Conn) error {
 		Request:       req,
 		ContentLength: int64(rbody.Len()),
 		Header: map[string][]string{
-			"Server":        []string{s.HttpServer},
+			"Server":        []string{s.Banner},
 			"Content-Type":  []string{"application/ipp"},
 			"Cache-Control": []string{"no-cache"},
 			"Pragma":        []string{"no-cache"},
@@ -162,7 +179,7 @@ func (s *ippService) Handle(conn net.Conn) error {
 	}
 
 	if err := resp.Write(conn); err != nil {
-		log.Debug("IPP: error writing respons!")
+		log.Error("error writing response: %s", err.Error())
 		return err
 	}
 
