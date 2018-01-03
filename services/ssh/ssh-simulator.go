@@ -32,6 +32,7 @@ package ssh
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -187,7 +188,7 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 			for req := range in {
 				log.Debugf("Request: %s %s %s %s\n", dst, req.Type, req.WantReply, req.Payload)
 
-				s.c.Send(event.New(
+				options := []event.Option{
 					services.EventOptions,
 					event.Category("ssh"),
 					event.Type("ssh-request"),
@@ -196,7 +197,7 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 					event.Custom("ssh.sessionid", id.String()),
 					event.Custom("ssh.request-type", req.Type),
 					event.Custom("ssh.payload", req.Payload),
-				))
+				}
 
 				b := false
 
@@ -208,6 +209,10 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 				case "pty-req":
 					b = true
 				case "exec":
+					if v, err := base64.StdEncoding.DecodeString(string(req.Payload)); err == nil {
+						options = append(options, event.Custom("ssh.exec", string(v)))
+					}
+
 					fallthrough
 				case "subsystem":
 					log.Debugf("request type=%s payload=%s", req.Type, string(req.Payload))
@@ -219,6 +224,10 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 					log.Errorf("wantreply: ", err)
 				} else {
 				}
+
+				s.c.Send(event.New(
+					options...,
+				))
 			}
 		}
 
