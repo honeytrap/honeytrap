@@ -36,6 +36,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"net"
 	"time"
 
@@ -44,9 +45,7 @@ import (
 
 	"golang.org/x/sync/syncmap"
 
-	"hash/fnv"
-
-	lxc "github.com/honeytrap/golxc"
+	"github.com/honeytrap/golxc"
 )
 
 var (
@@ -108,10 +107,15 @@ func (d *lxcDirector) Dial(conn net.Conn) (net.Conn, error) {
 		return nil, err
 	}
 
+	// Housekeeper only runs in Running containers, so start it always
+	go c.(*lxcContainer).housekeeper()
+
 	if ta, ok := conn.LocalAddr().(*net.TCPAddr); ok {
-		return c.(*lxcContainer).Dial("tcp", ta.Port)
+		connection, err := c.(*lxcContainer).Dial("tcp", ta.Port)
+		return lxcContainerConn{Conn: connection, container: c.(*lxcContainer)}, err
 	} else if ta, ok := conn.LocalAddr().(*net.UDPAddr); ok {
-		return c.(*lxcContainer).Dial("udp", ta.Port)
+		connection, err := c.(*lxcContainer).Dial("udp", ta.Port)
+		return lxcContainerConn{Conn: connection, container: c.(*lxcContainer)}, err
 	} else {
 		return nil, errors.New("Unsupported protocol")
 	}
@@ -128,6 +132,7 @@ type lxcContainer struct {
 	ip       net.IP
 	idevice  string
 	template string
+	Delays   Delays
 }
 
 // NewContainer returns a new LxcContainer from the provider.
@@ -137,6 +142,11 @@ func (d *lxcDirector) newContainer(name string, template string) (*lxcContainer,
 		template: template,
 		eb:       d.eb,
 		d:        d,
+		Delays: Delays{
+			FreezeDelay:      Delay(15 * time.Minute),
+			StopDelay:        Delay(30 * time.Minute),
+			HousekeeperDelay: Delay(1 * time.Minute),
+		},
 	}
 
 	if c2, err := lxc.NewContainer(c.name); err == nil {
@@ -148,9 +158,32 @@ func (d *lxcDirector) newContainer(name string, template string) (*lxcContainer,
 	if err := c.clone(); err != nil {
 		return nil, err
 	}
-
-	// go c.housekeeper()
 	return &c, nil
+}
+
+// housekeeper handles the needed process of handling internal logic
+// in maintaining the provided lxc.Container.
+func (c *lxcContainer) housekeeper() {
+	// container lifetime function
+	log.Infof("Housekeeper (%s) started.", c.name)
+	defer log.Infof("Housekeeper (%s) stopped.", c.name)
+
+	for {
+		time.Sleep(time.Duration(c.Delays.HousekeeperDelay))
+
+		if c.isStopped() {
+			continue
+		}
+
+		if time.Since(c.idle) > time.Duration(c.Delays.StopDelay) && c.isFrozen() {
+			log.Debugf("LxcContainer %s: idle for %s, stopping container", c.name, time.Now().Sub(c.idle).String())
+			c.c.Stop()
+			return
+		} else if time.Since(c.idle) > time.Duration(c.Delays.FreezeDelay) && c.isRunning() {
+			log.Debugf("LxcContainer %s: idle for %s, freezing container", c.name, time.Now().Sub(c.idle).String())
+			c.c.Freeze()
+		}
+	}
 }
 
 // clone attempts to clone the underline lxc.Container.
@@ -305,6 +338,8 @@ func (c *lxcContainer) settle() error {
 	c.idevice = isets[0]
 
 	log.Debugf("Using network device %s to %s", c.idevice, c.name)
+
+	c.idle = time.Now()
 
 	return nil
 }
