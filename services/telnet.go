@@ -70,8 +70,7 @@ func (s *telnetService) Handle(ctx context.Context, conn net.Conn) error {
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			log.Error(err.Error())
-			continue
+			return err
 		}
 
 		s.c.Send(event.New(
