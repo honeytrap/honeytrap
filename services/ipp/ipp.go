@@ -92,7 +92,6 @@ func (s *ippService) Handle(ctx context.Context, conn net.Conn) error {
 	req, err := http.ReadRequest(br)
 
 	if err == io.EOF {
-		log.Debug("IPP: Bad ipp request")
 		return nil
 	} else if err != nil {
 		log.Error("Bad ipp request: %s", err.Error())
@@ -110,7 +109,7 @@ func (s *ippService) Handle(ctx context.Context, conn net.Conn) error {
 	//TODO: This could exhaust memory!
 	ippReq, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		log.Debug("IPP: error reading IPP request!")
+		log.Error("Error reading request: %s", err.Error())
 		return err
 	}
 
@@ -181,7 +180,7 @@ func (s *ippService) Handle(ctx context.Context, conn net.Conn) error {
 	}
 
 	if err := resp.Write(conn); err != nil {
-		log.Debug("IPP: error writing respons!")
+		log.Error("error writing response: %s", err.Error())
 		return err
 	}
 
