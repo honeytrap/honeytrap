@@ -63,6 +63,9 @@ func SSHSimulator(options ...services.ServicerFunc) services.Servicer {
 	service := &sshSimulatorService{
 		key:    s.PrivateKey(),
 		Banner: banner,
+		Credentials: []string{
+			"*",
+		},
 	}
 
 	for _, o := range options {
@@ -117,6 +120,10 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 			))
 
 			for _, credential := range s.Credentials {
+				if credential == "*" {
+					return nil, nil
+				}
+
 				parts := strings.Split(credential, ":")
 				if len(parts) != 2 {
 					continue
