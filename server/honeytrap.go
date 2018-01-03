@@ -53,6 +53,7 @@ import (
 
 	"github.com/honeytrap/honeytrap/services"
 	_ "github.com/honeytrap/honeytrap/services/elasticsearch"
+	_ "github.com/honeytrap/honeytrap/services/ethereum"
 	_ "github.com/honeytrap/honeytrap/services/ipp"
 	_ "github.com/honeytrap/honeytrap/services/ssh"
 	_ "github.com/honeytrap/honeytrap/services/vnc"
