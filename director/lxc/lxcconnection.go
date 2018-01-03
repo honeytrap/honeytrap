@@ -1,3 +1,5 @@
+// +build lxc
+
 package lxc
 
 import (
