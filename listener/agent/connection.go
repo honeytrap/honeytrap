@@ -37,23 +37,19 @@ import (
 	"time"
 )
 
-type errorTimeout struct {
-}
-
-func (e *errorTimeout) Error() string {
-	return "i/o timeout"
-}
-func (e *errorTimeout) Timeout() bool {
-	return true
-}
+var (
+	noDeadline = make(<-chan time.Time)
+)
 
 type agentConnection struct {
 	Laddr net.Addr
 	Raddr net.Addr
 
-	buff        []byte
-	closed      bool
-	readTimeout time.Time
+	buff   []byte
+	closed bool
+
+	readTimeout  time.Time
+	writeTimeout time.Time
 
 	in chan []byte
 
@@ -73,19 +69,21 @@ func (dc *agentConnection) Read(b []byte) (int, error) {
 		return n, nil
 	}
 
-	// Don't timeout when deadline is 0
-	if dc.readTimeout.IsZero() {
-		dc.readTimeout = time.Now().Add(24 * time.Hour)
+	after := noDeadline
+
+	if !dc.readTimeout.IsZero() {
+		after = time.After(time.Until(dc.readTimeout))
 	}
 
 	select {
-	case <-time.After(time.Until(dc.readTimeout)):
-		return 0, &errorTimeout{}
+	case <-after:
+		return 0, ErrTimeout
 	case data, ok := <-dc.in:
 		if !ok {
 			log.Errorf("Error reading from channel, return EOF")
 			return 0, io.EOF
 		}
+
 		dc.m.Lock()
 		defer dc.m.Unlock()
 
@@ -112,7 +110,17 @@ func (dc *agentConnection) Write(b []byte) (int, error) {
 		Payload: payload[:],
 	}
 
-	dc.out <- p
+	after := noDeadline
+	if !dc.writeTimeout.IsZero() {
+		after = time.After(time.Until(dc.writeTimeout))
+	}
+
+	select {
+	case <-after:
+		return 0, ErrTimeout
+	case dc.out <- p:
+	}
+
 	return len(b), nil
 }
 
@@ -146,8 +154,8 @@ func (dc *agentConnection) RemoteAddr() net.Addr {
 }
 
 func (dc *agentConnection) SetDeadline(t time.Time) error {
-	dc.SetWriteDeadline(t)
 	dc.SetReadDeadline(t)
+	dc.SetWriteDeadline(t)
 	return nil
 }
 
@@ -157,5 +165,6 @@ func (dc *agentConnection) SetReadDeadline(t time.Time) error {
 }
 
 func (dc *agentConnection) SetWriteDeadline(t time.Time) error {
+	dc.writeTimeout = t
 	return nil
 }
