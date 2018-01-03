@@ -1,8 +1,38 @@
-package services
+/*
+* Honeytrap
+* Copyright (C) 2016-2017 DutchSec (https://dutchsec.com/)
+*
+* This program is free software; you can redistribute it and/or modify it under
+* the terms of the GNU Affero General Public License version 3 as published by the
+* Free Software Foundation.
+*
+* This program is distributed in the hope that it will be useful, but WITHOUT
+* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+* FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+* details.
+*
+* You should have received a copy of the GNU Affero General Public License
+* version 3 along with this program in the file "LICENSE".  If not, see
+* <http://www.gnu.org/licenses/agpl-3.0.txt>.
+*
+* See https://honeytrap.io/ for more details. All requests should be sent to
+* licensing@honeytrap.io
+*
+* The interactive user interfaces in modified source and object code versions
+* of this program must display Appropriate Legal Notices, as required under
+* Section 5 of the GNU Affero General Public License version 3.
+*
+* In accordance with Section 7(b) of the GNU Affero General Public License version 3,
+* these Appropriate Legal Notices must retain the display of the "Powered by
+* Honeytrap" logo and retain the original copyright notice. If the display of the
+* logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
+* must display the words "Powered by Honeytrap" and retain the original copyright notice.
+ */
+package ipp
 
 import "github.com/honeytrap/honeytrap/services/decoder"
 
-type ippValueType interface {
+type ValueType interface {
 	Tag() byte
 	encode(buf decoder.EncoderType)
 	decode(dec decoder.Decoder) error
@@ -50,7 +80,6 @@ func (v *valRangeInt) Tag() byte {
 }
 
 func (v *valInt) encode(buf decoder.EncoderType) {
-	log.Debug("START valInt.encode(decoder.EncoderType)")
 	z := false //Zero length string
 
 	for _, value := range v.val {
@@ -64,7 +93,6 @@ func (v *valInt) encode(buf decoder.EncoderType) {
 }
 
 func (v *valInt) decode(dec decoder.Decoder) error {
-	log.Debug("START valInt.decode(decoder.Decoder)")
 
 	v.name = dec.Data()
 	//Read value lenght field away, is always 4
@@ -93,7 +121,6 @@ func (v *valInt) decode(dec decoder.Decoder) error {
 }
 
 func (v *valStr) encode(buf decoder.EncoderType) {
-	log.Debug("START valStr.encode(decoder.EncoderType)")
 	z := false //zero length string
 
 	for _, val := range v.val {
@@ -105,7 +132,6 @@ func (v *valStr) encode(buf decoder.EncoderType) {
 }
 
 func (v *valStr) decode(dec decoder.Decoder) error {
-	log.Debug("START valStr.decode(decoder.Decoder)")
 
 	v.name = dec.Data()
 	v.val = append(v.val, dec.Data())
@@ -132,7 +158,6 @@ func (v *valStr) decode(dec decoder.Decoder) error {
 }
 
 func (v *valBool) encode(buf decoder.EncoderType) {
-	log.Debug("START valBool.encode(decoder.EncoderType)")
 	z := false //zero length string
 
 	for _, val := range v.val {
@@ -149,7 +174,6 @@ func (v *valBool) encode(buf decoder.EncoderType) {
 }
 
 func (v *valBool) decode(dec decoder.Decoder) error {
-	log.Debug("START valBool.decode(decoder.Decoder)")
 	v.name = dec.Data()
 	_ = dec.Byte() // len is 1, read away
 
@@ -185,7 +209,6 @@ func (v *valBool) decode(dec decoder.Decoder) error {
 }
 
 func (v *valRangeInt) encode(buf decoder.EncoderType) {
-	log.Debug("START valRangeInt.encode(decoder.EncoderType)")
 	buf.WriteUint8(v.tag)
 	buf.WriteData(v.name, false)
 
@@ -196,7 +219,6 @@ func (v *valRangeInt) encode(buf decoder.EncoderType) {
 }
 
 func (v *valRangeInt) decode(dec decoder.Decoder) error {
-	log.Debug("START valangeInt.decode(decoderr.Decoder)")
 	v.name = dec.Data()
 	_ = dec.Int16() //Read away, len is always 8
 
@@ -208,85 +230,4 @@ func (v *valRangeInt) decode(dec decoder.Decoder) error {
 	}
 
 	return nil
-}
-
-type attribGroup struct {
-	tag byte //begin-attribute-group-tag
-	val []ippValueType
-}
-
-func (ag *attribGroup) decode(dec decoder.Decoder) error {
-	log.Debug("START attribGroup.decode(decoder.Decoder)")
-
-	for vtag := dec.Byte(); vtag > unsupAttribTag; vtag = dec.Byte() { //Not a delimiter tag
-		if err := dec.LastError(); err != nil {
-			return err
-		}
-
-		var v ippValueType
-
-		switch vtag {
-		case valInteger:
-			v = &valInt{tag: vtag}
-		case valBoolean:
-			v = &valBool{tag: vtag}
-		case valKeyword:
-			v = &valStr{tag: vtag}
-		case valCharSet:
-			v = &valStr{tag: vtag}
-		case valUri:
-			v = &valStr{tag: vtag}
-		case valRangeOfInt:
-			v = &valInt{tag: vtag}
-		case naturelLang:
-			v = &valStr{tag: vtag}
-		case mimeMediaType:
-			v = &valStr{tag: vtag}
-		case textWithoutLang:
-			v = &valStr{tag: vtag}
-		case valEnum:
-			v = &valInt{tag: vtag}
-		case nameWithoutLang:
-			v = &valStr{tag: vtag}
-		}
-
-		v.decode(dec)
-		ag.val = append(ag.val, v)
-	}
-
-	// Put back last read byte, because it is a delimiter tag
-	dec.Seek(-1)
-
-	return nil
-}
-
-func (ag *attribGroup) encode(buf decoder.EncoderType) error {
-	log.Debug("START attribGroup.encode(decoder.EncoderType)")
-	buf.WriteUint8(ag.tag)
-
-	if ag.val != nil {
-		for _, vals := range ag.val {
-			vals.encode(buf)
-		}
-	}
-	return nil
-}
-
-var model *attribGroup = &attribGroup{
-	tag: printerAttribTag,
-	val: []ippValueType{
-		&valStr{valKeyword, "compression-supported", []string{"none"}},
-		&valRangeInt{valRangeOfInt, "copies-supported", int32(1), int32(1)},
-		&valStr{mimeMediaType, "document-format-supported", []string{"application/octet-stream", "image/pwg-raster"}},
-		&valStr{nameWithoutLang, "marker-colors", []string{"black", "cyan", "magenta", "yellow"}},
-		&valInt{valInteger, "marker-high-levels", []int32{100, 100, 100, 100}},
-		&valInt{valInteger, "marker-levels", []int32{80, 100, 100, 100}},
-		&valInt{valInteger, "marker-low-levels", []int32{10, 10, 10, 10}},
-		&valStr{valKeyword, "media-cols-supported", []string{"media-type", "media-size"}},
-		&valInt{valEnum, "operations-supported", []int32{2, 4, 11}},
-		&valStr{valKeyword, "print-color-mode-supported", []string{"auto", "color", "monochrome"}},
-		&valBool{valBoolean, "printer-is-accepting-jobs", []bool{true}},
-		&valInt{valEnum, "printer-state", []int32{3}},
-		&valStr{valKeyword, "printer-state-reasons", []string{"none"}},
-	},
 }
