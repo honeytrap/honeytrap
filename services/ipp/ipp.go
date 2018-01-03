@@ -32,6 +32,7 @@ package ipp
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -85,7 +86,7 @@ func (s *ippService) SetChannel(c pushers.Channel) {
 	s.ch = c
 }
 
-func (s *ippService) Handle(conn net.Conn) error {
+func (s *ippService) Handle(ctx context.Context, conn net.Conn) error {
 
 	br := bufio.NewReader(conn)
 	req, err := http.ReadRequest(br)
