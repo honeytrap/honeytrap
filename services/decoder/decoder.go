@@ -58,14 +58,18 @@ func (d *Decode) Available() int {
 }
 
 func (d *Decode) HasBytes(size int) error {
-	if size > 0 && d.offset+size <= len(d.data) {
-		return nil
+	pos := d.offset + size
+
+	if pos >= 0 {
+		if pos <= len(d.data) {
+			return nil
+		}
 	}
 
 	return ErrOutOfBounds{
 		Min: 0,
 		Max: len(d.data),
-		Got: d.offset + size,
+		Got: pos,
 	}
 }
 
@@ -158,15 +162,14 @@ func (d *Decode) Copy(size int) []byte {
 
 // Seeking relative to current offset
 func (d *Decode) Seek(pos int) {
-	n := d.offset + pos
 
-	if n < 0 || n > len(d.data) {
-		d.lasterror = ErrOutOfBounds{
-			Min: 0,
-			Max: len(d.data),
-			Got: n,
-		}
+	if err := d.HasBytes(pos); err == nil {
+
+		d.offset += pos
+
 	} else {
-		d.offset = n
+
+		d.lasterror = err
+
 	}
 }

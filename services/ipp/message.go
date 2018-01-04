@@ -120,7 +120,7 @@ func (m *ippMsg) decode(raw []byte) error {
 	// Copy remaining data (printdata)
 	m.data = dec.Copy(dec.Available())
 
-	return nil
+	return dec.LastError()
 }
 
 // Encodes the ipp response message suitable for http transport
