@@ -44,6 +44,8 @@ import (
 	"github.com/honeytrap/honeytrap/services"
 	"github.com/honeytrap/honeytrap/services/decoder"
 
+	"bytes"
+
 	"github.com/rs/xid"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/terminal"
@@ -101,6 +103,10 @@ type sshSimulatorService struct {
 
 	Credentials []string    `toml:"credentials"`
 	key         *privateKey `toml:"private-key"`
+}
+
+func (s *sshSimulatorService) CanHandle(payload []byte) bool {
+	return bytes.HasPrefix(payload, []byte("SSH"))
 }
 
 func (s *sshSimulatorService) SetChannel(c pushers.Channel) {
