@@ -232,12 +232,14 @@ func (s *sshProxyService) Handle(ctx context.Context, conn net.Conn) error {
 					fallthrough
 				case "pty-req":
 					fallthrough
+				case "env":
+					if v, err := base64.StdEncoding.DecodeString(string(req.Payload)); err == nil {
+						options = append(options, event.Custom("ssh.env", string(v)))
+					}
 				case "exec":
 					if v, err := base64.StdEncoding.DecodeString(string(req.Payload)); err == nil {
 						options = append(options, event.Custom("ssh.exec", string(v)))
 					}
-
-					fallthrough
 				case "subsystem":
 					log.Debugf("request type=%s payload=%s", req.Type, string(req.Payload))
 				default:
