@@ -36,7 +36,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"strings"
 
@@ -195,30 +194,73 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 
 	// https://tools.ietf.org/html/rfc4254
 	for newChannel := range chans {
-		/*
-			if newChannel.ChannelType() != "session" {
-				newChannel.Reject(ssh.UnknownChannelType, "unknown channel type")
-				log.Debugf("Unknown channel type: %s\n", newChannel.ChannelType())
-				continue
-			}
-		*/
-		// session
+		switch newChannel.ChannelType() {
+		case "session":
+			// handleSession()
+		case "forwarded-tcpip":
+			decoder := PayloadDecoder(newChannel.ExtraData())
 
-		channel, requests, err := newChannel.Accept()
-		if err != nil {
-			log.Errorf("Could not accept server channel: %s", err.Error())
+			s.c.Send(event.New(
+				services.EventOptions,
+				event.Category("ssh"),
+				event.Type("ssh-channel"),
+				event.SourceAddr(conn.RemoteAddr()),
+				event.DestinationAddr(conn.LocalAddr()),
+				event.Custom("ssh.sessionid", id.String()),
+				event.Custom("ssh.channel-type", newChannel.ChannelType()),
+				event.Custom("ssh.forwarded-tcpip.address-that-was-connected", decoder.String()),
+				event.Custom("ssh.forwarded-tcpip.port-that-was-connected", fmt.Sprintf("%d", decoder.Uint32())),
+				event.Custom("ssh.forwarded-tcpip.originator-host", decoder.String()),
+				event.Custom("ssh.forwarded-tcpip.originator-port", fmt.Sprintf("%d", decoder.Uint32())),
+				event.Payload(newChannel.ExtraData()),
+			))
+
+			newChannel.Reject(ssh.UnknownChannelType, "not allowed")
+			continue
+		case "direct-tcpip":
+			decoder := PayloadDecoder(newChannel.ExtraData())
+
+			s.c.Send(event.New(
+				services.EventOptions,
+				event.Category("ssh"),
+				event.Type("ssh-channel"),
+				event.SourceAddr(conn.RemoteAddr()),
+				event.DestinationAddr(conn.LocalAddr()),
+				event.Custom("ssh.sessionid", id.String()),
+				event.Custom("ssh.channel-type", newChannel.ChannelType()),
+				event.Custom("ssh.direct-tcpip.host-to-connect", decoder.String()),
+				event.Custom("ssh.direct-tcpip.port-to-connect", fmt.Sprintf("%d", decoder.Uint32())),
+				event.Custom("ssh.direct-tcpip.originator-host", decoder.String()),
+				event.Custom("ssh.direct-tcpip.originator-port", fmt.Sprintf("%d", decoder.Uint32())),
+				event.Payload(newChannel.ExtraData()),
+			))
+
+			newChannel.Reject(ssh.UnknownChannelType, "not allowed")
+			continue
+		default:
+			s.c.Send(event.New(
+				services.EventOptions,
+				event.Category("ssh"),
+				event.Type("ssh-channel"),
+				event.SourceAddr(conn.RemoteAddr()),
+				event.DestinationAddr(conn.LocalAddr()),
+				event.Custom("ssh.sessionid", id.String()),
+				event.Custom("ssh.channel-type", newChannel.ChannelType()),
+				event.Payload(newChannel.ExtraData()),
+			))
+
+			newChannel.Reject(ssh.UnknownChannelType, "unknown channel type")
+			log.Debugf("Unknown channel type: %s\n", newChannel.ChannelType())
 			continue
 		}
 
-		s.c.Send(event.New(
-			services.EventOptions,
-			event.Category("ssh"),
-			event.Type("ssh-channel"),
-			event.SourceAddr(conn.RemoteAddr()),
-			event.DestinationAddr(conn.LocalAddr()),
-			event.Custom("ssh.sessionid", id.String()),
-			event.Custom("ssh.channel-type", newChannel.ChannelType()),
-		))
+		channel, requests, err := newChannel.Accept()
+		if err == io.EOF {
+			continue
+		} else if err != nil {
+			log.Errorf("Could not accept server channel: %s", err.Error())
+			continue
+		}
 
 		func() {
 			for req := range requests {
@@ -242,29 +284,6 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 					b = true
 				case "pty-req":
 					b = true
-				case "forwarded-tcpip":
-					decoder := PayloadDecoder(req.Payload)
-					options = append(options, event.Custom("ssh.forwarded-tcpip.sender-channel", fmt.Sprintf("%d", decoder.Uint32())))
-					options = append(options, event.Custom("ssh.forwarded-tcpip.initial-window-size", fmt.Sprintf("%d", decoder.Uint32())))
-					options = append(options, event.Custom("ssh.forwarded-tcpip.maximum-packet-size", fmt.Sprintf("%d", decoder.Uint32())))
-					options = append(options, event.Custom("ssh.forwarded-tcpip.address-that-was-connected", decoder.String()))
-					options = append(options, event.Custom("ssh.forwarded-tcpip.port-that-was-connected", fmt.Sprintf("%d", decoder.Uint32())))
-					options = append(options, event.Custom("ssh.forwarded-tcpip.originator-host", decoder.String()))
-					options = append(options, event.Custom("ssh.forwarded-tcpip.originator-port", fmt.Sprintf("%d", decoder.Uint32())))
-				case "tcpip-forward":
-					decoder := PayloadDecoder(req.Payload)
-					options = append(options, event.Custom("ssh.tcpip-forward.address-to-bind", decoder.String()))
-					options = append(options, event.Custom("ssh.tcpip-forward.port-to-bind", fmt.Sprintf("%d", decoder.Uint32())))
-				case "direct-tcpip":
-					decoder := PayloadDecoder(req.Payload)
-					options = append(options, event.Custom("ssh.direct-tcpip.sender-channel", fmt.Sprintf("%d", decoder.Uint32())))
-					options = append(options, event.Custom("ssh.direct-tcpip.initial-window-size", fmt.Sprintf("%d", decoder.Uint32())))
-					options = append(options, event.Custom("ssh.direct-tcpip.maximum-packet-size", fmt.Sprintf("%d", decoder.Uint32())))
-					options = append(options, event.Custom("ssh.direct-tcpip.host-to-connect", decoder.String()))
-					options = append(options, event.Custom("ssh.direct-tcpip.port-to-connect", fmt.Sprintf("%d", decoder.Uint32())))
-					options = append(options, event.Custom("ssh.direct-tcpip.originator-host", decoder.String()))
-					options = append(options, event.Custom("ssh.direct-tcpip.originator-port", fmt.Sprintf("%d", decoder.Uint32())))
-
 				case "env":
 					b = true
 
@@ -282,6 +301,11 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 					}
 
 					options = append(options, event.Custom("ssh.env", payloads))
+				case "tcpip-forward":
+					decoder := PayloadDecoder(req.Payload)
+
+					options = append(options, event.Custom("ssh.tcpip-forward.address-to-bind", decoder.String()))
+					options = append(options, event.Custom("ssh.tcpip-forward.port-to-bind", fmt.Sprintf("%d", decoder.Uint32())))
 				case "exec":
 					b = true
 
@@ -378,16 +402,6 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 
 						channel.Write([]byte(fmt.Sprintf("%s: command not found\n", "ls")))
 						channel.SendRequest("exit-status", false, []byte{0, 0, 0, 0})
-						return
-					} else if req.Type == "direct-tcp" {
-						defer channel.Close()
-
-						data, err := ioutil.ReadAll(channel)
-						if err != nil {
-
-						}
-
-						fmt.Println(string(data))
 						return
 					} else {
 					}
