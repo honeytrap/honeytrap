@@ -106,8 +106,8 @@ func (s *ippService) Handle(ctx context.Context, conn net.Conn) error {
 	if req.Method != "POST" {
 		log.Error("Bad ipp request, request method: %s", req.Method)
 		return nil
-	} else if req.Header.Get("Content-Type") != "application/ipp" {
-		log.Errorf("Bad ipp request, content-type: %s", contentType)
+	} else if contentType := req.Header.Get("Content-Type"); contentType != "application/ipp" {
+		log.Error("Bad ipp request, wrong content-type")
 		return nil
 	}
 
