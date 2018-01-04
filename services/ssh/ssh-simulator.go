@@ -108,6 +108,22 @@ func (s *sshSimulatorService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
+type payloadDecoder struct {
+	decoder.Decoder
+}
+
+func (pd *payloadDecoder) String() string {
+	length := int(pd.Uint32())
+	payload := pd.Copy(length)
+	return string(payload)
+}
+
+func PayloadDecoder(payload []byte) *payloadDecoder {
+	return &payloadDecoder{
+		decoder.NewDecoder(payload),
+	}
+}
+
 func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 	id := xid.New()
 
@@ -227,12 +243,32 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 				case "pty-req":
 					b = true
 				case "forwarded-tcpip":
+					decoder := PayloadDecoder(req.Payload)
+					options = append(options, event.Custom("ssh.forwarded-tcpip.sender-channel", fmt.Sprintf("%d", decoder.Uint32())))
+					options = append(options, event.Custom("ssh.forwarded-tcpip.initial-window-size", fmt.Sprintf("%d", decoder.Uint32())))
+					options = append(options, event.Custom("ssh.forwarded-tcpip.maximum-packet-size", fmt.Sprintf("%d", decoder.Uint32())))
+					options = append(options, event.Custom("ssh.forwarded-tcpip.address-that-was-connected", decoder.String()))
+					options = append(options, event.Custom("ssh.forwarded-tcpip.port-that-was-connected", fmt.Sprintf("%d", decoder.Uint32())))
+					options = append(options, event.Custom("ssh.forwarded-tcpip.originator-host", decoder.String()))
+					options = append(options, event.Custom("ssh.forwarded-tcpip.originator-port", fmt.Sprintf("%d", decoder.Uint32())))
 				case "tcpip-forward":
+					decoder := PayloadDecoder(req.Payload)
+					options = append(options, event.Custom("ssh.tcpip-forward.address-to-bind", decoder.String()))
+					options = append(options, event.Custom("ssh.tcpip-forward.port-to-bind", fmt.Sprintf("%d", decoder.Uint32())))
 				case "direct-tcpip":
+					decoder := PayloadDecoder(req.Payload)
+					options = append(options, event.Custom("ssh.direct-tcpip.sender-channel", fmt.Sprintf("%d", decoder.Uint32())))
+					options = append(options, event.Custom("ssh.direct-tcpip.initial-window-size", fmt.Sprintf("%d", decoder.Uint32())))
+					options = append(options, event.Custom("ssh.direct-tcpip.maximum-packet-size", fmt.Sprintf("%d", decoder.Uint32())))
+					options = append(options, event.Custom("ssh.direct-tcpip.host-to-connect", decoder.String()))
+					options = append(options, event.Custom("ssh.direct-tcpip.port-to-connect", fmt.Sprintf("%d", decoder.Uint32())))
+					options = append(options, event.Custom("ssh.direct-tcpip.originator-host", decoder.String()))
+					options = append(options, event.Custom("ssh.direct-tcpip.originator-port", fmt.Sprintf("%d", decoder.Uint32())))
+
 				case "env":
 					b = true
 
-					decoder := decoder.NewDecoder(req.Payload)
+					decoder := PayloadDecoder(req.Payload)
 
 					payloads := []string{}
 
@@ -241,16 +277,15 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 							break
 						}
 
-						length := int(decoder.Uint32())
-						payload := decoder.Copy(length)
-						payloads = append(payloads, string(payload))
+						payload := decoder.String()
+						payloads = append(payloads, payload)
 					}
 
 					options = append(options, event.Custom("ssh.env", payloads))
 				case "exec":
 					b = true
 
-					decoder := decoder.NewDecoder(req.Payload)
+					decoder := PayloadDecoder(req.Payload)
 
 					payloads := []string{}
 
@@ -259,16 +294,16 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 							break
 						}
 
-						length := int(decoder.Uint32())
-						payload := decoder.Copy(length)
-						payloads = append(payloads, string(payload))
+						payload := decoder.String()
+						payloads = append(payloads, payload)
 					}
 
 					options = append(options, event.Custom("ssh.exec", payloads))
 				case "subsystem":
 					b = true
 
-					log.Debugf("request type=%s payload=%s", req.Type, string(req.Payload))
+					decoder := PayloadDecoder(req.Payload)
+					options = append(options, event.Custom("ssh.subsystem", decoder.String()))
 				default:
 					log.Errorf("Unsupported request type=%s payload=%s", req.Type, string(req.Payload))
 				}
