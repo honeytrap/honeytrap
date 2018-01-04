@@ -22,6 +22,7 @@ type Decoder interface {
 	Byte() byte
 	Int16() int16
 	Int32() int32
+	Uint32() uint32
 
 	PeekByte() byte
 	PeekInt16() int16
@@ -92,6 +93,19 @@ func (d *Decode) Int16() int16 {
 	}()
 
 	return int16(binary.BigEndian.Uint16(d.data[d.offset : d.offset+2]))
+}
+
+func (d *Decode) Uint32() uint32 {
+	if err := d.HasBytes(4); err != nil {
+		d.lasterror = err
+		return 0
+	}
+
+	defer func() {
+		d.offset += 4
+	}()
+
+	return binary.BigEndian.Uint32(d.data[d.offset : d.offset+4])
 }
 
 func (d *Decode) Int32() int32 {

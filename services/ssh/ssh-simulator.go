@@ -32,17 +32,18 @@ package ssh
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"strings"
 
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/services"
+	"github.com/honeytrap/honeytrap/services/decoder"
 
 	"github.com/rs/xid"
 	"golang.org/x/crypto/ssh"
@@ -52,6 +53,22 @@ import (
 var (
 	_ = services.Register("ssh-simulator", SSHSimulator)
 )
+
+var motd = `Welcome to Ubuntu 16.04.1 LTS (GNU/Linux 4.4.0-31-generic x86_64)
+
+* Documentation:  https://help.ubuntu.com
+* Management:     https://landscape.canonical.com
+* Support:        https://ubuntu.com/advantage
+
+524 packages can be updated.
+270 updates are security updates.
+
+
+----------------------------------------------------------------
+Ubuntu 16.04.1 LTS                          built 2016-12-10
+----------------------------------------------------------------
+last login: Sun Nov 19 19:40:44 2017 from 172.16.84.1
+`
 
 func SSHSimulator(options ...services.ServicerFunc) services.Servicer {
 	s, err := Storage()
@@ -64,6 +81,7 @@ func SSHSimulator(options ...services.ServicerFunc) services.Servicer {
 	service := &sshSimulatorService{
 		key:    s.PrivateKey(),
 		Banner: banner,
+		MOTD:   motd,
 		Credentials: []string{
 			"*",
 		},
@@ -80,6 +98,7 @@ type sshSimulatorService struct {
 	c pushers.Channel
 
 	Banner string `toml:"banner"`
+	MOTD   string `toml:"motd"`
 
 	Credentials []string    `toml:"credentials"`
 	key         *privateKey `toml:"private-key"`
@@ -87,6 +106,22 @@ type sshSimulatorService struct {
 
 func (s *sshSimulatorService) SetChannel(c pushers.Channel) {
 	s.c = c
+}
+
+type payloadDecoder struct {
+	decoder.Decoder
+}
+
+func (pd *payloadDecoder) String() string {
+	length := int(pd.Uint32())
+	payload := pd.Copy(length)
+	return string(payload)
+}
+
+func PayloadDecoder(payload []byte) *payloadDecoder {
+	return &payloadDecoder{
+		decoder.NewDecoder(payload),
+	}
 }
 
 func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
@@ -158,13 +193,16 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 
 	go ssh.DiscardRequests(reqs)
 
-	// https://www.centos.org/docs/5/html/Deployment_Guide-en-US/s1-ssh-conn.html
+	// https://tools.ietf.org/html/rfc4254
 	for newChannel := range chans {
-		if newChannel.ChannelType() != "session" {
-			newChannel.Reject(ssh.UnknownChannelType, "unknown channel type")
-			log.Debugf("Unknown channel type: %s\n", newChannel.ChannelType())
-			continue
-		}
+		/*
+			if newChannel.ChannelType() != "session" {
+				newChannel.Reject(ssh.UnknownChannelType, "unknown channel type")
+				log.Debugf("Unknown channel type: %s\n", newChannel.ChannelType())
+				continue
+			}
+		*/
+		// session
 
 		channel, requests, err := newChannel.Accept()
 		if err != nil {
@@ -182,11 +220,9 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 			event.Custom("ssh.channel-type", newChannel.ChannelType()),
 		))
 
-		requestFn := func(in <-chan *ssh.Request, dst ssh.Channel) {
-			defer dst.Close()
-
-			for req := range in {
-				log.Debugf("Request: %s %s %s %s\n", dst, req.Type, req.WantReply, req.Payload)
+		func() {
+			for req := range requests {
+				log.Debugf("Request: %s %s %s %s\n", channel, req.Type, req.WantReply, req.Payload)
 
 				options := []event.Option{
 					services.EventOptions,
@@ -204,23 +240,77 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 				switch req.Type {
 				case "shell":
 					b = true
-				case "exit-status":
-					b = true
 				case "pty-req":
 					b = true
-				case "exec":
-					if v, err := base64.StdEncoding.DecodeString(string(req.Payload)); err == nil {
-						options = append(options, event.Custom("ssh.exec", string(v)))
+				case "forwarded-tcpip":
+					decoder := PayloadDecoder(req.Payload)
+					options = append(options, event.Custom("ssh.forwarded-tcpip.sender-channel", fmt.Sprintf("%d", decoder.Uint32())))
+					options = append(options, event.Custom("ssh.forwarded-tcpip.initial-window-size", fmt.Sprintf("%d", decoder.Uint32())))
+					options = append(options, event.Custom("ssh.forwarded-tcpip.maximum-packet-size", fmt.Sprintf("%d", decoder.Uint32())))
+					options = append(options, event.Custom("ssh.forwarded-tcpip.address-that-was-connected", decoder.String()))
+					options = append(options, event.Custom("ssh.forwarded-tcpip.port-that-was-connected", fmt.Sprintf("%d", decoder.Uint32())))
+					options = append(options, event.Custom("ssh.forwarded-tcpip.originator-host", decoder.String()))
+					options = append(options, event.Custom("ssh.forwarded-tcpip.originator-port", fmt.Sprintf("%d", decoder.Uint32())))
+				case "tcpip-forward":
+					decoder := PayloadDecoder(req.Payload)
+					options = append(options, event.Custom("ssh.tcpip-forward.address-to-bind", decoder.String()))
+					options = append(options, event.Custom("ssh.tcpip-forward.port-to-bind", fmt.Sprintf("%d", decoder.Uint32())))
+				case "direct-tcpip":
+					decoder := PayloadDecoder(req.Payload)
+					options = append(options, event.Custom("ssh.direct-tcpip.sender-channel", fmt.Sprintf("%d", decoder.Uint32())))
+					options = append(options, event.Custom("ssh.direct-tcpip.initial-window-size", fmt.Sprintf("%d", decoder.Uint32())))
+					options = append(options, event.Custom("ssh.direct-tcpip.maximum-packet-size", fmt.Sprintf("%d", decoder.Uint32())))
+					options = append(options, event.Custom("ssh.direct-tcpip.host-to-connect", decoder.String()))
+					options = append(options, event.Custom("ssh.direct-tcpip.port-to-connect", fmt.Sprintf("%d", decoder.Uint32())))
+					options = append(options, event.Custom("ssh.direct-tcpip.originator-host", decoder.String()))
+					options = append(options, event.Custom("ssh.direct-tcpip.originator-port", fmt.Sprintf("%d", decoder.Uint32())))
+
+				case "env":
+					b = true
+
+					decoder := PayloadDecoder(req.Payload)
+
+					payloads := []string{}
+
+					for {
+						if decoder.Available() == 0 {
+							break
+						}
+
+						payload := decoder.String()
+						payloads = append(payloads, payload)
 					}
 
-					fallthrough
+					options = append(options, event.Custom("ssh.env", payloads))
+				case "exec":
+					b = true
+
+					decoder := PayloadDecoder(req.Payload)
+
+					payloads := []string{}
+
+					for {
+						if decoder.Available() == 0 {
+							break
+						}
+
+						payload := decoder.String()
+						payloads = append(payloads, payload)
+					}
+
+					options = append(options, event.Custom("ssh.exec", payloads))
 				case "subsystem":
-					log.Debugf("request type=%s payload=%s", req.Type, string(req.Payload))
+					b = true
+
+					decoder := PayloadDecoder(req.Payload)
+					options = append(options, event.Custom("ssh.subsystem", decoder.String()))
 				default:
 					log.Errorf("Unsupported request type=%s payload=%s", req.Type, string(req.Payload))
 				}
 
-				if err := req.Reply(b, nil); err != nil {
+				if !b {
+					// no reply
+				} else if err := req.Reply(b, nil); err != nil {
 					log.Errorf("wantreply: ", err)
 				} else {
 				}
@@ -228,78 +318,82 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 				s.c.Send(event.New(
 					options...,
 				))
+
+				func() {
+					if req.Type == "shell" {
+						defer channel.Close()
+
+						// should only be started in req.Type == shell
+						twrc := NewTypeWriterReadCloser(channel)
+						var wrappedChannel io.ReadWriteCloser = twrc
+
+						prompt := "root@host:~$ "
+
+						term := terminal.NewTerminal(wrappedChannel, prompt)
+
+						term.Write([]byte(s.MOTD))
+
+						for {
+							line, err := term.ReadLine()
+							if err == io.EOF {
+								return
+							} else if err != nil {
+								log.Errorf("Error reading from connection: %s", err.Error())
+								return
+							}
+
+							if line == "exit" {
+								channel.SendRequest("exit-status", false, []byte{0, 0, 0, 0})
+								return
+							}
+
+							if line == "" {
+								continue
+							}
+
+							s.c.Send(event.New(
+								services.EventOptions,
+								event.Category("ssh"),
+								event.Type("ssh-channel"),
+								event.SourceAddr(conn.RemoteAddr()),
+								event.DestinationAddr(conn.LocalAddr()),
+								event.Custom("ssh.sessionid", id.String()),
+								event.Custom("ssh.command", line),
+							))
+
+							term.Write([]byte(fmt.Sprintf("%s: command not found\n", line)))
+						}
+
+						s.c.Send(event.New(
+							services.EventOptions,
+							event.Category("ssh"),
+							event.Type("ssh-session"),
+							event.SourceAddr(conn.RemoteAddr()),
+							event.DestinationAddr(conn.LocalAddr()),
+							event.Custom("ssh.sessionid", id.String()),
+							event.Custom("ssh.recording", twrc.String()),
+						))
+					} else if req.Type == "exec" {
+						defer channel.Close()
+
+						channel.Write([]byte(fmt.Sprintf("%s: command not found\n", "ls")))
+						channel.SendRequest("exit-status", false, []byte{0, 0, 0, 0})
+						return
+					} else if req.Type == "direct-tcp" {
+						defer channel.Close()
+
+						data, err := ioutil.ReadAll(channel)
+						if err != nil {
+
+						}
+
+						fmt.Println(string(data))
+						return
+					} else {
+					}
+				}()
 			}
-		}
-
-		go requestFn(requests, channel)
-
-		twrc := NewTypeWriterReadCloser(channel)
-		var wrappedChannel io.ReadWriteCloser = twrc
-
-		prompt := "root@host:~$ "
-
-		term := terminal.NewTerminal(wrappedChannel, prompt)
-
-		go func() {
-			defer channel.Close()
-
-			motd := `Welcome to Ubuntu 16.04.1 LTS (GNU/Linux 4.4.0-31-generic x86_64)
-
-* Documentation:  https://help.ubuntu.com
-* Management:     https://landscape.canonical.com
-* Support:        https://ubuntu.com/advantage
-
-524 packages can be updated.
-270 updates are security updates.
-
-
-----------------------------------------------------------------
-Ubuntu 16.04.1 LTS                          built 2016-12-10
-----------------------------------------------------------------
-last login: Sun Nov 19 19:40:44 2017 from 172.16.84.1
-`
-
-			term.Write([]byte(motd))
-
-			for {
-				line, err := term.ReadLine()
-				if err != nil {
-					break
-				}
-
-				if line == "exit" {
-					channel.SendRequest("exit-status", false, []byte{0, 0, 0, 0})
-					return
-				}
-
-				if line == "" {
-					continue
-				}
-
-				s.c.Send(event.New(
-					services.EventOptions,
-					event.Category("ssh"),
-					event.Type("ssh-channel"),
-					event.SourceAddr(conn.RemoteAddr()),
-					event.DestinationAddr(conn.LocalAddr()),
-					event.Custom("ssh.sessionid", id.String()),
-					event.Custom("ssh.command", line),
-				))
-
-				term.Write([]byte(fmt.Sprintf("%s: command not found\n", line)))
-			}
-
-			s.c.Send(event.New(
-				services.EventOptions,
-				event.Category("ssh"),
-				event.Type("ssh-session"),
-				event.SourceAddr(conn.RemoteAddr()),
-				event.DestinationAddr(conn.LocalAddr()),
-				event.Custom("ssh.sessionid", id.String()),
-				event.Custom("ssh.recording", twrc.String()),
-			))
 		}()
-
 	}
 
 	return nil
