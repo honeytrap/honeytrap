@@ -98,7 +98,7 @@ type Honeytrap struct {
 
 	token string
 
-	matchers []ServiceMap
+	matchers []*ServiceMap
 }
 
 // New returns a new instance of a Honeytrap struct.
@@ -150,6 +150,18 @@ type ServiceMap struct {
 
 	Name string
 	Type string
+}
+
+func (hc *Honeytrap) findService(addr net.Addr) *ServiceMap {
+	for _, sm := range hc.matchers {
+		if !sm.Matcher(addr) {
+			continue
+		}
+
+		return sm
+	}
+
+	return nil
 }
 
 func (hc *Honeytrap) heartbeat() {
@@ -385,7 +397,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 					}
 				}
 
-				hc.matchers = append(hc.matchers, ServiceMap{
+				hc.matchers = append(hc.matchers, &ServiceMap{
 					Name:    key,
 					Type:    x.Type,
 					Matcher: fn(addr.Port),
@@ -407,7 +419,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 					}
 				}
 
-				hc.matchers = append(hc.matchers, ServiceMap{
+				hc.matchers = append(hc.matchers, &ServiceMap{
 					Name:    key,
 					Type:    x.Type,
 					Matcher: fn(addr.Port),
@@ -447,23 +459,33 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 func (hc *Honeytrap) handle(conn net.Conn) {
 	defer conn.Close()
 
-	for _, sm := range hc.matchers {
-		if !sm.Matcher(conn.LocalAddr()) {
-			continue
-		}
-
-		log.Debug("Handling connection for %s => %s %s(%s)", conn.RemoteAddr(), conn.LocalAddr(), sm.Name, sm.Type)
-
-		func(service services.Servicer) {
-			defer conn.Close()
-
-			ctx := context.Background()
-
-			err := service.Handle(ctx, conn)
-			if err != nil {
-				fmt.Println(color.RedString(err.Error()))
+	defer func() {
+		if r := recover(); r != nil {
+			message := event.Message("%+v", r)
+			if err, ok := r.(error); ok {
+				message = event.Message("%+v", err)
 			}
-		}(sm.Service)
+
+			hc.bus.Send(event.New(
+				event.SeverityFatal,
+				event.SourceAddr(conn.RemoteAddr()),
+				event.DestinationAddr(conn.LocalAddr()),
+				event.Stack(),
+				message,
+			))
+		}
+	}()
+
+	sm := hc.findService(conn.LocalAddr())
+	if sm == nil {
+		return
+	}
+
+	log.Debug("Handling connection for %s => %s %s(%s)", conn.RemoteAddr(), conn.LocalAddr(), sm.Name, sm.Type)
+
+	ctx := context.Background()
+	if err := sm.Service.Handle(ctx, conn); err != nil {
+		fmt.Println(color.RedString(err.Error()))
 	}
 }
 
