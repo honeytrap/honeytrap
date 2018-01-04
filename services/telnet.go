@@ -31,30 +31,49 @@
 package services
 
 import (
-	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"net"
 
+	"golang.org/x/crypto/ssh/terminal"
+
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
+	"github.com/rs/xid"
 )
 
 var (
 	_ = Register("telnet", Telnet)
 )
 
+var (
+	motd = `Welcome to Microsoft Telnet Service 
+
+
+login:`
+	prompt = `C:\DOCUME~1\Doug> `
+)
+
 // Telnet is a placeholder
 func Telnet(options ...ServicerFunc) Servicer {
-	s := &telnetService{}
+	s := &telnetService{
+		MOTD:   motd,
+		Prompt: prompt,
+	}
+
 	for _, o := range options {
 		o(s)
 	}
+
 	return s
 }
 
 type telnetService struct {
 	c pushers.Channel
+
+	Prompt string `toml:"prompt"`
+	MOTD   string `toml:"motd"`
 }
 
 func (s *telnetService) SetChannel(c pushers.Channel) {
@@ -62,26 +81,32 @@ func (s *telnetService) SetChannel(c pushers.Channel) {
 }
 
 func (s *telnetService) Handle(ctx context.Context, conn net.Conn) error {
+	id := xid.New()
+
 	defer conn.Close()
 
-	b := bufio.NewReader(conn)
+	term := terminal.NewTerminal(conn, prompt)
+
+	term.Write([]byte(s.MOTD))
+
 	for {
-		line, err := b.ReadBytes('\n')
+		line, err := term.ReadLine()
 		if err == io.EOF {
-			break
+			return nil
 		} else if err != nil {
-			log.Error(err.Error())
-			continue
+			return err
 		}
 
 		s.c.Send(event.New(
-			SensorLow,
-			event.Category("echo"),
-			event.Payload([]byte(line)),
+			EventOptions,
+			event.Category("telnet"),
+			event.Type("session"),
+			event.SourceAddr(conn.RemoteAddr()),
+			event.DestinationAddr(conn.LocalAddr()),
+			event.Custom("telnet.sessionid", id.String()),
+			event.Custom("telnet.command", line),
 		))
 
-		conn.Write(line)
+		term.Write([]byte(fmt.Sprintf("%s: command not found\n", line)))
 	}
-
-	return nil
 }
