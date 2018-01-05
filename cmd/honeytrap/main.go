@@ -78,7 +78,7 @@ var globalFlags = []cli.Flag{
 	},
 	cli.StringFlag{
 		Name:  "data, d",
-		Value: ".honeytrap",
+		Value: "~/.honeytrap",
 		Usage: "Store data in `DIR`",
 	},
 	cli.BoolFlag{Name: "cpu-profile", Usage: "Enable cpu profiler"},
