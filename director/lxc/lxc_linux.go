@@ -38,6 +38,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/honeytrap/honeytrap/director"
@@ -49,7 +50,9 @@ import (
 )
 
 var (
-	_ = director.Register("lxc", New)
+	_                = director.Register("lxc", New)
+	activeContainers int
+	cm               sync.Mutex
 )
 
 func New(options ...func(director.Director) error) (director.Director, error) {
@@ -66,10 +69,25 @@ func New(options ...func(director.Director) error) (director.Director, error) {
 	return d, nil
 }
 
+func removeActiveContainer() {
+	cm.Lock()
+	defer cm.Unlock()
+	if activeContainers > 0 {
+		activeContainers--
+	}
+}
+
+func addActiveContainer() {
+	cm.Lock()
+	defer cm.Unlock()
+	activeContainers++
+}
+
 type lxcDirector struct {
-	template string
-	eb       pushers.Channel
-	cache    *syncmap.Map // map[string]*lxcContainer
+	template      string
+	eb            pushers.Channel
+	cache         *syncmap.Map // map[string]*lxcContainer
+	MaxContainers int          `toml:"max_containers"`
 }
 
 func (d *lxcDirector) SetChannel(eb pushers.Channel) {
@@ -77,6 +95,10 @@ func (d *lxcDirector) SetChannel(eb pushers.Channel) {
 }
 
 func (d *lxcDirector) Dial(conn net.Conn) (net.Conn, error) {
+	if activeContainers >= d.MaxContainers {
+		return nil, fmt.Errorf("maximum number of containers active (%v)", d.MaxContainers)
+	}
+
 	h := fnv.New32()
 
 	remoteAddr, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
@@ -166,6 +188,7 @@ func (d *lxcDirector) newContainer(name string, template string) (*lxcContainer,
 func (c *lxcContainer) housekeeper() {
 	// container lifetime function
 	log.Infof("Housekeeper (%s) started.", c.name)
+	addActiveContainer()
 	defer log.Infof("Housekeeper (%s) stopped.", c.name)
 
 	for {
@@ -178,6 +201,7 @@ func (c *lxcContainer) housekeeper() {
 		if time.Since(c.idle) > time.Duration(c.Delays.StopDelay) && c.isFrozen() {
 			log.Debugf("LxcContainer %s: idle for %s, stopping container", c.name, time.Now().Sub(c.idle).String())
 			c.c.Stop()
+			removeActiveContainer()
 			return
 		} else if time.Since(c.idle) > time.Duration(c.Delays.FreezeDelay) && c.isRunning() {
 			log.Debugf("LxcContainer %s: idle for %s, freezing container", c.name, time.Now().Sub(c.idle).String())
