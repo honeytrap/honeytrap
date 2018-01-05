@@ -177,11 +177,10 @@ func (c *lxcContainer) housekeeper(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			log.Debugf("LxcContainer %s: shutting down container", c.name)
+			log.Debugf("LxcContainer %s: stopping", c.name)
 			c.c.Stop()
-		default:
-			time.Sleep(time.Duration(c.Delays.HousekeeperDelay))
-
+			return
+		case <-time.After(time.Duration(c.Delays.HousekeeperDelay)):
 			if c.isStopped() {
 				continue
 			}
