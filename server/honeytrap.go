@@ -463,6 +463,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			log.Info("Stopping honeytrap")
+			time.Sleep(2 * time.Second)
 			return
 		case conn := <-incoming:
 			go hc.handle(conn)
