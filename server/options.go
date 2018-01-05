@@ -76,18 +76,13 @@ func WithConfig(s string) (OptionFn, error) {
 
 func WithDataDir(s string) (OptionFn, error) {
 	var err error
-	var usr *user.User
-	if usr, err = user.Current(); err != nil {
+
+	p, err := expand(s)
+	if err != nil {
 		return nil, err
 	}
 
-	var p string
-	if s == ".honeytrap" {
-		p = path.Join(usr.HomeDir, s)
-	} else {
-		p, err = filepath.Abs(s)
-	}
-
+	p, err = filepath.Abs(p)
 	_, err = os.Stat(p)
 
 	switch {
@@ -102,10 +97,23 @@ func WithDataDir(s string) (OptionFn, error) {
 	}
 
 	return func(b *Honeytrap) error {
+		log.Debugf("Homedir is %s:", p)
 		b.dataDir = p
 		storage.SetDataDir(p)
 		return nil
 	}, nil
+}
+
+func expand(path string) (string, error) {
+	if len(path) == 0 || path[0] != '~' {
+		return path, nil
+	}
+
+	usr, err := user.Current()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(usr.HomeDir, path[1:]), nil
 }
 
 func WithToken() OptionFn {
