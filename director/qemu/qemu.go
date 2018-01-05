@@ -34,6 +34,7 @@
 package qemu
 
 import (
+	"context"
 	"errors"
 	"net"
 
@@ -58,11 +59,16 @@ func New(options ...func(director.Director) error) (director.Director, error) {
 }
 
 type qemuDirector struct {
-	eb pushers.Channel
+	ctx context.Context
+	eb  pushers.Channel
 }
 
 func (d *qemuDirector) SetChannel(eb pushers.Channel) {
 	d.eb = eb
+}
+
+func (d *qemuDirector) SetContext(ctx context.Context) {
+	d.ctx = ctx
 }
 
 func (d *qemuDirector) Dial(conn net.Conn) (net.Conn, error) {

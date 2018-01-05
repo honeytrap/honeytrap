@@ -31,6 +31,7 @@
 package forward
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -56,13 +57,18 @@ func New(options ...func(director.Director) error) (director.Director, error) {
 }
 
 type forwardDirector struct {
-	eb pushers.Channel
+	ctx context.Context
+	eb  pushers.Channel
 
 	Host string `toml:"host"`
 }
 
 func (d *forwardDirector) SetChannel(eb pushers.Channel) {
 	d.eb = eb
+}
+
+func (d *forwardDirector) SetContext(ctx context.Context) {
+	d.ctx = ctx
 }
 
 func (d *forwardDirector) Dial(conn net.Conn) (net.Conn, error) {

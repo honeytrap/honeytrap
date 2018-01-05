@@ -31,6 +31,7 @@
 package director
 
 import (
+	"context"
 	"net"
 
 	"github.com/BurntSushi/toml"
@@ -73,6 +74,10 @@ type SetChanneler interface {
 	SetChannel(pushers.Channel)
 }
 
+type SetContexter interface {
+	SetContext(context.Context)
+}
+
 func WithChannel(channel pushers.Channel) func(Director) error {
 	return func(d Director) error {
 		if sc, ok := d.(SetChanneler); ok {
@@ -86,5 +91,14 @@ func WithConfig(c toml.Primitive) func(Director) error {
 	return func(d Director) error {
 		err := toml.PrimitiveDecode(c, d)
 		return err
+	}
+}
+
+func WithContext(c context.Context) func(Director) error {
+	return func(d Director) error {
+		if sc, ok := d.(SetContexter); ok {
+			sc.SetContext(c)
+		}
+		return nil
 	}
 }
