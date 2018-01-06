@@ -33,6 +33,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"strings"
 	"time"
@@ -52,6 +53,7 @@ import (
 
 	"github.com/honeytrap/honeytrap/services"
 	_ "github.com/honeytrap/honeytrap/services/elasticsearch"
+	_ "github.com/honeytrap/honeytrap/services/ethereum"
 	_ "github.com/honeytrap/honeytrap/services/ipp"
 	_ "github.com/honeytrap/honeytrap/services/ssh"
 	_ "github.com/honeytrap/honeytrap/services/vnc"
@@ -152,13 +154,20 @@ type ServiceMap struct {
 	Type string
 }
 
-func (hc *Honeytrap) findService(addr net.Addr) *ServiceMap {
+func (hc *Honeytrap) findService(addr net.Addr, payload []byte) *ServiceMap {
 	for _, sm := range hc.matchers {
-		if !sm.Matcher(addr) {
-			continue
-		}
+		service := sm.Service
 
-		return sm
+		if sm.Matcher(addr) {
+			// match on addr has priority
+			return sm
+		} else if ch, ok := service.(services.CanHandlerer); !ok {
+			// CanHandle not supported
+		} else if !ch.CanHandle(payload) {
+			// Service won't support payload
+		} else {
+			return sm
+		}
 	}
 
 	return nil
@@ -181,6 +190,24 @@ func (hc *Honeytrap) heartbeat() {
 
 			count++
 		}
+	}
+}
+
+func ToAddr(port string) net.Addr {
+	parts := strings.Split(port, "/")
+
+	if len(parts) != 2 {
+		return nil
+	}
+
+	if strings.ToLower(parts[0]) == "tcp" {
+		addr, _ := net.ResolveTCPAddr("tcp", ":"+parts[1])
+		return addr
+	} else if strings.ToLower(parts[0]) == "udp" {
+		addr, _ := net.ResolveUDPAddr("udp", ":"+parts[1])
+		return addr
+	} else {
+		return nil
 	}
 }
 
@@ -334,6 +361,25 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		log.Fatalf("Error initializing listener %s: %s", x.Type, err)
 	}
 
+	for _, s := range hc.config.Ports {
+		x := struct {
+			Port string `toml:"port"`
+		}{}
+
+		if err := toml.PrimitiveDecode(s, &x); err != nil {
+			log.Error("Error parsing configuration of generic ports: %s", err.Error())
+			continue
+		}
+
+		if addr := ToAddr(x.Port); addr == nil {
+		} else if a, ok := l.(listener.AddAddresser); !ok {
+		} else {
+			a.AddAddress(addr)
+
+			log.Infof("Configured generic port %s/%s.", addr.Network(), addr.String())
+		}
+	}
+
 	// same for proxies
 	for key, s := range hc.config.Services {
 		x := struct {
@@ -342,14 +388,8 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			Port     string `toml:"port"`
 		}{}
 
-		err := toml.PrimitiveDecode(s, &x)
-		if err != nil {
-			log.Error("Error parsing configuration of service %s(%s): %s", x.Type, key, err.Error())
-			continue
-		}
-
-		if x.Type == "" {
-			log.Error("Error parsing configuration of service %s: type not set", key)
+		if err := toml.PrimitiveDecode(s, &x); err != nil {
+			log.Error("Error parsing configuration of service %s: %s", key, err.Error())
 			continue
 		}
 
@@ -357,12 +397,6 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		options := []services.ServicerFunc{
 			services.WithChannel(hc.bus),
 			services.WithConfig(s),
-		}
-
-		fn, ok := services.Get(x.Type)
-		if !ok {
-			log.Error(color.RedString("Could not find type %s for service %s", x.Type, key))
-			continue
 		}
 
 		if x.Director == "" {
@@ -373,60 +407,39 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			continue
 		}
 
+		fn, ok := services.Get(x.Type)
+		if !ok {
+			log.Error(color.RedString("Could not find type %s for service %s", x.Type, key))
+			continue
+		}
+
 		service := fn(options...)
 
-		parts := strings.Split(x.Port, "/")
-		if len(parts) == 2 {
-			log.Infof("Mapping port %s(%s) to service %s (%s)", parts[1], strings.ToLower(parts[0]), x.Type, key)
+		addr := ToAddr(x.Port)
+		if addr == nil {
+		} else if a, ok := l.(listener.AddAddresser); !ok {
+		} else {
+			a.AddAddress(addr)
 
-			// add address to listener and create mapping between
-			// port and service
-			if strings.ToLower(parts[0]) == "tcp" {
-				addr, _ := net.ResolveTCPAddr("tcp", ":"+parts[1])
-				if a, ok := l.(listener.AddAddresser); ok {
-					a.AddAddress(addr)
-				}
-
-				fn := func(port int) func(net.Addr) bool {
-					return func(a net.Addr) bool {
-						if ta, ok := a.(*net.TCPAddr); ok {
-							return ta.Port == port
-						}
-
-						return false
-					}
-				}
-
-				hc.matchers = append(hc.matchers, &ServiceMap{
-					Name:    key,
-					Type:    x.Type,
-					Matcher: fn(addr.Port),
-					Service: service,
-				})
-			} else if strings.ToLower(parts[0]) == "udp" {
-				addr, _ := net.ResolveUDPAddr("udp", ":"+parts[1])
-				if a, ok := l.(listener.AddAddresser); ok {
-					a.AddAddress(addr)
-				}
-
-				fn := func(port int) func(net.Addr) bool {
-					return func(a net.Addr) bool {
-						if ta, ok := a.(*net.UDPAddr); ok {
-							return ta.Port == port
-						}
-
-						return false
-					}
-				}
-
-				hc.matchers = append(hc.matchers, &ServiceMap{
-					Name:    key,
-					Type:    x.Type,
-					Matcher: fn(addr.Port),
-					Service: service,
-				})
-			}
+			log.Infof("Configured service port %s/%s.", addr.String())
 		}
+
+		matcher := noMatcher
+
+		if ta, ok := addr.(*net.TCPAddr); ok {
+			matcher = tcpMatcher(ta.Port)
+		} else if ua, ok := addr.(*net.UDPAddr); ok {
+			matcher = udpMatcher(ua.Port)
+		}
+
+		hc.matchers = append(hc.matchers, &ServiceMap{
+			Name:    key,
+			Type:    x.Type,
+			Matcher: matcher,
+			Service: service,
+		})
+
+		log.Infof("Configured service %s (%s)", x.Type, key)
 	}
 
 	if err := l.Start(); err != nil {
@@ -476,7 +489,19 @@ func (hc *Honeytrap) handle(conn net.Conn) {
 		}
 	}()
 
-	sm := hc.findService(conn.LocalAddr())
+	pc := PeekConnection(conn)
+
+	buffer := make([]byte, 1024)
+
+	n, err := pc.Peek(buffer)
+	if err == io.EOF {
+		return
+	} else if err != nil {
+		log.Errorf(color.RedString("Could not peek bytes: %s", err.Error()))
+		return
+	}
+
+	sm := hc.findService(conn.LocalAddr(), buffer[:n])
 	if sm == nil {
 		return
 	}
@@ -484,8 +509,8 @@ func (hc *Honeytrap) handle(conn net.Conn) {
 	log.Debug("Handling connection for %s => %s %s(%s)", conn.RemoteAddr(), conn.LocalAddr(), sm.Name, sm.Type)
 
 	ctx := context.Background()
-	if err := sm.Service.Handle(ctx, conn); err != nil {
-		fmt.Println(color.RedString(err.Error()))
+	if err := sm.Service.Handle(ctx, pc); err != nil {
+		log.Errorf(color.RedString("Error handling service: %s: %s", sm.Name, err.Error()))
 	}
 }
 

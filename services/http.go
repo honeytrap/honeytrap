@@ -32,6 +32,7 @@ package services
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -70,6 +71,30 @@ type httpService struct {
 	httpServiceConfig
 
 	c pushers.Channel
+}
+
+func (s *httpService) CanHandle(payload []byte) bool {
+	if bytes.HasPrefix(payload, []byte("GET")) {
+		return true
+	} else if bytes.HasPrefix(payload, []byte("HEAD")) {
+		return true
+	} else if bytes.HasPrefix(payload, []byte("POST")) {
+		return true
+	} else if bytes.HasPrefix(payload, []byte("PUT")) {
+		return true
+	} else if bytes.HasPrefix(payload, []byte("DELETE")) {
+		return true
+	} else if bytes.HasPrefix(payload, []byte("PATCH")) {
+		return true
+	} else if bytes.HasPrefix(payload, []byte("TRACE")) {
+		return true
+	} else if bytes.HasPrefix(payload, []byte("CONNECT")) {
+		return true
+	} else if bytes.HasPrefix(payload, []byte("OPTIONS")) {
+		return true
+	}
+
+	return false
 }
 
 func (s *httpService) SetChannel(c pushers.Channel) {

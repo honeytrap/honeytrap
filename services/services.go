@@ -71,6 +71,10 @@ func Get(key string) (func(...ServicerFunc) Servicer, bool) {
 	return d, false
 }
 
+type CanHandlerer interface {
+	CanHandle([]byte) bool
+}
+
 type Servicer interface {
 	Handle(context.Context, net.Conn) error
 

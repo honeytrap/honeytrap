@@ -47,6 +47,7 @@ import (
 
 var log = logging.MustGetLogger("listeners/agent")
 
+//  Register the listener
 var (
 	_ = listener.Register("agent", New)
 )
@@ -64,10 +65,12 @@ type agentConfig struct {
 	Listen string `toml:"listen"`
 }
 
+// AddAddress will add the addresses to listen to
 func (sc *agentListener) AddAddress(a net.Addr) {
 	sc.Addresses = append(sc.Addresses, a)
 }
 
+// New will initialize the agent listener
 func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 	ch := make(chan net.Conn)
 
@@ -173,6 +176,7 @@ func (sl *agentListener) serv(c *conn2) {
 	return
 }
 
+// Start the listener
 func (sl *agentListener) Start() error {
 	s, err := storage.Namespace("agent")
 	if err != nil {
@@ -233,6 +237,7 @@ func (sl *agentListener) Start() error {
 	return nil
 }
 
+// Accept a new connection
 func (sl *agentListener) Accept() (net.Conn, error) {
 	c := <-sl.ch
 	return c, nil

@@ -53,6 +53,7 @@ type Config struct {
 	Listener toml.Primitive `toml:"listener"`
 
 	Services  map[string]toml.Primitive `toml:"service"`
+	Ports     []toml.Primitive          `toml:"port"`
 	Directors map[string]toml.Primitive `toml:"director"`
 	Channels  map[string]toml.Primitive `toml:"channel"`
 

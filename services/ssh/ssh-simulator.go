@@ -44,6 +44,8 @@ import (
 	"github.com/honeytrap/honeytrap/services"
 	"github.com/honeytrap/honeytrap/services/decoder"
 
+	"bytes"
+
 	"github.com/rs/xid"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/terminal"
@@ -103,6 +105,10 @@ type sshSimulatorService struct {
 	key         *privateKey `toml:"private-key"`
 }
 
+func (s *sshSimulatorService) CanHandle(payload []byte) bool {
+	return bytes.HasPrefix(payload, []byte("SSH"))
+}
+
 func (s *sshSimulatorService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
@@ -128,14 +134,15 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 
 	config := ssh.ServerConfig{
 		ServerVersion: s.Banner,
-		PublicKeyCallback: func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+		PublicKeyCallback: func(cm ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
 			s.c.Send(event.New(
 				services.EventOptions,
 				event.Category("ssh"),
 				event.Type("publickey-authentication"),
-				event.SourceAddr(conn.RemoteAddr()),
-				event.DestinationAddr(conn.LocalAddr()),
+				event.SourceAddr(cm.RemoteAddr()),
+				event.DestinationAddr(cm.LocalAddr()),
 				event.Custom("ssh.sessionid", id.String()),
+				event.Custom("ssh.username", cm.User()),
 				event.Custom("ssh.publickey-type", key.Type()),
 				event.Custom("ssh.publickey", hex.EncodeToString(key.Marshal())),
 			))

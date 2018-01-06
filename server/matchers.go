@@ -28,88 +28,33 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package services
+package server
 
 import (
-	"context"
-	"io"
 	"net"
-
-	"github.com/honeytrap/honeytrap/director"
-	"github.com/honeytrap/honeytrap/event"
-	"github.com/honeytrap/honeytrap/listener"
-	"github.com/honeytrap/honeytrap/pushers"
 )
 
-var (
-	_ = Register("copy", Copy)
-)
-
-// Copy is a placeholder
-func Copy(options ...ServicerFunc) Servicer {
-	s := &copyService{}
-	for _, o := range options {
-		o(s)
-	}
-	return s
-}
-
-type copyService struct {
-	c pushers.Channel
-
-	d director.Director
-}
-
-func (s *copyService) SetDirector(d director.Director) {
-	s.d = d
-}
-
-func (s *copyService) SetChannel(c pushers.Channel) {
-	s.c = c
-}
-
-func (s *copyService) Handle(ctx context.Context, conn net.Conn) error {
-	defer conn.Close()
-	if _, ok := conn.(*listener.DummyUDPConn); ok {
-		defer s.c.Send(event.New(
-			EventOptions,
-			event.Category("copy"),
-			event.Type("tcp"),
-			event.SourceAddr(conn.RemoteAddr()),
-			event.DestinationAddr(conn.LocalAddr()),
-		))
-
-		conn2, err := s.d.Dial(conn)
-		if err != nil {
-			return err
+func tcpMatcher(port int) func(net.Addr) bool {
+	return func(a net.Addr) bool {
+		if ta, ok := a.(*net.TCPAddr); ok {
+			return ta.Port == port
 		}
 
-		defer conn2.Close()
+		return false
+	}
+}
 
-		go io.Copy(conn2, conn)
-		_, err = io.Copy(conn, conn2)
-
-		return nil
-	} else if _, ok := conn.(*net.TCPConn); ok {
-		defer s.c.Send(event.New(
-			EventOptions,
-			event.Category("copy"),
-			event.Type("udp"),
-			event.SourceAddr(conn.RemoteAddr()),
-			event.DestinationAddr(conn.LocalAddr()),
-		))
-
-		conn2, err := s.d.Dial(conn)
-		if err != nil {
-			return err
+func udpMatcher(port int) func(net.Addr) bool {
+	return func(a net.Addr) bool {
+		if ta, ok := a.(*net.UDPAddr); ok {
+			return ta.Port == port
 		}
 
-		defer conn2.Close()
-
-		go io.Copy(conn2, conn)
-		_, err = io.Copy(conn, conn2)
-		return err
-	} else {
-		return nil
+		return false
 	}
+}
+
+func noMatcher(net.Addr) bool {
+	// won't match
+	return false
 }
