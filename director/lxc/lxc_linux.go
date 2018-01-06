@@ -45,8 +45,6 @@ import (
 	"github.com/honeytrap/honeytrap/pushers"
 
 	"golang.org/x/sync/syncmap"
-
-	"github.com/honeytrap/golxc"
 )
 
 var (
@@ -95,7 +93,7 @@ func (d *lxcDirector) SetChannel(eb pushers.Channel) {
 }
 
 func (d *lxcDirector) Dial(conn net.Conn) (net.Conn, error) {
-	if activeContainers >= d.MaxContainers {
+	if d.MaxContainers != 0 && activeContainers >= d.MaxContainers {
 		return nil, fmt.Errorf("maximum number of containers active (%v)", d.MaxContainers)
 	}
 
