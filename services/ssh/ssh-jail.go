@@ -40,6 +40,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 
 	"github.com/fatih/color"
 	"github.com/honeytrap/honeytrap/event"
@@ -348,20 +349,6 @@ func (s *sshJailService) Handle(ctx context.Context, conn net.Conn) error {
 				case "exec":
 					b = true
 
-					decoder := PayloadDecoder(req.Payload)
-
-					payloads := []string{}
-
-					for {
-						if decoder.Available() == 0 {
-							break
-						}
-
-						payload := decoder.String()
-						payloads = append(payloads, payload)
-					}
-
-					options = append(options, event.Custom("ssh.exec", payloads))
 				case "subsystem":
 					b = true
 
@@ -390,7 +377,8 @@ func (s *sshJailService) Handle(ctx context.Context, conn net.Conn) error {
 							/etc/motd
 							"Last login: Wed Jan  3 15:33:27 2018 from 172.16.84.1"
 						*/
-						cmd := exec.Command("firejail", fmt.Sprintf("--name=%s", id), fmt.Sprintf("--overlay-named=%s", id), "--quiet", "--private-dev", "--private-tmp", "--", "bash")
+						cmd := exec.Command("firejail", fmt.Sprintf("--name=%s", id), fmt.Sprintf("--overlay-named=%s", id), "--quiet", "--private-dev", "--private-tmp", "--private-opt=aabb", "--", "bash")
+						//cmd := exec.Command("firejail", fmt.Sprintf("--name=%s", id), fmt.Sprintf("--overlay-named=%s", id), "--quiet", "--private-dev", "--private-tmp", "--private-opt=busybox-armv6l", "--", "qemu-arm", "/opt/busybox-armv6l", "sh")
 						cmd.Dir = "/root"
 						cmd.Env = append(os.Environ())
 
@@ -458,7 +446,7 @@ func (s *sshJailService) Handle(ctx context.Context, conn net.Conn) error {
 							s.c.Send(event.New(
 								services.EventOptions,
 								event.Category("ssh"),
-								event.Type("ssh-channel"),
+								event.Type("ssh-shell"),
 								event.SourceAddr(conn.RemoteAddr()),
 								event.DestinationAddr(conn.LocalAddr()),
 								event.Custom("ssh.sessionid", id.String()),
@@ -471,7 +459,7 @@ func (s *sshJailService) Handle(ctx context.Context, conn net.Conn) error {
 						s.c.Send(event.New(
 							services.EventOptions,
 							event.Category("ssh"),
-							event.Type("ssh-session"),
+							event.Type("shell"),
 							event.SourceAddr(conn.RemoteAddr()),
 							event.DestinationAddr(conn.LocalAddr()),
 							event.Custom("ssh.sessionid", id.String()),
@@ -491,7 +479,13 @@ func (s *sshJailService) Handle(ctx context.Context, conn net.Conn) error {
 
 							fmt.Println(payload)
 
-							cmd := exec.Command("firejail", fmt.Sprintf("--name=%s", id), fmt.Sprintf("--overlay-named=%s", id), "--quiet", "--private-dev", "--private-tmp", "--", "bash", "-c", payload)
+							arguments := []string{fmt.Sprintf("--name=%s", id), fmt.Sprintf("--overlay-named=%s", id), "--quiet", "--private-dev", "--private-tmp", "--private-opt=aabb", "--", "bash", "-c"}
+							arguments = append(arguments, payload)
+
+							//							arguments := []string{fmt.Sprintf("--name=%s", id), fmt.Sprintf("--overlay-named=%s", id), "--quiet", "--private-dev", "--private-tmp", "--private-opt=busybox-armv6l", "--", "qemu-arm", "/opt/busybox-armv6l"}
+							//arguments = append(arguments, strings.Split(payload, " ")...)
+
+							cmd := exec.Command("firejail", arguments...)
 
 							cmd.Env = append(os.Environ())
 							cmd.Dir = "/root"
@@ -533,10 +527,28 @@ func (s *sshJailService) Handle(ctx context.Context, conn net.Conn) error {
 								io.Copy(inPipe, channel)
 							}()
 
-							if err := cmd.Wait(); err == nil {
-							} else if ee, ok := err.(*exec.ExitError); ok {
-								_ = ee
+							options2 := []event.Option{
+								services.EventOptions,
+								event.Category("ssh"),
+								event.Type("exec"),
+								event.SourceAddr(conn.RemoteAddr()),
+								event.DestinationAddr(conn.LocalAddr()),
+								event.Custom("ssh.sessionid", id.String()),
+								event.Custom("ssh.command", payload),
 							}
+
+							if err := cmd.Wait(); err == nil {
+								ws := cmd.ProcessState.Sys().(syscall.WaitStatus)
+								options2 = append(options2, event.Custom("ssh.command-exit-status", ws.ExitStatus()))
+							} else if exitError, ok := err.(*exec.ExitError); !ok {
+							} else {
+								ws := exitError.Sys().(syscall.WaitStatus)
+								options2 = append(options2, event.Custom("ssh.command-exit-status", ws.ExitStatus()))
+							}
+
+							s.c.Send(event.New(
+								options2...,
+							))
 
 							channel.SendRequest("exit-status", false, []byte{0, 0, 0, 0})
 						}
