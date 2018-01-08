@@ -348,7 +348,6 @@ func (s *sshJailService) Handle(ctx context.Context, conn net.Conn) error {
 					options = append(options, event.Custom("ssh.tcpip-forward.port-to-bind", fmt.Sprintf("%d", decoder.Uint32())))
 				case "exec":
 					b = true
-
 				case "subsystem":
 					b = true
 
@@ -446,7 +445,7 @@ func (s *sshJailService) Handle(ctx context.Context, conn net.Conn) error {
 							s.c.Send(event.New(
 								services.EventOptions,
 								event.Category("ssh"),
-								event.Type("ssh-shell"),
+								event.Type("shell"),
 								event.SourceAddr(conn.RemoteAddr()),
 								event.DestinationAddr(conn.LocalAddr()),
 								event.Custom("ssh.sessionid", id.String()),
