@@ -45,7 +45,7 @@ import (
 
 	"golang.org/x/sync/syncmap"
 
-	"github.com/honeytrap/golxc"
+	"gopkg.in/lxc/go-lxc.v2"
 )
 
 var (

@@ -122,12 +122,6 @@
   version = "v1.2.0"
 
 [[projects]]
-  branch = "v3"
-  name = "github.com/honeytrap/golxc"
-  packages = ["."]
-  revision = "365776ef525bf6740eb39531895cb95f7d3fb2b5"
-
-[[projects]]
   branch = "master"
   name = "github.com/honeytrap/honeytrap-web"
   packages = ["."]
@@ -254,6 +248,12 @@
   revision = "0649f9fe46d917da5591af4d4784b6badd31d7e5"
 
 [[projects]]
+  branch = "v2"
+  name = "gopkg.in/lxc/go-lxc.v2"
+  packages = ["."]
+  revision = "8741a7213cda0df1951283400247300e75abaf17"
+
+[[projects]]
   name = "gopkg.in/olivere/elastic.v5"
   packages = [".","config","uritemplates"]
   revision = "171ce647da4acfb30ffc99981d66d80bdea6bcee"
@@ -268,6 +268,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "711b36c045751858455df80e5365674e5814ad97565d573e5be618405948b94b"
+  inputs-digest = "fbc0dd0ba0a0d82b859db9f32a527f7864b35f08633162fc52df920fc18ba6b8"
   solver-name = "gps-cdcl"
   solver-version = 1
