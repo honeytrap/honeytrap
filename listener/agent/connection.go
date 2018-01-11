@@ -138,10 +138,11 @@ func (dc *agentConnection) Close() error {
 	}
 
 	dc.out <- p
-
-	close(dc.in)
+	// should we close out also?
 
 	dc.closed = true
+	close(dc.in)
+
 	return nil
 }
 

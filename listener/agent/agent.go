@@ -36,6 +36,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"runtime"
 
 	"github.com/fatih/color"
 	"github.com/honeytrap/honeytrap/listener"
@@ -87,6 +88,16 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 }
 
 func (sl *agentListener) serv(c *conn2) {
+	defer func() {
+		if err := recover(); err != nil {
+			trace := make([]byte, 1024)
+			count := runtime.Stack(trace, true)
+			log.Errorf("Error: %s", err)
+			log.Errorf("Stack of %d bytes: %s\n", count, string(trace))
+			return
+		}
+	}()
+
 	log.Debugf("Agent connecting from remote address: %s", c.RemoteAddr())
 
 	if p, err := c.receive(); err == io.EOF {
@@ -110,9 +121,9 @@ func (sl *agentListener) serv(c *conn2) {
 	conns := Connections{}
 
 	defer func() {
-		for _, conn := range conns {
+		conns.Each(func(conn *agentConnection) {
 			conn.Close()
-		}
+		})
 	}()
 
 	out := make(chan interface{})
