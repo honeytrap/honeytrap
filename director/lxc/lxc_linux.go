@@ -55,6 +55,7 @@ var (
 func New(options ...func(director.Director) error) (director.Director, error) {
 	d := &lxcDirector{
 		eb:       pushers.MustDummy(),
+		lxcCh:    make(chan interface{}),
 		template: "honeytrap",
 	}
 
@@ -63,13 +64,48 @@ func New(options ...func(director.Director) error) (director.Director, error) {
 	}
 
 	d.cache = &syncmap.Map{} // map[string]*lxcContainer{}
+	go d.HandleLxcCommands()
 	return d, nil
 }
+
+type LxcStop struct{ c *lxc.Container }
+type LxcStart struct{ c *lxc.Container }
+type LxcFreeze struct{ c *lxc.Container }
+type LxcUnfreeze struct{ c *lxc.Container }
 
 type lxcDirector struct {
 	template string
 	eb       pushers.Channel
 	cache    *syncmap.Map // map[string]*lxcContainer
+	lxcCh    chan interface{}
+}
+
+func (d *lxcDirector) HandleLxcCommands() {
+	for {
+		x := <-d.lxcCh
+		switch cmd := x; cmd.(type) {
+		case LxcStop:
+			err := x.(LxcStop).c.Stop()
+			if err != nil {
+				log.Errorf("Error Stopping container: %s, because %s", x.(LxcStop).c.Name(), err.Error())
+			}
+		case LxcStart:
+			err := x.(LxcStart).c.Start()
+			if err != nil {
+				log.Errorf("Error Starting container: %s, because %s", x.(LxcStart).c.Name(), err.Error())
+			}
+		case LxcFreeze:
+			err := x.(LxcFreeze).c.Freeze()
+			if err != nil {
+				log.Errorf("Error Freezing container: %s, because %s", x.(LxcFreeze).c.Name(), err.Error())
+			}
+		case LxcUnfreeze:
+			err := x.(LxcUnfreeze).c.Unfreeze()
+			if err != nil {
+				log.Errorf("Error UnFreezing container: %s, because %s", x.(LxcUnfreeze).c.Name(), err.Error())
+			}
+		}
+	}
 }
 
 func (d *lxcDirector) SetChannel(eb pushers.Channel) {
@@ -124,9 +160,10 @@ func (d *lxcDirector) Dial(conn net.Conn) (net.Conn, error) {
 type lxcContainer struct {
 	c *lxc.Container
 
-	d    *lxcDirector
-	name string
-	eb   pushers.Channel
+	d     *lxcDirector
+	name  string
+	eb    pushers.Channel
+	lxcCh chan interface{}
 
 	idle     time.Time
 	ip       net.IP
@@ -142,6 +179,7 @@ func (d *lxcDirector) newContainer(name string, template string) (*lxcContainer,
 		template: template,
 		eb:       d.eb,
 		d:        d,
+		lxcCh:    d.lxcCh,
 		Delays: Delays{
 			FreezeDelay:      Delay(15 * time.Minute),
 			StopDelay:        Delay(30 * time.Minute),
@@ -177,11 +215,11 @@ func (c *lxcContainer) housekeeper() {
 
 		if time.Since(c.idle) > time.Duration(c.Delays.StopDelay) && c.isFrozen() {
 			log.Debugf("LxcContainer %s: idle for %s, stopping container", c.name, time.Now().Sub(c.idle).String())
-			c.c.Stop()
+			c.lxcCh <- LxcStop{c.c}
 			return
 		} else if time.Since(c.idle) > time.Duration(c.Delays.FreezeDelay) && c.isRunning() {
 			log.Debugf("LxcContainer %s: idle for %s, freezing container", c.name, time.Now().Sub(c.idle).String())
-			c.c.Freeze()
+			c.lxcCh <- LxcFreeze{c.c}
 		}
 	}
 }
@@ -246,9 +284,7 @@ func (c *lxcContainer) start() error {
 	// run independent of our process
 	c.c.WantDaemonize(true)
 
-	if err := c.c.Start(); err != nil {
-		return err
-	}
+	c.lxcCh <- LxcStart{c.c}
 
 	if err := c.settle(); err != nil {
 		return err
@@ -267,9 +303,7 @@ func (c *lxcContainer) start() error {
 func (c *lxcContainer) unfreeze() error {
 	log.Infof("Unfreezing container: %s", c.name)
 
-	if err := c.c.Unfreeze(); err != nil {
-		return err
-	}
+	c.lxcCh <- LxcUnfreeze{c.c}
 
 	if err := c.settle(); err != nil {
 		return err
