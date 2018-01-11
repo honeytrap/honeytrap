@@ -143,9 +143,6 @@ func (d *lxcDirector) Dial(conn net.Conn) (net.Conn, error) {
 		return nil, err
 	}
 
-	// Housekeeper only runs in Running containers, so start it always
-	go c.(*lxcContainer).housekeeper()
-
 	if ta, ok := conn.LocalAddr().(*net.TCPAddr); ok {
 		connection, err := c.(*lxcContainer).Dial("tcp", ta.Port)
 		return lxcContainerConn{Conn: connection, container: c.(*lxcContainer)}, err
@@ -268,7 +265,7 @@ func (c *lxcContainer) clone() error {
 
 // start begins the call to the lxc.Container.
 func (c *lxcContainer) start() error {
-	log.Infof("Starting container")
+	log.Infof("Starting container %s", c.c.Name())
 
 	c.idle = time.Now()
 
@@ -285,6 +282,8 @@ func (c *lxcContainer) start() error {
 	c.c.WantDaemonize(true)
 
 	c.lxcCh <- LxcStart{c.c}
+	// Housekeeper only runs in Running containers, so start it always
+	go c.housekeeper()
 
 	if err := c.settle(); err != nil {
 		return err
@@ -324,7 +323,7 @@ func (c *lxcContainer) unfreeze() error {
 func (c *lxcContainer) settle() error {
 	log.Infof("Waiting for container %s to settle, current state=%s", c.name, c.c.State())
 
-	if !c.c.Wait(lxc.RUNNING, 30) {
+	if !c.c.Wait(lxc.RUNNING, 30*time.Second) {
 		return fmt.Errorf("lxccontainer still not running %s", c.name)
 	}
 
