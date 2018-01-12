@@ -246,11 +246,11 @@ func (c *lxcContainer) clone() error {
 		return err
 	}
 
-	if err := c.c.SetConfigItem("lxc.console", "none"); err != nil {
+	if err := c.c.SetConfigItem("lxc.console.path", "none"); err != nil {
 		return err
 	}
 
-	if err := c.c.SetConfigItem("lxc.tty", "0"); err != nil {
+	if err := c.c.SetConfigItem("lxc.tty.max", "0"); err != nil {
 		return err
 	}
 
@@ -348,18 +348,18 @@ func (c *lxcContainer) settle() error {
 	}
 
 	var isets []string
-	netws := c.c.ConfigItem("lxc.network")
+	netws := c.c.ConfigItem("lxc.net")
 	for ind := range netws {
-		itypes := c.c.RunningConfigItem(fmt.Sprintf("lxc.network.%d.type", ind))
+		itypes := c.c.RunningConfigItem(fmt.Sprintf("lxc.net.0.%d.type", ind))
 		if itypes == nil {
 			continue
 		}
 
 		if itypes[0] == "veth" {
-			isets = c.c.RunningConfigItem(fmt.Sprintf("lxc.network.%d.veth.pair", ind))
+			isets = c.c.RunningConfigItem(fmt.Sprintf("lxc.net.0.%d.veth.pair", ind))
 			break
 		} else {
-			isets = c.c.RunningConfigItem(fmt.Sprintf("lxc.network.%d.link", ind))
+			isets = c.c.RunningConfigItem(fmt.Sprintf("lxc.net.0.%d.link", ind))
 			break
 		}
 	}
