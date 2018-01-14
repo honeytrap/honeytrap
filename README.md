@@ -4,6 +4,20 @@
 Honeytrap is an extensible and opensource system for running, monitoring and managing honeypots. 
 ----
 
+## Features
+
+* Combine multiple services to one honeypot, eg a LAMP server
+* Honeytrap Agent will download the configuration from the Honeytrap Server
+* Use the Honeytrap Agent to redirect traffic out of the network to a seperate network
+* Deploy a large amount agents while having one Honeytrap Server, configuration will be downloaded automatically and logging centralized
+* Payload detection to determine which service should handle the request, one port can handle multiple protocols
+* Monitor lateral movement within your network with the Sensor listener. The sensor will complete the handshake (in case of tcp), and store the payload
+* Create high interaction honeypots using the LXC or remote hosts directors, traffic will be man-in-the-middle proxied, while information will be extracted
+* Extend honeytrap with existing honeypots (like cowrie or glutton), while using the logging and listening framework of Honeytrap
+* Advanced logging system with filtering and logging to Elasticsearch, Kafka, Splunk, Raven, File or Console
+* Services are easy extensible and will extract as much information as possible
+* Low- to high interaction Honeypots, where connections will be upgraded seamless to high interaction
+
 ## To start using Honeytrap
 
 See our documentation on [docs.honeytrap.io](http://docs.honeytrap.io/docs/home/).
