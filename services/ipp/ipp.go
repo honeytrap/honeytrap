@@ -65,6 +65,9 @@ func IPP(options ...services.ServicerFunc) services.Servicer {
 	for _, o := range options {
 		o(s)
 	}
+
+	model.val = append(model.val, &valStr{nameWithoutLang, "printer-name", []string{s.PrinterName}})
+
 	return s
 }
 
@@ -72,6 +75,8 @@ type Config struct {
 	Banner string `toml:"server"`
 
 	StorageDir string `toml:"storage-dir"`
+
+	PrinterName string `toml:"printer-name"`
 
 	SizeLimit int `toml:"size-treshold"`
 }
@@ -102,14 +107,13 @@ func (s *ippService) Handle(ctx context.Context, conn net.Conn) error {
 		log.Error("Bad ipp request, request method: %s", req.Method)
 		return nil
 	} else if contentType := req.Header.Get("Content-Type"); contentType != "application/ipp" {
-		log.Error("Bad ipp request, content-type: %s", contentType)
+		log.Error("Bad ipp request, wrong content-type")
 		return nil
 	}
 
-	//TODO: This could exhaust memory!
 	ippReq, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		log.Error("Error reading request: %s", err.Error())
+		log.Error("Error reading request: ", err.Error())
 		return err
 	}
 
@@ -122,11 +126,12 @@ func (s *ippService) Handle(ctx context.Context, conn net.Conn) error {
 		return err
 	}
 
-	if ippResp.data == nil {
+	if len(ippResp.data) == 0 {
 		// no print data
 	} else if s.StorageDir == "" {
+		// no storage location
 	} else if len(ippResp.data) > s.SizeLimit {
-		log.Error("data exceeds size limit")
+		log.Debug("Data exceeds size limit")
 	} else {
 		ext := ""
 
@@ -136,12 +141,13 @@ func (s *ippService) Handle(ctx context.Context, conn net.Conn) error {
 		case "image/pwg-raster":
 			ext = ".ras"
 		case "application/octet-stream":
-			ext = ".ps"
+			ext = ".octet-stream"
 		}
 
 		p := path.Join(s.StorageDir, fmt.Sprintf("%s%s", time.Now().Format("ipp-20060102150405"), ext))
+		log.Debugf("Data size %v, file %v", len(ippResp.data), p)
 
-		ioutil.WriteFile(p, ippResp.data, 0600)
+		ioutil.WriteFile(p, ippResp.data, 0644)
 
 		ippResp.data = []byte("Print data stored to " + p)
 	}

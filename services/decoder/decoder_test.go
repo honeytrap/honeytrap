@@ -9,16 +9,19 @@ func TestHasBytes(t *testing.T) {
 	dec := NewDecoder(bs)
 
 	if err := dec.HasBytes(1); err != nil {
-		t.Error(err)
+		t.Errorf("HasBytes(1) returns error: %v", err.Error())
 	}
 	if err := dec.HasBytes(len(bs)); err != nil {
-		t.Error(err)
+		t.Errorf("HasBytes(max) returns error: %v", err.Error())
 	}
 	if err := dec.HasBytes(len(bs) + 1); err == nil {
-		t.Error("HasBytes(max+1) returns no error while out of index")
+		t.Errorf("HasBytes(max+1) returns NO error: %v", err.Error())
 	}
-	if err := dec.HasBytes(0); err == nil {
-		t.Error("HasBytes(0) returns no error with zero value")
+	if err := dec.HasBytes(0); err != nil {
+		t.Error("HasBytes(0) returns error with zero value")
+	}
+	if err := dec.HasBytes(-1); err == nil {
+		t.Errorf("HasBytes(-1) returns NO error: %v", err.Error())
 	}
 }
 
