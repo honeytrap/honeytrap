@@ -35,9 +35,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"runtime"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/honeytrap/honeytrap/cmd"
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
 
@@ -86,6 +88,7 @@ func (hc RavenBackend) run() {
 	for {
 		func() {
 			headers := http.Header{}
+			headers.Set("User-Agent", fmt.Sprintf("Honeytrap/%s (%s; %s) %s", cmd.Version, runtime.GOOS, runtime.GOARCH, cmd.ShortCommitID))
 			headers.Set("Authorization", fmt.Sprintf("Bearer %s", hc.Token))
 
 			c, _, err := d.Dial(hc.Server, headers)
