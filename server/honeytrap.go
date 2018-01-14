@@ -100,6 +100,8 @@ type Honeytrap struct {
 
 	token string
 
+	dataDir string
+
 	matchers []*ServiceMap
 }
 

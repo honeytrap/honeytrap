@@ -36,9 +36,11 @@ import (
 	"os"
 	"os/user"
 	"path"
+	"path/filepath"
 
 	_ "net/http/pprof"
 
+	"github.com/honeytrap/honeytrap/storage"
 	"github.com/pkg/profile"
 	"github.com/rs/xid"
 
@@ -72,15 +74,15 @@ func WithConfig(s string) (OptionFn, error) {
 	}, nil
 }
 
-func HomeDir() string {
+func WithDataDir(s string) (OptionFn, error) {
 	var err error
-	var usr *user.User
-	if usr, err = user.Current(); err != nil {
-		panic(err)
+
+	p, err := expand(s)
+	if err != nil {
+		return nil, err
 	}
 
-	p := path.Join(usr.HomeDir, ".honeytrap")
-
+	p, err = filepath.Abs(p)
 	_, err = os.Stat(p)
 
 	switch {
@@ -88,34 +90,50 @@ func HomeDir() string {
 		break
 	case os.IsNotExist(err):
 		if err = os.Mkdir(p, 0755); err != nil {
-			panic(err)
+			return nil, err
 		}
 	default:
-		panic(err)
+		return nil, err
 	}
 
-	return p
+	return func(b *Honeytrap) error {
+		log.Debugf("Homedir is %s:", p)
+		b.dataDir = p
+		storage.SetDataDir(p)
+		return nil
+	}, nil
+}
+
+func expand(path string) (string, error) {
+	if len(path) == 0 || path[0] != '~' {
+		return path, nil
+	}
+
+	usr, err := user.Current()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(usr.HomeDir, path[1:]), nil
 }
 
 func WithToken() OptionFn {
 	uid := xid.New().String()
 
-	p := HomeDir()
-	p = path.Join(p, "token")
-
-	if _, err := os.Stat(p); os.IsNotExist(err) {
-		ioutil.WriteFile(p, []byte(uid), 0600)
-	} else if err != nil {
-		// other error
-		panic(err)
-	} else if data, err := ioutil.ReadFile(p); err == nil {
-		uid = string(data)
-	} else {
-		panic(err)
-	}
-
 	return func(h *Honeytrap) error {
 		h.token = uid
+		p := h.dataDir
+		p = path.Join(p, "token")
+
+		if _, err := os.Stat(p); os.IsNotExist(err) {
+			ioutil.WriteFile(p, []byte(uid), 0600)
+		} else if err != nil {
+			// other error
+			return err
+		} else if data, err := ioutil.ReadFile(p); err == nil {
+			uid = string(data)
+		} else {
+			return err
+		}
 		return nil
 	}
 }
