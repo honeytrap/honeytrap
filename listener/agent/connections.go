@@ -32,19 +32,49 @@ package agent
 
 import (
 	"net"
+	"sync"
 )
 
-type Connections []*agentConnection
-
-func (c *Connections) Add(ac *agentConnection) {
-	*c = append(*c, ac)
+type Connections struct {
+	m     sync.Mutex
+	conns []*agentConnection
 }
 
-func (c *Connections) Delete(*agentConnection) {
+func (c *Connections) Add(ac *agentConnection) {
+	c.m.Lock()
+	defer c.m.Unlock()
+
+	c.conns = append(c.conns, ac)
+}
+
+func (c *Connections) Each(fn func(ac *agentConnection)) {
+	c.m.Lock()
+	defer c.m.Unlock()
+
+	for index := 0; index < len(c.conns); index++ {
+		fn(c.conns[index])
+	}
+}
+
+func (c *Connections) Delete(ac *agentConnection) {
+	c.m.Lock()
+	defer c.m.Unlock()
+
+	for index := 0; index < len(c.conns); index++ {
+		if c.conns[index] != ac {
+			continue
+		}
+
+		c.conns = append(c.conns[:index], c.conns[index+1:]...)
+		return
+	}
 }
 
 func (c Connections) Get(laddr net.Addr, raddr net.Addr) *agentConnection {
-	for _, conn := range c {
+	c.m.Lock()
+	defer c.m.Unlock()
+
+	for _, conn := range c.conns {
 		if conn.Laddr.String() != laddr.String() {
 			continue
 		}

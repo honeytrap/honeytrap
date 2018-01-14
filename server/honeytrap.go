@@ -491,6 +491,9 @@ func (hc *Honeytrap) handle(conn net.Conn) {
 		}
 	}()
 
+	log.Debug("Accepted connection for %s => %s", conn.RemoteAddr(), conn.LocalAddr())
+	defer log.Debug("Disconnected connection for %s => %s", conn.RemoteAddr(), conn.LocalAddr())
+
 	pc := PeekConnection(conn)
 
 	buffer := make([]byte, 1024)
