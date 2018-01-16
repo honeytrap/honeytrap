@@ -33,6 +33,8 @@
       </ul>
     </p>
 
+    <hr>
+
     <p>To set it up, follow <a href="https://golang.org/pkg/net/" target="_blank">Golang's net/conn</a> standard way of setting up a server with a libdisco config:</p>
 
     <pre><code>serverConfig := libdisco.Config{
@@ -82,8 +84,14 @@ client, err := libdisco.Dial("tcp", "127.0.0.1:6666", &clientConfig)
     <p>To make use of the <strong><i class="fa fa-wrench" aria-hidden="true"></i>
     cryptographic library</strong>, check our <router-link to="/library/Overview">overview here</router-link> or directly access them through the menu on the left.</p>
 
+    <hr>
+
+    <p>To learn more about it, you can read <a href="https://www.cryptologie.net/article/432/disco/" target="_blank">this blog post</a>.</p>
+
     <p>If you want help, head to the <a href="https://github.com/mimoo/disco/issues"><i class="fa fa-question" aria-hidden="true"></i>
-    issues on github</a>. If you want to stay tuned on what we're doing, we don't have a mailing list but we have better: <a href="https://www.reddit.com/r/discocrypto/"><i class="fa fa-envelope-o" aria-hidden="true"></i>
+    issues on github</a>.</p>
+
+    <p>If you want to stay tuned on what we're doing, we don't have a mailing list but we have better: <a href="https://www.reddit.com/r/discocrypto/"><i class="fa fa-envelope-o" aria-hidden="true"></i>
     a subreddit over at r/discocrypto</a>.</p>
   </section>
 </template>
