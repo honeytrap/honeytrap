@@ -127,6 +127,7 @@ func (sl *agentListener) serv(c *conn2) {
 	}()
 
 	out := make(chan interface{})
+	defer close(out)
 
 	go func() {
 		for p := range out {
@@ -167,11 +168,15 @@ func (sl *agentListener) serv(c *conn2) {
 				break
 			}
 
-			if conn.closed {
-				continue
+			conn.m.Lock()
+			conn.buff = append(conn.buff, v.Payload...)
+			conn.m.Unlock()
+
+			select {
+			case conn.in <- []byte{}: // v.Payload {
+			default:
 			}
 
-			conn.in <- v.Payload
 		case *EOF:
 			conn := conns.Get(v.Laddr, v.Raddr)
 			if conn == nil {
