@@ -2,67 +2,35 @@
 title:      'Noise Extension: Disco'
 author:
  - David Wong (david.wong@nccgroup.trust)
-revision:   '4'
+revision:   '5'
 status:     'unofficial/unstable'
-date:       '2017-11-20'
+date:       '2018-01-14'
 link-citations: 'false'
 ---
 
 # 1. Introduction
 
-This specification is extending **Noise revision 34**[@noise] and **Strobe v1.0.2**[@strobe].
+This specification is extending [Noise revision 34](http://noiseprotocol.org)[@noise] and [Strobe v1.0.2](http://strobe.sourceforge.io/)[@strobe]. It relies for the most part on Noise's specification, heavily modifying some of its foundations to rely on Strobe as an opaque cryptographic primitive.
+
+Major changes between versions of Disco are listed at the end of this document.
 
 ## 1.1. Motivation
 
-[Noise](https://noiseprotocol.org)[@noise] is a framework for crypto protocols based on Diffie-Hellman key agreement. One of its most interesting property is that every new message depends on all the previous ones. This is done by continuously hashing messages being sent and received, as well as continuously deriving new keys based on the continuous hash and the previous keys. This interesting property stops at the end of the handshake.  
-[Strobe](https://strobe.sourceforge.io/)[@strobe] is a protocol framework based on a [duplex construction](https://keccak.team/sponge_duplex.html)[@duplex]. It naturally benefits from the same property, effectively absorbing every operation to influence the next ones. The Strobe specification is comparable to Noise, but focusing on the symmetric part of a protocol. By merging both protocols into one, Disco achieves the following goals:
+[Noise](http://noiseprotocol.org)[@noise] is a framework for crypto protocols based on the Diffie-Hellman key agreement. One of Noise's property is to authenticate the protocol transcript by continuously hashing messages being sent and received, as well as continuously deriving new keys based on the output of key exchanges and previously derived keys. This interesting property stops at the end of the handshake.  
+[Strobe](http://strobe.sourceforge.io/)[@strobe] is a protocol framework based on a [duplex construction](http://sponge.noekeon.org/)[@duplex]. It naturally benefits from similar property, effectively absorbing every operation to influence the next ones. The Strobe specification is comparable in aspect to Noise, but focuses only on the symmetric parts of a protocol. By merging both protocol frameworks into one, Disco achieves the following goals:
 
-* The Noise specification can be greatly simplified by removing all the symmetric cryptographic algorithms and symmetric objects. These can be replaced by a single Strobe object.
-* Implementations of Noise with the Disco extension will consequently greatly benefit from this simplification, allowing for a drastic reduction of the codebase, facilitating security audits.
-* Messages will continue to rely on every previous messages that were sent or received, even in the symmetric part of the protocol.
-* The Strobe functions will allow for more flexible and complex symmetric protocols following the handshake.
-* Implementations of Noise with the Disco extension will also benefit from the other Strobe functions, which provide on top of a single primitive the following functions: generation of random numbers, derivation of keys, hashing, encryption and authentication.
+* The Noise specification is greatly simplified by removing all symmetric cryptographic algorithms and all symmetric objects. These are replaced by a single Strobe object acting as an opaque cryptographic primitive.
+* The encryption of Disco messages is influenced by all previous messages that have been exchanged in addition to the output of key exchanges. This includes post-handshake messages as well.
+* Implementations of the Disco extension consequently benefit from the use of Strobe which works on top of a single primitive. This allows for a drastic reduction in size of the codebase, facilitating security audits and pleasing the constraints of embedded device development.
+* Thanks to Strobe's total reliance on SHA-3's internal permutation keccak, hardware support for the latter will benefit Strobe and consequently Disco. Cryptanalysis from the SHA-3 competition indicate that Strobe and Disco are built on top of solid foundations.
+* The use of a Strobe library in an implementation of Disco also provides access the following functions for free: generation of random numbers, derivation of keys, hashing, encryption and authentication.
 
-## 1.2. How to Read This Document
 
-This specification is an extension of the Noise protocol framework revision 34. It relies for the most part on Noise's specification, while heavily modifying its foundations. Major changes are listed in the next section.  
-To implement the Disco extension, a Strobe implementation respecting the functions of the [section 3 of this document](#the-strobestate-object) is required. None of the [cipher and hash functions of Noise](https://noiseprotocol.org/noise.html#crypto-functions) are required. Furthermore, the [CipherState](https://noiseprotocol.org/noise.html#the-cipherstate-object) is not necessary while the [SymmetricState](https://noiseprotocol.org/noise.html#the-symmetricstate-object) has been simplified by Strobe calls. When implementing Noise with the Disco extension, simply ignore the CipherState section of Noise and implement the SymmetricState described in [section 5 of this document](#modifications-to-the-symmetric-state). For PSK handshakes see [section 6](#modifications-to-pre-shared-symmetric-keys) and for advanced features, refer to [section 7](#modifications-to-advanced-features).
+## 1.2. How to Read This Document and Implement Disco
 
-## 1.3. Change log
+To implement the Disco extension, a Strobe implementation respecting the functions of the [section 3 of this document](#the-strobestate-object) is required. None of the [cipher and hash functions of Noise](http://noiseprotocol.org/noise.html#crypto-functions) are required. Furthermore, the [CipherState](http://noiseprotocol.org/noise.html#the-cipherstate-object) is not necessary while the [SymmetricState](http://noiseprotocol.org/noise.html#the-symmetricstate-object) has been simplified by Strobe calls. When implementing Noise with the Disco extension, simply ignore the CipherState section of Noise and implement the SymmetricState described in [section 5 of this document](#modifications-to-the-symmetric-state). For PSK handshakes see [section 6](#modifications-to-pre-shared-symmetric-keys) and for advanced features, refer to [section 7](#modifications-to-advanced-features).
 
-**this section will be removed in the final document**
-
-**draft-5**:
-
-* Added a pre-shared key section
-
-**draft-4**:
-
-* `DiscoSecureChannel` has been renamed to `CipherState`.
-* Added a post-handshake phase.
-
-**draft-3**:
-
-* The specification now extends Noise draft-33.
-* A `isSetKey` boolean value was added to the SymmetricState, it is set when `MixKey()` is called.
-* `EncryptAndHash()` and `DecryptAndHash()` now look for the value of `isSetKey` and branch to `send_CLR()` and `recv_CLR()` if the boolean value is set to `false`.
-* a `StrobeState` object has been introduced to formalize the integration of Strobe in Disco.
-* Added the missing `GetHandshakeHash()` function to the `SymmetricState`.
-* removed the `TAGLEN` field and set it to 16 everywhere. Following Noise's way of defining the tag length.
-* Half-duplex protocols are introduced in Advanced features.
-* Out-of-order protocols are introduced in Advanced features, along with `DiscoSecureChannel` objects.
-
-**draft-2**:
-
-* The `SymmetricState` object has been simplified with Strobe's calls (instead of modifying the `HandshakeState`).
-
-**draft-1**:
-
-* Protocol names don't have the symmetric algorithms, but instead the version of Strobe.
-* The `CipherState` object has been removed.
-* The Handshake object makes calls to Strobe functions, affecting a unique Strobe state.
-* The Handshake returns two Strobe states.
-* The document extends Noise draft-32.
+Note that like the Noise protocol framework, additional layers might need to be added on top of Disco for it to be usable (for example a framing layer to indicate the messages' lengths). For more information see [Noise's section 13 on application responsabilities](http://noiseprotocol.org/noise.html#application-responsabilities).
 
 # 2. Protocol naming
 
@@ -242,4 +210,41 @@ Thanks to Trevor Perrin and Mike Hamburg for being the foundations and main help
 
 Thanks to Trevor Perrin again for suggesting the name to this extension.
 
-# 10. References
+# 10. Change log
+
+**this section will be removed in the final document**
+
+**draft-5**:
+
+* Added a pre-shared key section
+
+**draft-4**:
+
+* `DiscoSecureChannel` has been renamed to `CipherState`.
+* Added a post-handshake phase.
+
+**draft-3**:
+
+* The specification now extends Noise draft-33.
+* A `isSetKey` boolean value was added to the SymmetricState, it is set when `MixKey()` is called.
+* `EncryptAndHash()` and `DecryptAndHash()` now look for the value of `isSetKey` and branch to `send_CLR()` and `recv_CLR()` if the boolean value is set to `false`.
+* a `StrobeState` object has been introduced to formalize the integration of Strobe in Disco.
+* Added the missing `GetHandshakeHash()` function to the `SymmetricState`.
+* removed the `TAGLEN` field and set it to 16 everywhere. Following Noise's way of defining the tag length.
+* Half-duplex protocols are introduced in Advanced features.
+* Out-of-order protocols are introduced in Advanced features, along with `DiscoSecureChannel` objects.
+
+**draft-2**:
+
+* The `SymmetricState` object has been simplified with Strobe's calls (instead of modifying the `HandshakeState`).
+
+**draft-1**:
+
+* Protocol names don't have the symmetric algorithms, but instead the version of Strobe.
+* The `CipherState` object has been removed.
+* The Handshake object makes calls to Strobe functions, affecting a unique Strobe state.
+* The Handshake returns two Strobe states.
+* The document extends Noise draft-32.
+
+
+# 11. References
