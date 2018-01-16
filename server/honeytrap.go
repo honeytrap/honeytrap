@@ -35,6 +35,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"runtime"
 	"strings"
 	"time"
 
@@ -471,6 +472,36 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 	}
 }
 
+func TimeoutConn(conn net.Conn, duration time.Duration) net.Conn {
+	return &timeoutConn{
+		conn,
+		time.Duration(30 * time.Second),
+		time.Duration(30 * time.Second),
+	}
+}
+
+type timeoutConn struct {
+	net.Conn
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
+}
+
+func (c *timeoutConn) Read(b []byte) (int, error) {
+	err := c.Conn.SetReadDeadline(time.Now().Add(c.ReadTimeout))
+	if err != nil {
+		return 0, err
+	}
+	return c.Conn.Read(b)
+}
+
+func (c *timeoutConn) Write(b []byte) (int, error) {
+	err := c.Conn.SetWriteDeadline(time.Now().Add(c.WriteTimeout))
+	if err != nil {
+		return 0, err
+	}
+	return c.Conn.Write(b)
+}
+
 func (hc *Honeytrap) handle(conn net.Conn) {
 	defer func() {
 		if err := recover(); err != nil {
@@ -503,6 +534,9 @@ func (hc *Honeytrap) handle(conn net.Conn) {
 
 	log.Debug("Accepted connection for %s => %s", conn.RemoteAddr(), conn.LocalAddr())
 	defer log.Debug("Disconnected connection for %s => %s", conn.RemoteAddr(), conn.LocalAddr())
+
+	// wrap connection in a connection with deadlines
+	conn = TimeoutConn(conn, time.Second*30)
 
 	pc := PeekConnection(conn)
 
