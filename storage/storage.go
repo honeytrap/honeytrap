@@ -46,6 +46,10 @@ var db *badger.DB
 var dataDir string
 
 func SetDataDir(s string) {
+	if db != nil {
+		return
+	}
+
 	dataDir = s
 	db = MustDB()
 }
