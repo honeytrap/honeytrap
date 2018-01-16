@@ -472,6 +472,16 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 }
 
 func (hc *Honeytrap) handle(conn net.Conn) {
+	defer func() {
+		if err := recover(); err != nil {
+			trace := make([]byte, 1024)
+			count := runtime.Stack(trace, true)
+			log.Errorf("Error: %s", err)
+			log.Errorf("Stack of %d bytes: %s\n", count, string(trace))
+			return
+		}
+	}()
+
 	defer conn.Close()
 
 	defer func() {
