@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/lunny/log"
 )
 
 // A data socket is used to send non-control data between the client and
