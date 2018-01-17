@@ -26,12 +26,6 @@ type ServerOpts struct {
 	// use tls, default is false
 	TLS bool
 
-	// if tls used, cert file is required
-	//CertFile string
-
-	// if tls used, key file is required
-	//KeyFile string
-
 	// If ture TLS is used in RFC4217 mode
 	ExplicitFTPS bool
 
