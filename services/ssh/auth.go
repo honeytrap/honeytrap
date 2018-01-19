@@ -57,7 +57,7 @@ func SSHAuth(options ...services.ServicerFunc) services.Servicer {
 	banner := "SSH-2.0-OpenSSH_6.6.1p1 2020Ubuntu-2ubuntu2"
 
 	srvc := &sshAuthService{
-		key:    s.PrivateKey(),
+		Key:    s.PrivateKey(),
 		Banner: banner,
 	}
 
@@ -73,7 +73,7 @@ type sshAuthService struct {
 
 	Banner string `toml:"banner"`
 
-	key    *privateKey `toml:"private-key"`
+	Key    *privateKey `toml:"private-key"`
 	config ssh.ServerConfig
 }
 
@@ -114,7 +114,7 @@ func (s *sshAuthService) Handle(ctx context.Context, conn net.Conn) error {
 		},
 	}
 
-	config.AddHostKey(s.key)
+	config.AddHostKey(s.Key)
 
 	sconn, chans, reqs, err := ssh.NewServerConn(conn, &config)
 	if err == io.EOF {
