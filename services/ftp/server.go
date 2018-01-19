@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"crypto/tls"
 	"net"
-	"strconv"
 )
 
 // serverOpts contains parameters for server.NewServer()
@@ -30,24 +29,21 @@ type ServerOpts struct {
 
 	// The port that the FTP should listen on. Optional, defaults to 3000. In
 	// a production environment you will probably want to change this to 21.
-	Port int
+	//Port int
 
 	// use tls, default is false
 	TLS bool
 
 	// if tls used, cert file is required
-	CertFile string
+	//CertFile string
 
 	// if tls used, key file is required
-	KeyFile string
+	//KeyFile string
 
 	// If ture TLS is used in RFC4217 mode
 	ExplicitFTPS bool
 
 	WelcomeMessage string
-
-	// A logger implementation, if nil the StdLogger is used
-	Logger Logger
 }
 
 // Server is the root of your FTP application. You should instantiate one
@@ -56,9 +52,6 @@ type ServerOpts struct {
 // Always use the NewServer() method to create a new Server.
 type Server struct {
 	*ServerOpts
-	listenTo  string
-	logger    Logger
-	listener  net.Listener
 	tlsConfig *tls.Config
 }
 
@@ -73,11 +66,6 @@ func serverOptsWithDefaults(opts *ServerOpts) *ServerOpts {
 		newOpts.Hostname = "::"
 	} else {
 		newOpts.Hostname = opts.Hostname
-	}
-	if opts.Port == 0 {
-		newOpts.Port = 3000
-	} else {
-		newOpts.Port = opts.Port
 	}
 	newOpts.Factory = opts.Factory
 	if opts.Name == "" {
@@ -96,14 +84,7 @@ func serverOptsWithDefaults(opts *ServerOpts) *ServerOpts {
 		newOpts.Auth = opts.Auth
 	}
 
-	newOpts.Logger = &StdLogger{}
-	if opts.Logger != nil {
-		newOpts.Logger = opts.Logger
-	}
-
 	newOpts.TLS = opts.TLS
-	newOpts.KeyFile = opts.KeyFile
-	newOpts.CertFile = opts.CertFile
 	newOpts.ExplicitFTPS = opts.ExplicitFTPS
 
 	newOpts.PublicIp = opts.PublicIp
@@ -133,8 +114,6 @@ func NewServer(opts *ServerOpts) *Server {
 	opts = serverOptsWithDefaults(opts)
 	s := new(Server)
 	s.ServerOpts = opts
-	s.listenTo = net.JoinHostPort(opts.Hostname, strconv.Itoa(opts.Port))
-	s.logger = opts.Logger
 	return s
 }
 
@@ -152,7 +131,6 @@ func (server *Server) newConn(tcpConn net.Conn, driver Driver) *Conn {
 	c.auth = server.Auth
 	c.server = server
 	c.sessionID = newSessionID()
-	c.logger = server.logger
 	c.tlsConfig = server.tlsConfig
 	driver.Init(c)
 	return c
@@ -181,6 +159,7 @@ func simpleTLSConfig(certFile, keyFile string) (*tls.Config, error) {
 // errors are trying to bind to a privileged port or something else is already
 // listening on the same port.
 //
+/*
 func (server *Server) ListenAndServe() error {
 	var listener net.Listener
 	var err error
@@ -204,18 +183,18 @@ func (server *Server) ListenAndServe() error {
 	}
 
 	sessionID := ""
-	server.logger.Printf(sessionID, "%s listening on %d", server.Name, server.Port)
+	log.Debugf(sessionID, "%s listening on %d", server.Name, server.Port)
 
 	server.listener = listener
 	for {
 		tcpConn, err := server.listener.Accept()
 		if err != nil {
-			server.logger.Printf(sessionID, "listening error: %v", err)
+			log.Debugf(sessionID, "listening error: %v", err)
 			break
 		}
 		driver, err := server.Factory.NewDriver()
 		if err != nil {
-			server.logger.Printf(sessionID, "Error creating driver, aborting client connection: %v", err)
+			log.Debugf(sessionID, "Error creating driver, aborting client connection: %v", err)
 			tcpConn.Close()
 		} else {
 			ftpConn := server.newConn(tcpConn, driver)
@@ -224,3 +203,4 @@ func (server *Server) ListenAndServe() error {
 	}
 	return nil
 }
+*/

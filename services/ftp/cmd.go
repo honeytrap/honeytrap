@@ -12,8 +12,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-
-	logging "github.com/op/go-logging"
 )
 
 type Command interface {
@@ -26,7 +24,6 @@ type Command interface {
 type commandMap map[string]Command
 
 var (
-	log      = logging.MustGetLogger("services/ftp")
 	commands = commandMap{
 		"ADAT": commandAdat{},
 		"ALLO": commandAllo{},
@@ -283,7 +280,7 @@ func (cmd commandEprt) Execute(conn *Conn, param string) {
 		conn.writeMessage(522, "Network protocol not supported, use (1,2)")
 		return
 	}
-	socket, err := newActiveSocket(host, port, conn.logger, conn.sessionID)
+	socket, err := newActiveSocket(host, port, conn.sessionID)
 	if err != nil {
 		conn.writeMessage(425, "Data connection failed")
 		return
@@ -317,9 +314,9 @@ func (cmd commandEpsv) Execute(conn *Conn, param string) {
 		return
 	}
 
-	socket, err := newPassiveSocket(addr[:lastIdx], conn.PassivePort(), conn.logger, conn.sessionID, conn.tlsConfig)
+	socket, err := newPassiveSocket(addr[:lastIdx], conn.PassivePort(), conn.sessionID, conn.tlsConfig)
 	if err != nil {
-		log.Println(err)
+		log.Debug(err.Error())
 		conn.writeMessage(425, "Data connection failed")
 		return
 	}
@@ -362,18 +359,20 @@ func (cmd commandList) Execute(conn *Conn, param string) {
 	}
 
 	path := conn.buildPath(fpath)
-	info, err := conn.driver.Stat(path)
-	if err != nil {
-		conn.writeMessage(550, err.Error())
-		return
-	}
+	/*
+		info, err := conn.driver.Stat(path)
+		if err != nil {
+			conn.writeMessage(550, err.Error())
+			return
+		}
 
-	if !info.IsDir() {
-		conn.logger.Printf(conn.sessionID, "%s is not a dir.\n", path)
-		return
-	}
+			if !info.IsDir() {
+				conn.logger.Printf(conn.sessionID, "%s is not a dir.\n", path)
+				return
+			}
+	*/
 	var files []FileInfo
-	err = conn.driver.ListDir(path, func(f FileInfo) error {
+	err := conn.driver.ListDir(path, func(f FileInfo) error {
 		files = append(files, f)
 		return nil
 	})
@@ -382,7 +381,7 @@ func (cmd commandList) Execute(conn *Conn, param string) {
 		return
 	}
 
-	conn.sendOutofbandData(listFormatter(files).Detailed())
+	//conn.sendOutofbandData(listFormatter(files).Detailed())
 }
 
 // commandNlst responds to the NLST FTP command. It allows the client to
@@ -419,18 +418,19 @@ func (cmd commandNlst) Execute(conn *Conn, param string) {
 	}
 
 	path := conn.buildPath(fpath)
-	info, err := conn.driver.Stat(path)
-	if err != nil {
-		conn.writeMessage(550, err.Error())
-		return
-	}
-	if !info.IsDir() {
-		// TODO: should we show the file description?
-		return
-	}
-
+	/*
+		info, err := conn.driver.Stat(path)
+		if err != nil {
+			conn.writeMessage(550, err.Error())
+			return
+		}
+			if !info.IsDir() {
+				// TODO: should we show the file description?
+				return
+			}
+	*/
 	var files []FileInfo
-	err = conn.driver.ListDir(path, func(f FileInfo) error {
+	err := conn.driver.ListDir(path, func(f FileInfo) error {
 		files = append(files, f)
 		return nil
 	})
@@ -438,7 +438,7 @@ func (cmd commandNlst) Execute(conn *Conn, param string) {
 		conn.writeMessage(550, err.Error())
 		return
 	}
-	conn.sendOutofbandData(listFormatter(files).Short())
+	//conn.sendOutofbandData(listFormatter(files).Short())
 }
 
 // commandMdtm responds to the MDTM FTP command. It allows the client to
@@ -458,13 +458,16 @@ func (cmd commandMdtm) RequireAuth() bool {
 }
 
 func (cmd commandMdtm) Execute(conn *Conn, param string) {
-	path := conn.buildPath(param)
-	stat, err := conn.driver.Stat(path)
-	if err == nil {
-		conn.writeMessage(213, stat.ModTime().Format("20060102150405"))
-	} else {
-		conn.writeMessage(450, "File not available")
-	}
+	/*
+		path := conn.buildPath(param)
+			stat, err := conn.driver.Stat(path)
+			if err == nil {
+				conn.writeMessage(213, stat.ModTime().Format("20060102150405"))
+			} else {
+				conn.writeMessage(450, "File not available")
+			}
+	*/
+	conn.writeMessage(450, "File not available")
 }
 
 // commandMkd responds to the MKD FTP command. It allows the client to create
@@ -560,15 +563,16 @@ func (cmd commandPass) RequireAuth() bool {
 }
 
 func (cmd commandPass) Execute(conn *Conn, param string) {
-	ok, err := conn.server.Auth.CheckPasswd(conn.reqUser, param)
-	if err != nil {
-		conn.writeMessage(550, "Checking password error")
-		return
-	}
+	/*
+		ok, err := conn.server.Auth.CheckPasswd(conn.reqUser, param)
+		if err != nil {
+			conn.writeMessage(550, "Checking password error")
+			return
+		}
+	*/
+	conn.password = param
 
-	if ok {
-		conn.user = conn.reqUser
-		conn.reqUser = ""
+	if conn.user == "anonymous" {
 		conn.writeMessage(230, "Password ok, continue")
 	} else {
 		conn.writeMessage(530, "Incorrect password, not logged in")
@@ -595,7 +599,7 @@ func (cmd commandPasv) RequireAuth() bool {
 
 func (cmd commandPasv) Execute(conn *Conn, param string) {
 	listenIP := conn.passiveListenIP()
-	socket, err := newPassiveSocket(listenIP, conn.PassivePort(), conn.logger, conn.sessionID, conn.tlsConfig)
+	socket, err := newPassiveSocket(listenIP, conn.PassivePort(), conn.sessionID, conn.tlsConfig)
 	if err != nil {
 		conn.writeMessage(425, "Data connection failed")
 		return
@@ -633,7 +637,7 @@ func (cmd commandPort) Execute(conn *Conn, param string) {
 	portTwo, _ := strconv.Atoi(nums[5])
 	port := (portOne * 256) + portTwo
 	host := nums[0] + "." + nums[1] + "." + nums[2] + "." + nums[3]
-	socket, err := newActiveSocket(host, port, conn.logger, conn.sessionID)
+	socket, err := newActiveSocket(host, port, conn.sessionID)
 	if err != nil {
 		conn.writeMessage(425, "Data connection failed")
 		return
@@ -852,12 +856,11 @@ func (cmd commandAuth) RequireAuth() bool {
 }
 
 func (cmd commandAuth) Execute(conn *Conn, param string) {
-	log.Println(param, conn)
 	if param == "TLS" && conn.tlsConfig != nil {
 		conn.writeMessage(234, "AUTH command OK")
 		err := conn.upgradeToTLS()
 		if err != nil {
-			conn.logger.Printf("Error upgrading connection to TLS %v", err.Error())
+			log.Debugf("Error upgrading connection to TLS %v", err.Error())
 		}
 	} else {
 		conn.writeMessage(550, "Action not taken")
@@ -1000,13 +1003,16 @@ func (cmd commandSize) RequireAuth() bool {
 
 func (cmd commandSize) Execute(conn *Conn, param string) {
 	path := conn.buildPath(param)
-	stat, err := conn.driver.Stat(path)
-	if err != nil {
-		log.Printf("Size: error(%s)", err)
-		conn.writeMessage(450, fmt.Sprintln("path", path, "not found"))
-	} else {
-		conn.writeMessage(213, strconv.Itoa(int(stat.Size())))
-	}
+	/*
+		stat, err := conn.driver.Stat(path)
+		if err != nil {
+			log.Debugf("Size: error(%s)", err.Error())
+			conn.writeMessage(450, fmt.Sprintln("path", path, "not found"))
+		} else {
+			conn.writeMessage(213, strconv.Itoa(int(stat.Size())))
+		}
+	*/
+	conn.writeMessage(450, fmt.Sprintln("path", path, "not found"))
 }
 
 // commandStor responds to the STOR FTP command. It allows the user to upload a
@@ -1142,6 +1148,6 @@ func (cmd commandUser) RequireAuth() bool {
 }
 
 func (cmd commandUser) Execute(conn *Conn, param string) {
-	conn.reqUser = param
+	conn.user = param
 	conn.writeMessage(331, "User name ok, password required")
 }
