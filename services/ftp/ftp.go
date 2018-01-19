@@ -37,16 +37,21 @@ func (s *ftpService) Handle(ctx context.Context, conn net.Conn) error {
 	opts := &ServerOpts{}
 	srv := NewServer(opts)
 
+	driver := &DummyFS{}
+	ftpConn := srv.newConn(conn, driver)
+
+	ftpConn.Serve()
+
+	log.Debug("Sending event data")
+
 	s.c.Send(event.New(
 		services.EventOptions,
 		event.Category("ftp"),
 		event.SourceAddr(conn.RemoteAddr()),
 		event.DestinationAddr(conn.LocalAddr()),
+		event.Custom("ftp.user", ftpConn.user),
+		event.Custom("ftp.password", ftpConn.password),
 	))
-
-	driver := &DummyFS{}
-	ftpConn := srv.newConn(conn, driver)
-	ftpConn.Serve()
 
 	return nil
 }
