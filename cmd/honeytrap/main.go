@@ -34,6 +34,7 @@ import (
 	"context"
 	"fmt"
 
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -99,11 +100,26 @@ func serve(c *cli.Context) error {
 	var options []server.OptionFn
 
 	if v := c.String("config"); v == "" {
-	} else if fn, err := server.WithConfig(v); err != nil {
+	} else if u, err := url.Parse(v); err != nil {
 		ec := cli.NewExitError(err.Error(), 1)
 		return ec
-	} else {
+	} else if u.Scheme == "" {
+		fn, err := server.WithConfig(v)
+		if err != nil {
+			ec := cli.NewExitError(err.Error(), 1)
+			return ec
+		}
 		options = append(options, fn)
+	} else if u.Scheme == "http" || u.Scheme == "https" {
+		fn, err := server.WithRemoteConfig(v)
+		if err != nil {
+			ec := cli.NewExitError(err.Error(), 1)
+			return ec
+		}
+		options = append(options, fn)
+	} else {
+		ec := cli.NewExitError(color.RedString("[!] Check your config -c"), 1)
+		return ec
 	}
 
 	if d := c.String("data"); d == "" {
