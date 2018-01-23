@@ -121,7 +121,7 @@ func NewServer(opts *ServerOpts) *Server {
 // an active net.TCPConn. The TCP connection should already be open before
 // it is handed to this functions. driver is an instance of FTPDriver that
 // will handle all auth and persistence details.
-func (server *Server) newConn(tcpConn net.Conn, driver Driver) *Conn {
+func (server *Server) newConn(tcpConn net.Conn, driver Driver, recv chan string) *Conn {
 	c := new(Conn)
 	c.namePrefix = "/"
 	c.conn = tcpConn
@@ -132,6 +132,7 @@ func (server *Server) newConn(tcpConn net.Conn, driver Driver) *Conn {
 	c.server = server
 	c.sessionID = newSessionID()
 	c.tlsConfig = server.tlsConfig
+	c.rcv = recv
 	driver.Init(c)
 	return c
 }
@@ -150,57 +151,3 @@ func simpleTLSConfig(certFile, keyFile string) (*tls.Config, error) {
 	}
 	return config, nil
 }
-
-// ListenAndServe asks a new Server to begin accepting client connections. It
-// accepts no arguments - all configuration is provided via the NewServer
-// function.
-//
-// If the server fails to start for any reason, an error will be returned. Common
-// errors are trying to bind to a privileged port or something else is already
-// listening on the same port.
-//
-/*
-func (server *Server) ListenAndServe() error {
-	var listener net.Listener
-	var err error
-
-	if server.ServerOpts.TLS {
-		server.tlsConfig, err = simpleTLSConfig(server.CertFile, server.KeyFile)
-		if err != nil {
-			return err
-		}
-
-		if server.ServerOpts.ExplicitFTPS {
-			listener, err = net.Listen("tcp", server.listenTo)
-		} else {
-			listener, err = tls.Listen("tcp", server.listenTo, server.tlsConfig)
-		}
-	} else {
-		listener, err = net.Listen("tcp", server.listenTo)
-	}
-	if err != nil {
-		return err
-	}
-
-	sessionID := ""
-	log.Debugf(sessionID, "%s listening on %d", server.Name, server.Port)
-
-	server.listener = listener
-	for {
-		tcpConn, err := server.listener.Accept()
-		if err != nil {
-			log.Debugf(sessionID, "listening error: %v", err)
-			break
-		}
-		driver, err := server.Factory.NewDriver()
-		if err != nil {
-			log.Debugf(sessionID, "Error creating driver, aborting client connection: %v", err)
-			tcpConn.Close()
-		} else {
-			ftpConn := server.newConn(tcpConn, driver)
-			go ftpConn.Serve()
-		}
-	}
-	return nil
-}
-*/

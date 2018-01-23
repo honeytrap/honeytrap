@@ -31,14 +31,15 @@ type Conn struct {
 	tlsConfig     *tls.Config
 	sessionID     string
 	namePrefix    string
-	//reqUser       string
-	user        string
-	password    string
-	renameFrom  string
-	lastFilePos int64
-	appendData  bool
-	closed      bool
-	tls         bool
+	reqUser       string
+	user          string
+	password      string
+	renameFrom    string
+	lastFilePos   int64
+	appendData    bool
+	closed        bool
+	tls           bool
+	rcv           chan string
 }
 
 func (conn *Conn) LoginUser() string {
@@ -96,7 +97,7 @@ func newSessionID() string {
 // goroutine, so use this channel to be notified when the connection can be
 // cleaned up.
 func (conn *Conn) Serve() {
-	log.Debug(conn.sessionID, "Connection Established")
+	log.Debugf("%s: Connection Established", conn.sessionID)
 	// send welcome
 	conn.writeMessage(220, conn.server.WelcomeMessage)
 	// read commands
@@ -117,11 +118,14 @@ func (conn *Conn) Serve() {
 		}
 	}
 	conn.Close()
-	log.Debug(conn.sessionID, "Connection Terminated")
+	log.Debug("%s: Connection Terminated", conn.sessionID)
 }
 
 // Close will manually close this connection, even if the client isn't ready.
 func (conn *Conn) Close() {
+	//send quit message
+	conn.rcv <- "q"
+
 	conn.conn.Close()
 	conn.closed = true
 	if conn.dataConn != nil {
@@ -146,16 +150,19 @@ func (conn *Conn) upgradeToTLS() error {
 // receiveLine accepts a single line FTP command and co-ordinates an
 // appropriate response.
 func (conn *Conn) receiveLine(line string) {
+
+	conn.rcv <- line
+
 	command, param := conn.parseLine(line)
 	cmdObj := commands[strings.ToUpper(command)]
 	if cmdObj == nil {
-		conn.writeMessage(500, "Command not found")
+		conn.writeMessage(500, "")
 		return
 	}
 	if cmdObj.RequireParam() && param == "" {
 		conn.writeMessage(553, "action aborted, required param missing")
 	} else if cmdObj.RequireAuth() && conn.user == "" {
-		conn.writeMessage(530, "not logged in")
+		conn.writeMessage(530, "")
 	} else {
 		cmdObj.Execute(conn, param)
 	}
@@ -171,6 +178,9 @@ func (conn *Conn) parseLine(line string) (string, string) {
 
 // writeMessage will send a standard FTP response back to the client.
 func (conn *Conn) writeMessage(code int, message string) (wrote int, err error) {
+	if message == "" {
+		message = statusText[code]
+	}
 	line := fmt.Sprintf("%d %s\r\n", code, message)
 	wrote, err = conn.controlWriter.WriteString(line)
 	conn.controlWriter.Flush()

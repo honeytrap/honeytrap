@@ -19,7 +19,7 @@ type Driver interface {
 	// returns - a time indicating when the requested path was last modified
 	//         - an error if the file doesn't exist or the user lacks
 	//           permissions
-	Stat(string) (FileInfo, error)
+	Stat(string) (*FileInfo, error)
 
 	// params  - path
 	// returns - true if the current user is permitted to change to the

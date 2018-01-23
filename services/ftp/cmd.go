@@ -90,7 +90,7 @@ func (cmd commandAllo) RequireAuth() bool {
 }
 
 func (cmd commandAllo) Execute(conn *Conn, param string) {
-	conn.writeMessage(202, "Obsolete")
+	conn.writeMessage(202, "")
 }
 
 type commandAppe struct{}
@@ -109,7 +109,7 @@ func (cmd commandAppe) RequireAuth() bool {
 
 func (cmd commandAppe) Execute(conn *Conn, param string) {
 	conn.appendData = true
-	conn.writeMessage(202, "Obsolete")
+	conn.writeMessage(202, "")
 }
 
 type commandOpts struct{}
@@ -563,16 +563,15 @@ func (cmd commandPass) RequireAuth() bool {
 }
 
 func (cmd commandPass) Execute(conn *Conn, param string) {
-	/*
-		ok, err := conn.server.Auth.CheckPasswd(conn.reqUser, param)
-		if err != nil {
-			conn.writeMessage(550, "Checking password error")
-			return
-		}
-	*/
-	conn.password = param
+	ok, err := conn.server.Auth.CheckPasswd(conn.reqUser, param)
+	if err != nil {
+		conn.writeMessage(550, "Checking password error")
+		return
+	}
 
-	if conn.user == "anonymous" {
+	if ok {
+		conn.user = conn.reqUser
+		conn.reqUser = ""
 		conn.writeMessage(230, "Password ok, continue")
 	} else {
 		conn.writeMessage(530, "Incorrect password, not logged in")
@@ -1003,15 +1002,13 @@ func (cmd commandSize) RequireAuth() bool {
 
 func (cmd commandSize) Execute(conn *Conn, param string) {
 	path := conn.buildPath(param)
-	/*
-		stat, err := conn.driver.Stat(path)
-		if err != nil {
-			log.Debugf("Size: error(%s)", err.Error())
-			conn.writeMessage(450, fmt.Sprintln("path", path, "not found"))
-		} else {
-			conn.writeMessage(213, strconv.Itoa(int(stat.Size())))
-		}
-	*/
+	stat, err := conn.driver.Stat(path)
+	if err != nil {
+		log.Debugf("Size: error(%s)", err.Error())
+		conn.writeMessage(450, fmt.Sprintln("path", path, "not found"))
+	} else {
+		conn.writeMessage(213, strconv.Itoa(stat.Size()))
+	}
 	conn.writeMessage(450, fmt.Sprintln("path", path, "not found"))
 }
 
@@ -1148,6 +1145,6 @@ func (cmd commandUser) RequireAuth() bool {
 }
 
 func (cmd commandUser) Execute(conn *Conn, param string) {
-	conn.user = param
-	conn.writeMessage(331, "User name ok, password required")
+	conn.reqUser = param
+	conn.writeMessage(331, "")
 }
