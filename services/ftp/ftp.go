@@ -79,22 +79,28 @@ func (s *ftpService) SetChannel(c pushers.Channel) {
 
 func (s *ftpService) Handle(ctx context.Context, conn net.Conn) error {
 
-	ftpConn := s.server.newConn(conn, s.driver, s.recv)
+	opts := &ServerOpts{
+		Auth: &FtpUser{},
+	}
+	srv := NewServer(opts)
+
+	rcv := make(chan string)
+	driver := &DummyFS{}
+	ftpConn := srv.newConn(conn, driver, rcv)
 
 	go func() {
-	forloop:
 		for {
 			select {
-			case msg := <-s.recv:
+			case msg := <-rcv:
 				if msg == "q" {
-					break forloop
+					break
 				}
 				s.c.Send(event.New(
 					services.EventOptions,
 					event.Category("ftp"),
 					event.SourceAddr(conn.RemoteAddr()),
 					event.DestinationAddr(conn.LocalAddr()),
-					event.Custom("ftp.sessionid", ftpConn.sessionid),
+					event.Custom("ftp.sessionID", ftpConn.sessionID),
 					event.Custom("ftp.command", strings.Trim(msg, "\r\n")),
 				))
 			}

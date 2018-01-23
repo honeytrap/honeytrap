@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -193,36 +192,6 @@ func (conn *Conn) writeMessageMultiline(code int, message string) (wrote int, er
 	line := fmt.Sprintf("%d-%s\r\n%d END\r\n", code, message, code)
 	wrote, err = conn.controlWriter.WriteString(line)
 	conn.controlWriter.Flush()
-	return
-}
-
-// buildPath takes a client supplied path or filename and generates a safe
-// absolute path within their account sandbox.
-//
-//    buildpath("/")
-//    => "/"
-//    buildpath("one.txt")
-//    => "/one.txt"
-//    buildpath("/files/two.txt")
-//    => "/files/two.txt"
-//    buildpath("files/two.txt")
-//    => "files/two.txt"
-//    buildpath("/../../../../etc/passwd")
-//    => "/etc/passwd"
-//
-// The driver implementation is responsible for deciding how to treat this path.
-// Obviously they MUST NOT just read the path off disk. The probably want to
-// prefix the path with something to scope the users access to a sandbox.
-func (conn *Conn) buildPath(filename string) (fullPath string) {
-	if len(filename) > 0 && filename[0:1] == "/" {
-		fullPath = filepath.Clean(filename)
-	} else if len(filename) > 0 && filename != "-a" {
-		fullPath = filepath.Clean(conn.namePrefix + "/" + filename)
-	} else {
-		fullPath = filepath.Clean(conn.namePrefix)
-	}
-	fullPath = strings.Replace(fullPath, "//", "/", -1)
-	fullPath = strings.Replace(fullPath, string(filepath.Separator), "/", -1)
 	return
 }
 
