@@ -44,7 +44,7 @@ var mapCmds = map[string]cmd{
 func infoCmd(s *redisService, argsCmd []string, userCmd string) (string, bool) {
 	switch len(argsCmd) {
 	case 1:
-		infoMsg = fmt.Sprintf(infoMsg, s.Version)
+		infoMsg = fmt.Sprintf(infoMsg, s.Version, s.Os)
 		return fmt.Sprintf(lenMsg, len(infoMsg), infoMsg), false
 	case 2:
 		return dollar0Msg, false

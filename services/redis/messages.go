@@ -36,7 +36,7 @@ redis_git_sha1:00000000
 redis_git_dirty:0
 redis_build_id:f1060845dd32471a
 redis_mode:standalone
-os:Linux 4.9.49-moby x86_64
+os:%s
 arch_bits:64
 multiplexing_api:epoll
 atomicvar_api:atomic-builtin

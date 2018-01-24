@@ -50,6 +50,7 @@ func REDIS(options ...services.ServicerFunc) services.Servicer {
 	s := &redisService{
 		redisServiceConfig: redisServiceConfig{
 			Version: "4.0.6",
+			Os:      "Linux 4.9.49-moby x86_64",
 		},
 	}
 	for _, o := range options {
@@ -60,6 +61,8 @@ func REDIS(options ...services.ServicerFunc) services.Servicer {
 
 type redisServiceConfig struct {
 	Version string `toml:"version"`
+
+	Os string `toml:"os"`
 }
 
 type redisService struct {
