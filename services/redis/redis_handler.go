@@ -49,10 +49,10 @@ func CleanCmd(cmd string) ([]string, string) {
 	return argsCmd, userCmd
 }
 
-func REDISHandler(cmd string) (string, bool) {
+func REDISHandler(s *redisService, cmd string) (string, bool) {
 	argsCmd, userCmd := CleanCmd(cmd)
 	if fnCmd, ok := mapCmds[argsCmd[0]]; ok { // takes too long if lot of cmds ?
-		return fnCmd(argsCmd, userCmd)
+		return fnCmd(s, argsCmd, userCmd)
 	} else {
 		return fmt.Sprintf(unknownCmdMsg, userCmd), false
 	}

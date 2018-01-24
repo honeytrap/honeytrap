@@ -47,14 +47,24 @@ var (
 )
 
 func REDIS(options ...services.ServicerFunc) services.Servicer {
-	s := &redisService{}
+	s := &redisService{
+		redisServiceConfig: redisServiceConfig{
+			Version: "4.0.6",
+		},
+	}
 	for _, o := range options {
 		o(s)
 	}
 	return s
 }
 
+type redisServiceConfig struct {
+	Version string `toml:"version"`
+}
+
 type redisService struct {
+	redisServiceConfig
+
 	ch pushers.Channel
 }
 
@@ -77,7 +87,7 @@ func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
 			return err
 		}
 
-		answer, closeConn := REDISHandler(cmd)
+		answer, closeConn := REDISHandler(s, cmd)
 
 		s.ch.Send(event.New(
 			services.EventOptions,

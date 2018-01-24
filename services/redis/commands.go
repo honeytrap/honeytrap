@@ -34,16 +34,17 @@ import (
 	"fmt"
 )
 
-type cmd func([]string, string) (string, bool)
+type cmd func(*redisService, []string, string) (string, bool)
 
 var mapCmds = map[string]cmd{
 	"info": infoCmd,
 	// ...
 }
 
-func infoCmd(argsCmd []string, userCmd string) (string, bool) {
+func infoCmd(s *redisService, argsCmd []string, userCmd string) (string, bool) {
 	switch len(argsCmd) {
 	case 1:
+		infoMsg = fmt.Sprintf(infoMsg, s.Version)
 		return fmt.Sprintf(lenMsg, len(infoMsg), infoMsg), false
 	case 2:
 		return dollar0Msg, false

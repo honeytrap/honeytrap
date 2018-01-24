@@ -31,7 +31,7 @@
 package redis
 
 var infoMsg = `# Server
-redis_version:4.0.6
+redis_version:%s
 redis_git_sha1:00000000
 redis_git_dirty:0
 redis_build_id:f1060845dd32471a
