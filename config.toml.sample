@@ -99,10 +99,9 @@ banner="Extra telnet deamon"
 
 [service.ssh-auth]
 type="ssh-auth"
-banner="OpenSSH_7.2p2 Ubuntu-4ubuntu2.1"
+#The banner string should be US ASCII, start with "SSH-2.0-" and should not include a newline.
+banner="SSH-2.0-OpenSSH_7.2p2 Ubuntu-4ubuntu2.2"
 canary="false"
-username="test"
-password="test"
 
 [service.elasticsearch01]
 type="http"
