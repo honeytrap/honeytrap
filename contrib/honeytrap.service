@@ -1,0 +1,26 @@
+[Unit]
+Description=Honeytrap 
+Documentation=https://honeytrap.io
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+WorkingDirectory=/opt/honeytrap
+
+User=root
+Group=root
+
+ExecStart=/opt/honeytrap/honeytrap-linux-amd64 \
+	--config /etc/honeytrap/config.toml
+
+StandardOutput=journal
+StandardError=inherit
+
+# Specifies the maximum file descriptor number that can be opened by this process
+LimitNOFILE=65536
+
+# Disable timeout logic and wait until process is stopped
+TimeoutStopSec=0
+
+[Install]
+WantedBy=multi-user.target
