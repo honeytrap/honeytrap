@@ -36,22 +36,22 @@ import (
 )
 
 func CleanCmd(cmd string) []string {
-	argsCmd := []string{}
+	args := []string{}
 
 	for _, arg := range strings.Split(cmd, " ") {
 		if arg == "" {
 			continue
 		}
 		arg = strings.ToLower(arg)
-		argsCmd = append(argsCmd, arg)
+		args = append(args, arg)
 	}
-	return argsCmd
+	return args
 }
 
 func (s *redisService) REDISHandler(cmd string) (string, bool) {
-	argsCmd := CleanCmd(cmd)
-	if fnCmd, ok := mapCmds[argsCmd[0]]; ok {
-		return fnCmd(s, argsCmd, cmd)
+	args := CleanCmd(cmd)
+	if fn, ok := mapCmds[args[0]]; ok {
+		return fn(s, args, cmd)
 	} else {
 		return fmt.Sprintf(unknownCmdMsg, cmd), false
 	}
