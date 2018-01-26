@@ -37,11 +37,11 @@ import (
 type cmd func(*redisService, []string, string) (string, bool)
 
 var mapCmds = map[string]cmd{
-	"info": infoCmd,
+	"info": (*redisService).infoCmd,
 	// ...
 }
 
-func infoCmd(s *redisService, argsCmd []string, userCmd string) (string, bool) {
+func (s *redisService) infoCmd(argsCmd []string, userCmd string) (string, bool) {
 	switch len(argsCmd) {
 	case 1:
 		infoMsg = fmt.Sprintf(infoMsg, s.Version, s.Os)

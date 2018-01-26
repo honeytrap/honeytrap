@@ -86,7 +86,7 @@ func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
 	for scanner.Scan() {
 
 		cmd := scanner.Text()
-		answer, closeConn := REDISHandler(s, cmd)
+		answer, closeConn := s.REDISHandler(cmd)
 
 		s.ch.Send(event.New(
 			services.EventOptions,

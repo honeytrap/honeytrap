@@ -48,11 +48,11 @@ func CleanCmd(cmd string) []string {
 	return argsCmd
 }
 
-func REDISHandler(s *redisService, cmd string) (string, bool) {
+func (s *redisService) REDISHandler(cmd string) (string, bool) {
 	argsCmd := CleanCmd(cmd)
 	if fnCmd, ok := mapCmds[argsCmd[0]]; ok {
 		return fnCmd(s, argsCmd, cmd)
 	} else {
-		return fmt.Sprintf(unknownCmdMsg, userCmd), false
+		return fmt.Sprintf(unknownCmdMsg, cmd), false
 	}
 }
