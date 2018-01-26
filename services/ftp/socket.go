@@ -31,22 +31,22 @@ type ftpActiveSocket struct {
 	port int
 }
 
-func newActiveSocket(remote string, port int, sessionID string) (DataSocket, error) {
+func newActiveSocket(remote string, port int, sessionid string) (DataSocket, error) {
 	connectTo := net.JoinHostPort(remote, strconv.Itoa(port))
 
-	log.Debug(sessionID, "Opening active data connection to "+connectTo)
+	log.Debug(sessionid, "Opening active data connection to "+connectTo)
 
 	raddr, err := net.ResolveTCPAddr("tcp", connectTo)
 
 	if err != nil {
-		log.Debug(sessionID, err.Error())
+		log.Debug(sessionid, err.Error())
 		return nil, err
 	}
 
 	tcpConn, err := net.DialTCP("tcp", nil, raddr)
 
 	if err != nil {
-		log.Debug(sessionID, err.Error())
+		log.Debug(sessionid, err.Error())
 		return nil, err
 	}
 
@@ -89,13 +89,13 @@ type ftpPassiveSocket struct {
 	tlsConfing *tls.Config
 }
 
-func newPassiveSocket(host string, port int, sessionID string, tlsConfing *tls.Config) (DataSocket, error) {
+func newPassiveSocket(host string, port int, sessionid string, tlsConfing *tls.Config) (DataSocket, error) {
 	socket := new(ftpPassiveSocket)
 	socket.ingress = make(chan []byte)
 	socket.egress = make(chan []byte)
 	socket.host = host
 	socket.port = port
-	if err := socket.GoListenAndServe(sessionID); err != nil {
+	if err := socket.GoListenAndServe(sessionid); err != nil {
 		return nil, err
 	}
 	return socket, nil
@@ -131,17 +131,17 @@ func (socket *ftpPassiveSocket) Close() error {
 	return nil
 }
 
-func (socket *ftpPassiveSocket) GoListenAndServe(sessionID string) (err error) {
+func (socket *ftpPassiveSocket) GoListenAndServe(sessionid string) (err error) {
 	laddr, err := net.ResolveTCPAddr("tcp", net.JoinHostPort("", strconv.Itoa(socket.port)))
 	if err != nil {
-		log.Debug(sessionID, err.Error())
+		log.Debug(sessionid, err.Error())
 		return
 	}
 
 	var listener net.Listener
 	listener, err = net.ListenTCP("tcp", laddr)
 	if err != nil {
-		log.Debug(sessionID, err.Error())
+		log.Debug(sessionid, err.Error())
 		return
 	}
 
@@ -149,7 +149,7 @@ func (socket *ftpPassiveSocket) GoListenAndServe(sessionID string) (err error) {
 	parts := strings.Split(add.String(), ":")
 	port, err := strconv.Atoi(parts[len(parts)-1])
 	if err != nil {
-		log.Debug(sessionID, err.Error())
+		log.Debug(sessionid, err.Error())
 		return
 	}
 

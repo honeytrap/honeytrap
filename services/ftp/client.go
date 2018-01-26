@@ -44,9 +44,29 @@ type response struct {
 	c    *ServerConn
 }
 
-// Connect is an alias to Dial, for backward compatibility
-func Connect(addr string) (*ServerConn, error) {
-	return Dial(addr)
+// Connect using an existing connection (testing)
+func Connect(client net.Conn) (*ServerConn, error) {
+	conn := textproto.NewConn(client)
+
+	c := &ServerConn{
+		conn:     conn,
+		host:     "testing.com",
+		features: make(map[string]string),
+	}
+
+	_, _, err := c.conn.ReadResponse(StatusReady)
+	if err != nil {
+		c.Quit()
+		return nil, err
+	}
+
+	err = c.Feat()
+	if err != nil {
+		c.Quit()
+		return nil, err
+	}
+
+	return c, nil
 }
 
 // Dial is like DialTimeout with no timeout

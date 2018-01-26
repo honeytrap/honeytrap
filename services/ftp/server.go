@@ -130,7 +130,7 @@ func (server *Server) newConn(tcpConn net.Conn, driver Driver, recv chan string)
 	c.driver = driver
 	c.auth = server.Auth
 	c.server = server
-	c.sessionID = newSessionID()
+	c.sessionid = newSessionID()
 	c.tlsConfig = server.tlsConfig
 	c.rcv = recv
 	driver.Init(c)

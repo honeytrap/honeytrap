@@ -56,7 +56,7 @@ func (s *ftpService) Handle(ctx context.Context, conn net.Conn) error {
 					event.Category("ftp"),
 					event.SourceAddr(conn.RemoteAddr()),
 					event.DestinationAddr(conn.LocalAddr()),
-					event.Custom("ftp.sessionID", ftpConn.sessionID),
+					event.Custom("ftp.sessionid", ftpConn.sessionid),
 					event.Custom("ftp.command", strings.Trim(msg, "\r\n")),
 				))
 			}

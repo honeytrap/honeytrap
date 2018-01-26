@@ -29,7 +29,7 @@ type Conn struct {
 	auth          Auth
 	server        *Server
 	tlsConfig     *tls.Config
-	sessionID     string
+	sessionid     string
 	namePrefix    string
 	reqUser       string
 	user          string
@@ -97,7 +97,7 @@ func newSessionID() string {
 // goroutine, so use this channel to be notified when the connection can be
 // cleaned up.
 func (conn *Conn) Serve() {
-	log.Debugf("%s: Connection Established", conn.sessionID)
+	log.Debugf("%s: Connection Established", conn.sessionid)
 	// send welcome
 	conn.writeMessage(220, conn.server.WelcomeMessage)
 	// read commands
@@ -105,7 +105,7 @@ func (conn *Conn) Serve() {
 		line, err := conn.controlReader.ReadString('\n')
 		if err != nil {
 			if err != io.EOF {
-				log.Errorf("%v Error: %s", conn.sessionID, err.Error())
+				log.Errorf("%v Error: %s", conn.sessionid, err.Error())
 			}
 
 			break
@@ -118,7 +118,7 @@ func (conn *Conn) Serve() {
 		}
 	}
 	conn.Close()
-	log.Debug("%s: Connection Terminated", conn.sessionID)
+	log.Debug("%s: Connection Terminated", conn.sessionid)
 }
 
 // Close will manually close this connection, even if the client isn't ready.
@@ -135,7 +135,7 @@ func (conn *Conn) Close() {
 }
 
 func (conn *Conn) upgradeToTLS() error {
-	log.Debug(conn.sessionID, "Upgrading connectiion to TLS")
+	log.Debug(conn.sessionid, "Upgrading connectiion to TLS")
 	tlsConn := tls.Server(conn.conn, conn.tlsConfig)
 	err := tlsConn.Handshake()
 	if err == nil {

@@ -280,7 +280,7 @@ func (cmd commandEprt) Execute(conn *Conn, param string) {
 		conn.writeMessage(522, "Network protocol not supported, use (1,2)")
 		return
 	}
-	socket, err := newActiveSocket(host, port, conn.sessionID)
+	socket, err := newActiveSocket(host, port, conn.sessionid)
 	if err != nil {
 		conn.writeMessage(425, "Data connection failed")
 		return
@@ -314,7 +314,7 @@ func (cmd commandEpsv) Execute(conn *Conn, param string) {
 		return
 	}
 
-	socket, err := newPassiveSocket(addr[:lastIdx], conn.PassivePort(), conn.sessionID, conn.tlsConfig)
+	socket, err := newPassiveSocket(addr[:lastIdx], conn.PassivePort(), conn.sessionid, conn.tlsConfig)
 	if err != nil {
 		log.Debug(err.Error())
 		conn.writeMessage(425, "Data connection failed")
@@ -367,7 +367,7 @@ func (cmd commandList) Execute(conn *Conn, param string) {
 		}
 
 			if !info.IsDir() {
-				conn.logger.Printf(conn.sessionID, "%s is not a dir.\n", path)
+				conn.logger.Printf(conn.sessionid, "%s is not a dir.\n", path)
 				return
 			}
 	*/
@@ -598,7 +598,7 @@ func (cmd commandPasv) RequireAuth() bool {
 
 func (cmd commandPasv) Execute(conn *Conn, param string) {
 	listenIP := conn.passiveListenIP()
-	socket, err := newPassiveSocket(listenIP, conn.PassivePort(), conn.sessionID, conn.tlsConfig)
+	socket, err := newPassiveSocket(listenIP, conn.PassivePort(), conn.sessionid, conn.tlsConfig)
 	if err != nil {
 		conn.writeMessage(425, "Data connection failed")
 		return
@@ -636,7 +636,7 @@ func (cmd commandPort) Execute(conn *Conn, param string) {
 	portTwo, _ := strconv.Atoi(nums[5])
 	port := (portOne * 256) + portTwo
 	host := nums[0] + "." + nums[1] + "." + nums[2] + "." + nums[3]
-	socket, err := newActiveSocket(host, port, conn.sessionID)
+	socket, err := newActiveSocket(host, port, conn.sessionid)
 	if err != nil {
 		conn.writeMessage(425, "Data connection failed")
 		return
