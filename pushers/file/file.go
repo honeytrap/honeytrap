@@ -198,17 +198,22 @@ func (f *FileBackend) syncLoop() {
 					continue writeSync
 				}
 
-				if _, err := io.Copy(f.dest, &buf); err != nil && err != io.EOF {
-					log.Errorf("Failed to copy data to File : %+q", err)
+				if buf.Len() < (500 * 1024) {
+					continue
 				}
-
-				if err := f.dest.Sync(); err != nil {
-					log.Errorf("Failed to sync Write to File : %+q", err)
-				}
-
-				// Reset the buffer for reuse.
-				buf.Reset()
+			case <-time.After(time.Second):
 			}
+
+			if _, err := io.Copy(f.dest, &buf); err != nil && err != io.EOF {
+				log.Errorf("Failed to copy data to File : %+q", err)
+			}
+
+			if err := f.dest.Sync(); err != nil {
+				log.Errorf("Failed to sync Write to File : %+q", err)
+			}
+
+			// Reset the buffer for reuse.
+			buf.Reset()
 		}
 	}
 }
