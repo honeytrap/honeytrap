@@ -45,7 +45,7 @@ import (
 
 	"golang.org/x/sync/syncmap"
 
-	"github.com/honeytrap/golxc"
+	"gopkg.in/lxc/go-lxc.v2"
 )
 
 var (
@@ -55,6 +55,7 @@ var (
 func New(options ...func(director.Director) error) (director.Director, error) {
 	d := &lxcDirector{
 		eb:       pushers.MustDummy(),
+		lxcCh:    make(chan interface{}),
 		template: "honeytrap",
 	}
 
@@ -63,13 +64,48 @@ func New(options ...func(director.Director) error) (director.Director, error) {
 	}
 
 	d.cache = &syncmap.Map{} // map[string]*lxcContainer{}
+	go d.HandleLxcCommands()
 	return d, nil
 }
+
+type LxcStop struct{ c *lxc.Container }
+type LxcStart struct{ c *lxc.Container }
+type LxcFreeze struct{ c *lxc.Container }
+type LxcUnfreeze struct{ c *lxc.Container }
 
 type lxcDirector struct {
 	template string
 	eb       pushers.Channel
 	cache    *syncmap.Map // map[string]*lxcContainer
+	lxcCh    chan interface{}
+}
+
+func (d *lxcDirector) HandleLxcCommands() {
+	for {
+		x := <-d.lxcCh
+		switch cmd := x; cmd.(type) {
+		case LxcStop:
+			err := x.(LxcStop).c.Stop()
+			if err != nil {
+				log.Errorf("Error Stopping container: %s, because %s", x.(LxcStop).c.Name(), err.Error())
+			}
+		case LxcStart:
+			err := x.(LxcStart).c.Start()
+			if err != nil {
+				log.Errorf("Error Starting container: %s, because %s", x.(LxcStart).c.Name(), err.Error())
+			}
+		case LxcFreeze:
+			err := x.(LxcFreeze).c.Freeze()
+			if err != nil {
+				log.Errorf("Error Freezing container: %s, because %s", x.(LxcFreeze).c.Name(), err.Error())
+			}
+		case LxcUnfreeze:
+			err := x.(LxcUnfreeze).c.Unfreeze()
+			if err != nil {
+				log.Errorf("Error UnFreezing container: %s, because %s", x.(LxcUnfreeze).c.Name(), err.Error())
+			}
+		}
+	}
 }
 
 func (d *lxcDirector) SetChannel(eb pushers.Channel) {
@@ -107,9 +143,6 @@ func (d *lxcDirector) Dial(conn net.Conn) (net.Conn, error) {
 		return nil, err
 	}
 
-	// Housekeeper only runs in Running containers, so start it always
-	go c.(*lxcContainer).housekeeper()
-
 	if ta, ok := conn.LocalAddr().(*net.TCPAddr); ok {
 		connection, err := c.(*lxcContainer).Dial("tcp", ta.Port)
 		return lxcContainerConn{Conn: connection, container: c.(*lxcContainer)}, err
@@ -124,9 +157,10 @@ func (d *lxcDirector) Dial(conn net.Conn) (net.Conn, error) {
 type lxcContainer struct {
 	c *lxc.Container
 
-	d    *lxcDirector
-	name string
-	eb   pushers.Channel
+	d     *lxcDirector
+	name  string
+	eb    pushers.Channel
+	lxcCh chan interface{}
 
 	idle     time.Time
 	ip       net.IP
@@ -142,6 +176,7 @@ func (d *lxcDirector) newContainer(name string, template string) (*lxcContainer,
 		template: template,
 		eb:       d.eb,
 		d:        d,
+		lxcCh:    d.lxcCh,
 		Delays: Delays{
 			FreezeDelay:      Delay(15 * time.Minute),
 			StopDelay:        Delay(30 * time.Minute),
@@ -177,11 +212,11 @@ func (c *lxcContainer) housekeeper() {
 
 		if time.Since(c.idle) > time.Duration(c.Delays.StopDelay) && c.isFrozen() {
 			log.Debugf("LxcContainer %s: idle for %s, stopping container", c.name, time.Now().Sub(c.idle).String())
-			c.c.Stop()
+			c.lxcCh <- LxcStop{c.c}
 			return
 		} else if time.Since(c.idle) > time.Duration(c.Delays.FreezeDelay) && c.isRunning() {
 			log.Debugf("LxcContainer %s: idle for %s, freezing container", c.name, time.Now().Sub(c.idle).String())
-			c.c.Freeze()
+			c.lxcCh <- LxcFreeze{c.c}
 		}
 	}
 }
@@ -211,11 +246,11 @@ func (c *lxcContainer) clone() error {
 		return err
 	}
 
-	if err := c.c.SetConfigItem("lxc.console", "none"); err != nil {
+	if err := c.c.SetConfigItem("lxc.console.path", "none"); err != nil {
 		return err
 	}
 
-	if err := c.c.SetConfigItem("lxc.tty", "0"); err != nil {
+	if err := c.c.SetConfigItem("lxc.tty.max", "0"); err != nil {
 		return err
 	}
 
@@ -230,7 +265,7 @@ func (c *lxcContainer) clone() error {
 
 // start begins the call to the lxc.Container.
 func (c *lxcContainer) start() error {
-	log.Infof("Starting container")
+	log.Infof("Starting container %s", c.c.Name())
 
 	c.idle = time.Now()
 
@@ -246,9 +281,9 @@ func (c *lxcContainer) start() error {
 	// run independent of our process
 	c.c.WantDaemonize(true)
 
-	if err := c.c.Start(); err != nil {
-		return err
-	}
+	c.lxcCh <- LxcStart{c.c}
+	// Housekeeper only runs in Running containers, so start it always
+	go c.housekeeper()
 
 	if err := c.settle(); err != nil {
 		return err
@@ -267,9 +302,7 @@ func (c *lxcContainer) start() error {
 func (c *lxcContainer) unfreeze() error {
 	log.Infof("Unfreezing container: %s", c.name)
 
-	if err := c.c.Unfreeze(); err != nil {
-		return err
-	}
+	c.lxcCh <- LxcUnfreeze{c.c}
 
 	if err := c.settle(); err != nil {
 		return err
@@ -290,7 +323,7 @@ func (c *lxcContainer) unfreeze() error {
 func (c *lxcContainer) settle() error {
 	log.Infof("Waiting for container %s to settle, current state=%s", c.name, c.c.State())
 
-	if !c.c.Wait(lxc.RUNNING, 30) {
+	if !c.c.Wait(lxc.RUNNING, 30*time.Second) {
 		return fmt.Errorf("lxccontainer still not running %s", c.name)
 	}
 
@@ -315,18 +348,18 @@ func (c *lxcContainer) settle() error {
 	}
 
 	var isets []string
-	netws := c.c.ConfigItem("lxc.network")
+	netws := c.c.ConfigItem("lxc.net")
 	for ind := range netws {
-		itypes := c.c.RunningConfigItem(fmt.Sprintf("lxc.network.%d.type", ind))
+		itypes := c.c.RunningConfigItem(fmt.Sprintf("lxc.net.0.%d.type", ind))
 		if itypes == nil {
 			continue
 		}
 
 		if itypes[0] == "veth" {
-			isets = c.c.RunningConfigItem(fmt.Sprintf("lxc.network.%d.veth.pair", ind))
+			isets = c.c.RunningConfigItem(fmt.Sprintf("lxc.net.0.%d.veth.pair", ind))
 			break
 		} else {
-			isets = c.c.RunningConfigItem(fmt.Sprintf("lxc.network.%d.link", ind))
+			isets = c.c.RunningConfigItem(fmt.Sprintf("lxc.net.0.%d.link", ind))
 			break
 		}
 	}
