@@ -35,12 +35,14 @@ import (
 	"net"
 
 	"bufio"
-	"io"
 
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/services"
+	logging "github.com/op/go-logging"
 )
+
+var log = logging.MustGetLogger("services/redis")
 
 var (
 	_ = services.Register("redis", REDIS)
@@ -79,17 +81,11 @@ func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
 
 	defer conn.Close()
 
-	br := bufio.NewReader(conn)
+	scanner := bufio.NewScanner(conn)
 
-	for {
-		cmd, err := br.ReadString('\n')
+	for scanner.Scan() {
 
-		if err == io.EOF {
-			return nil
-		} else if err != nil {
-			return err
-		}
-
+		cmd := scanner.Text()
 		answer, closeConn := REDISHandler(s, cmd)
 
 		s.ch.Send(event.New(
@@ -98,13 +94,16 @@ func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
 			event.Type("redis-command"),
 			event.SourceAddr(conn.RemoteAddr()),
 			event.DestinationAddr(conn.LocalAddr()),
-			event.Custom("command", cmd),
+			event.Custom("redis.command", cmd),
 		))
 
-		if closeConn == true {
+		if closeConn {
 			break
 		} else {
-			_, err = conn.Write([]byte(answer))
+			_, err := conn.Write([]byte(answer))
+			if err != nil {
+				log.Error("error writing response: %s", err.Error())
+			}
 		}
 	}
 

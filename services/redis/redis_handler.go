@@ -35,24 +35,23 @@ import (
 	"strings"
 )
 
-func CleanCmd(cmd string) ([]string, string) {
-	userCmd := strings.Replace(cmd, "\n", "", -1)
+func CleanCmd(cmd string) []string {
 	argsCmd := []string{}
 
-	for _, arg := range strings.Split(userCmd, " ") {
+	for _, arg := range strings.Split(cmd, " ") {
 		if arg == "" {
 			continue
 		}
 		arg = strings.ToLower(arg)
 		argsCmd = append(argsCmd, arg)
 	}
-	return argsCmd, userCmd
+	return argsCmd
 }
 
 func REDISHandler(s *redisService, cmd string) (string, bool) {
-	argsCmd, userCmd := CleanCmd(cmd)
-	if fnCmd, ok := mapCmds[argsCmd[0]]; ok { // takes too long if lot of cmds ?
-		return fnCmd(s, argsCmd, userCmd)
+	argsCmd := CleanCmd(cmd)
+	if fnCmd, ok := mapCmds[argsCmd[0]]; ok {
+		return fnCmd(s, argsCmd, cmd)
 	} else {
 		return fmt.Sprintf(unknownCmdMsg, userCmd), false
 	}
