@@ -103,8 +103,8 @@ func serve(c *cli.Context) error {
 	} else if u, err := url.Parse(v); err != nil {
 		ec := cli.NewExitError(err.Error(), 1)
 		return ec
-	} else if u.Scheme == "" {
-		fn, err := server.WithConfig(v)
+	} else if u.Scheme == "" || u.Scheme == "file" {
+		fn, err := server.WithConfig(u.Path)
 		if err != nil {
 			ec := cli.NewExitError(err.Error(), 1)
 			return ec
