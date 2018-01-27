@@ -343,45 +343,14 @@ func (cmd commandList) RequireAuth() bool {
 
 func (cmd commandList) Execute(conn *Conn, param string) {
 	conn.writeMessage(150, "Opening ASCII mode data connection for file list")
-	var fpath string
-	if len(param) == 0 {
-		fpath = param
-	} else {
-		fields := strings.Fields(param)
-		for _, field := range fields {
-			if strings.HasPrefix(field, "-") {
-				//TODO: currently ignore all the flag
-				//fpath = conn.namePrefix
-			} else {
-				fpath = field
-			}
-		}
-	}
-
-	path := conn.buildPath(fpath)
-	/*
-		info, err := conn.driver.Stat(path)
-		if err != nil {
-			conn.writeMessage(550, err.Error())
-			return
-		}
-
-			if !info.IsDir() {
-				conn.logger.Printf(conn.sessionid, "%s is not a dir.\n", path)
-				return
-			}
-	*/
-	var files []FileInfo
-	err := conn.driver.ListDir(path, func(f FileInfo) error {
-		files = append(files, f)
-		return nil
-	})
-	if err != nil {
-		conn.writeMessage(550, err.Error())
+	files := conn.driver.ListDir(param)
+	if files == nil {
+		conn.writeMessage(550, "")
 		return
 	}
 
 	//conn.sendOutofbandData(listFormatter(files).Detailed())
+	conn.writeMessage(200, string(listFormatter(files).Detailed()))
 }
 
 // commandNlst responds to the NLST FTP command. It allows the client to
@@ -402,43 +371,13 @@ func (cmd commandNlst) RequireAuth() bool {
 
 func (cmd commandNlst) Execute(conn *Conn, param string) {
 	conn.writeMessage(150, "Opening ASCII mode data connection for file list")
-	var fpath string
-	if len(param) == 0 {
-		fpath = param
-	} else {
-		fields := strings.Fields(param)
-		for _, field := range fields {
-			if strings.HasPrefix(field, "-") {
-				//TODO: currently ignore all the flag
-				//fpath = conn.namePrefix
-			} else {
-				fpath = field
-			}
-		}
-	}
-
-	path := conn.buildPath(fpath)
-	/*
-		info, err := conn.driver.Stat(path)
-		if err != nil {
-			conn.writeMessage(550, err.Error())
-			return
-		}
-			if !info.IsDir() {
-				// TODO: should we show the file description?
-				return
-			}
-	*/
-	var files []FileInfo
-	err := conn.driver.ListDir(path, func(f FileInfo) error {
-		files = append(files, f)
-		return nil
-	})
-	if err != nil {
-		conn.writeMessage(550, err.Error())
+	files := conn.driver.ListDir(param)
+	if files == nil {
+		conn.writeMessage(550, "")
 		return
 	}
-	//conn.sendOutofbandData(listFormatter(files).Short())
+
+	conn.sendOutofbandData(listFormatter(files).Short())
 }
 
 // commandMdtm responds to the MDTM FTP command. It allows the client to
@@ -458,15 +397,12 @@ func (cmd commandMdtm) RequireAuth() bool {
 }
 
 func (cmd commandMdtm) Execute(conn *Conn, param string) {
-	/*
-		path := conn.buildPath(param)
-			stat, err := conn.driver.Stat(path)
-			if err == nil {
-				conn.writeMessage(213, stat.ModTime().Format("20060102150405"))
-			} else {
-				conn.writeMessage(450, "File not available")
-			}
-	*/
+	path := conn.buildPath(param)
+	stat, err := conn.driver.Stat(path)
+	if err == nil {
+		conn.writeMessage(213, stat.ModTime().Format("20060102150405"))
+	}
+
 	conn.writeMessage(450, "File not available")
 }
 
@@ -663,7 +599,7 @@ func (cmd commandPwd) RequireAuth() bool {
 }
 
 func (cmd commandPwd) Execute(conn *Conn, param string) {
-	conn.writeMessage(257, "\""+conn.namePrefix+"\" is the current directory")
+	conn.writeMessage(257, conn.driver.CurDir()+" is the current directory")
 }
 
 // CommandQuit responds to the QUIT FTP command. The client has requested the

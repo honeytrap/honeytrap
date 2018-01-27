@@ -27,9 +27,9 @@ type Driver interface {
 	ChangeDir(string) error
 
 	// params  - path, function on file or subdir found
-	// returns - error
+	// returns - []FileInfo
 	//           path
-	ListDir(string, func(FileInfo) error) error
+	ListDir(string) []FileInfo
 
 	// params  - path
 	// returns - true if the directory was deleted
@@ -54,4 +54,7 @@ type Driver interface {
 	// params  - destination path, an io.Reader containing the file data
 	// returns - true if the data was successfully persisted
 	PutFile(string, io.Reader, bool) (int64, error)
+
+	// returns - current directory
+	CurDir() string
 }

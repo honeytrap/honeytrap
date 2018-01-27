@@ -28,7 +28,7 @@ func (formatter listFormatter) Detailed() []byte {
 		fmt.Fprintf(&buf, file.Mode())
 		fmt.Fprintf(&buf, " 1 %s %s ", file.Owner(), file.Group())
 		fmt.Fprintf(&buf, lpad(strconv.Itoa(int(file.Size())), 12))
-		//fmt.Fprintf(&buf, file.ModTime().Format(" Jan _2 15:04 "))
+		fmt.Fprintf(&buf, file.ModTime().Format(" Jan _2 15:04 "))
 		fmt.Fprintf(&buf, "%s\r\n", file.Name())
 	}
 	fmt.Fprintf(&buf, "\r\n")
