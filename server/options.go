@@ -33,6 +33,7 @@ package server
 import (
 	"bytes"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"os/user"
 	"path"
@@ -71,6 +72,22 @@ func WithConfig(s string) (OptionFn, error) {
 
 	return func(b *Honeytrap) error {
 		return b.config.Load(bytes.NewBuffer(data))
+	}, nil
+}
+
+func WithRemoteConfig(s string) (OptionFn, error) {
+	resp, err := http.Get(s)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	return func(b *Honeytrap) error {
+		return b.config.Load(bytes.NewBuffer(body))
 	}, nil
 }
 
