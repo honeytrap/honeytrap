@@ -41,14 +41,35 @@ var mapCmds = map[string]cmd{
 	// ...
 }
 
+type infoSection func(*redisService) string
+
+var mapInfoCmds = map[string]infoSection{
+	"server":      (*redisService).infoServerMsg,
+	"clients":     (*redisService).infoClientsMsg,
+	"memory":      (*redisService).infoMemoryMsg,
+	"persistence": (*redisService).infoPersistenceMsg,
+	"stats":       (*redisService).infoStatsMsg,
+	"replication": (*redisService).infoReplicationMsg,
+	"cpu":         (*redisService).infoCPUMsg,
+	"cluster":     (*redisService).infoClusterMsg,
+	"keyspace":    (*redisService).infoKeyspaceMsg,
+}
+
 func (s *redisService) infoCmd(args []string, userCmd string) (string, bool) {
 	switch len(args) {
 	case 1:
-		infoMsg = fmt.Sprintf(infoMsg, s.Version, s.Os)
-		return fmt.Sprintf(lenMsg, len(infoMsg), infoMsg), false
+		return fmt.Sprintf(lenMsg(), len(s.infoSectionsMsg()), s.infoSectionsMsg()), false
 	case 2:
-		return dollar0Msg, false
+		if fn, ok := mapInfoCmds[args[1]]; ok {
+			return fmt.Sprintf(lenMsg(), len(fn(s)), fn(s)), false
+		} else if args[1] == "default" {
+			return fmt.Sprintf(lenMsg(), len(s.infoSectionsMsg()), s.infoSectionsMsg()), false
+		} else if args[1] == "all" {
+			return fmt.Sprintf(lenMsg(), len(s.allSectionsMsg()), s.allSectionsMsg()), false
+		} else {
+			return fmt.Sprintf(lenMsg(), len(lineBreakMsg()), lineBreakMsg()), false
+		}
 	default:
-		return syntaxErrorMsg, false
+		return errorMsg("syntax"), false
 	}
 }
