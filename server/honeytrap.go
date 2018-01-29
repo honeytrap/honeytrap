@@ -229,12 +229,15 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 	fmt.Println(color.YellowString("Honeytrap starting (%s)...", hc.token))
 	fmt.Println(color.YellowString("Version: %s (%s)", cmd.Version, cmd.ShortCommitID))
 
+	log.Debugf("Using datadir: %s", hc.dataDir)
+
 	go hc.heartbeat()
 
 	hc.profiler.Start()
 
 	w := web.New(
 		web.WithEventBus(hc.bus),
+		web.WithDataDir(hc.dataDir),
 	)
 
 	go w.ListenAndServe()
@@ -380,7 +383,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		} else {
 			a.AddAddress(addr)
 
-			log.Infof("Configured generic port %s/%s.", addr.Network(), addr.String())
+			log.Infof("Configured generic port %s/%s", addr.Network(), addr.String())
 		}
 	}
 
@@ -425,7 +428,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		} else {
 			a.AddAddress(addr)
 
-			log.Infof("Configured service port %s/%s.", addr.String())
+			log.Infof("Configured service port %s/%s", addr.Network(), addr.String())
 		}
 
 		matcher := noMatcher

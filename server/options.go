@@ -114,7 +114,6 @@ func WithDataDir(s string) (OptionFn, error) {
 	}
 
 	return func(b *Honeytrap) error {
-		log.Debugf("Homedir is %s:", p)
 		b.dataDir = p
 		storage.SetDataDir(p)
 		return nil

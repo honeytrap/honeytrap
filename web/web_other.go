@@ -1,5 +1,3 @@
-// +build !arm
-
 /*
 * Honeytrap
 * Copyright (C) 2016-2017 DutchSec (https://dutchsec.com/)
@@ -33,10 +31,16 @@
 package web
 
 import (
+	"compress/gzip"
 	"encoding/json"
+	"io"
+	"net"
 	"net/http"
+	"os"
+	"path"
 	"time"
 
+	"github.com/honeytrap/honeytrap/cmd"
 	"github.com/honeytrap/honeytrap/config"
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers/eventbus"
@@ -45,20 +49,64 @@ import (
 	"github.com/gorilla/websocket"
 	assets "github.com/honeytrap/honeytrap-web"
 	logging "github.com/op/go-logging"
-
-	_ "github.com/mattn/go-sqlite3"
+	maxminddb "github.com/oschwald/maxminddb-golang"
 )
 
 var log = logging.MustGetLogger("web")
 
 func AcceptAllOrigins(r *http.Request) bool { return true }
 
+func download(url string, dest string) error {
+	client := &http.Client{}
+
+	req, err := http.NewRequest("GET", geoLiteURL, nil)
+	if err != nil {
+		return err
+	}
+
+	var resp *http.Response
+	if resp, err = client.Do(req); err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	gzf, err := gzip.NewReader(resp.Body)
+	if err != nil {
+		return err
+	}
+	defer gzf.Close()
+
+	f, err := os.Create(dest)
+	if err != nil {
+		return err
+	}
+
+	defer f.Close()
+
+	_, err = io.Copy(f, gzf)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+const geoLiteURL = "http://geolite.maxmind.com/download/geoip/database/GeoLite2-City.mmdb.gz"
+
 type web struct {
 	*http.Server
 
 	config *config.Config
 
+	dataDir string
+
 	eb *eventbus.EventBus
+
+	start time.Time
+
+	eventCh   chan event.Event
+	messageCh chan json.Marshaler
 
 	// Registered connections.
 	connections map[*connection]bool
@@ -70,12 +118,18 @@ type web struct {
 	unregister chan *connection
 }
 
+type HotCountry struct {
+	ISOCode string    `json:"isocode"`
+	Count   int       `json:"count"`
+	Last    time.Time `json:"last"`
+}
+
 func New(options ...func(*web)) *web {
 	handler := http.NewServeMux()
 
 	// TODO(nl5887): make configurable
 	server := &http.Server{
-		Addr:    ":8089",
+		Addr:    "127.0.0.1:8089",
 		Handler: handler,
 	}
 
@@ -84,9 +138,14 @@ func New(options ...func(*web)) *web {
 
 		eb: nil,
 
+		start: time.Now(),
+
 		register:    make(chan *connection),
 		unregister:  make(chan *connection),
 		connections: make(map[*connection]bool),
+
+		eventCh:   nil,
+		messageCh: make(chan json.Marshaler),
 	}
 
 	for _, optionFn := range options {
@@ -103,42 +162,50 @@ func New(options ...func(*web)) *web {
 	handler.HandleFunc("/ws", hc.ServeWS)
 	handler.Handle("/", sh)
 
+	eventCh := make(chan event.Event)
+
+	go func(ch chan event.Event) {
+		hotCountries := []HotCountry{}
+
+		for evt := range ch {
+			hc.messageCh <- Data("event", &evt)
+
+			// update hot countries
+			isoCode := evt.Get("source.country.isocode")
+			if isoCode == "" {
+				continue
+			}
+
+			found := false
+			for i, _ := range hotCountries {
+				if hotCountries[i].ISOCode != isoCode {
+					continue
+				}
+
+				hotCountries[i].Last = time.Now()
+				hotCountries[i].Count++
+				found = true
+				break
+			}
+
+			if !found {
+				hotCountries = append(hotCountries, HotCountry{
+					ISOCode: isoCode,
+					Count:   1,
+					Last:    time.Now(),
+				})
+			}
+
+			hc.messageCh <- Data("hot_countries", hotCountries)
+		}
+	}(eventCh)
+
+	eventCh = resolver(hc.dataDir, eventCh)
+	eventCh = filter(eventCh)
+
+	hc.eventCh = eventCh
+
 	go hc.run()
-
-	/*
-		db, err := sql.Open("sqlite3", "./foo.db")
-		if err != nil {
-
-		}
-
-		_, err = db.Exec(`
-		  CREATE TABLE 'events' (
-		      'uid' INTEGER PRIMARY KEY AUTOINCREMENT,
-		      'username' VARCHAR(64) NULL,
-		      'departname' VARCHAR(64) NULL,
-		      'created' DATE NULL
-		  );`)
-
-		tx, err := db.Begin()
-		if err != nil {
-		}
-
-		defer tx.Commit()
-
-		stmt, err := db.Prepare("INSERT INTO userinfo(username, departname, created) values(?,?,?)")
-		if err != nil {
-		}
-
-		res, err := stmt.Exec("astaxie", "研发部门", "2012-12-09")
-		if err != nil {
-		}
-
-		id, err := res.LastInsertId()
-		if err != nil {
-		}
-
-		_ = id
-	*/
 
 	return &hc
 }
@@ -150,12 +217,20 @@ func (w *web) ListenAndServe() {
 }
 
 type Metadata struct {
-	Start time.Time
+	Start         time.Time
+	Version       string `json:"version"`
+	ReleaseTag    string `json:"release_tag"`
+	CommitID      string `json:"commitid"`
+	ShortCommitID string `json:"shortcommitid"`
 }
 
 func (metadata Metadata) MarshalJSON() ([]byte, error) {
 	m := map[string]interface{}{}
 	m["start"] = metadata.Start
+	m["version"] = metadata.Version
+	m["commitid"] = metadata.CommitID
+	m["shortcommitid"] = metadata.ShortCommitID
+	m["release_tag"] = metadata.ReleaseTag
 	return json.Marshal(m)
 }
 
@@ -182,14 +257,105 @@ func (web *web) run() {
 
 				close(c.send)
 			}
+		case msg := <-web.messageCh:
+			for c := range web.connections {
+				c.send <- msg
+			}
 		}
 	}
 }
 
-func (web *web) Send(e event.Event) {
-	for c := range web.connections {
-		c.send <- &e
+type Message struct {
+	Type string      `json:"type"`
+	Data interface{} `json:"data"`
+}
+
+func (msg Message) MarshalJSON() ([]byte, error) {
+	m := map[string]interface{}{}
+	m["type"] = msg.Type
+	m["data"] = msg.Data
+	return json.Marshal(m)
+}
+
+func Data(type_ string, data interface{}) json.Marshaler {
+	return &Message{
+		Type: type_,
+		Data: data,
 	}
+}
+
+func filter(outCh chan event.Event) chan event.Event {
+	ch := make(chan event.Event)
+	go func() {
+		for {
+			evt := <-ch
+
+			if category := evt.Get("category"); category == "heartbeat" {
+				continue
+			}
+
+			outCh <- evt
+		}
+	}()
+
+	return ch
+}
+
+func resolver(dataDir string, outCh chan event.Event) chan event.Event {
+	db_path := path.Join(dataDir, "GeoLite2-Country.mmdb")
+
+	_, err := os.Stat(db_path)
+	if os.IsNotExist(err) {
+		if err = download(geoLiteURL, db_path); err != nil {
+			log.Fatal(err)
+			return outCh
+		} else {
+		}
+	}
+
+	ch := make(chan event.Event)
+	go func() {
+		db, err := maxminddb.Open(db_path)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		defer db.Close()
+
+		for {
+			evt := <-ch
+
+			v := evt.Get("source-ip")
+			if v == "" {
+				outCh <- evt
+				continue
+			}
+
+			ip := net.ParseIP(v)
+
+			var record struct {
+				Country struct {
+					ISOCode string `maxminddb:"iso_code"`
+				} `maxminddb:"country"`
+			}
+
+			if err = db.Lookup(ip, &record); err != nil {
+				log.Error("Error looking up country for: %s", err.Error())
+
+				outCh <- evt
+				continue
+			}
+
+			evt.Store("source.country.isocode", record.Country.ISOCode)
+			outCh <- evt
+		}
+	}()
+
+	return ch
+}
+
+func (web *web) Send(evt event.Event) {
+	web.eventCh <- evt
 }
 
 func (web *web) ServeWS(w http.ResponseWriter, r *http.Request) {
@@ -216,9 +382,13 @@ func (web *web) ServeWS(w http.ResponseWriter, r *http.Request) {
 	web.register <- c
 
 	go func() {
-		c.send <- Metadata{
-			Start: time.Now(),
-		}
+		c.send <- Data("metadata", Metadata{
+			Start:         web.start,
+			Version:       cmd.Version,
+			ReleaseTag:    cmd.ReleaseTag,
+			CommitID:      cmd.CommitID,
+			ShortCommitID: cmd.ShortCommitID,
+		})
 	}()
 
 	go c.writePump()
