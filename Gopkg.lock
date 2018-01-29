@@ -176,6 +176,12 @@
   version = "v1"
 
 [[projects]]
+  name = "github.com/oschwald/maxminddb-golang"
+  packages = ["."]
+  revision = "8727e98aa1b91610eb184ed1ab615943b8d9deb0"
+  version = "v1.2.1"
+
+[[projects]]
   name = "github.com/pierrec/lz4"
   packages = ["."]
   revision = "08c27939df1bd95e881e2c2367a749964ad1fceb"
@@ -268,6 +274,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "711b36c045751858455df80e5365674e5814ad97565d573e5be618405948b94b"
+  inputs-digest = "bba2ae33fc081416d4f60c90cd5ba28206b6947b5943b8eccf8146ea24b8c280"
   solver-name = "gps-cdcl"
   solver-version = 1

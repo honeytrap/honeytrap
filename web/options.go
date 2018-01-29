@@ -39,3 +39,9 @@ func WithEventBus(bus *eventbus.EventBus) func(*web) {
 		w.SetEventBus(bus)
 	}
 }
+
+func WithDataDir(dataDir string) func(*web) {
+	return func(w *web) {
+		w.dataDir = dataDir
+	}
+}
