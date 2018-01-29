@@ -59,7 +59,7 @@ type agentConnection struct {
 }
 
 func (dc *agentConnection) Read(b []byte) (int, error) {
-	if len(dc.buff) >= len(b) {
+	if len(dc.buff) != 0 {
 		dc.m.Lock()
 		defer dc.m.Unlock()
 
@@ -78,7 +78,7 @@ func (dc *agentConnection) Read(b []byte) (int, error) {
 	select {
 	case <-after:
 		return 0, ErrTimeout
-	case data, ok := <-dc.in:
+	case _, ok := <-dc.in:
 		if !ok {
 			log.Errorf("Error reading from channel, return EOF")
 			return 0, io.EOF
@@ -87,7 +87,7 @@ func (dc *agentConnection) Read(b []byte) (int, error) {
 		dc.m.Lock()
 		defer dc.m.Unlock()
 
-		dc.buff = append(dc.buff, data[:]...)
+		//		dc.buff = append(dc.buff, data[:]...)
 
 		n := copy(b[:], dc.buff[0:])
 		dc.buff = dc.buff[n:]

@@ -28,63 +28,85 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package forward
+package redis
 
 import (
-	"errors"
-	"fmt"
+	"context"
 	"net"
 
-	"github.com/honeytrap/honeytrap/director"
+	"bufio"
+
+	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
+	"github.com/honeytrap/honeytrap/services"
+	logging "github.com/op/go-logging"
 )
+
+var log = logging.MustGetLogger("services/redis")
 
 var (
-	_ = director.Register("forward", New)
+	_ = services.Register("redis", REDIS)
 )
 
-func New(options ...func(director.Director) error) (director.Director, error) {
-	d := &forwardDirector{
-		eb: pushers.MustDummy(),
+func REDIS(options ...services.ServicerFunc) services.Servicer {
+	s := &redisService{
+		redisServiceConfig: redisServiceConfig{
+			Version: "4.0.6",
+			Os:      "Linux 4.9.49-moby x86_64",
+		},
 	}
-
-	for _, optionFn := range options {
-		optionFn(d)
+	for _, o := range options {
+		o(s)
 	}
-
-	return d, nil
+	return s
 }
 
-type forwardDirector struct {
-	eb pushers.Channel
+type redisServiceConfig struct {
+	Version string `toml:"version"`
 
-	Host string `toml:"host"`
+	Os string `toml:"os"`
 }
 
-func (d *forwardDirector) SetChannel(eb pushers.Channel) {
-	d.eb = eb
+type redisService struct {
+	redisServiceConfig
+
+	ch pushers.Channel
 }
 
-func (d *forwardDirector) Dial(conn net.Conn) (net.Conn, error) {
-	host := d.Host
-	protocol := ""
-	port := ""
+func (s *redisService) SetChannel(c pushers.Channel) {
+	s.ch = c
+}
 
-	if ta, ok := conn.LocalAddr().(*net.TCPAddr); ok {
-		port = fmt.Sprintf("%d", ta.Port)
-		protocol = "tcp"
-	} else if ta, ok := conn.LocalAddr().(*net.UDPAddr); ok {
-		port = fmt.Sprintf("%d", ta.Port)
-		protocol = "udp"
-	} else {
-		return nil, errors.New("Unsupported protocol")
+func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
+
+	defer conn.Close()
+
+	scanner := bufio.NewScanner(conn)
+
+	for scanner.Scan() {
+
+		cmd := scanner.Text()
+		answer, closeConn := s.REDISHandler(cmd)
+
+		s.ch.Send(event.New(
+			services.EventOptions,
+			event.Category("redis"),
+			event.Type("redis-command"),
+			event.SourceAddr(conn.RemoteAddr()),
+			event.DestinationAddr(conn.LocalAddr()),
+			event.Custom("redis.command", cmd),
+		))
+
+		if closeConn {
+			break
+		} else {
+			_, err := conn.Write([]byte(answer))
+			if err != nil {
+				log.Error("error writing response: %s", err.Error())
+			}
+		}
 	}
 
-	// port is being overruled
-	if h, v, err := net.SplitHostPort(host); err == nil {
-		host = h
-		port = v
-	}
+	return nil
 
-	return net.Dial(protocol, net.JoinHostPort(host, port))
 }

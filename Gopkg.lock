@@ -167,7 +167,7 @@
   branch = "master"
   name = "github.com/mimoo/disco"
   packages = ["libdisco"]
-  revision = "911dedbad3878426881579e4d2d6c4169981089c"
+  revision = "15dd4b8476c9fa493b19fb83b07f4ac19f67a993"
 
 [[projects]]
   name = "github.com/op/go-logging"

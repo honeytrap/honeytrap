@@ -28,63 +28,31 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package forward
+package redis
 
 import (
-	"errors"
 	"fmt"
-	"net"
-
-	"github.com/honeytrap/honeytrap/director"
-	"github.com/honeytrap/honeytrap/pushers"
+	"strings"
 )
 
-var (
-	_ = director.Register("forward", New)
-)
+func CleanCmd(cmd string) []string {
+	args := []string{}
 
-func New(options ...func(director.Director) error) (director.Director, error) {
-	d := &forwardDirector{
-		eb: pushers.MustDummy(),
+	for _, arg := range strings.Split(cmd, " ") {
+		if arg == "" {
+			continue
+		}
+		arg = strings.ToLower(arg)
+		args = append(args, arg)
 	}
-
-	for _, optionFn := range options {
-		optionFn(d)
-	}
-
-	return d, nil
+	return args
 }
 
-type forwardDirector struct {
-	eb pushers.Channel
-
-	Host string `toml:"host"`
-}
-
-func (d *forwardDirector) SetChannel(eb pushers.Channel) {
-	d.eb = eb
-}
-
-func (d *forwardDirector) Dial(conn net.Conn) (net.Conn, error) {
-	host := d.Host
-	protocol := ""
-	port := ""
-
-	if ta, ok := conn.LocalAddr().(*net.TCPAddr); ok {
-		port = fmt.Sprintf("%d", ta.Port)
-		protocol = "tcp"
-	} else if ta, ok := conn.LocalAddr().(*net.UDPAddr); ok {
-		port = fmt.Sprintf("%d", ta.Port)
-		protocol = "udp"
+func (s *redisService) REDISHandler(cmd string) (string, bool) {
+	args := CleanCmd(cmd)
+	if fn, ok := mapCmds[args[0]]; ok {
+		return fn(s, args, cmd)
 	} else {
-		return nil, errors.New("Unsupported protocol")
+		return fmt.Sprintf(unknownCmdMsg, cmd), false
 	}
-
-	// port is being overruled
-	if h, v, err := net.SplitHostPort(host); err == nil {
-		host = h
-		port = v
-	}
-
-	return net.Dial(protocol, net.JoinHostPort(host, port))
 }
