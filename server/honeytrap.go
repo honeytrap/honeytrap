@@ -381,7 +381,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		} else {
 			a.AddAddress(addr)
 
-			log.Infof("Configured generic port %s/%s.", addr.Network(), addr.String())
+			log.Infof("Configured generic port %s/%s", addr.Network(), addr.String())
 		}
 	}
 
@@ -426,7 +426,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		} else {
 			a.AddAddress(addr)
 
-			log.Infof("Configured service port %s/%s.", addr.String())
+			log.Infof("Configured service port %s/%s", addr.Network(), addr.String())
 		}
 
 		matcher := noMatcher
