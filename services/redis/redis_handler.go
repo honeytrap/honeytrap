@@ -53,6 +53,6 @@ func (s *redisService) REDISHandler(cmd string) (string, bool) {
 	if fn, ok := mapCmds[args[0]]; ok {
 		return fn(s, args, cmd)
 	} else {
-		return fmt.Sprintf(unknownCmdMsg, cmd), false
+		return fmt.Sprintf(errorMsg("unknown"), cmd), false
 	}
 }
