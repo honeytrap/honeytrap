@@ -218,7 +218,13 @@ func errorMsg(errType string) string {
 	switch errType {
 	case "syntax":
 		return "-ERR syntax error\n"
+	case "nbargs":
+		return "-ERR wrong number of arguments for '%s' command\n"
 	default:
 		return "-ERR unknown command '%s'\n"
 	}
+}
+
+func okMsg() string {
+	return "+OK\n"
 }

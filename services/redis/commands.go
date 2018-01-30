@@ -37,7 +37,9 @@ import (
 type cmd func(*redisService, []string, string) (string, bool)
 
 var mapCmds = map[string]cmd{
-	"info": (*redisService).infoCmd,
+	"info":     (*redisService).infoCmd,
+	"flushall": (*redisService).flushallCmd,
+	"set":      (*redisService).setCmd,
 	// ...
 }
 
@@ -72,4 +74,32 @@ func (s *redisService) infoCmd(args []string, userCmd string) (string, bool) {
 	default:
 		return errorMsg("syntax"), false
 	}
+}
+func (s *redisService) flushallCmd(args []string, userCmd string) (string, bool) {
+	switch len(args) {
+	case 1:
+		return okMsg(), false
+	case 2:
+		if args[1] == "async" {
+			return okMsg(), false
+		} else {
+			return errorMsg("syntax"), false
+		}
+	default:
+		return errorMsg("syntax"), false
+	}
+}
+
+func (s *redisService) setCmd(args []string, userCmd string) (string, bool) {
+
+	return okMsg(), false
+
+	/* switch len(args) {
+	case 1, 2:
+		return fmt.Sprintf(errorMsg("nbargs"), args[0]), false
+	case 3:
+		return okMsg(), false
+	default:
+		return errorMsg("syntax"), false
+	}*/
 }
