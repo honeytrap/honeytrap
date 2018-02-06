@@ -122,18 +122,33 @@ func NewServer(opts *ServerOpts) *Server {
 // it is handed to this functions. driver is an instance of FTPDriver that
 // will handle all auth and persistence details.
 func (server *Server) newConn(tcpConn net.Conn, driver Driver, recv chan string) *Conn {
-	c := new(Conn)
-	c.namePrefix = "/"
-	c.conn = tcpConn
-	c.controlReader = bufio.NewReader(tcpConn)
-	c.controlWriter = bufio.NewWriter(tcpConn)
-	c.driver = driver
-	c.auth = server.Auth
-	c.server = server
-	c.sessionid = newSessionID()
-	c.tlsConfig = server.tlsConfig
-	c.rcv = recv
-	driver.Init(c)
+	c := &Conn{
+		namePrefix:    "/",
+		conn:          tcpConn,
+		controlReader: bufio.NewReader(tcpConn),
+		controlWriter: bufio.NewWriter(tcpConn),
+		driver:        driver,
+		auth:          server.Auth,
+		server:        server,
+		sessionid:     newSessionID(),
+		tlsConfig:     server.tlsConfig,
+		rcv:           recv,
+	}
+	/*
+		c := new(Conn)
+		c.namePrefix = "/"
+		c.conn = tcpConn
+		c.controlReader = bufio.NewReader(tcpConn)
+		c.controlWriter = bufio.NewWriter(tcpConn)
+		c.driver = driver
+		c.auth = server.Auth
+		c.server = server
+		c.sessionid = newSessionID()
+		c.tlsConfig = server.tlsConfig
+		c.rcv = recv
+	*/
+
+	driver.Init()
 	return c
 }
 

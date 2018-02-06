@@ -35,21 +35,24 @@ func (s *ftpService) SetChannel(c pushers.Channel) {
 
 func (s *ftpService) Handle(ctx context.Context, conn net.Conn) error {
 
+	log.Debug("FTP: Start Handle")
+
 	opts := &ServerOpts{
 		Auth: &FtpUser{},
 	}
 	srv := NewServer(opts)
 
 	rcv := make(chan string)
-	driver := &DummyFS{}
+	driver := &Dummyfs{}
 	ftpConn := srv.newConn(conn, driver, rcv)
 
 	go func() {
+	forloop:
 		for {
 			select {
 			case msg := <-rcv:
 				if msg == "q" {
-					break
+					break forloop
 				}
 				s.c.Send(event.New(
 					services.EventOptions,

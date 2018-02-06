@@ -1,11 +1,52 @@
 package ftp
 
 import (
+	"bytes"
 	"errors"
 	"io"
+	"io/ioutil"
 	"strings"
 	"time"
 )
+
+var dummyfilesystem = map[string][]*FileInfo{
+	"/": []*FileInfo{
+		&FileInfo{
+			"drwxr-xr-x",
+			"user",
+			"users",
+			0,
+			"mydir",
+			time.Date(2018, time.January, 20, 9, 0, 0, 0, time.UTC),
+		},
+		&FileInfo{
+			"-rwxrwxrwx",
+			"user",
+			"users",
+			1024,
+			"myfile",
+			time.Date(2018, time.January, 19, 11, 0, 0, 0, time.UTC),
+		},
+	},
+	"/mydir": []*FileInfo{
+		&FileInfo{
+			"-rwxrwxrwx",
+			"user",
+			"users",
+			5623,
+			"secret.txt",
+			time.Now(),
+		},
+		&FileInfo{
+			"-rwxrwxrwx",
+			"user",
+			"users",
+			2812,
+			"passwords",
+			time.Date(2018, time.January, 11, 11, 0, 0, 0, time.UTC),
+		},
+	},
+}
 
 type FileInfo struct {
 	mode  string
@@ -40,53 +81,12 @@ func (f *FileInfo) ModTime() time.Time {
 	return f.mtime
 }
 
-type DummyFS struct {
-	f map[string][]FileInfo
-
-	dir string //Current directory
-}
-
-func (d *DummyFS) Init(conn *Conn) {
-	d.f = map[string][]FileInfo{
-		"/": []FileInfo{
-			FileInfo{
-				"drwxr-xr-x",
-				"user",
-				"users",
-				0,
-				"mydir",
-				time.Date(2018, time.January, 20, 9, 0, 0, 0, time.UTC),
-			},
-			FileInfo{
-				"-rwxrwxrwx",
-				"user",
-				"users",
-				1024,
-				"myfile",
-				time.Date(2018, time.January, 19, 11, 0, 0, 0, time.UTC),
-			},
-		},
-		"/mydir": []FileInfo{
-			FileInfo{
-				"-rwxrwxrwx",
-				"user",
-				"users",
-				5623,
-				"diary.txt",
-				time.Now(),
-			},
-			FileInfo{
-				"-rwxrwxrwx",
-				"user",
-				"users",
-				2812,
-				"passwords",
-				time.Date(2018, time.January, 11, 11, 0, 0, 0, time.UTC),
-			},
-		},
+func (f *FileInfo) IsDir() bool {
+	if f.mode[0] == 'd' {
+		return true
 	}
 
-	d.dir = "/"
+	return false
 }
 
 //return directory and filename
@@ -99,35 +99,129 @@ func breakpath(path string) (dir string, filename string) {
 
 	if split < 0 {
 		//No dir separators, treat this as a filename
-		return "", path
+		filename = path
+		return
+	}
+	if split == len(path)-1 {
+		//no filename
+		dir = path[:split]
+		return
 	}
 
 	filename = path[split+1:]
-	dir = path[:split]
+	if split == 0 { // dir is root
+		dir = "/"
+	} else {
+		dir = path[:split]
+	}
 
 	return
 }
 
-func (d *DummyFS) Stat(path string) (*FileInfo, error) {
+type Dummyfs struct {
+	f map[string][]*FileInfo
+
+	download []byte
+
+	dir string //Current directory
+}
+
+func (d *Dummyfs) Init() {
+	d.f = dummyfilesystem
+	d.dir = "/"
+	d.download = []byte("very secret stuff!")
+}
+
+func (d *Dummyfs) makefile(path string) {
+	dir, fname := breakpath(path)
+	if dir == "" {
+		dir = d.dir
+	}
+
+	newfile := &FileInfo{
+		"-rwxr-xr-x",
+		"user",
+		"users",
+		1024,
+		fname,
+		time.Now(),
+	}
+
+	d.f[dir] = append(d.f[dir], newfile)
+}
+
+func (d *Dummyfs) Stat(path string) (*FileInfo, error) {
+	if path == "" {
+		return nil, errors.New("Stat: Empty path")
+	}
+
+	dpath := strings.TrimRight(path, "/")
+	if dpath == "" { //We are in the root directory
+		return &FileInfo{
+			"drwxr-xr-x",
+			"user",
+			"users",
+			0,
+			"/",
+			time.Now(),
+		}, nil
+	}
+
 	dir, fname := breakpath(path)
 
-	if fname == "" {
-		return nil, errors.New("No filename")
+	if dir == "" {
+		dir = d.dir
 	}
 
 	if l, ok := d.f[dir]; ok {
-		if len(fname) > 0 {
-			for _, lname := range l {
-				if fname == lname.Name() {
-					return &lname, nil
-				}
+		for _, f := range l {
+			if fname == f.Name() {
+				return f, nil
 			}
 		}
+		return nil, errors.New("Stat: Bad Filename" + fname)
 	}
 	return nil, errors.New("Not a valid path: " + path)
 }
 
-func (d *DummyFS) ChangeDir(path string) error {
+func (d *Dummyfs) MakeDir(path string) error {
+	dpath := strings.TrimRight(path, "/")
+	parent, newdir := breakpath(dpath)
+
+	//Put new directory under current directory
+	if parent == "" {
+		parent = d.dir
+	}
+
+	if newdir == "" {
+		return errors.New("No new directory name given")
+	}
+
+	if _, ok := d.f[parent]; ok {
+		d.f[parent] = append(d.f[parent], &FileInfo{"drwxr-xr-x", "user", "users", 0, newdir, time.Now()})
+
+		//Not in root '/' directory
+		if len(parent) > 1 {
+			newdir = "/" + newdir
+		}
+
+		d.f[parent+newdir] = []*FileInfo{}
+
+		return nil
+	}
+
+	return errors.New("Not a valid path")
+}
+
+func (d *Dummyfs) CurDir() string {
+	return d.dir
+}
+
+func (d *Dummyfs) ChangeDir(path string) error {
+	if path == "" {
+		return errors.New("Stat: Empty path")
+	}
+
 	if _, ok := d.f[path]; ok {
 		d.dir = path
 		return nil
@@ -135,30 +229,32 @@ func (d *DummyFS) ChangeDir(path string) error {
 	return errors.New("Wrong path: " + path)
 }
 
-//Return a single file or all files in a directory
-func (d *DummyFS) ListDir(path string) []FileInfo {
+//Return all files in a directory
+// nil on error
+func (d *Dummyfs) ListDir(path string) []*FileInfo {
 
 	if path == "" {
+		//return current directory
 		return d.f[d.dir]
 	}
 
-	dir, fname := breakpath(path)
-
-	if l, ok := d.f[dir]; ok {
-		if fname == "" {
-			return l
-		} else {
-			for _, lname := range l {
-				if fname == lname.Name() {
-					return []FileInfo{lname}
-				}
-			}
-		}
+	stat, err := d.Stat(path)
+	if err != nil {
+		return nil
 	}
+
+	if stat.IsDir() {
+		return d.f[path]
+	}
+
 	return nil
 }
 
-func (d *DummyFS) DeleteDir(path string) error {
+func (d *Dummyfs) DeleteDir(path string) error {
+	if path == "/" { //can not delete root path
+		return errors.New("DeleteDir: can not delete root '/'")
+	}
+
 	if _, ok := d.f[path]; ok {
 		delete(d.f, path)
 		return nil
@@ -166,44 +262,42 @@ func (d *DummyFS) DeleteDir(path string) error {
 	return errors.New("Not a valid path: " + path)
 }
 
-func (d *DummyFS) DeleteFile(path string) error {
-	return nil
+func (d *Dummyfs) DeleteFile(path string) error {
+	dir, fname := breakpath(path)
+
+	if files, ok := d.f[dir]; ok {
+
+		for i, f := range files {
+			if fname == f.Name() {
+				files[i] = files[len(files)-1]
+				//files[len(files)-1] = nil
+				files = files[:len(files)-1]
+				d.f[dir] = files
+				return nil
+			}
+		}
+	}
+	return errors.New("Could not delete file, wrong path")
 }
 
-func (d *DummyFS) Rename(from_path, to_path string) error {
-	return nil
+func (d *Dummyfs) Rename(from_path, to_path string) error {
+	return errors.New("Rename not implemented!")
 }
 
-func (d *DummyFS) MakeDir(path string) error {
-	dpath := strings.TrimRight(path, "/")
-	dir, name := breakpath(dpath)
-
-	if dir == "" {
-		dir = d.dir
+// path: file to send
+// n: offset to start sending from: NOT USED
+// returns filesize, the file content and error
+func (d *Dummyfs) GetFile(path string, n int64) (int64, io.ReadCloser, error) {
+	if _, err := d.Stat(path); err != nil {
+		return 0, nil, err
 	}
 
-	if name == "" {
-		return errors.New("No directory name given")
-	}
-
-	if parent, ok := d.f[dir]; ok {
-		parent = append(parent, FileInfo{"drwxr-xr-x", "user", "users", 0, name, time.Now()})
-		d.f[dpath] = []FileInfo{}
-	} else {
-		return errors.New("Not a valid parent directory")
-	}
-
-	return nil
+	dl := ioutil.NopCloser(bytes.NewReader(d.download))
+	return int64(len(d.download)), dl, nil
 }
 
-func (d *DummyFS) CurDir() string {
-	return d.dir
-}
+func (d *Dummyfs) PutFile(path string, r io.Reader, appendata bool) (int64, error) {
+	d.makefile(path)
 
-func (d *DummyFS) GetFile(path string, n int64) (int64, io.ReadCloser, error) {
-	return 0, nil, nil
-}
-
-func (d *DummyFS) PutFile(path string, r io.Reader, b bool) (int64, error) {
 	return 0, nil
 }

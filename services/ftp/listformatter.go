@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-type listFormatter []FileInfo
+type listFormatter []*FileInfo
 
 // Short returns a string that lists the collection of files by name only,
 // one per line

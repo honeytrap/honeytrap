@@ -13,7 +13,7 @@ type DriverFactory interface {
 // driver for each client that connects and delegate to it as required.
 type Driver interface {
 	// Init init
-	Init(*Conn)
+	Init()
 
 	// params  - a file path
 	// returns - a time indicating when the requested path was last modified
@@ -27,9 +27,9 @@ type Driver interface {
 	ChangeDir(string) error
 
 	// params  - path, function on file or subdir found
-	// returns - []FileInfo
+	// returns - []*FileInfo
 	//           path
-	ListDir(string) []FileInfo
+	ListDir(string) []*FileInfo
 
 	// params  - path
 	// returns - true if the directory was deleted

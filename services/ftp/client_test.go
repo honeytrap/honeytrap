@@ -50,7 +50,8 @@ func Connect(client net.Conn) (*ServerConn, error) {
 
 	c := &ServerConn{
 		conn:     conn,
-		host:     "testing.com",
+		host:     "127.0.0.1",
+		timeout:  time.Second * 10,
 		features: make(map[string]string),
 	}
 
@@ -248,6 +249,7 @@ func (c *ServerConn) pasv() (port int, err error) {
 
 // openDataConn creates a new FTP data connection.
 func (c *ServerConn) openDataConn() (net.Conn, error) {
+
 	var port int
 	var err error
 
@@ -269,6 +271,7 @@ func (c *ServerConn) openDataConn() (net.Conn, error) {
 	// Build the new net address string
 	addr := net.JoinHostPort(c.host, strconv.Itoa(port))
 
+	log.Debugf("client_test: openDataConn: addr: %s", addr)
 	return net.DialTimeout("tcp", addr, c.timeout)
 }
 
@@ -280,6 +283,7 @@ func (c *ServerConn) Exec(expected int, format string, args ...interface{}) (int
 // cmd is a helper function to execute a command and check for the expected FTP
 // return code
 func (c *ServerConn) cmd(expected int, format string, args ...interface{}) (int, string, error) {
+	log.Debugf("FTP client Start cmd, format: %s args: %v", format, args)
 	_, err := c.conn.Cmd(format, args...)
 	if err != nil {
 		return 0, "", err
@@ -291,6 +295,8 @@ func (c *ServerConn) cmd(expected int, format string, args ...interface{}) (int,
 // cmdDataConnFrom executes a command which require a FTP data connection.
 // Issues a REST FTP command to specify the number of bytes to skip for the transfer.
 func (c *ServerConn) cmdDataConnFrom(offset uint64, format string, args ...interface{}) (net.Conn, error) {
+	log.Debugf("client_test: Start cmdDataConnFrom format: %s", format)
+
 	conn, err := c.openDataConn()
 	if err != nil {
 		return nil, err
@@ -319,6 +325,7 @@ func (c *ServerConn) cmdDataConnFrom(offset uint64, format string, args ...inter
 		return nil, &textproto.Error{Code: code, Msg: msg}
 	}
 
+	log.Debug("client_test: End cmdDataConnFrom")
 	return conn, nil
 }
 
@@ -538,12 +545,15 @@ func (c *ServerConn) List(path string) (entries []*Entry, err error) {
 		return
 	}
 
+	log.Debug("client_test: List has conn")
 	r := &response{conn, c}
 	defer r.Close()
 
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		line := scanner.Text()
+		log.Debugf("client_test: List line: %s", line)
+
 		entry, err := parseListLine(line)
 		if err == nil {
 			entries = append(entries, entry)
@@ -687,6 +697,7 @@ func (c *ServerConn) Logout() error {
 // Quit issues a QUIT FTP command to properly close the connection from the
 // remote FTP server.
 func (c *ServerConn) Quit() error {
+	log.Debug("FTP client: QUIT")
 	c.conn.Cmd("QUIT")
 	return c.conn.Close()
 }

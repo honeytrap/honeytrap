@@ -151,6 +151,7 @@ func (conn *Conn) upgradeToTLS() error {
 // appropriate response.
 func (conn *Conn) receiveLine(line string) {
 
+	//Log received commands in honeytrap log
 	conn.rcv <- line
 
 	command, param := conn.parseLine(line)

@@ -217,6 +217,7 @@ func (cmd commandCwd) RequireAuth() bool {
 }
 
 func (cmd commandCwd) Execute(conn *Conn, param string) {
+	log.Debugf("FTP server: cmd PWD param: %s", param)
 	path := conn.buildPath(param)
 	err := conn.driver.ChangeDir(path)
 	if err == nil {
@@ -349,8 +350,8 @@ func (cmd commandList) Execute(conn *Conn, param string) {
 		return
 	}
 
-	//conn.sendOutofbandData(listFormatter(files).Detailed())
-	conn.writeMessage(200, string(listFormatter(files).Detailed()))
+	conn.sendOutofbandData(listFormatter(files).Detailed())
+	//conn.writeMessage(200, string(listFormatter(files).Detailed()))
 }
 
 // commandNlst responds to the NLST FTP command. It allows the client to
@@ -599,7 +600,8 @@ func (cmd commandPwd) RequireAuth() bool {
 }
 
 func (cmd commandPwd) Execute(conn *Conn, param string) {
-	conn.writeMessage(257, conn.driver.CurDir()+" is the current directory")
+	log.Debug("FTP server: PWD execute")
+	conn.writeMessage(257, conn.driver.CurDir())
 }
 
 // CommandQuit responds to the QUIT FTP command. The client has requested the
