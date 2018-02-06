@@ -18,11 +18,6 @@ var (
 
 func TestFTP(t *testing.T) {
 
-	//Setup client and server
-	clt, srv = net.Pipe()
-	defer clt.Close()
-	defer srv.Close()
-
 	s := FTP().(*ftpService)
 
 	c, _ := pushers.Dummy()
