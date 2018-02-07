@@ -46,15 +46,16 @@ var mapCmds = map[string]cmd{
 type infoSection func(*redisService) string
 
 var mapInfoCmds = map[string]infoSection{
-	"server":      (*redisService).infoServerMsg,
-	"clients":     (*redisService).infoClientsMsg,
-	"memory":      (*redisService).infoMemoryMsg,
-	"persistence": (*redisService).infoPersistenceMsg,
-	"stats":       (*redisService).infoStatsMsg,
-	"replication": (*redisService).infoReplicationMsg,
-	"cpu":         (*redisService).infoCPUMsg,
-	"cluster":     (*redisService).infoClusterMsg,
-	"keyspace":    (*redisService).infoKeyspaceMsg,
+	"server":       (*redisService).infoServerMsg,
+	"clients":      (*redisService).infoClientsMsg,
+	"memory":       (*redisService).infoMemoryMsg,
+	"persistence":  (*redisService).infoPersistenceMsg,
+	"stats":        (*redisService).infoStatsMsg,
+	"replication":  (*redisService).infoReplicationMsg,
+	"cpu":          (*redisService).infoCPUMsg,
+	"commandstats": (*redisService).infoCommandstatsMsg,
+	"cluster":      (*redisService).infoClusterMsg,
+	"keyspace":     (*redisService).infoKeyspaceMsg,
 }
 
 func (s *redisService) infoCmd(args []string, userCmd string) (string, bool) {
