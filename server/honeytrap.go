@@ -158,22 +158,39 @@ type ServiceMap struct {
 	Type string
 }
 
-func (hc *Honeytrap) findService(addr net.Addr, payload []byte) *ServiceMap {
+func (hc *Honeytrap) findService(conn net.Conn) *ServiceMap {
+	// Match on address first
+	for _, sm := range hc.matchers {
+		if !sm.Matcher(conn.LocalAddr()) {
+			continue
+		}
+		return sm
+	}
+
+	log.Debug("Couldn't match on addr, peeking connection %s => %s", conn.RemoteAddr(), conn.LocalAddr())
+	// wrap connection in a connection with deadlines
+	conn = TimeoutConn(conn, time.Second*30)
+	pc := PeekConnection(conn)
+	buffer := make([]byte, 1024)
+	n, err := pc.Peek(buffer)
+	if err == io.EOF {
+		return nil
+	} else if err != nil {
+		log.Errorf(color.RedString("Could not peek bytes: %s", err.Error()))
+		return nil
+	}
+
 	for _, sm := range hc.matchers {
 		service := sm.Service
 
-		if sm.Matcher(addr) {
-			// match on addr has priority
-			return sm
-		} else if ch, ok := service.(services.CanHandlerer); !ok {
+		if ch, ok := service.(services.CanHandlerer); !ok {
 			// CanHandle not supported
-		} else if !ch.CanHandle(payload) {
+		} else if !ch.CanHandle(buffer[:n]) {
 			// Service won't support payload
 		} else {
 			return sm
 		}
 	}
-
 	return nil
 }
 
@@ -479,8 +496,8 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 func TimeoutConn(conn net.Conn, duration time.Duration) net.Conn {
 	return &timeoutConn{
 		conn,
-		time.Duration(30 * time.Second),
-		time.Duration(30 * time.Second),
+		time.Duration(duration),
+		time.Duration(duration),
 	}
 }
 
@@ -539,22 +556,7 @@ func (hc *Honeytrap) handle(conn net.Conn) {
 	log.Debug("Accepted connection for %s => %s", conn.RemoteAddr(), conn.LocalAddr())
 	defer log.Debug("Disconnected connection for %s => %s", conn.RemoteAddr(), conn.LocalAddr())
 
-	// wrap connection in a connection with deadlines
-	conn = TimeoutConn(conn, time.Second*30)
-
-	pc := PeekConnection(conn)
-
-	buffer := make([]byte, 1024)
-
-	n, err := pc.Peek(buffer)
-	if err == io.EOF {
-		return
-	} else if err != nil {
-		log.Errorf(color.RedString("Could not peek bytes: %s", err.Error()))
-		return
-	}
-
-	sm := hc.findService(conn.LocalAddr(), buffer[:n])
+	sm := hc.findService(conn)
 	if sm == nil {
 		return
 	}
@@ -562,7 +564,7 @@ func (hc *Honeytrap) handle(conn net.Conn) {
 	log.Debug("Handling connection for %s => %s %s(%s)", conn.RemoteAddr(), conn.LocalAddr(), sm.Name, sm.Type)
 
 	ctx := context.Background()
-	if err := sm.Service.Handle(ctx, pc); err != nil {
+	if err := sm.Service.Handle(ctx, conn); err != nil {
 		log.Errorf(color.RedString("Error handling service: %s: %s", sm.Name, err.Error()))
 	}
 }
