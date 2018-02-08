@@ -19,8 +19,19 @@ var (
 func FTP(options ...services.ServicerFunc) services.Servicer {
 
 	s := &ftpService{
-		recv: make(chan string),
+		Config: Config{
+			recv: make(chan string),
+		},
 	}
+
+	opts := &ServerOpts{
+		Auth:           &FtpUser{},
+		Name:           s.ServerName,
+		WelcomeMessage: s.Banner,
+	}
+	s.server = NewServer(opts)
+
+	s.driver = &Dummyfs{}
 
 	for _, o := range options {
 		o(s)
@@ -28,10 +39,22 @@ func FTP(options ...services.ServicerFunc) services.Servicer {
 	return s
 }
 
-type ftpService struct {
-	c pushers.Channel
-
+type Config struct {
 	recv chan string
+
+	server *Server
+
+	driver Driver
+
+	ServerName string `toml:name`
+
+	Banner string `toml:banner`
+}
+
+type ftpService struct {
+	Config
+
+	c pushers.Channel
 }
 
 func (s *ftpService) SetChannel(c pushers.Channel) {
@@ -40,13 +63,7 @@ func (s *ftpService) SetChannel(c pushers.Channel) {
 
 func (s *ftpService) Handle(ctx context.Context, conn net.Conn) error {
 
-	opts := &ServerOpts{
-		Auth: &FtpUser{},
-	}
-	srv := NewServer(opts)
-
-	driver := &Dummyfs{}
-	ftpConn := srv.newConn(conn, driver, s.recv)
+	ftpConn := s.server.newConn(conn, s.driver, s.recv)
 
 	go func() {
 	forloop:

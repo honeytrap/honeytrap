@@ -8,10 +8,6 @@ import (
 
 // serverOpts contains parameters for server.NewServer()
 type ServerOpts struct {
-	// The factory that will be used to create a new FTPDriver instance for
-	// each client connection. This is a mandatory option.
-	Factory DriverFactory
-
 	Auth Auth
 
 	// Server Name, Default is Go Ftp Server
@@ -67,7 +63,6 @@ func serverOptsWithDefaults(opts *ServerOpts) *ServerOpts {
 	} else {
 		newOpts.Hostname = opts.Hostname
 	}
-	newOpts.Factory = opts.Factory
 	if opts.Name == "" {
 		newOpts.Name = "Go FTP Server"
 	} else {
@@ -94,22 +89,7 @@ func serverOptsWithDefaults(opts *ServerOpts) *ServerOpts {
 }
 
 // NewServer initialises a new FTP server. Configuration options are provided
-// via an instance of ServerOpts. Calling this function in your code will
-// probably look something like this:
-//
-//     factory := &MyDriverFactory{}
-//     server  := server.NewServer(&server.ServerOpts{ Factory: factory })
-//
-// or:
-//
-//     factory := &MyDriverFactory{}
-//     opts    := &server.ServerOpts{
-//       Factory: factory,
-//       Port: 2000,
-//       Hostname: "127.0.0.1",
-//     }
-//     server  := server.NewServer(opts)
-//
+// via an instance of ServerOpts.
 func NewServer(opts *ServerOpts) *Server {
 	opts = serverOptsWithDefaults(opts)
 	s := new(Server)
@@ -134,19 +114,6 @@ func (server *Server) newConn(tcpConn net.Conn, driver Driver, recv chan string)
 		tlsConfig:     server.tlsConfig,
 		rcv:           recv,
 	}
-	/*
-		c := new(Conn)
-		c.namePrefix = "/"
-		c.conn = tcpConn
-		c.controlReader = bufio.NewReader(tcpConn)
-		c.controlWriter = bufio.NewWriter(tcpConn)
-		c.driver = driver
-		c.auth = server.Auth
-		c.server = server
-		c.sessionid = newSessionID()
-		c.tlsConfig = server.tlsConfig
-		c.rcv = recv
-	*/
 
 	driver.Init()
 	return c
