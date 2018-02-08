@@ -17,7 +17,10 @@ var (
 )
 
 func FTP(options ...services.ServicerFunc) services.Servicer {
-	s := &ftpService{}
+
+	s := &ftpService{
+		recv: make(chan string),
+	}
 
 	for _, o := range options {
 		o(s)
@@ -27,6 +30,8 @@ func FTP(options ...services.ServicerFunc) services.Servicer {
 
 type ftpService struct {
 	c pushers.Channel
+
+	recv chan string
 }
 
 func (s *ftpService) SetChannel(c pushers.Channel) {
@@ -35,22 +40,19 @@ func (s *ftpService) SetChannel(c pushers.Channel) {
 
 func (s *ftpService) Handle(ctx context.Context, conn net.Conn) error {
 
-	log.Debug("FTP: Start Handle")
-
 	opts := &ServerOpts{
 		Auth: &FtpUser{},
 	}
 	srv := NewServer(opts)
 
-	rcv := make(chan string)
 	driver := &Dummyfs{}
-	ftpConn := srv.newConn(conn, driver, rcv)
+	ftpConn := srv.newConn(conn, driver, s.recv)
 
 	go func() {
 	forloop:
 		for {
 			select {
-			case msg := <-rcv:
+			case msg := <-s.recv:
 				if msg == "q" {
 					break forloop
 				}

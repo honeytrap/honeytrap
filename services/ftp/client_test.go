@@ -283,7 +283,6 @@ func (c *ServerConn) Exec(expected int, format string, args ...interface{}) (int
 // cmd is a helper function to execute a command and check for the expected FTP
 // return code
 func (c *ServerConn) cmd(expected int, format string, args ...interface{}) (int, string, error) {
-	log.Debugf("FTP client Start cmd, format: %s args: %v", format, args)
 	_, err := c.conn.Cmd(format, args...)
 	if err != nil {
 		return 0, "", err
