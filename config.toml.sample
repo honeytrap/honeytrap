@@ -80,6 +80,14 @@ capture = ["sniffer","quick"]
 # disable the usage of canaries, which will trigger alerts.
 
 
+[service.ftp]
+type="ftp"
+port="TCP/8021"
+banner="Welcome to FTPd"
+name="FTPd"
+#files: filenames space separated for use in initial dummy filesystem
+files="users.db.bak tmp001"
+
 [service.dns]
 type="dns-proxy"
 port="UDP/53"
