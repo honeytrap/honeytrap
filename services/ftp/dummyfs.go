@@ -10,45 +10,6 @@ import (
 	"time"
 )
 
-var dummyfilesystem = map[string][]*FileInfo{
-	"/": []*FileInfo{
-		&FileInfo{
-			"drwxr-xr-x",
-			"user",
-			"users",
-			0,
-			"mydir",
-			time.Date(2018, time.January, 20, 9, 0, 0, 0, time.UTC),
-		},
-		&FileInfo{
-			"-rwxrwxrwx",
-			"user",
-			"users",
-			1024,
-			"myfile",
-			time.Date(2018, time.January, 19, 11, 0, 0, 0, time.UTC),
-		},
-	},
-	"/mydir": []*FileInfo{
-		&FileInfo{
-			"-rwxrwxrwx",
-			"user",
-			"users",
-			5623,
-			"secret.txt",
-			time.Now(),
-		},
-		&FileInfo{
-			"-rwxrwxrwx",
-			"user",
-			"users",
-			2812,
-			"passwords",
-			time.Date(2018, time.January, 11, 11, 0, 0, 0, time.UTC),
-		},
-	},
-}
-
 type FileInfo struct {
 	mode  string
 	owner string

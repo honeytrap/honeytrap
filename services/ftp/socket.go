@@ -36,12 +36,12 @@ type ftpActiveSocket struct {
 func newActiveSocket(remote string, port int, sessionid string) (DataSocket, error) {
 	connectTo := net.JoinHostPort(remote, strconv.Itoa(port))
 
-	log.Debug(sessionid, "Opening active data connection to "+connectTo)
+	log.Debugf("%s: Opening active data connection to %s", sessionid, connectTo)
 
 	raddr, err := net.ResolveTCPAddr("tcp", connectTo)
 
 	if err != nil {
-		log.Debug(sessionid, err.Error())
+		log.Debugf("%s: %s", sessionid, err.Error())
 		return nil, err
 	}
 
