@@ -3,6 +3,7 @@ package ftp
 import (
 	"bufio"
 	"crypto/tls"
+	"errors"
 	"net"
 )
 
@@ -109,17 +110,18 @@ func (server *Server) newConn(tcpConn net.Conn, driver Driver, recv chan string)
 	return c
 }
 
-func simpleTLSConfig(certFile, keyFile string) (*tls.Config, error) {
+func simpleTLSConfig(cert *tls.Certificate) (*tls.Config, error) {
+	if cert == nil {
+		return nil, errors.New("Bad TLS Certificate")
+	}
+
 	config := &tls.Config{}
 	if config.NextProtos == nil {
 		config.NextProtos = []string{"ftp"}
 	}
 
-	var err error
-	config.Certificates = make([]tls.Certificate, 1)
-	config.Certificates[0], err = tls.LoadX509KeyPair(certFile, keyFile)
-	if err != nil {
-		return nil, err
-	}
+	config.Certificates = []tls.Certificate{*cert}
+	config.InsecureSkipVerify = true
+
 	return config, nil
 }

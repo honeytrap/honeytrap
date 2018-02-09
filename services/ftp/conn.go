@@ -57,7 +57,7 @@ func (conn *Conn) passiveListenIP() string {
 	if len(conn.PublicIp()) > 0 {
 		return conn.PublicIp()
 	}
-	return conn.conn.LocalAddr().String()
+	return conn.conn.LocalAddr().(*net.TCPAddr).IP.String()
 }
 
 func (conn *Conn) PassivePort() int {
@@ -117,13 +117,13 @@ func (conn *Conn) Serve() {
 		}
 	}
 	conn.Close()
-	log.Debug("%s: Connection Terminated", conn.sessionid)
+	log.Debugf("%s: Connection Terminated", conn.sessionid)
 }
 
 // Close will manually close this connection, even if the client isn't ready.
 func (conn *Conn) Close() {
 	//send quit message
-	conn.rcv <- "q"
+	//conn.rcv <- "q"
 
 	conn.conn.Close()
 	conn.closed = true
@@ -134,7 +134,7 @@ func (conn *Conn) Close() {
 }
 
 func (conn *Conn) upgradeToTLS() error {
-	log.Debug(conn.sessionid, "Upgrading connectiion to TLS")
+	log.Debugf("%s: Upgrading connection to TLS", conn.sessionid)
 	tlsConn := tls.Server(conn.conn, conn.tlsConfig)
 	err := tlsConn.Handshake()
 	if err == nil {

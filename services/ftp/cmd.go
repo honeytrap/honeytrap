@@ -217,7 +217,6 @@ func (cmd commandCwd) RequireAuth() bool {
 }
 
 func (cmd commandCwd) Execute(conn *Conn, param string) {
-	log.Debugf("FTP server: cmd PWD param: %s", param)
 	path := conn.buildPath(param)
 	err := conn.driver.ChangeDir(path)
 	if err == nil {
@@ -535,7 +534,13 @@ func (cmd commandPasv) RequireAuth() bool {
 
 func (cmd commandPasv) Execute(conn *Conn, param string) {
 	listenIP := conn.passiveListenIP()
-	socket, err := newPassiveSocket(listenIP, conn.PassivePort(), conn.sessionid, conn.tlsConfig)
+	lastidx := strings.LastIndex(listenIP, ":")
+	if lastidx <= 0 {
+		conn.writeMessage(425, "Data connection failed")
+		return
+	}
+
+	socket, err := newPassiveSocket(listenIP[:lastidx], conn.PassivePort(), conn.sessionid, conn.tlsConfig)
 	if err != nil {
 		conn.writeMessage(425, "Data connection failed")
 		return
@@ -600,7 +605,6 @@ func (cmd commandPwd) RequireAuth() bool {
 }
 
 func (cmd commandPwd) Execute(conn *Conn, param string) {
-	log.Debug("FTP server: PWD execute")
 	conn.writeMessage(257, conn.driver.CurDir())
 }
 
@@ -793,11 +797,12 @@ func (cmd commandAuth) RequireAuth() bool {
 }
 
 func (cmd commandAuth) Execute(conn *Conn, param string) {
+	log.Debugf("cmd auth param: %s", param)
 	if param == "TLS" && conn.tlsConfig != nil {
 		conn.writeMessage(234, "AUTH command OK")
 		err := conn.upgradeToTLS()
 		if err != nil {
-			log.Debugf("Error upgrading connection to TLS %v", err.Error())
+			log.Debugf("Error upgrading connection to TLS %s", err.Error())
 		}
 	} else {
 		conn.writeMessage(550, "Action not taken")
