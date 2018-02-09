@@ -20,8 +20,13 @@ func FTP(options ...services.ServicerFunc) services.Servicer {
 
 	s := &ftpService{
 		Config: Config{
-			recv: make(chan string),
+			recv:   make(chan string),
+			driver: NewDummyfs(),
 		},
+	}
+
+	for _, o := range options {
+		o(s)
 	}
 
 	opts := &ServerOpts{
@@ -31,11 +36,20 @@ func FTP(options ...services.ServicerFunc) services.Servicer {
 	}
 	s.server = NewServer(opts)
 
-	s.driver = &Dummyfs{}
+	fs := NewDummyfs()
 
-	for _, o := range options {
-		o(s)
+	log.Debugf("dummyfiles: %v", s.Dummyfiles)
+	for _, df := range strings.Split(s.Dummyfiles, " ") {
+		fs.makefile(df)
 	}
+	/*
+		fs.makefile("passwords.txt")
+		fs.makefile("users.db.bak")
+		fs.MakeDir("tmp")
+		fs.makefile("/tmp/index.html")
+	*/
+	s.driver = fs
+
 	return s
 }
 
@@ -46,9 +60,11 @@ type Config struct {
 
 	driver Driver
 
-	ServerName string `toml:name`
+	Banner string `toml:"banner"`
 
-	Banner string `toml:banner`
+	Dummyfiles string `toml:"files"`
+
+	ServerName string `toml:"name"`
 }
 
 type ftpService struct {

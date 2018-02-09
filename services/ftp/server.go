@@ -23,10 +23,6 @@ type ServerOpts struct {
 	// Passive ports
 	PassivePorts string
 
-	// The port that the FTP should listen on. Optional, defaults to 3000. In
-	// a production environment you will probably want to change this to 21.
-	//Port int
-
 	// use tls, default is false
 	TLS bool
 

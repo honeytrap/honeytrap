@@ -5,48 +5,10 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
+	"math/rand"
 	"strings"
 	"time"
 )
-
-var dummyfilesystem = map[string][]*FileInfo{
-	"/": []*FileInfo{
-		&FileInfo{
-			"drwxr-xr-x",
-			"user",
-			"users",
-			0,
-			"mydir",
-			time.Date(2018, time.January, 20, 9, 0, 0, 0, time.UTC),
-		},
-		&FileInfo{
-			"-rwxrwxrwx",
-			"user",
-			"users",
-			1024,
-			"myfile",
-			time.Date(2018, time.January, 19, 11, 0, 0, 0, time.UTC),
-		},
-	},
-	"/mydir": []*FileInfo{
-		&FileInfo{
-			"-rwxrwxrwx",
-			"user",
-			"users",
-			5623,
-			"secret.txt",
-			time.Now(),
-		},
-		&FileInfo{
-			"-rwxrwxrwx",
-			"user",
-			"users",
-			2812,
-			"passwords",
-			time.Date(2018, time.January, 11, 11, 0, 0, 0, time.UTC),
-		},
-	},
-}
 
 type FileInfo struct {
 	mode  string
@@ -126,10 +88,30 @@ type Dummyfs struct {
 	dir string //Current directory
 }
 
+func NewDummyfs() *Dummyfs {
+	fs := map[string][]*FileInfo{
+		"/": []*FileInfo{},
+	}
+
+	return &Dummyfs{
+		f:   fs,
+		dir: "/",
+	}
+}
+
 func (d *Dummyfs) Init() {
-	d.f = dummyfilesystem
-	d.dir = "/"
 	d.download = []byte("very secret stuff!")
+}
+
+//Create a random datetime for use in FileInfo
+func filetime() time.Time {
+	t := time.Now()
+
+	rand.Seed(int64(t.Nanosecond()))
+	days := rand.Intn(30)
+	seconds := days * 1000 * t.Nanosecond()
+
+	return t.AddDate(0, -3, days).Add(time.Duration(seconds))
 }
 
 func (d *Dummyfs) makefile(path string) {
@@ -142,9 +124,9 @@ func (d *Dummyfs) makefile(path string) {
 		"-rwxr-xr-x",
 		"user",
 		"users",
-		1024,
+		rand.Intn(1024 * 1024),
 		fname,
-		time.Now(),
+		filetime(),
 	}
 
 	d.f[dir] = append(d.f[dir], newfile)
@@ -198,7 +180,7 @@ func (d *Dummyfs) MakeDir(path string) error {
 	}
 
 	if _, ok := d.f[parent]; ok {
-		d.f[parent] = append(d.f[parent], &FileInfo{"drwxr-xr-x", "user", "users", 0, newdir, time.Now()})
+		d.f[parent] = append(d.f[parent], &FileInfo{"drwxr-xr-x", "user", "users", 0, newdir, filetime()})
 
 		//Not in root '/' directory
 		if len(parent) > 1 {
