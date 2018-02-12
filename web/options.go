@@ -31,11 +31,27 @@
 package web
 
 import (
+	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/pushers/eventbus"
 )
 
-func WithEventBus(bus *eventbus.EventBus) func(*web) {
-	return func(w *web) {
+func WithEventBus(bus *eventbus.EventBus) func(*web) error {
+	return func(w *web) error {
 		w.SetEventBus(bus)
+		return nil
+	}
+}
+
+func WithDataDir(dataDir string) func(*web) error {
+	return func(w *web) error {
+		w.dataDir = dataDir
+		return nil
+	}
+}
+
+func WithConfig(c toml.Primitive) func(*web) error {
+	return func(d *web) error {
+		err := toml.PrimitiveDecode(c, d)
+		return err
 	}
 }

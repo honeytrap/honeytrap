@@ -66,14 +66,25 @@ func (d *forwardDirector) SetChannel(eb pushers.Channel) {
 }
 
 func (d *forwardDirector) Dial(conn net.Conn) (net.Conn, error) {
+	host := d.Host
+	protocol := ""
+	port := ""
+
 	if ta, ok := conn.LocalAddr().(*net.TCPAddr); ok {
-		host := net.JoinHostPort(d.Host, fmt.Sprintf("%d", ta.Port))
-		return net.Dial("tcp", host)
+		port = fmt.Sprintf("%d", ta.Port)
+		protocol = "tcp"
 	} else if ta, ok := conn.LocalAddr().(*net.UDPAddr); ok {
-		_ = ta
-		host := net.JoinHostPort(d.Host, fmt.Sprintf("%d", ta.Port))
-		return net.Dial("udp", host)
+		port = fmt.Sprintf("%d", ta.Port)
+		protocol = "udp"
 	} else {
 		return nil, errors.New("Unsupported protocol")
 	}
+
+	// port is being overruled
+	if h, v, err := net.SplitHostPort(host); err == nil {
+		host = h
+		port = v
+	}
+
+	return net.Dial(protocol, net.JoinHostPort(host, port))
 }

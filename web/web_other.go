@@ -1,5 +1,3 @@
-// +build !arm
-
 /*
 * Honeytrap
 * Copyright (C) 2016-2017 DutchSec (https://dutchsec.com/)
@@ -33,10 +31,16 @@
 package web
 
 import (
+	"compress/gzip"
 	"encoding/json"
+	"io"
+	"net"
 	"net/http"
+	"os"
+	"path"
 	"time"
 
+	"github.com/honeytrap/honeytrap/cmd"
 	"github.com/honeytrap/honeytrap/config"
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers/eventbus"
@@ -45,20 +49,65 @@ import (
 	"github.com/gorilla/websocket"
 	assets "github.com/honeytrap/honeytrap-web"
 	logging "github.com/op/go-logging"
-
-	_ "github.com/mattn/go-sqlite3"
+	maxminddb "github.com/oschwald/maxminddb-golang"
 )
 
 var log = logging.MustGetLogger("web")
 
 func AcceptAllOrigins(r *http.Request) bool { return true }
 
-type web struct {
-	*http.Server
+func download(url string, dest string) error {
+	client := &http.Client{}
 
+	req, err := http.NewRequest("GET", geoLiteURL, nil)
+	if err != nil {
+		return err
+	}
+
+	var resp *http.Response
+	if resp, err = client.Do(req); err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	gzf, err := gzip.NewReader(resp.Body)
+	if err != nil {
+		return err
+	}
+	defer gzf.Close()
+
+	f, err := os.Create(dest)
+	if err != nil {
+		return err
+	}
+
+	defer f.Close()
+
+	_, err = io.Copy(f, gzf)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+const geoLiteURL = "http://geolite.maxmind.com/download/geoip/database/GeoLite2-City.mmdb.gz"
+
+type web struct {
 	config *config.Config
 
+	dataDir string
+
+	ListenAddress string `toml:"listen"`
+	Enabled       bool   `toml:"enabled"`
+
 	eb *eventbus.EventBus
+
+	start time.Time
+
+	eventCh   chan event.Event
+	messageCh chan json.Marshaler
 
 	// Registered connections.
 	connections map[*connection]bool
@@ -68,95 +117,38 @@ type web struct {
 
 	// Unregister requests from connections.
 	unregister chan *connection
+
+	hotCountries *SafeArray
+	events       *SafeArray
 }
 
-func New(options ...func(*web)) *web {
-	handler := http.NewServeMux()
-
-	// TODO(nl5887): make configurable
-	server := &http.Server{
-		Addr:    ":8089",
-		Handler: handler,
-	}
-
+func New(options ...func(*web) error) (*web, error) {
 	hc := web{
-		Server: server,
-
 		eb: nil,
+
+		start: time.Now(),
+
+		ListenAddress: "127.0.0.1:8089",
+		Enabled:       true,
 
 		register:    make(chan *connection),
 		unregister:  make(chan *connection),
 		connections: make(map[*connection]bool),
+
+		eventCh:   nil,
+		messageCh: make(chan json.Marshaler),
+
+		hotCountries: NewSafeArray(),
+		events:       NewSafeArray(),
 	}
 
 	for _, optionFn := range options {
-		optionFn(&hc)
+		if err := optionFn(&hc); err != nil {
+			return nil, err
+		}
 	}
 
-	sh := http.FileServer(&assetfs.AssetFS{
-		Asset:     assets.Asset,
-		AssetDir:  assets.AssetDir,
-		AssetInfo: assets.AssetInfo,
-		Prefix:    assets.Prefix,
-	})
-
-	handler.HandleFunc("/ws", hc.ServeWS)
-	handler.Handle("/", sh)
-
-	go hc.run()
-
-	/*
-		db, err := sql.Open("sqlite3", "./foo.db")
-		if err != nil {
-
-		}
-
-		_, err = db.Exec(`
-		  CREATE TABLE 'events' (
-		      'uid' INTEGER PRIMARY KEY AUTOINCREMENT,
-		      'username' VARCHAR(64) NULL,
-		      'departname' VARCHAR(64) NULL,
-		      'created' DATE NULL
-		  );`)
-
-		tx, err := db.Begin()
-		if err != nil {
-		}
-
-		defer tx.Commit()
-
-		stmt, err := db.Prepare("INSERT INTO userinfo(username, departname, created) values(?,?,?)")
-		if err != nil {
-		}
-
-		res, err := stmt.Exec("astaxie", "研发部门", "2012-12-09")
-		if err != nil {
-		}
-
-		id, err := res.LastInsertId()
-		if err != nil {
-		}
-
-		_ = id
-	*/
-
-	return &hc
-}
-
-func (w *web) ListenAndServe() {
-	log.Infof("Web interface started: %s", "8089")
-
-	w.Server.ListenAndServe()
-}
-
-type Metadata struct {
-	Start time.Time
-}
-
-func (metadata Metadata) MarshalJSON() ([]byte, error) {
-	m := map[string]interface{}{}
-	m["start"] = metadata.Start
-	return json.Marshal(m)
+	return &hc, nil
 }
 
 var upgrader = websocket.Upgrader{
@@ -171,6 +163,83 @@ func (web *web) SetEventBus(eb *eventbus.EventBus) {
 	eb.Subscribe(web)
 }
 
+func (web *web) Start() {
+	if !web.Enabled {
+		return
+	}
+
+	handler := http.NewServeMux()
+
+	server := &http.Server{
+		Addr:    web.ListenAddress,
+		Handler: handler,
+	}
+
+	sh := http.FileServer(&assetfs.AssetFS{
+		Asset:     assets.Asset,
+		AssetDir:  assets.AssetDir,
+		AssetInfo: assets.AssetInfo,
+		Prefix:    assets.Prefix,
+	})
+
+	handler.HandleFunc("/ws", web.ServeWS)
+	handler.Handle("/", sh)
+
+	eventCh := make(chan event.Event)
+
+	go func(ch chan event.Event) {
+		for evt := range ch {
+			web.events.Append(evt)
+
+			web.messageCh <- Data("event", evt)
+
+			isoCode := evt.Get("source.country.isocode")
+			if isoCode == "" {
+				continue
+			}
+
+			found := false
+
+			web.hotCountries.Range(func(v interface{}) bool {
+				hotCountry := v.(*HotCountry)
+
+				if hotCountry.ISOCode != isoCode {
+					return true
+				}
+
+				hotCountry.Last = time.Now()
+				hotCountry.Count++
+
+				found = true
+				return false
+			})
+
+			if !found {
+				web.hotCountries.Append(&HotCountry{
+					ISOCode: isoCode,
+					Count:   1,
+					Last:    time.Now(),
+				})
+			}
+
+			web.messageCh <- Data("hot_countries", web.hotCountries)
+		}
+	}(eventCh)
+
+	eventCh = resolver(web.dataDir, eventCh)
+	eventCh = filter(eventCh)
+
+	web.eventCh = eventCh
+
+	go web.run()
+
+	go func() {
+		log.Infof("Web interface started: %s", web.ListenAddress)
+
+		server.ListenAndServe()
+	}()
+}
+
 func (web *web) run() {
 	for {
 		select {
@@ -182,14 +251,105 @@ func (web *web) run() {
 
 				close(c.send)
 			}
+		case msg := <-web.messageCh:
+			for c := range web.connections {
+				c.send <- msg
+			}
 		}
 	}
 }
 
-func (web *web) Send(e event.Event) {
-	for c := range web.connections {
-		c.send <- &e
+type Message struct {
+	Type string      `json:"type"`
+	Data interface{} `json:"data"`
+}
+
+func (msg Message) MarshalJSON() ([]byte, error) {
+	m := map[string]interface{}{}
+	m["type"] = msg.Type
+	m["data"] = msg.Data
+	return json.Marshal(m)
+}
+
+func Data(type_ string, data interface{}) json.Marshaler {
+	return &Message{
+		Type: type_,
+		Data: data,
 	}
+}
+
+func filter(outCh chan event.Event) chan event.Event {
+	ch := make(chan event.Event)
+	go func() {
+		for {
+			evt := <-ch
+
+			if category := evt.Get("category"); category == "heartbeat" {
+				continue
+			}
+
+			outCh <- evt
+		}
+	}()
+
+	return ch
+}
+
+func resolver(dataDir string, outCh chan event.Event) chan event.Event {
+	db_path := path.Join(dataDir, "GeoLite2-Country.mmdb")
+
+	_, err := os.Stat(db_path)
+	if os.IsNotExist(err) {
+		if err = download(geoLiteURL, db_path); err != nil {
+			log.Fatal(err)
+			return outCh
+		} else {
+		}
+	}
+
+	ch := make(chan event.Event)
+	go func() {
+		db, err := maxminddb.Open(db_path)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		defer db.Close()
+
+		for {
+			evt := <-ch
+
+			v := evt.Get("source-ip")
+			if v == "" {
+				outCh <- evt
+				continue
+			}
+
+			ip := net.ParseIP(v)
+
+			var record struct {
+				Country struct {
+					ISOCode string `maxminddb:"iso_code"`
+				} `maxminddb:"country"`
+			}
+
+			if err = db.Lookup(ip, &record); err != nil {
+				log.Error("Error looking up country for: %s", err.Error())
+
+				outCh <- evt
+				continue
+			}
+
+			evt.Store("source.country.isocode", record.Country.ISOCode)
+			outCh <- evt
+		}
+	}()
+
+	return ch
+}
+
+func (web *web) Send(evt event.Event) {
+	web.eventCh <- evt
 }
 
 func (web *web) ServeWS(w http.ResponseWriter, r *http.Request) {
@@ -202,7 +362,7 @@ func (web *web) ServeWS(w http.ResponseWriter, r *http.Request) {
 	c := &connection{
 		ws:   ws,
 		web:  web,
-		send: make(chan json.Marshaler),
+		send: make(chan json.Marshaler, 100),
 	}
 
 	log.Info("Connection upgraded.")
@@ -215,11 +375,16 @@ func (web *web) ServeWS(w http.ResponseWriter, r *http.Request) {
 
 	web.register <- c
 
-	go func() {
-		c.send <- Metadata{
-			Start: time.Now(),
-		}
-	}()
+	c.send <- Data("metadata", Metadata{
+		Start:         web.start,
+		Version:       cmd.Version,
+		ReleaseTag:    cmd.ReleaseTag,
+		CommitID:      cmd.CommitID,
+		ShortCommitID: cmd.ShortCommitID,
+	})
+
+	c.send <- Data("events", web.events)
+	c.send <- Data("hot_countries", web.hotCountries)
 
 	go c.writePump()
 	c.readPump()

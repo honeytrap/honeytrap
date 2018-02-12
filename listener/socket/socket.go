@@ -85,7 +85,7 @@ func (sl *socketListener) Start() error {
 				continue
 			}
 
-			log.Infof("Listener started: %s", address)
+			log.Infof("Listener started: tcp/%s", address)
 
 			go func() {
 				for {
@@ -105,7 +105,7 @@ func (sl *socketListener) Start() error {
 				continue
 			}
 
-			log.Infof("Listener started: %s", address)
+			log.Infof("Listener started: udp/%s", address)
 
 			go func() {
 
