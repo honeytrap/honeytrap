@@ -44,6 +44,7 @@ import (
 
 	"github.com/honeytrap/honeytrap/cmd"
 	"github.com/honeytrap/honeytrap/config"
+	"github.com/honeytrap/honeytrap/web"
 
 	"github.com/honeytrap/honeytrap/director"
 	_ "github.com/honeytrap/honeytrap/director/forward"
@@ -72,8 +73,6 @@ import (
 
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/server/profiler"
-
-	web "github.com/honeytrap/honeytrap/web"
 
 	_ "github.com/honeytrap/honeytrap/pushers/console"       // Registers stdout backend.
 	_ "github.com/honeytrap/honeytrap/pushers/elasticsearch" // Registers elasticsearch backend.
@@ -158,16 +157,37 @@ type ServiceMap struct {
 	Type string
 }
 
-func (hc *Honeytrap) findService(addr net.Addr, payload []byte) *ServiceMap {
+func (hc *Honeytrap) findService(conn net.Conn) *ServiceMap {
+	// Match on address first
+	for _, sm := range hc.matchers {
+		if !sm.Matcher(conn.LocalAddr()) {
+			continue
+		}
+		return sm
+	}
+
+	log.Debug("Couldn't match on addr, peeking connection %s => %s", conn.RemoteAddr(), conn.LocalAddr())
+
+	// wrap connection in a connection with deadlines
+	conn = TimeoutConn(conn, time.Second*30)
+	pc := PeekConnection(conn)
+
+	buffer := make([]byte, 1024)
+
+	n, err := pc.Peek(buffer)
+	if err == io.EOF {
+		return nil
+	} else if err != nil {
+		log.Errorf(color.RedString("Could not peek bytes: %s", err.Error()))
+		return nil
+	}
+
 	for _, sm := range hc.matchers {
 		service := sm.Service
 
-		if sm.Matcher(addr) {
-			// match on addr has priority
-			return sm
-		} else if ch, ok := service.(services.CanHandlerer); !ok {
+		if ch, ok := service.(services.CanHandlerer); !ok {
 			// CanHandle not supported
-		} else if !ch.CanHandle(payload) {
+		} else if !ch.CanHandle(buffer[:n]) {
 			// Service won't support payload
 		} else {
 			return sm
@@ -235,12 +255,16 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 
 	hc.profiler.Start()
 
-	w := web.New(
+	w, err := web.New(
 		web.WithEventBus(hc.bus),
 		web.WithDataDir(hc.dataDir),
+		web.WithConfig(hc.config.Web),
 	)
+	if err != nil {
+		log.Error("Error parsing configuration of web: %s", err.Error())
+	}
 
-	go w.ListenAndServe()
+	w.Start()
 
 	channels := map[string]pushers.Channel{}
 	// sane defaults!
@@ -344,8 +368,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		Type string `toml:"type"`
 	}{}
 
-	err := toml.PrimitiveDecode(hc.config.Listener, &x)
-	if err != nil {
+	if err := toml.PrimitiveDecode(hc.config.Listener, &x); err != nil {
 		log.Error("Error parsing configuration of listener: %s", err.Error())
 		return
 	}
@@ -479,8 +502,8 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 func TimeoutConn(conn net.Conn, duration time.Duration) net.Conn {
 	return &timeoutConn{
 		conn,
-		time.Duration(30 * time.Second),
-		time.Duration(30 * time.Second),
+		time.Duration(duration),
+		time.Duration(duration),
 	}
 }
 
@@ -539,22 +562,7 @@ func (hc *Honeytrap) handle(conn net.Conn) {
 	log.Debug("Accepted connection for %s => %s", conn.RemoteAddr(), conn.LocalAddr())
 	defer log.Debug("Disconnected connection for %s => %s", conn.RemoteAddr(), conn.LocalAddr())
 
-	// wrap connection in a connection with deadlines
-	conn = TimeoutConn(conn, time.Second*30)
-
-	pc := PeekConnection(conn)
-
-	buffer := make([]byte, 1024)
-
-	n, err := pc.Peek(buffer)
-	if err == io.EOF {
-		return
-	} else if err != nil {
-		log.Errorf(color.RedString("Could not peek bytes: %s", err.Error()))
-		return
-	}
-
-	sm := hc.findService(conn.LocalAddr(), buffer[:n])
+	sm := hc.findService(conn)
 	if sm == nil {
 		return
 	}
@@ -562,7 +570,7 @@ func (hc *Honeytrap) handle(conn net.Conn) {
 	log.Debug("Handling connection for %s => %s %s(%s)", conn.RemoteAddr(), conn.LocalAddr(), sm.Name, sm.Type)
 
 	ctx := context.Background()
-	if err := sm.Service.Handle(ctx, pc); err != nil {
+	if err := sm.Service.Handle(ctx, conn); err != nil {
 		log.Errorf(color.RedString("Error handling service: %s: %s", sm.Name, err.Error()))
 	}
 }
