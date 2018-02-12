@@ -95,11 +95,12 @@ func download(url string, dest string) error {
 const geoLiteURL = "http://geolite.maxmind.com/download/geoip/database/GeoLite2-City.mmdb.gz"
 
 type web struct {
-	*http.Server
-
 	config *config.Config
 
 	dataDir string
+
+	ListenAddress string `toml:"listen"`
+	Enabled       bool   `toml:"enabled"`
 
 	eb *eventbus.EventBus
 
@@ -116,29 +117,19 @@ type web struct {
 
 	// Unregister requests from connections.
 	unregister chan *connection
+
+	hotCountries *SafeArray
+	events       *SafeArray
 }
 
-type HotCountry struct {
-	ISOCode string    `json:"isocode"`
-	Count   int       `json:"count"`
-	Last    time.Time `json:"last"`
-}
-
-func New(options ...func(*web)) *web {
-	handler := http.NewServeMux()
-
-	// TODO(nl5887): make configurable
-	server := &http.Server{
-		Addr:    "127.0.0.1:8089",
-		Handler: handler,
-	}
-
+func New(options ...func(*web) error) (*web, error) {
 	hc := web{
-		Server: server,
-
 		eb: nil,
 
 		start: time.Now(),
+
+		ListenAddress: "127.0.0.1:8089",
+		Enabled:       true,
 
 		register:    make(chan *connection),
 		unregister:  make(chan *connection),
@@ -146,92 +137,18 @@ func New(options ...func(*web)) *web {
 
 		eventCh:   nil,
 		messageCh: make(chan json.Marshaler),
+
+		hotCountries: NewSafeArray(),
+		events:       NewSafeArray(),
 	}
 
 	for _, optionFn := range options {
-		optionFn(&hc)
+		if err := optionFn(&hc); err != nil {
+			return nil, err
+		}
 	}
 
-	sh := http.FileServer(&assetfs.AssetFS{
-		Asset:     assets.Asset,
-		AssetDir:  assets.AssetDir,
-		AssetInfo: assets.AssetInfo,
-		Prefix:    assets.Prefix,
-	})
-
-	handler.HandleFunc("/ws", hc.ServeWS)
-	handler.Handle("/", sh)
-
-	eventCh := make(chan event.Event)
-
-	go func(ch chan event.Event) {
-		hotCountries := []HotCountry{}
-
-		for evt := range ch {
-			hc.messageCh <- Data("event", &evt)
-
-			// update hot countries
-			isoCode := evt.Get("source.country.isocode")
-			if isoCode == "" {
-				continue
-			}
-
-			found := false
-			for i, _ := range hotCountries {
-				if hotCountries[i].ISOCode != isoCode {
-					continue
-				}
-
-				hotCountries[i].Last = time.Now()
-				hotCountries[i].Count++
-				found = true
-				break
-			}
-
-			if !found {
-				hotCountries = append(hotCountries, HotCountry{
-					ISOCode: isoCode,
-					Count:   1,
-					Last:    time.Now(),
-				})
-			}
-
-			hc.messageCh <- Data("hot_countries", hotCountries)
-		}
-	}(eventCh)
-
-	eventCh = resolver(hc.dataDir, eventCh)
-	eventCh = filter(eventCh)
-
-	hc.eventCh = eventCh
-
-	go hc.run()
-
-	return &hc
-}
-
-func (w *web) ListenAndServe() {
-	log.Infof("Web interface started: %s", "8089")
-
-	w.Server.ListenAndServe()
-}
-
-type Metadata struct {
-	Start         time.Time
-	Version       string `json:"version"`
-	ReleaseTag    string `json:"release_tag"`
-	CommitID      string `json:"commitid"`
-	ShortCommitID string `json:"shortcommitid"`
-}
-
-func (metadata Metadata) MarshalJSON() ([]byte, error) {
-	m := map[string]interface{}{}
-	m["start"] = metadata.Start
-	m["version"] = metadata.Version
-	m["commitid"] = metadata.CommitID
-	m["shortcommitid"] = metadata.ShortCommitID
-	m["release_tag"] = metadata.ReleaseTag
-	return json.Marshal(m)
+	return &hc, nil
 }
 
 var upgrader = websocket.Upgrader{
@@ -244,6 +161,83 @@ var upgrader = websocket.Upgrader{
 
 func (web *web) SetEventBus(eb *eventbus.EventBus) {
 	eb.Subscribe(web)
+}
+
+func (web *web) Start() {
+	if !web.Enabled {
+		return
+	}
+
+	handler := http.NewServeMux()
+
+	server := &http.Server{
+		Addr:    web.ListenAddress,
+		Handler: handler,
+	}
+
+	sh := http.FileServer(&assetfs.AssetFS{
+		Asset:     assets.Asset,
+		AssetDir:  assets.AssetDir,
+		AssetInfo: assets.AssetInfo,
+		Prefix:    assets.Prefix,
+	})
+
+	handler.HandleFunc("/ws", web.ServeWS)
+	handler.Handle("/", sh)
+
+	eventCh := make(chan event.Event)
+
+	go func(ch chan event.Event) {
+		for evt := range ch {
+			web.events.Append(evt)
+
+			web.messageCh <- Data("event", evt)
+
+			isoCode := evt.Get("source.country.isocode")
+			if isoCode == "" {
+				continue
+			}
+
+			found := false
+
+			web.hotCountries.Range(func(v interface{}) bool {
+				hotCountry := v.(*HotCountry)
+
+				if hotCountry.ISOCode != isoCode {
+					return true
+				}
+
+				hotCountry.Last = time.Now()
+				hotCountry.Count++
+
+				found = true
+				return false
+			})
+
+			if !found {
+				web.hotCountries.Append(&HotCountry{
+					ISOCode: isoCode,
+					Count:   1,
+					Last:    time.Now(),
+				})
+			}
+
+			web.messageCh <- Data("hot_countries", web.hotCountries)
+		}
+	}(eventCh)
+
+	eventCh = resolver(web.dataDir, eventCh)
+	eventCh = filter(eventCh)
+
+	web.eventCh = eventCh
+
+	go web.run()
+
+	go func() {
+		log.Infof("Web interface started: %s", web.ListenAddress)
+
+		server.ListenAndServe()
+	}()
 }
 
 func (web *web) run() {
@@ -368,7 +362,7 @@ func (web *web) ServeWS(w http.ResponseWriter, r *http.Request) {
 	c := &connection{
 		ws:   ws,
 		web:  web,
-		send: make(chan json.Marshaler),
+		send: make(chan json.Marshaler, 100),
 	}
 
 	log.Info("Connection upgraded.")
@@ -381,15 +375,16 @@ func (web *web) ServeWS(w http.ResponseWriter, r *http.Request) {
 
 	web.register <- c
 
-	go func() {
-		c.send <- Data("metadata", Metadata{
-			Start:         web.start,
-			Version:       cmd.Version,
-			ReleaseTag:    cmd.ReleaseTag,
-			CommitID:      cmd.CommitID,
-			ShortCommitID: cmd.ShortCommitID,
-		})
-	}()
+	c.send <- Data("metadata", Metadata{
+		Start:         web.start,
+		Version:       cmd.Version,
+		ReleaseTag:    cmd.ReleaseTag,
+		CommitID:      cmd.CommitID,
+		ShortCommitID: cmd.ShortCommitID,
+	})
+
+	c.send <- Data("events", web.events)
+	c.send <- Data("hot_countries", web.hotCountries)
 
 	go c.writePump()
 	c.readPump()
