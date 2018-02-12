@@ -30,7 +30,24 @@
  */
 package redis
 
-var infoMsg = `# Server
+import (
+	"fmt"
+)
+
+func (s *redisService) sectionsMsg() string {
+	return s.infoServerMsg() + s.infoClientsMsg() + s.infoMemoryMsg() + s.infoPersistenceMsg() + s.infoStatsMsg() + s.infoReplicationMsg() + s.infoCPUMsg() + s.infoClusterMsg()
+}
+
+func (s *redisService) infoSectionsMsg() string {
+	return s.sectionsMsg() + s.infoKeyspaceMsg()
+}
+
+func (s *redisService) allSectionsMsg() string {
+	return s.sectionsMsg() + s.infoCommandstatsMsg() + s.infoKeyspaceMsg()
+}
+
+func (s *redisService) infoServerMsg() string {
+	return fmt.Sprintf(`# Server
 redis_version:%s
 redis_git_sha1:00000000
 redis_git_dirty:0
@@ -51,13 +68,21 @@ lru_clock:5820570
 executable:/data/redis-server
 config_file:
 
-# Clients
+`, s.Version, s.Os)
+}
+
+func (s *redisService) infoClientsMsg() string {
+	return `# Clients
 connected_clients:0
 client_longest_output_list:0
 client_biggest_input_buf:0
 blocked_clients:0
 
-# Memory
+`
+}
+
+func (s *redisService) infoMemoryMsg() string {
+	return `# Memory
 used_memory:1828264
 used_memory_human:808.85K
 used_memory_rss:4120576
@@ -81,7 +106,11 @@ mem_allocator:jemalloc-4.0.3
 active_defrag_running:0
 lazyfree_pending_objects:0
 
-# Persistence
+`
+}
+
+func (s *redisService) infoPersistenceMsg() string {
+	return `# Persistence
 loading:0
 rdb_changes_since_last_save:0
 rdb_bgsave_in_progress:0
@@ -99,8 +128,11 @@ aof_last_bgrewrite_status:ok
 aof_last_write_status:ok
 aof_last_cow_size:0
 
-# Stats
-total_connections_received:2
+`
+}
+
+func (s *redisService) infoStatsMsg() string {
+	return `total_connections_received:2
 total_commands_processed:1
 instantaneous_ops_per_sec:0
 total_net_input_bytes:14
@@ -125,7 +157,11 @@ active_defrag_misses:0
 active_defrag_key_hits:0
 active_defrag_key_misses:0
 
-# Replication
+`
+}
+
+func (s *redisService) infoReplicationMsg() string {
+	return `# Replication
 role:master
 connected_slaves:0
 master_replid:29e814284ae0619c1b2c09175f4b5b6a5aafff48
@@ -137,20 +173,52 @@ repl_backlog_size:1048576
 repl_backlog_first_byte_offset:0
 repl_backlog_histlen:0
 
-# CPU
+`
+}
+
+func (s *redisService) infoCPUMsg() string {
+	return `# CPU
 used_cpu_sys:20.83
 used_cpu_user:3.02
 used_cpu_sys_children:0.00
 used_cpu_user_children:0.00
 
-# Cluster
+`
+}
+
+func (s *redisService) infoCommandstatsMsg() string {
+	return `# Commandstats
+cmdstat_info:calls=3,usec=181,usec_per_call=60.33
+
+`
+}
+
+func (s *redisService) infoClusterMsg() string {
+	return `# Cluster
 cluster_enabled:0
 
-# Keyspace
 `
+}
 
-var lenMsg = "$%d\n%s\n"
-var dollar0Msg = "$0\n\n"
+func (s *redisService) infoKeyspaceMsg() string {
+	return `# Keyspace
 
-var syntaxErrorMsg = "-ERR syntax error\n"
-var unknownCmdMsg = "-ERR unknown command '%s'\n"
+`
+}
+
+func lenMsg() string {
+	return "$%d\n%s\n"
+}
+
+func lineBreakMsg() string {
+	return ""
+}
+
+func errorMsg(errType string) string {
+	switch errType {
+	case "syntax":
+		return "-ERR syntax error\n"
+	default:
+		return "-ERR unknown command '%s'\n"
+	}
+}
