@@ -6,8 +6,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-
-	"github.com/lunny/log"
 )
 
 // A data socket is used to send non-control data between the client and
@@ -81,22 +79,25 @@ func (socket *ftpActiveSocket) Close() error {
 }
 
 type ftpPassiveSocket struct {
-	conn       net.Conn
-	port       int
-	host       string
-	ingress    chan []byte
-	egress     chan []byte
-	wg         sync.WaitGroup
-	err        error
-	tlsConfing *tls.Config
+	conn      net.Conn
+	port      int
+	host      string
+	ingress   chan []byte
+	egress    chan []byte
+	wg        sync.WaitGroup
+	err       error
+	tlsConfig *tls.Config
 }
 
-func newPassiveSocket(host string, port int, sessionid string, tlsConfing *tls.Config) (DataSocket, error) {
-	socket := new(ftpPassiveSocket)
-	socket.ingress = make(chan []byte)
-	socket.egress = make(chan []byte)
-	socket.host = host
-	socket.port = port
+func newPassiveSocket(host string, port int, sessionid string, tlsConfig *tls.Config) (DataSocket, error) {
+	socket := &ftpPassiveSocket{
+		host:      host,
+		port:      port,
+		tlsConfig: tlsConfig,
+		ingress:   make(chan []byte),
+		egress:    make(chan []byte),
+	}
+
 	if err := socket.GoListenAndServe(sessionid); err != nil {
 		return nil, err
 	}
@@ -158,8 +159,8 @@ func (socket *ftpPassiveSocket) GoListenAndServe(sessionid string) (err error) {
 	socket.port = port
 	socket.wg.Add(1)
 
-	if socket.tlsConfing != nil {
-		listener = tls.NewListener(listener, socket.tlsConfing)
+	if socket.tlsConfig != nil {
+		listener = tls.NewListener(listener, socket.tlsConfig)
 	}
 
 	go func() {

@@ -6,7 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"fmt"
+	"encoding/pem"
 	"math/big"
 	"time"
 
@@ -27,31 +27,43 @@ type ftpStorage struct {
 	storage.Storage
 }
 
-//Returns a TLS Certificate or nil on error
-func (s *ftpStorage) Certificate() *tls.Certificate {
+//Returns a TLS Certificate
+func (s *ftpStorage) Certificate() (*tls.Certificate, error) {
 
-	keyname := "private-key"
+	keyname := "pemkey"
+	certname := "pemcert"
 
-	priv_b, err := s.Get(keyname)
+	pemkey, err := s.Get(keyname)
 	if err != nil {
-		priv_b, err = generateKey()
+		pemkey, err = generateKey()
 		if err != nil {
-			return nil
+			return nil, err
 		}
-		if err := s.Set(keyname, priv_b); err != nil {
+		if err = s.Set(keyname, pemkey); err != nil {
 			log.Errorf("Could not persist %s: %s", keyname, err.Error())
 		}
 	}
 
-	cert, err := generateCert(priv_b)
+	pemcert, err := s.Get(certname)
 	if err != nil {
-		log.Errorf("Could not generate a Certificate. %s", err)
-		return nil
+		pemcert, err = generateCert(pemkey)
+		if err != nil {
+			return nil, err
+		}
+		if err = s.Set(certname, pemcert); err != nil {
+			log.Errorf("Could not persist %s: %s", certname, err.Error())
+		}
 	}
 
-	return cert
+	tlscert, err := tls.X509KeyPair(pemcert, pemkey)
+	if err != nil {
+		return nil, err
+	}
+
+	return &tlscert, nil
 }
 
+//Returns a PEM encoded RSA private key
 func generateKey() ([]byte, error) {
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -62,13 +74,15 @@ func generateKey() ([]byte, error) {
 		return nil, cerr
 	}
 
-	data := x509.MarshalPKCS1PrivateKey(priv)
+	pemdata := pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(priv),
+	})
 
-	return data, nil
+	return pemdata, nil
 }
 
-func generateCert(priv_b []byte) (*tls.Certificate, error) {
-	log.Debug("START generateCert()")
+func generateCert(pempriv []byte) ([]byte, error) {
 
 	snLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	sn, err := rand.Int(rand.Reader, snLimit)
@@ -84,43 +98,32 @@ func generateCert(priv_b []byte) (*tls.Certificate, error) {
 			Organization:       []string{""},
 			OrganizationalUnit: []string{""},
 		},
-		Issuer: pkix.Name{
-			Country:            []string{""},
-			Organization:       []string{""},
-			OrganizationalUnit: []string{""},
-			Locality:           []string{""},
-			Province:           []string{""},
-			StreetAddress:      []string{""},
-			PostalCode:         []string{""},
-			SerialNumber:       fmt.Sprintf("%d", 0),
-			//CommonName:         s.Banner,
-		},
-		SignatureAlgorithm: x509.SHA512WithRSA,
-		//PublicKeyAlgorithm:    x509.RSA,
 		NotBefore:             time.Now(),
 		NotAfter:              time.Now().AddDate(1, 0, 0),
 		SubjectKeyId:          []byte{},
 		BasicConstraintsValid: true,
-		IsCA:        false,
-		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
-		KeyUsage:    x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		//IsCA:        false,
+		//ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		//KeyUsage:    x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 	}
 
-	priv, err := x509.ParsePKCS1PrivateKey(priv_b)
+	block, _ := pem.Decode(pempriv)
+
+	priv, err := x509.ParsePKCS1PrivateKey(block.Bytes)
 	if err != nil {
 		log.Errorf("Could not parse private key: %s", err.Error())
 		return nil, err
 	}
 
-	pub := priv.Public()
-
-	ca_b, err := x509.CreateCertificate(rand.Reader, ca, ca, pub, priv)
+	cert, err := x509.CreateCertificate(rand.Reader, ca, ca, priv.Public(), priv)
 	if err != nil {
 		return nil, err
 	}
 
-	return &tls.Certificate{
-		Certificate: [][]byte{ca_b},
-		PrivateKey:  priv,
-	}, nil
+	certpem := pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: cert,
+	})
+
+	return certpem, nil
 }

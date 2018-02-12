@@ -534,15 +534,10 @@ func (cmd commandPasv) RequireAuth() bool {
 
 func (cmd commandPasv) Execute(conn *Conn, param string) {
 	listenIP := conn.passiveListenIP()
-	lastidx := strings.LastIndex(listenIP, ":")
-	if lastidx <= 0 {
-		conn.writeMessage(425, "Data connection failed")
-		return
-	}
 
-	socket, err := newPassiveSocket(listenIP[:lastidx], conn.PassivePort(), conn.sessionid, conn.tlsConfig)
+	socket, err := newPassiveSocket(listenIP, conn.PassivePort(), conn.sessionid, conn.tlsConfig)
 	if err != nil {
-		conn.writeMessage(425, "Data connection failed")
+		conn.writeMessage(425, "Data connection failed, socket")
 		return
 	}
 	conn.dataConn = socket
@@ -797,7 +792,6 @@ func (cmd commandAuth) RequireAuth() bool {
 }
 
 func (cmd commandAuth) Execute(conn *Conn, param string) {
-	log.Debugf("cmd auth param: %s", param)
 	if param == "TLS" && conn.tlsConfig != nil {
 		conn.writeMessage(234, "AUTH command OK")
 		err := conn.upgradeToTLS()
