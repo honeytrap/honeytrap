@@ -44,6 +44,7 @@ import (
 
 	"github.com/honeytrap/honeytrap/cmd"
 	"github.com/honeytrap/honeytrap/config"
+	"github.com/honeytrap/honeytrap/web"
 
 	"github.com/honeytrap/honeytrap/director"
 	_ "github.com/honeytrap/honeytrap/director/forward"
@@ -73,8 +74,6 @@ import (
 
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/server/profiler"
-
-	web "github.com/honeytrap/honeytrap/web"
 
 	_ "github.com/honeytrap/honeytrap/pushers/console"       // Registers stdout backend.
 	_ "github.com/honeytrap/honeytrap/pushers/elasticsearch" // Registers elasticsearch backend.
@@ -169,10 +168,13 @@ func (hc *Honeytrap) findService(conn net.Conn) *ServiceMap {
 	}
 
 	log.Debug("Couldn't match on addr, peeking connection %s => %s", conn.RemoteAddr(), conn.LocalAddr())
+
 	// wrap connection in a connection with deadlines
 	conn = TimeoutConn(conn, time.Second*30)
 	pc := PeekConnection(conn)
+
 	buffer := make([]byte, 1024)
+
 	n, err := pc.Peek(buffer)
 	if err == io.EOF {
 		return nil
@@ -192,6 +194,7 @@ func (hc *Honeytrap) findService(conn net.Conn) *ServiceMap {
 			return sm
 		}
 	}
+
 	return nil
 }
 
@@ -253,12 +256,16 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 
 	hc.profiler.Start()
 
-	w := web.New(
+	w, err := web.New(
 		web.WithEventBus(hc.bus),
 		web.WithDataDir(hc.dataDir),
+		web.WithConfig(hc.config.Web),
 	)
+	if err != nil {
+		log.Error("Error parsing configuration of web: %s", err.Error())
+	}
 
-	go w.ListenAndServe()
+	w.Start()
 
 	channels := map[string]pushers.Channel{}
 	// sane defaults!
@@ -362,8 +369,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		Type string `toml:"type"`
 	}{}
 
-	err := toml.PrimitiveDecode(hc.config.Listener, &x)
-	if err != nil {
+	if err := toml.PrimitiveDecode(hc.config.Listener, &x); err != nil {
 		log.Error("Error parsing configuration of listener: %s", err.Error())
 		return
 	}

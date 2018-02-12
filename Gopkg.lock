@@ -131,7 +131,7 @@
   branch = "master"
   name = "github.com/honeytrap/honeytrap-web"
   packages = ["."]
-  revision = "40a3ac1628261e59b1dcb1fddd650e3040e87165"
+  revision = "d4db75aa6efa361c39438fc9bc0538661905d587"
 
 [[projects]]
   branch = "master"
@@ -150,12 +150,6 @@
   packages = ["."]
   revision = "0360b2af4f38e8d38c7fce2a9f4e702702d73a39"
   version = "v0.0.3"
-
-[[projects]]
-  name = "github.com/mattn/go-sqlite3"
-  packages = ["."]
-  revision = "5160b48509cf5c877bc22c11c373f8c7738cdb38"
-  version = "v1.3.0"
 
 [[projects]]
   branch = "master"
@@ -274,6 +268,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "bba2ae33fc081416d4f60c90cd5ba28206b6947b5943b8eccf8146ea24b8c280"
+  inputs-digest = "ed0c11ea26c02d3dff4e7968eb1edaef2696ad4f9f63d43096684e24de3c8477"
   solver-name = "gps-cdcl"
   solver-version = 1

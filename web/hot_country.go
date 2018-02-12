@@ -31,27 +31,11 @@
 package web
 
 import (
-	"github.com/BurntSushi/toml"
-	"github.com/honeytrap/honeytrap/pushers/eventbus"
+	"time"
 )
 
-func WithEventBus(bus *eventbus.EventBus) func(*web) error {
-	return func(w *web) error {
-		w.SetEventBus(bus)
-		return nil
-	}
-}
-
-func WithDataDir(dataDir string) func(*web) error {
-	return func(w *web) error {
-		w.dataDir = dataDir
-		return nil
-	}
-}
-
-func WithConfig(c toml.Primitive) func(*web) error {
-	return func(d *web) error {
-		err := toml.PrimitiveDecode(c, d)
-		return err
-	}
+type HotCountry struct {
+	ISOCode string    `json:"isocode"`
+	Count   int       `json:"count"`
+	Last    time.Time `json:"last"`
 }

@@ -31,27 +31,44 @@
 package web
 
 import (
-	"github.com/BurntSushi/toml"
-	"github.com/honeytrap/honeytrap/pushers/eventbus"
+	"encoding/json"
+	"sync"
 )
 
-func WithEventBus(bus *eventbus.EventBus) func(*web) error {
-	return func(w *web) error {
-		w.SetEventBus(bus)
-		return nil
+func NewSafeArray() *SafeArray {
+	return &SafeArray{
+		array: []interface{}{},
 	}
 }
 
-func WithDataDir(dataDir string) func(*web) error {
-	return func(w *web) error {
-		w.dataDir = dataDir
-		return nil
+type SafeArray struct {
+	array []interface{}
+	m     sync.Mutex
+}
+
+func (sa *SafeArray) Append(v interface{}) {
+	sa.m.Lock()
+	defer sa.m.Unlock()
+
+	sa.array = append(sa.array, v)
+}
+
+func (sa *SafeArray) Range(fn func(interface{}) bool) {
+	sa.m.Lock()
+	defer sa.m.Unlock()
+
+	for _, v := range sa.array {
+		if fn(v) {
+			continue
+		}
+
+		break
 	}
 }
 
-func WithConfig(c toml.Primitive) func(*web) error {
-	return func(d *web) error {
-		err := toml.PrimitiveDecode(c, d)
-		return err
-	}
+func (sa *SafeArray) MarshalJSON() ([]byte, error) {
+	sa.m.Lock()
+	defer sa.m.Unlock()
+
+	return json.Marshal(sa.array)
 }

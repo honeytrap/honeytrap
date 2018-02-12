@@ -31,27 +31,24 @@
 package web
 
 import (
-	"github.com/BurntSushi/toml"
-	"github.com/honeytrap/honeytrap/pushers/eventbus"
+	"encoding/json"
+	"time"
 )
 
-func WithEventBus(bus *eventbus.EventBus) func(*web) error {
-	return func(w *web) error {
-		w.SetEventBus(bus)
-		return nil
-	}
+type Metadata struct {
+	Start         time.Time
+	Version       string `json:"version"`
+	ReleaseTag    string `json:"release_tag"`
+	CommitID      string `json:"commitid"`
+	ShortCommitID string `json:"shortcommitid"`
 }
 
-func WithDataDir(dataDir string) func(*web) error {
-	return func(w *web) error {
-		w.dataDir = dataDir
-		return nil
-	}
-}
-
-func WithConfig(c toml.Primitive) func(*web) error {
-	return func(d *web) error {
-		err := toml.PrimitiveDecode(c, d)
-		return err
-	}
+func (metadata Metadata) MarshalJSON() ([]byte, error) {
+	m := map[string]interface{}{}
+	m["start"] = metadata.Start
+	m["version"] = metadata.Version
+	m["commitid"] = metadata.CommitID
+	m["shortcommitid"] = metadata.ShortCommitID
+	m["release_tag"] = metadata.ReleaseTag
+	return json.Marshal(m)
 }
