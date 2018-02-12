@@ -52,7 +52,7 @@ func SMTP(options ...services.ServicerFunc) services.Servicer {
 		Config: Config{
 			Banner: "SMTPd",
 			srv: &Server{
-				tlsConf: nil,
+				tlsConfig: nil,
 			},
 			receiveChan: make(chan Message),
 		},
@@ -67,9 +67,14 @@ func SMTP(options ...services.ServicerFunc) services.Servicer {
 		log.Errorf("Could not initialize storage: %s", err.Error())
 	} else {
 
-		cert := store.Certificate()
-		s.srv.tlsConfig(cert)
-		log.Debug("SMTP server: set tls certificate")
+		cert, err := store.Certificate()
+		if err != nil {
+			log.Debugf("SMTP: No TLS, %s", err.Error())
+		} else {
+			s.srv.tlsConf(cert)
+
+			log.Debug("SMTP server: set tls certificate")
+		}
 	}
 
 	s.srv.Banner = s.Banner

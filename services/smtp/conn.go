@@ -211,8 +211,8 @@ func loopState(c *conn) stateFn {
 	} else if isCommand(line, "STARTTLS") {
 		c.PrintfLine("220 Ready to start TLS")
 
-		if c.server.tlsConf != nil {
-			tlsConn := tls.Server(c.rwc, c.server.tlsConf)
+		if c.server.tlsConfig != nil {
+			tlsConn := tls.Server(c.rwc, c.server.tlsConfig)
 
 			if err := tlsConn.Handshake(); err != nil {
 				log.Error("Error during tls handshake: %s", err.Error())
