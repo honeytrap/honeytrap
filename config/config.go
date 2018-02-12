@@ -52,6 +52,8 @@ var format = logging.MustStringFormatter(
 type Config struct {
 	Listener toml.Primitive `toml:"listener"`
 
+	Web toml.Primitive `toml:"web"`
+
 	Services  map[string]toml.Primitive `toml:"service"`
 	Ports     []toml.Primitive          `toml:"port"`
 	Directors map[string]toml.Primitive `toml:"director"`
