@@ -52,9 +52,9 @@ func TestSMTP(t *testing.T) {
 	//Send data client->server
 
 	//Is TLS available?
-	conf := s.srv.tlsConf
+	conf := s.srv.tlsConfig
 	if conf == nil {
-		t.Error("TLS config is nil")
+		t.Error("TLS config is not set")
 	}
 
 	err = smtpClient.StartTLS(conf)
