@@ -109,6 +109,8 @@ func (s *SMTPService) SetChannel(c pushers.Channel) {
 
 func (s *SMTPService) Handle(ctx context.Context, conn net.Conn) error {
 
+	rcvLine := make(chan string)
+
 	// Wait for a message and send it into the eventbus
 	go func() {
 		for {
@@ -125,12 +127,21 @@ func (s *SMTPService) Handle(ctx context.Context, conn net.Conn) error {
 					event.Custom("smtp.To", message.To),
 					event.Custom("smtp.Body", message.Body.String()),
 				))
+			case line := <-rcvLine:
+				s.ch.Send(event.New(
+					services.EventOptions,
+					event.Category("smtp"),
+					event.Type("input"),
+					event.SourceAddr(conn.RemoteAddr()),
+					event.DestinationAddr(conn.LocalAddr()),
+					event.Custom("smtp.Line", line),
+				))
 			}
 		}
 	}()
 
 	//Create new smtp server connection
-	c, err := s.srv.NewConn(conn)
+	c, err := s.srv.NewConn(conn, rcvLine)
 	if err != nil {
 		return err
 	}

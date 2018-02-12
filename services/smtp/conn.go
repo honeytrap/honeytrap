@@ -51,6 +51,7 @@ type conn struct {
 	domain string
 	msg    *Message
 	server *Server
+	rcv    chan string
 	i      int
 }
 
@@ -82,6 +83,10 @@ func (c *conn) ReadLine() (string, error) {
 	s, err := c.Text.ReadLine()
 	fmt.Printf("> ")
 	fmt.Println(s)
+
+	//send line to log channel
+	c.rcv <- s
+
 	return s, err
 }
 

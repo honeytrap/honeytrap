@@ -80,10 +80,11 @@ type Server struct {
 	tlsConfig *tls.Config
 }
 
-func (s *Server) NewConn(rwc net.Conn) (c *conn, err error) {
+func (s *Server) NewConn(rwc net.Conn, recv chan string) (c *conn, err error) {
 	c = &conn{
 		server: s,
 		rwc:    rwc,
+		rcv:    recv,
 		i:      0,
 	}
 
