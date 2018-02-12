@@ -33,6 +33,7 @@ func FTP(options ...services.ServicerFunc) services.Servicer {
 		Auth:           &FtpUser{},
 		Name:           s.ServerName,
 		WelcomeMessage: s.Banner,
+		PassivePorts:   "20200-20250",
 	}
 	s.server = NewServer(opts)
 
@@ -49,6 +50,20 @@ func FTP(options ...services.ServicerFunc) services.Servicer {
 		fs.makefile("/tmp/index.html")
 	*/
 	s.driver = fs
+
+	if store, err := Storage(); err != nil {
+		log.Errorf("FTP: Could not initialize storage. %s", err.Error())
+	} else {
+		cert, err := store.Certificate()
+		if err != nil {
+			log.Errorf("TLS error: %s", err.Error())
+		} else {
+			s.server.tlsConfig = simpleTLSConfig(cert)
+			//s.server.TLS = true
+			s.server.ExplicitFTPS = true
+			log.Debug("FTP: set TLS OK")
+		}
+	}
 
 	return s
 }
@@ -82,13 +97,14 @@ func (s *ftpService) Handle(ctx context.Context, conn net.Conn) error {
 	ftpConn := s.server.newConn(conn, s.driver, s.recv)
 
 	go func() {
-	forloop:
 		for {
 			select {
 			case msg := <-s.recv:
-				if msg == "q" {
-					break forloop
-				}
+				/*
+					if msg == "q" {
+						break
+					}
+				*/
 				s.c.Send(event.New(
 					services.EventOptions,
 					event.Category("ftp"),

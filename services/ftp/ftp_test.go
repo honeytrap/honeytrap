@@ -2,9 +2,11 @@ package ftp
 
 import (
 	"net"
+	"os"
 	"testing"
 
 	"github.com/honeytrap/honeytrap/pushers"
+	"github.com/honeytrap/honeytrap/storage"
 )
 
 const (
@@ -15,6 +17,11 @@ const (
 var (
 	clt, srv net.Conn
 )
+
+func TestMain(m *testing.M) {
+	storage.SetDataDir("")
+	os.Exit(m.Run())
+}
 
 func TestFTP(t *testing.T) {
 
