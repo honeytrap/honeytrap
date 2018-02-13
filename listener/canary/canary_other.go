@@ -33,6 +33,7 @@
 package canary
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/honeytrap/honeytrap/listener"
@@ -41,7 +42,7 @@ import (
 type Canary struct {
 }
 
-func (c *Canary) Start() error {
+func (c *Canary) Start(ctx context.Context) error {
 	return nil
 }
 

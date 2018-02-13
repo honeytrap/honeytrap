@@ -34,6 +34,7 @@
 package netstack
 
 import (
+	"context"
 	"fmt"
 	"net"
 
@@ -104,7 +105,7 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 	return &l, nil
 }
 
-func (nl *netstackListener) Start() error {
+func (nl *netstackListener) Start(ctx context.Context) error {
 	// Parse the IP address. Support both ipv4 and ipv6.
 	parsedAddr := net.ParseIP(nl.Addr)
 	if parsedAddr == nil {

@@ -31,6 +31,7 @@
 package network
 
 import (
+	"context"
 	"fmt"
 	"net"
 
@@ -76,7 +77,7 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 	return &l, nil
 }
 
-func (sl *socketListener) Start() error {
+func (sl *socketListener) Start(ctx context.Context) error {
 	for _, address := range sl.Addresses {
 		if _, ok := address.(*net.TCPAddr); ok {
 			l, err := net.Listen(address.Network(), address.String())
@@ -108,7 +109,6 @@ func (sl *socketListener) Start() error {
 			log.Infof("Listener started: udp/%s", address)
 
 			go func() {
-
 				for {
 					var buf [65535]byte
 

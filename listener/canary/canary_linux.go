@@ -35,6 +35,7 @@ package canary
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"math/rand"
@@ -971,9 +972,14 @@ func (c *Canary) transmit(fd int32) error {
 }
 
 // Run will start Canary
-func (c *Canary) Start() error {
+func (c *Canary) Start(ctx context.Context) error {
 	log.Info("Raw listener started.")
 	defer log.Info("Raw listener stopped.")
+
+	go func() {
+		<-ctx.Done()
+		c.Close()
+	}()
 
 	go c.knockDetector()
 
@@ -982,81 +988,67 @@ func (c *Canary) Start() error {
 		buffer [DefaultBufferSize]byte
 	)
 
-	for {
-		nevents, err := syscall.EpollWait(c.epfd, events[:], -1)
-		if err != nil {
-			log.Errorf("Error epollwait: %s", err.Error())
+	go func() {
+		for {
+			nevents, err := syscall.EpollWait(c.epfd, events[:], -1)
+			if err != nil {
+				log.Errorf("Error epollwait: %s", err.Error())
+				return
+			}
 
-			c.events.Send(event.New(
-				CanaryOptions,
-				event.Category("epoll"),
-				event.SeverityError,
-				event.Error(err),
-			))
+			for ev := 0; ev < nevents; ev++ {
+				if events[ev].Events&syscall.EPOLLIN == syscall.EPOLLIN {
+					if n, _, err := syscall.Recvfrom(int(events[ev].Fd), buffer[:], 0); err != nil {
+						log.Errorf("Could not receive from descriptor: %s", err.Error())
+						return
+					} else if n == 0 {
+						// no packets received
+					} else if eh, err := ethernet.Parse(buffer[:n]); err != nil {
+					} else if eh.Type == EthernetTypeARP {
+						c.handleARP(eh.Payload[:])
+					} else if eh.Type == EthernetTypeIPv4 {
+						if iph, err := ipv4.Parse(eh.Payload[:]); err != nil {
+							log.Debugf("Error parsing ip header: %s", err.Error())
+						} else {
+							data := iph.Payload[:]
 
-			break
-		}
+							switch iph.Protocol {
+							case 1 /* icmp */ :
+								c.handleICMP(iph, data)
+							case 2 /* IGMP */ :
 
-		for ev := 0; ev < nevents; ev++ {
-			if events[ev].Events&syscall.EPOLLIN == syscall.EPOLLIN {
-				if n, _, err := syscall.Recvfrom(int(events[ev].Fd), buffer[:], 0); err != nil {
-					log.Errorf("Could not receive from descriptor: %s", err.Error())
-
-					c.events.Send(event.New(
-						CanaryOptions,
-						event.Category("epoll"),
-						event.SeverityError,
-						event.Error(err),
-					))
-
-					return err
-				} else if n == 0 {
-					// no packets received
-				} else if eh, err := ethernet.Parse(buffer[:n]); err != nil {
-				} else if eh.Type == EthernetTypeARP {
-					c.handleARP(eh.Payload[:])
-				} else if eh.Type == EthernetTypeIPv4 {
-					if iph, err := ipv4.Parse(eh.Payload[:]); err != nil {
-						log.Debugf("Error parsing ip header: %s", err.Error())
-					} else {
-						data := iph.Payload[:]
-
-						switch iph.Protocol {
-						case 1 /* icmp */ :
-							c.handleICMP(iph, data)
-						case 2 /* IGMP */ :
-
-						case 6 /* tcp */ :
-							// what interface?
-							c.handleTCP(iph, data)
-						case 17 /* udp */ :
-							c.handleUDP(iph, data)
-						default:
-							log.Debugf("Ignoring protocol: %x", iph.Protocol)
+							case 6 /* tcp */ :
+								// what interface?
+								c.handleTCP(iph, data)
+							case 17 /* udp */ :
+								c.handleUDP(iph, data)
+							default:
+								log.Debugf("Ignoring protocol: %x", iph.Protocol)
+							}
 						}
 					}
 				}
-			}
 
-			if events[ev].Events&syscall.EPOLLOUT == syscall.EPOLLOUT {
-				c.transmit(events[ev].Fd)
+				if events[ev].Events&syscall.EPOLLOUT == syscall.EPOLLOUT {
+					c.transmit(events[ev].Fd)
 
-				// disable epollout again
-				syscall.EpollCtl(c.epfd, syscall.EPOLL_CTL_MOD, int(events[ev].Fd), &syscall.EpollEvent{
-					Events: syscall.EPOLLIN,
-					Fd:     int32(events[ev].Fd),
-				})
-			}
+					// disable epollout again
+					syscall.EpollCtl(c.epfd, syscall.EPOLL_CTL_MOD, int(events[ev].Fd), &syscall.EpollEvent{
+						Events: syscall.EPOLLIN,
+						Fd:     int32(events[ev].Fd),
+					})
+				}
 
-			if events[ev].Events&syscall.EPOLLERR == syscall.EPOLLERR {
-				if v, err := syscall.GetsockoptInt(int(events[ev].Fd), syscall.SOL_SOCKET, syscall.SO_ERROR); err != nil {
-					log.Errorf("Retrieving polling error: %s", err)
-				} else {
-					log.Errorf("Polling error: %#q", v)
+				if events[ev].Events&syscall.EPOLLERR == syscall.EPOLLERR {
+					if v, err := syscall.GetsockoptInt(int(events[ev].Fd), syscall.SOL_SOCKET, syscall.SO_ERROR); err != nil {
+						log.Errorf("Retrieving polling error: %s", err)
+					} else {
+						log.Errorf("Polling error: %#q", v)
+					}
 				}
 			}
 		}
-	}
+	}()
 
 	return nil
 }

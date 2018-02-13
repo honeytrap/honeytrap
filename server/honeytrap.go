@@ -488,7 +488,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		log.Infof("Configured service %s (%s)", x.Type, key)
 	}
 
-	if err := l.Start(); err != nil {
+	if err := l.Start(ctx); err != nil {
 		fmt.Println(color.RedString("Error starting listener: %s", err.Error()))
 	}
 

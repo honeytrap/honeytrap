@@ -30,7 +30,10 @@
  */
 package listener
 
-import "net"
+import (
+	"context"
+	"net"
+)
 
 func MustDummy(options ...func(Listener) error) Listener {
 	l, _ := Dummy()
@@ -44,7 +47,7 @@ func Dummy(options ...func(Listener) error) (Listener, error) {
 type dummyListener struct {
 }
 
-func (l *dummyListener) Start() error {
+func (l *dummyListener) Start(ctx context.Context) error {
 	return nil
 }
 
