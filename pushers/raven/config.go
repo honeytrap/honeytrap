@@ -34,4 +34,6 @@ package raven
 type Config struct {
 	Token  string `toml:"token"`
 	Server string `toml:"server"`
+
+	Insecure bool `toml:"insecure"`
 }
