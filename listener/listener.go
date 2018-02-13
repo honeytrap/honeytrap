@@ -31,6 +31,7 @@
 package listener
 
 import (
+	"context"
 	"net"
 
 	logging "github.com/op/go-logging"
@@ -64,6 +65,6 @@ func Range(fn func(string)) {
 }
 
 type Listener interface {
-	Start() error
+	Start(ctx context.Context) error
 	Accept() (net.Conn, error)
 }

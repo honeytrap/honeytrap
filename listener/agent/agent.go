@@ -31,6 +31,7 @@
 package agent
 
 import (
+	"context"
 	"encoding"
 	"encoding/hex"
 	"fmt"
@@ -193,7 +194,7 @@ func (sl *agentListener) serv(c *conn2) {
 }
 
 // Start the listener
-func (sl *agentListener) Start() error {
+func (sl *agentListener) Start(ctx context.Context) error {
 	s, err := storage.Namespace("agent")
 	if err != nil {
 		return err

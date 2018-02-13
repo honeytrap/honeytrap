@@ -31,6 +31,7 @@
 package tap
 
 import (
+	"context"
 	"fmt"
 	"net"
 
@@ -86,7 +87,7 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 	return &l, nil
 }
 
-func (l *tapListener) Start() error {
+func (l *tapListener) Start(ctx context.Context) error {
 	config := water.Config{
 		DeviceType: water.TAP,
 	}
