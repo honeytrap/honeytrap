@@ -35,9 +35,12 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"runtime"
 	"strings"
 	"time"
+
+	isatty "github.com/mattn/go-isatty"
 
 	"github.com/BurntSushi/toml"
 	"github.com/fatih/color"
@@ -236,9 +239,20 @@ func ToAddr(port string) net.Addr {
 	}
 }
 
+func IsTerminal(f *os.File) bool {
+	if isatty.IsTerminal(f.Fd()) {
+		return true
+	} else if isatty.IsCygwinTerminal(f.Fd()) {
+		return true
+	}
+
+	return false
+}
+
 // Run will start honeytrap
 func (hc *Honeytrap) Run(ctx context.Context) {
-	fmt.Println(color.YellowString(`
+	if IsTerminal(os.Stdout) {
+		fmt.Println(color.YellowString(`
  _   _                       _____                %c
 | | | | ___  _ __   ___ _   |_   _| __ __ _ _ __
 | |_| |/ _ \| '_ \ / _ \ | | || || '__/ _' | '_ \
@@ -246,6 +260,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 |_| |_|\___/|_| |_|\___|\__, ||_||_|  \__,_| .__/
                         |___/              |_|
 `, 127855))
+	}
 
 	fmt.Println(color.YellowString("Honeytrap starting (%s)...", hc.token))
 	fmt.Println(color.YellowString("Version: %s (%s)", cmd.Version, cmd.ShortCommitID))
