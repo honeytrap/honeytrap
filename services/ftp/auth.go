@@ -5,14 +5,13 @@ type Auth interface {
 }
 
 type FtpUser struct {
+	users map[string]string
 }
 
 func (u *FtpUser) CheckPasswd(name, password string) (bool, error) {
 	login := false
 
-	if name == "anonymous" {
-		login = true
-	} else if name == "admin" && password == "god" {
+	if pw, ok := u.users[name]; ok && pw == password {
 		login = true
 	}
 

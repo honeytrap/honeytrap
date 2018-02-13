@@ -34,7 +34,7 @@ type ftpActiveSocket struct {
 func newActiveSocket(remote string, port int, sessionid string) (DataSocket, error) {
 	connectTo := net.JoinHostPort(remote, strconv.Itoa(port))
 
-	log.Debugf("%s: Opening active data connection to %s", sessionid, connectTo)
+	log.Debugf("%s - Opening active data connection to %s ", sessionid, connectTo)
 
 	raddr, err := net.ResolveTCPAddr("tcp", connectTo)
 
@@ -127,7 +127,6 @@ func (socket *ftpPassiveSocket) Write(p []byte) (n int, err error) {
 }
 
 func (socket *ftpPassiveSocket) Close() error {
-	//socket.logger.Print("closing passive data socket")
 	if socket.conn != nil {
 		return socket.conn.Close()
 	}
