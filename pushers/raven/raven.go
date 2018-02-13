@@ -76,13 +76,21 @@ func New(options ...func(pushers.Channel) error) (pushers.Channel, error) {
 	return &c, nil
 }
 
+func Insecure(config *tls.Config) *tls.Config {
+	config.InsecureSkipVerify = true
+	return config
+}
+
 func (hc RavenBackend) run() {
+	tlsClientConfig := &tls.Config{}
+
+	if hc.Insecure {
+		tlsClientConfig = Insecure(tlsClientConfig)
+	}
+
 	d := &websocket.Dialer{
-		Proxy: http.ProxyFromEnvironment,
-		TLSClientConfig: &tls.Config{
-			//              RootCAs: capool,
-			InsecureSkipVerify: true,
-		},
+		Proxy:           http.ProxyFromEnvironment,
+		TLSClientConfig: tlsClientConfig,
 	}
 
 	for {
