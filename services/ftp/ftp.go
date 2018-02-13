@@ -19,10 +19,9 @@ var (
 func FTP(options ...services.ServicerFunc) services.Servicer {
 
 	s := &ftpService{
-		Config: Config{
-			recv:   make(chan string),
-			driver: NewDummyfs(),
-		},
+		Opts:   Opts{},
+		recv:   make(chan string),
+		driver: NewDummyfs(),
 	}
 
 	for _, o := range options {
@@ -30,11 +29,16 @@ func FTP(options ...services.ServicerFunc) services.Servicer {
 	}
 
 	opts := &ServerOpts{
-		Auth:           &FtpUser{},
+		Auth: &FtpUser{
+			users: map[string]string{
+				"anonymous": "anonymous",
+			},
+		},
 		Name:           s.ServerName,
 		WelcomeMessage: s.Banner,
-		PassivePorts:   "20200-20250",
+		PassivePorts:   s.PsvPortRange,
 	}
+
 	s.server = NewServer(opts)
 
 	fs := NewDummyfs()
@@ -68,22 +72,24 @@ func FTP(options ...services.ServicerFunc) services.Servicer {
 	return s
 }
 
-type Config struct {
-	recv chan string
-
-	server *Server
-
-	driver Driver
-
+type Opts struct {
 	Banner string `toml:"banner"`
 
-	Dummyfiles string `toml:"files"`
+	PsvPortRange string `toml:"passive-port-range"`
 
 	ServerName string `toml:"name"`
 }
 
 type ftpService struct {
-	Config
+	Opts
+
+	server *Server
+
+	driver Driver
+
+	Dummyfiles string `toml:"files"`
+
+	recv chan string
 
 	c pushers.Channel
 }
@@ -100,11 +106,6 @@ func (s *ftpService) Handle(ctx context.Context, conn net.Conn) error {
 		for {
 			select {
 			case msg := <-s.recv:
-				/*
-					if msg == "q" {
-						break
-					}
-				*/
 				s.c.Send(event.New(
 					services.EventOptions,
 					event.Category("ftp"),

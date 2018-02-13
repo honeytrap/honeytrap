@@ -320,6 +320,9 @@ func (cmd commandEpsv) Execute(conn *Conn, param string) {
 		conn.writeMessage(425, "Data connection failed")
 		return
 	}
+
+	log.Debugf("EPSV: new socket on port: %d", socket.Port)
+
 	conn.dataConn = socket
 	msg := fmt.Sprintf("Entering Extended Passive Mode (|||%d|)", socket.Port())
 	conn.writeMessage(229, msg)
@@ -540,6 +543,9 @@ func (cmd commandPasv) Execute(conn *Conn, param string) {
 		conn.writeMessage(425, "Data connection failed, socket")
 		return
 	}
+
+	log.Debugf("PASV: new socket on port: %d", socket.Port)
+
 	conn.dataConn = socket
 	p1 := socket.Port() / 256
 	p2 := socket.Port() - (p1 * 256)

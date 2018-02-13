@@ -19,7 +19,7 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	storage.SetDataDir("")
+	storage.SetDataDir("/tmp")
 	os.Exit(m.Run())
 }
 

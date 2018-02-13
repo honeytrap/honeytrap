@@ -20,7 +20,7 @@ type ServerOpts struct {
 	// Public IP of the server
 	PublicIp string
 
-	// Passive ports
+	// Passive ports, port range to choose from e.g. "10-20"
 	PassivePorts string
 
 	// use tls, default is false
