@@ -33,7 +33,6 @@ package agent
 import (
 	"context"
 	"encoding"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
@@ -43,7 +42,6 @@ import (
 	"github.com/honeytrap/honeytrap/listener"
 	"github.com/mimoo/disco/libdisco"
 
-	"github.com/honeytrap/honeytrap/storage"
 	logging "github.com/op/go-logging"
 )
 
@@ -119,26 +117,44 @@ func (sl *agentListener) serv(c *conn2) {
 	fmt.Println("Agent connected...")
 	defer fmt.Println("Agent disconnected...")
 
+	out := make(chan interface{})
+
 	conns := Connections{}
 
+	ctx, cancel := context.WithCancel(context.Background())
 	defer func() {
+		cancel()
+
+		c.Close()
+
+		go func() {
+			// drain
+			for _ = range out {
+			}
+		}()
+
 		conns.Each(func(conn *agentConnection) {
 			conn.Close()
 		})
+
+		close(out)
 	}()
 
-	out := make(chan interface{})
-	defer close(out)
-
 	go func() {
-		for p := range out {
-			if bm, ok := p.(encoding.BinaryMarshaler); !ok {
-				log.Errorf("Error marshalling object")
-				break
-			} else if err := c.send(bm); err != nil {
-				log.Errorf("Error sending object: %s", err.Error())
-				break
+		for {
+			select {
+			case p := <-out:
+				if bm, ok := p.(encoding.BinaryMarshaler); !ok {
+					log.Errorf("Error marshalling object")
+					return
+				} else if err := c.send(bm); err != nil {
+					log.Errorf("Error sending object: %s", err.Error())
+					return
+				}
+			case <-ctx.Done():
+				return
 			}
+
 		}
 	}()
 
@@ -166,23 +182,17 @@ func (sl *agentListener) serv(c *conn2) {
 		case *ReadWrite:
 			conn := conns.Get(v.Laddr, v.Raddr)
 			if conn == nil {
-				break
+				continue
 			}
 
-			conn.m.Lock()
-			conn.buff = append(conn.buff, v.Payload...)
-			conn.m.Unlock()
-
-			select {
-			case conn.in <- []byte{}: // v.Payload {
-			default:
-			}
-
+			conn.receive(v.Payload)
 		case *EOF:
 			conn := conns.Get(v.Laddr, v.Raddr)
 			if conn == nil {
 				continue
 			}
+
+			conns.Delete(conn)
 
 			conn.Close()
 		case *Ping:
@@ -195,35 +205,21 @@ func (sl *agentListener) serv(c *conn2) {
 
 // Start the listener
 func (sl *agentListener) Start(ctx context.Context) error {
-	s, err := storage.Namespace("agent")
+	storage, err := Storage()
 	if err != nil {
 		return err
 	}
 
-	key := make([]byte, 128)
-
-	if v, err := s.Get("key"); err == nil {
-		key = v
-	} else {
-		keyPair := libdisco.GenerateKeypair(nil)
-
-		hex.Encode(key[:64], keyPair.PrivateKey[:])
-		hex.Encode(key[64:], keyPair.PublicKey[:])
-
-		s.Set("key", key[:])
-	}
-
-	var keyPair libdisco.KeyPair
-	if _, err = hex.Decode(keyPair.PublicKey[:], key[64:]); err != nil {
-	} else if _, err = hex.Decode(keyPair.PrivateKey[:], key[:64]); err != nil {
-	} else {
+	keyPair, err := storage.KeyPair()
+	if err != nil {
+		return err
 	}
 
 	fmt.Println(color.YellowString("Honeytrap Agent Server public key: %s", keyPair.ExportPublicKey()))
 
 	serverConfig := libdisco.Config{
 		HandshakePattern: libdisco.Noise_NK,
-		KeyPair:          &keyPair,
+		KeyPair:          keyPair,
 	}
 
 	listen := ":1339"
