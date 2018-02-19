@@ -29,7 +29,6 @@ import (
 	"fmt"
 	"image"
 	"net"
-	"strconv"
 	"sync"
 )
 
@@ -320,7 +319,8 @@ func (c *Conn) pushImage(li *LockableImage) {
 	im := li.Img
 	b := im.Bounds()
 	if b.Min.X != 0 || b.Min.Y != 0 {
-		panic("this code is lazy and assumes images with Min bounds at 0,0")
+		log.Errorf("this code is lazy and assumes images with Min bounds at 0,0")
+		return
 	}
 	width, height := b.Dx(), b.Dy()
 
@@ -543,5 +543,7 @@ func inRange(v uint32, max uint16) uint32 {
 	case 0x1f: // 5 bits
 		return v >> (16 - 5)
 	}
-	panic("todo; max value = " + strconv.Itoa(int(max)))
+
+	log.Errorf("unsupported inRange: v=%d, max=%d", v, max)
+	return 0
 }
