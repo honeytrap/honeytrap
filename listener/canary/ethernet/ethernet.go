@@ -39,7 +39,8 @@ import (
 type EthernetFrame struct {
 	Source      net.HardwareAddr
 	Destination net.HardwareAddr
-	Type        uint16
+
+	Type uint16
 
 	Payload []byte
 }
