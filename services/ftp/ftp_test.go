@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	user     = "admin"
-	password = "god"
+	user     = "anonymous"
+	password = "anonymous"
 )
 
 var (
@@ -24,6 +24,11 @@ func TestMain(m *testing.M) {
 }
 
 func TestFTP(t *testing.T) {
+
+	//Setup client and server
+	clt, srv = net.Pipe()
+	defer clt.Close()
+	defer srv.Close()
 
 	s := FTP().(*ftpService)
 
