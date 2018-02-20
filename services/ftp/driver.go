@@ -1,6 +1,9 @@
 package ftp
 
-import "io"
+import (
+	"io"
+	"os"
+)
 
 // For each client that connects to the server, a new FTPDriver is required.
 // Create an implementation if this interface and provide it to FTPServer.
@@ -19,7 +22,7 @@ type Driver interface {
 	// returns - a time indicating when the requested path was last modified
 	//         - an error if the file doesn't exist or the user lacks
 	//           permissions
-	Stat(string) (*FileInfo, error)
+	Stat(string) (os.FileInfo, error)
 
 	// params  - path
 	// returns - true if the current user is permitted to change to the
@@ -27,9 +30,9 @@ type Driver interface {
 	ChangeDir(string) error
 
 	// params  - path, function on file or subdir found
-	// returns - []*FileInfo
+	// returns - []os.FileInfo
 	//           path
-	ListDir(string) []*FileInfo
+	ListDir(string) []os.FileInfo
 
 	// params  - path
 	// returns - true if the directory was deleted

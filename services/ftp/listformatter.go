@@ -3,11 +3,12 @@ package ftp
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 )
 
-type listFormatter []*FileInfo
+type listFormatter []os.FileInfo
 
 // Short returns a string that lists the collection of files by name only,
 // one per line
@@ -25,8 +26,8 @@ func (formatter listFormatter) Short() []byte {
 func (formatter listFormatter) Detailed() []byte {
 	var buf bytes.Buffer
 	for _, file := range formatter {
-		fmt.Fprintf(&buf, file.Mode())
-		fmt.Fprintf(&buf, " 1 %s %s ", file.Owner(), file.Group())
+		fmt.Fprintf(&buf, file.Mode().String())
+		//fmt.Fprintf(&buf, " 1 %s %s ", file.Owner(), file.Group())
 		fmt.Fprintf(&buf, lpad(strconv.Itoa(int(file.Size())), 12))
 		fmt.Fprintf(&buf, file.ModTime().Format(" Jan _2 15:04 "))
 		fmt.Fprintf(&buf, "%s\r\n", file.Name())

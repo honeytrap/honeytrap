@@ -27,6 +27,22 @@ type ftpStorage struct {
 	storage.Storage
 }
 
+func (s *ftpStorage) FileSystem() (base, serviceroot string) {
+	b, err := s.Get("base")
+	if err != nil {
+		return "", ""
+	}
+	base = string(b)
+
+	sr, err := s.Get("fs_root")
+	if err != nil {
+		return "", ""
+	}
+	serviceroot = string(sr)
+
+	return
+}
+
 //Returns a TLS Certificate
 func (s *ftpStorage) Certificate() (*tls.Certificate, error) {
 
