@@ -46,16 +46,18 @@ type response struct {
 
 // Connect using an existing connection (testing)
 func Connect(client net.Conn) (*ServerConn, error) {
-	conn := textproto.NewConn(client)
+
+	clconn := textproto.NewConn(client)
 
 	c := &ServerConn{
-		conn:     conn,
+		conn:     clconn,
 		host:     "127.0.0.1",
 		timeout:  time.Second * 10,
 		features: make(map[string]string),
 	}
 
 	_, _, err := c.conn.ReadResponse(StatusReady)
+
 	if err != nil {
 		c.Quit()
 		return nil, err

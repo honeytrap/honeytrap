@@ -248,7 +248,7 @@ func (cmd commandDele) Execute(conn *Conn, param string) {
 	if err == nil {
 		conn.writeMessage(250, "File deleted")
 	} else {
-		conn.writeMessage(550, fmt.Sprintln("File delete failed: %s", err.Error()))
+		conn.writeMessage(550, fmt.Sprintln("File delete failed: ", err))
 	}
 }
 
