@@ -99,21 +99,27 @@ func (sl *agentListener) serv(c *conn2) {
 
 	log.Debugf("Agent connecting from remote address: %s", c.RemoteAddr())
 
+	version := ""
+	shortCommitID := ""
+
 	if p, err := c.receive(); err == io.EOF {
 		return
 	} else if err != nil {
 		log.Errorf("Error receiving object: %s", err.Error())
 		return
-	} else if _, ok := p.(*Handshake); !ok {
+	} else if h, ok := p.(*Handshake); !ok {
 		log.Errorf("Expected handshake from Agent")
 		return
+	} else {
+		version = h.Version
+		shortCommitID = h.ShortCommitID
 	}
 
 	c.send(HandshakeResponse{
 		sl.Addresses,
 	})
 
-	fmt.Println("Agent connected...")
+	fmt.Println("Agent connected (version=%s, commitid=%s)...", version, shortCommitID)
 	defer fmt.Println("Agent disconnected...")
 
 	out := make(chan interface{})
