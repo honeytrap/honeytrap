@@ -85,8 +85,7 @@ type="ftp"
 port="TCP/8021"
 banner="Welcome to FTPd"
 name="FTPd"
-#files: filenames space separated for use in initial dummy filesystem
-files="users.db.bak tmp001"
+fs_base="/tmp"
 
 [service.dns]
 type="dns-proxy"

@@ -8,6 +8,7 @@ import (
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/services"
+	"github.com/honeytrap/honeytrap/services/filesystem"
 	logging "github.com/op/go-logging"
 )
 
@@ -18,10 +19,19 @@ var (
 
 func FTP(options ...services.ServicerFunc) services.Servicer {
 
+	store, err := Storage()
+	if err != nil {
+		log.Errorf("FTP: Could not initialize storage. %s", err.Error())
+	}
+
+	cert, err := store.Certificate()
+	if err != nil {
+		log.Errorf("TLS error: %s", err.Error())
+	}
+
 	s := &ftpService{
-		Opts:   Opts{},
-		recv:   make(chan string),
-		driver: NewDummyfs(),
+		Opts: Opts{},
+		recv: make(chan string),
 	}
 
 	for _, o := range options {
@@ -41,33 +51,25 @@ func FTP(options ...services.ServicerFunc) services.Servicer {
 
 	s.server = NewServer(opts)
 
-	fs := NewDummyfs()
-
-	log.Debugf("dummyfiles: %v", s.Dummyfiles)
-	for _, df := range strings.Split(s.Dummyfiles, " ") {
-		fs.makefile(df)
+	s.server.tlsConfig = simpleTLSConfig(cert)
+	if s.server.tlsConfig != nil {
+		//s.server.TLS = true
+		s.server.ExplicitFTPS = true
 	}
-	/*
-		fs.makefile("passwords.txt")
-		fs.makefile("users.db.bak")
-		fs.MakeDir("tmp")
-		fs.makefile("/tmp/index.html")
-	*/
-	s.driver = fs
 
-	if store, err := Storage(); err != nil {
-		log.Errorf("FTP: Could not initialize storage. %s", err.Error())
-	} else {
-		cert, err := store.Certificate()
-		if err != nil {
-			log.Errorf("TLS error: %s", err.Error())
-		} else {
-			s.server.tlsConfig = simpleTLSConfig(cert)
-			//s.server.TLS = true
-			s.server.ExplicitFTPS = true
-			log.Debug("FTP: set TLS OK")
-		}
+	base, root := store.FileSystem()
+	if base == "" {
+		base = s.FsRoot
 	}
+
+	fs, err := filesystem.New(base, "ftp", root)
+	if err != nil {
+		log.Debugf("FTP Filesystem error: %s", err.Error())
+	}
+
+	log.Debugf("FileSystem rooted at %s", fs.RealPath("/"))
+
+	s.driver = NewFileDriver(fs)
 
 	return s
 }
@@ -87,7 +89,7 @@ type ftpService struct {
 
 	driver Driver
 
-	Dummyfiles string `toml:"files"`
+	FsRoot string `toml:"fs_base"`
 
 	recv chan string
 
