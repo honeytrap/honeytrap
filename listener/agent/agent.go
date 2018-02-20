@@ -102,7 +102,6 @@ func (sl *agentListener) serv(c *conn2) {
 	log.Debugf("Agent connecting from remote address: %s", c.RemoteAddr())
 
 	if p, err := c.receive(); err == io.EOF {
-		fmt.Println("EOF")
 		return
 	} else if err != nil {
 		log.Errorf("Error receiving object: %s", err.Error())
