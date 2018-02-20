@@ -1,6 +1,6 @@
 <img src="http://docs.honeytrap.io/images/logo.png" height="110" />
 
-# Honeytrap [![Gitter](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/honeytrap/honeytrap?utm_source=badge&utm_medium=badge&utm_campaign=&utm_campaign=pr-badge&utm_content=badge) [![Go Report Card](https://goreportcard.com/badge/honeytrap/honeytrap)](https://goreportcard.com/report/honeytrap/honeytrap) [![Build Status](https://travis-ci.org/honeytrap/honeytrap.svg?branch=master)](https://travis-ci.org/honeytrap/honeytrap) [![codecov](https://codecov.io/gh/honeytrap/honeytrap/branch/master/graph/badge.svg)](https://codecov.io/gh/honeytrap/honeytrap)
+# Honeytrap [![Gitter](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/honeytrap/honeytrap?utm_source=badge&utm_medium=badge&utm_campaign=&utm_campaign=pr-badge&utm_content=badge) [![Go Report Card](https://goreportcard.com/badge/honeytrap/honeytrap)](https://goreportcard.com/report/honeytrap/honeytrap) [![Build Status](https://travis-ci.org/honeytrap/honeytrap.svg?branch=master)](https://travis-ci.org/honeytrap/honeytrap) [![codecov](https://codecov.io/gh/honeytrap/honeytrap/branch/master/graph/badge.svg)](https://codecov.io/gh/honeytrap/honeytrap) [![Docker pulls](https://img.shields.io/docker/pulls/honeytrap/honeytrap.svg)](https://hub.docker.com/r/honeytrap/honeytrap/)
 
 ### Honeytrap is an extensible and opensource system for running, monitoring and managing honeypots. 
 
