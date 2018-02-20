@@ -64,6 +64,11 @@ func (e *Encoder) WriteAddr(address net.Addr) {
 	if ta, ok := address.(*net.TCPAddr); ok {
 		ip = ta.IP
 		port = ta.Port
+		e.WriteUint8(6)
+	} else if ua, ok := address.(*net.UDPAddr); ok {
+		ip = ua.IP
+		port = ua.Port
+		e.WriteUint8(17)
 	}
 
 	e.WriteData(ip)
