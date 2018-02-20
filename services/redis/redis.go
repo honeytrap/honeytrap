@@ -58,7 +58,12 @@ func REDIS(options ...services.ServicerFunc) services.Servicer {
 		o(s)
 	}
 
-	s.RedisServiceConfig = s.configureRedisService() // redis_config.go
+	s.RedisServiceConfig, errList = s.configureRedisService()
+	if len(errList) != 0 {
+		for field, reason := range errList {
+			log.Errorf("Could not add [%s]: %s", field, reason)
+		}
+	}
 
 	return s
 }

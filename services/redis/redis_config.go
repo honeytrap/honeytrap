@@ -32,12 +32,15 @@
 package redis
 
 import (
+	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
 )
 
 var Redisdef = reflect.ValueOf(&RedisDefault).Elem()
+
+var errList = map[string]string{}
 
 func cleanVersion(v string) []int {
 	n := strings.Split(v, ".")
@@ -76,9 +79,10 @@ func takePersoVersion(w string) []int {
 
 }
 
-func (s *redisService) configureRedisService() RedisServiceConfiguration {
+func (s *redisService) configureRedisService() (RedisServiceConfiguration, map[string]string) {
 
 	redis_config_perso := s.RedisServiceConfig
+
 	redisperso := reflect.ValueOf(redis_config_perso)
 
 	redis_version_perso := takePersoVersion(redis_config_perso.Redis_version)
@@ -89,22 +93,26 @@ func (s *redisService) configureRedisService() RedisServiceConfiguration {
 		for j := 0; j < f.NumField(); j++ {
 
 			z := f.Field(j)
+			field := Redisdef.Field(i).Type().Field(j).Name
 
 			defaultVersion := cleanVersion(splitDefault(z.Interface().(string))[0])
-
 			tt := Redisdef.Field(i).Field(j)
+			v := redisperso.Field(i).Field(j).Interface().(string)
 
 			if compareVersions(redis_version_perso, defaultVersion) {
-				if value_to_add := redisperso.Field(i).Field(j).Interface().(string); value_to_add != "" {
-					tt.SetString(value_to_add)
+				if v != "" {
+					tt.SetString(v)
 				} else {
 					defaultValue := splitDefault(string(tt.Interface().(string)))[2]
 					tt.SetString(defaultValue)
 				}
 			} else {
+				if v != "" {
+					errList[field] = fmt.Sprintf("Redis version %v doesn't implement this field", redis_version_perso)
+				}
 				tt.SetString("__")
 			}
 		}
 	}
-	return RedisDefault
+	return RedisDefault, errList
 }
