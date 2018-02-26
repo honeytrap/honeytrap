@@ -165,7 +165,8 @@ banner="test"
 # a container or vm managed by honeytrap or an other remote IP address. Each 
 # director must have a name and type defined. The director name should match the
 # director option in the proxy configuration. Available directors, with their
-# default configuration values, can be found in <......>
+# default configuration values, can be found in the folder "director"; they can
+# be enabled at compile time in honeytrap.go.
 
 [director.googledns]
 type="remote"
