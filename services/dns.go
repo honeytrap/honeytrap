@@ -32,10 +32,14 @@ package services
 
 import (
 	"context"
-	"io"
+	"fmt"
 	"net"
-	"os"
+	"reflect"
 
+	"github.com/miekg/dns"
+
+	"github.com/honeytrap/honeytrap/event"
+	"github.com/honeytrap/honeytrap/listener"
 	"github.com/honeytrap/honeytrap/pushers"
 )
 
@@ -61,6 +65,45 @@ func (s *dnsService) SetChannel(c pushers.Channel) {
 }
 
 func (s *dnsService) Handle(ctx context.Context, conn net.Conn) error {
-	_, err := io.Copy(os.Stdout, conn)
-	return err
+	defer conn.Close()
+
+	buff := make([]byte, 65535)
+
+	if _, ok := conn.(*listener.DummyUDPConn); ok {
+		n, err := conn.Read(buff[:])
+		if err != nil {
+			return err
+		}
+
+		buff = buff[:n]
+	} else if _, ok := conn.(*net.TCPConn); ok {
+		n, err := conn.Read(buff[:])
+		if err != nil {
+			return err
+		}
+
+		buff = buff[:n]
+	} else {
+		log.Error("Unsupported connection type: %s", reflect.TypeOf(conn))
+		return nil
+	}
+
+	req := new(dns.Msg)
+	if err := req.Unpack(buff[:]); err != nil {
+		return err
+	}
+
+	s.c.Send(event.New(
+		EventOptions,
+		event.Category("dns"),
+		event.Type("dns"),
+		event.SourceAddr(conn.RemoteAddr()),
+		event.DestinationAddr(conn.LocalAddr()),
+		event.Custom("dns.id", fmt.Sprintf("%d", req.Id)),
+		event.Custom("dns.opcode", fmt.Sprintf("%d", req.Opcode)),
+		event.Custom("dns.message", fmt.Sprintf("Querying for: %#q", req.Question)),
+		event.Custom("dns.questions", req.Question),
+	))
+
+	return nil
 }

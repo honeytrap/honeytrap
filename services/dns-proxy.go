@@ -32,12 +32,14 @@ package services
 
 import (
 	"context"
-	"io"
+	"fmt"
 	"net"
 
 	"github.com/honeytrap/honeytrap/director"
+	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/listener"
 	"github.com/honeytrap/honeytrap/pushers"
+	"github.com/miekg/dns"
 )
 
 var (
@@ -70,14 +72,73 @@ func (s *dnsProxy) SetChannel(c pushers.Channel) {
 func (s *dnsProxy) Handle(ctx context.Context, conn net.Conn) error {
 	defer conn.Close()
 
+	buff := [65535]byte{}
+
 	if _, ok := conn.(*listener.DummyUDPConn); ok {
-
-		buff := [65535]byte{}
-
 		n, err := conn.Read(buff[:])
 		if err != nil {
 			return err
 		}
+
+		conn2, err := s.d.Dial(conn)
+		if err != nil {
+			return err
+		}
+
+		defer conn2.Close()
+
+		if _, err = conn2.Write(buff[:n]); err != nil {
+			return err
+		}
+
+		req := new(dns.Msg)
+		if err := req.Unpack(buff[:n]); err != nil {
+			return err
+		}
+
+		s.c.Send(event.New(
+			EventOptions,
+			event.Category("dns-proxy"),
+			event.Type("dns"),
+			event.SourceAddr(conn.RemoteAddr()),
+			event.DestinationAddr(conn.LocalAddr()),
+			event.Custom("dns.id", fmt.Sprintf("%d", req.Id)),
+			event.Custom("dns.opcode", fmt.Sprintf("%d", req.Opcode)),
+			event.Custom("dns.message", fmt.Sprintf("Querying for: %#q", req.Question)),
+			event.Custom("dns.questions", req.Question),
+		))
+
+		if n, err = conn2.Read(buff[:]); err != nil {
+			return err
+		}
+
+		if _, err = conn.Write(buff[:n]); err != nil {
+			return err
+		}
+
+		return err
+	} else if _, ok := conn.(*net.TCPConn); ok {
+		n, err := conn.Read(buff[:])
+		if err != nil {
+			return err
+		}
+
+		req := new(dns.Msg)
+		if err := req.Unpack(buff[:n]); err != nil {
+			return err
+		}
+
+		s.c.Send(event.New(
+			EventOptions,
+			event.Category("dns-proxy"),
+			event.Type("dns"),
+			event.SourceAddr(conn.RemoteAddr()),
+			event.DestinationAddr(conn.LocalAddr()),
+			event.Custom("dns.id", fmt.Sprintf("%d", req.Id)),
+			event.Custom("dns.opcode", fmt.Sprintf("%d", req.Opcode)),
+			event.Custom("dns.message", fmt.Sprintf("Querying for: %#q", req.Question)),
+			event.Custom("dns.questions", req.Question),
+		))
 
 		conn2, err := s.d.Dial(conn)
 		if err != nil {
@@ -98,20 +159,7 @@ func (s *dnsProxy) Handle(ctx context.Context, conn net.Conn) error {
 			return err
 		}
 
-		return err
-	} else if _, ok := conn.(*net.TCPConn); ok {
-		conn2, err := s.d.Dial(conn)
-		if err != nil {
-			return err
-		}
-
-		defer conn2.Close()
-
-		go func() {
-			io.Copy(conn, conn2)
-		}()
-		_, err = io.Copy(conn2, conn)
-		return err
+		return nil
 	} else {
 		return nil
 	}
