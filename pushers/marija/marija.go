@@ -156,6 +156,10 @@ func (hc Backend) Send(message event.Event) {
 		return true
 	})
 
+	if len(mp) == 0 {
+		return
+	}
+
 	select {
 	case hc.ch <- mp:
 	default:
