@@ -152,6 +152,12 @@
   version = "v0.0.3"
 
 [[projects]]
+  name = "github.com/miekg/dns"
+  packages = ["."]
+  revision = "5364553f1ee9cddc7ac8b62dce148309c386695b"
+  version = "v1.0.4"
+
+[[projects]]
   branch = "master"
   name = "github.com/mimoo/StrobeGo"
   packages = ["strobe"]
@@ -238,7 +244,7 @@
 [[projects]]
   branch = "master"
   name = "golang.org/x/net"
-  packages = ["context","internal/timeseries","trace"]
+  packages = ["bpf","context","internal/iana","internal/socket","internal/timeseries","ipv4","ipv6","trace"]
   revision = "7b572d500b0702f1ea30a47083ce2e1e5c61edba"
 
 [[projects]]
@@ -268,6 +274,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "ed0c11ea26c02d3dff4e7968eb1edaef2696ad4f9f63d43096684e24de3c8477"
+  inputs-digest = "dd26178ef8e34775d59c509196ab9ca9121a2fc55f1435a847d0ddb74ec1b2e3"
   solver-name = "gps-cdcl"
   solver-version = 1

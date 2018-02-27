@@ -1,7 +1,6 @@
 FROM golang:latest AS go
 
 RUN apt update -y
-RUN apt install -y debhelper git
 
 ENV GOPATH /go
 ENV PATH $GOPATH/bin:/usr/local/go/bin:$PATH
