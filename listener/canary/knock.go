@@ -52,6 +52,9 @@ type KnockGroup struct {
 	Start time.Time
 	Last  time.Time
 
+	SourceHardwareAddr      net.HardwareAddr
+	DestinationHardwareAddr net.HardwareAddr
+
 	SourceIP      net.IP
 	DestinationIP net.IP
 
@@ -69,6 +72,9 @@ type KnockGrouper interface {
 
 // KnockUDPPort struct contain UDP port knock metadata
 type KnockUDPPort struct {
+	SourceHardwareAddr      net.HardwareAddr
+	DestinationHardwareAddr net.HardwareAddr
+
 	SourceIP        net.IP
 	DestinationIP   net.IP
 	DestinationPort uint16
@@ -77,10 +83,12 @@ type KnockUDPPort struct {
 // NewGroup will return a new KnockGroup for UDP protocol
 func (k KnockUDPPort) NewGroup() *KnockGroup {
 	return &KnockGroup{
-		Start:         time.Now(),
-		SourceIP:      k.SourceIP,
-		DestinationIP: k.DestinationIP,
-		Count:         0,
+		Start:                   time.Now(),
+		SourceHardwareAddr:      k.SourceHardwareAddr,
+		DestinationHardwareAddr: k.DestinationHardwareAddr,
+		SourceIP:                k.SourceIP,
+		DestinationIP:           k.DestinationIP,
+		Count:                   0,
 		Knocks: NewUniqueSet(func(v1, v2 interface{}) bool {
 			if _, ok := v1.(KnockUDPPort); !ok {
 				return false
@@ -97,6 +105,9 @@ func (k KnockUDPPort) NewGroup() *KnockGroup {
 
 // KnockTCPPort struct contain TCP port knock metadata
 type KnockTCPPort struct {
+	SourceHardwareAddr      net.HardwareAddr
+	DestinationHardwareAddr net.HardwareAddr
+
 	SourceIP        net.IP
 	DestinationIP   net.IP
 	DestinationPort uint16
@@ -105,11 +116,13 @@ type KnockTCPPort struct {
 // NewGroup will return a new KnockGroup for TCP protocol
 func (k KnockTCPPort) NewGroup() *KnockGroup {
 	return &KnockGroup{
-		Start:         time.Now(),
-		SourceIP:      k.SourceIP,
-		DestinationIP: k.DestinationIP,
-		Protocol:      ProtocolTCP,
-		Count:         0,
+		Start:                   time.Now(),
+		SourceHardwareAddr:      k.SourceHardwareAddr,
+		DestinationHardwareAddr: k.DestinationHardwareAddr,
+		SourceIP:                k.SourceIP,
+		DestinationIP:           k.DestinationIP,
+		Protocol:                ProtocolTCP,
+		Count:                   0,
 		Knocks: NewUniqueSet(func(v1, v2 interface{}) bool {
 			if _, ok := v1.(KnockTCPPort); !ok {
 				return false
@@ -126,6 +139,9 @@ func (k KnockTCPPort) NewGroup() *KnockGroup {
 
 // KnockICMP struct contain ICMP knock metadata
 type KnockICMP struct {
+	SourceHardwareAddr      net.HardwareAddr
+	DestinationHardwareAddr net.HardwareAddr
+
 	SourceIP      net.IP
 	DestinationIP net.IP
 }
@@ -133,11 +149,13 @@ type KnockICMP struct {
 // NewGroup will return a new KnockGroup for ICMP protocol
 func (k KnockICMP) NewGroup() *KnockGroup {
 	return &KnockGroup{
-		Start:         time.Now(),
-		SourceIP:      k.SourceIP,
-		DestinationIP: k.DestinationIP,
-		Count:         0,
-		Protocol:      ProtocolICMP,
+		Start:                   time.Now(),
+		SourceHardwareAddr:      k.SourceHardwareAddr,
+		DestinationHardwareAddr: k.DestinationHardwareAddr,
+		SourceIP:                k.SourceIP,
+		DestinationIP:           k.DestinationIP,
+		Count:                   0,
+		Protocol:                ProtocolICMP,
 		Knocks: NewUniqueSet(func(v1, v2 interface{}) bool {
 			if _, ok := v1.(KnockICMP); !ok {
 				return false
@@ -152,25 +170,18 @@ func (k KnockICMP) NewGroup() *KnockGroup {
 	}
 }
 
-// EventPortscan will return a portscan event struct
-func EventPortscan(src, dst net.IP, duration time.Duration, count int, ports []string) event.Event {
-	// TODO: do something different with message
-	return event.New(
-		CanaryOptions,
-		EventCategoryPortscan,
-		event.ServiceStarted,
-		event.SourceIP(src),
-		event.DestinationIP(dst),
-		event.Custom("portscan.ports", ports),
-		event.Custom("portscan.duration", duration),
-		event.Message(fmt.Sprintf("Port %d touch(es) detected from %s with duration %+v: %s", count, src, duration, strings.Join(ports, ", "))),
-	)
-}
-
 func (c *Canary) knockDetector() {
 	knocks := NewUniqueSet(func(v1, v2 interface{}) bool {
 		k1, k2 := v1.(*KnockGroup), v2.(*KnockGroup)
 		if k1.Protocol != k2.Protocol {
+			return false
+		}
+
+		if bytes.Compare(k1.SourceHardwareAddr, k2.SourceHardwareAddr) != 0 {
+			return false
+		}
+
+		if bytes.Compare(k1.DestinationHardwareAddr, k2.DestinationHardwareAddr) != 0 {
 			return false
 		}
 
@@ -227,7 +238,20 @@ func (c *Canary) knockDetector() {
 					}
 				})
 
-				c.events.Send(EventPortscan(k.SourceIP, k.DestinationIP, k.Last.Sub(k.Start), k.Count, ports))
+				c.events.Send(
+					event.New(
+						CanaryOptions,
+						EventCategoryPortscan,
+						event.ServiceStarted,
+						event.SourceHardwareAddr(k.SourceHardwareAddr),
+						event.DestinationHardwareAddr(k.DestinationHardwareAddr),
+						event.SourceIP(k.SourceIP),
+						event.DestinationIP(k.DestinationIP),
+						event.Custom("portscan.ports", ports),
+						event.Custom("portscan.duration", k.Last.Sub(k.Start)),
+						event.Message(fmt.Sprintf("Port %d touch(es) detected from %s with duration %+v: %s", k.Count, k.SourceIP, k.Last.Sub(k.Start), strings.Join(ports, ", "))),
+					),
+				)
 			})
 		}
 	}
