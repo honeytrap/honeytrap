@@ -38,6 +38,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -76,9 +77,9 @@ func New(options ...func(pushers.Channel) error) (pushers.Channel, error) {
 		return nil, errors.New("File channel: filename not set")
 	}
 
-	// relative to current working directory
-	if pwd, err := os.Getwd(); err == nil {
-		fc.File = path.Join(pwd, fc.File)
+	if path.IsAbs(fc.File) {
+	} else if pwd, err := os.Getwd(); err == nil {
+		fc.File = filepath.Join(pwd, fc.File)
 	}
 
 	fc.timeout = config.MakeDuration(fc.Timeout, int(defaultWaitTime))
