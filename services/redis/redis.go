@@ -32,7 +32,9 @@ package redis
 
 import (
 	"context"
+	"fmt"
 	"net"
+	"strconv"
 
 	"bufio"
 
@@ -77,16 +79,92 @@ func (s *redisService) SetChannel(c pushers.Channel) {
 	s.ch = c
 }
 
+type redisDatum struct {
+	DataType byte
+	Content  interface{}
+}
+
+func (d *redisDatum) ToString() (value string, success bool) {
+	switch d.DataType {
+	case 0x2b:
+		fallthrough
+	case 0x24:
+		return d.Content.(string), true
+	default:
+		return "", false
+	}
+}
+
+func parseRedisData(scanner *bufio.Scanner) (redisDatum, error) {
+	scanner.Scan()
+	cmd := scanner.Text()
+	if len(cmd) == 0 {
+		return redisDatum{}, nil
+	}
+	dataType := cmd[0]
+	if dataType == 0x2a { // 0x2a = '*', introduces an array
+		n, err := strconv.ParseUint(cmd[1:], 10, 64)
+		if err != nil {
+			return redisDatum{}, fmt.Errorf("Error parsing command array size: %s", err.Error())
+		}
+		var items []interface{}
+		for i := uint64(0); i < n; i++ {
+			item, err := parseRedisData(scanner)
+			if err != nil {
+				return redisDatum{}, err
+			}
+			items = append(items, item)
+		}
+		return redisDatum{DataType: dataType, Content: items}, nil
+	} else if dataType == 0x2b { // 0x2a = '+', introduces a simple string
+		return redisDatum{DataType: dataType, Content: cmd[1:]}, nil
+	} else if dataType == 0x24 { // 0x24 = '$', introduces a bulk string
+		// Read (and ignore) string length
+		_, err := strconv.ParseUint(cmd[1:], 10, 64)
+		if err != nil {
+			return redisDatum{}, err
+		}
+		scanner.Scan()
+		str := scanner.Text()
+		return redisDatum{DataType: dataType, Content: str}, nil
+	} else if dataType == 0x3a { // 0x3a = ':', introduces an integer
+		n, err := strconv.ParseUint(cmd[1:], 10, 64)
+		return redisDatum{DataType: dataType, Content: n}, err
+	} else {
+		return redisDatum{}, fmt.Errorf("Unexpected data type: %q", dataType)
+	}
+}
+
 func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
 
 	defer conn.Close()
 
 	scanner := bufio.NewScanner(conn)
 
-	for scanner.Scan() {
+	for true {
+		datum, err := parseRedisData(scanner)
 
-		cmd := scanner.Text()
-		answer, closeConn := s.REDISHandler(cmd)
+		if err != nil {
+			log.Error(err.Error())
+			continue
+		}
+		// Dirty hack to ignore "empty" packets (\r\n with no Redis content)
+		if datum.DataType == 0x00 {
+			continue
+		}
+		// Redis commands are sent as an array of strings, so expect that
+		if datum.DataType != 0x2a {
+			log.Error("Expected array, got data type %q", datum.DataType)
+			continue
+		}
+		items := datum.Content.([]interface{})
+		firstItem := items[0].(redisDatum)
+		command, success := firstItem.ToString()
+		if !success {
+			log.Error("Expected a command string, got something else (type=%q)", firstItem.DataType)
+			continue
+		}
+		answer, closeConn := s.REDISHandler(command, items[1:])
 
 		s.ch.Send(event.New(
 			services.EventOptions,
@@ -94,7 +172,7 @@ func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
 			event.Type("redis-command"),
 			event.SourceAddr(conn.RemoteAddr()),
 			event.DestinationAddr(conn.LocalAddr()),
-			event.Custom("redis.command", cmd),
+			event.Custom("redis.command", command),
 		))
 
 		if closeConn {

@@ -207,7 +207,7 @@ func (s *redisService) infoKeyspaceMsg() string {
 }
 
 func lenMsg() string {
-	return "$%d\n%s\n"
+	return "$%d\r\n%s\r\n"
 }
 
 func lineBreakMsg() string {
@@ -217,8 +217,8 @@ func lineBreakMsg() string {
 func errorMsg(errType string) string {
 	switch errType {
 	case "syntax":
-		return "-ERR syntax error\n"
+		return "-ERR syntax error\r\n"
 	default:
-		return "-ERR unknown command '%s'\n"
+		return "-ERR unknown command '%s'\r\n"
 	}
 }

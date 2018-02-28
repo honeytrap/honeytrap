@@ -35,24 +35,15 @@ import (
 	"strings"
 )
 
-func CleanCmd(cmd string) []string {
-	args := []string{}
-
-	for _, arg := range strings.Split(cmd, " ") {
-		if arg == "" {
-			continue
-		}
-		arg = strings.ToLower(arg)
-		args = append(args, arg)
-	}
-	return args
-}
-
-func (s *redisService) REDISHandler(cmd string) (string, bool) {
-	args := CleanCmd(cmd)
-	if fn, ok := mapCmds[args[0]]; ok {
-		return fn(s, args, cmd)
+/* args is an array of interface{} because it could be either a redisDatum or
+ * an elementary datatype (int, string, etc.)
+ */
+func (s *redisService) REDISHandler(command string, args []interface{}) (string, bool) {
+	// Convert the command to lowercase
+	command = strings.ToLower(command)
+	if fn, ok := mapCmds[command]; ok {
+		return fn(s, args)
 	} else {
-		return fmt.Sprintf(errorMsg("unknown"), cmd), false
+		return fmt.Sprintf(errorMsg("unknown"), command), false
 	}
 }
