@@ -1012,9 +1012,6 @@ func (c *Canary) transmit(fd int32) error {
 
 // Run will start Canary
 func (c *Canary) Start(ctx context.Context) error {
-	log.Info("Raw listener started.")
-	defer log.Info("Raw listener stopped.")
-
 	go func() {
 		<-ctx.Done()
 		c.Close()
@@ -1028,6 +1025,9 @@ func (c *Canary) Start(ctx context.Context) error {
 	)
 
 	go func() {
+		log.Info("Raw listener started.")
+		defer log.Info("Raw listener stopped.")
+
 		for {
 			nevents, err := syscall.EpollWait(c.epfd, events[:], -1)
 			if err != nil {
