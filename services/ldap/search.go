@@ -32,6 +32,7 @@ package ldap
 
 import (
 	"fmt"
+	"strings"
 
 	ber "github.com/go-asn1-ber/asn1-ber"
 )
@@ -43,6 +44,21 @@ var (
 	//ErrSearchRequestTooComplex error if the search request is to complex
 	ErrSearchRequestTooComplex = fmt.Errorf("search too complex to be parsed")
 )
+
+// enum mappings for use in event logging
+var mapSearchScope = map[int64]string{
+	0: "baseObject",
+	1: "singleLevel",
+	2: "wholeSubtree",
+	3: "subordinateSubtree",
+}
+
+var mapDerefAliases = map[int64]string{
+	0: "neverDerefAliases",
+	1: "derefInSearching",
+	2: "derefFindingBaseObj",
+	3: "derefAlways",
+}
 
 //SearchRequest a simplified ldap search request
 type SearchRequest struct {
@@ -74,14 +90,34 @@ func parseSearchRequest(p *ber.Packet, el eventLog) (*SearchRequest, error) {
 
 	if len(rps) > 0 {
 		ret.BaseDN = string(rps[0].ByteValue)
+		el["ldap.search.basedn"] = ret.BaseDN
 	}
-	if len(rps) > 1 {
-		ret.Scope = forceInt64(rps[1].Value)
-		ret.DerefAliases = forceInt64(rps[2].Value)
-		ret.SizeLimit = forceInt64(rps[3].Value)
-		ret.TimeLimit = forceInt64(rps[4].Value)
-		ret.TypesOnly = rps[5].Value.(bool)
+
+	if len(rps) < 6 {
+		return nil, ErrNotASearchRequest
 	}
+
+	ret.Scope = forceInt64(rps[1].Value)
+	ret.DerefAliases = forceInt64(rps[2].Value)
+	ret.SizeLimit = forceInt64(rps[3].Value)
+	ret.TimeLimit = forceInt64(rps[4].Value)
+	ret.TypesOnly = rps[5].Value.(bool)
+
+	// set event data
+	if str, ok := mapSearchScope[ret.Scope]; ok {
+		el["ldap.search-scope"] = str
+	} else {
+		el["ldap.search-scope"] = ret.Scope
+	}
+
+	if str, ok := mapDerefAliases[ret.DerefAliases]; ok {
+		el["ldap.search-derefaliases"] = str
+	} else {
+		el["ldap.search-derefaliases"] = ret.DerefAliases
+	}
+
+	el["ldap.search-timelimit"] = ret.TimeLimit
+	el["ldap.search-sizelimit"] = ret.SizeLimit
 
 	// Check to see if it looks like a simple search criteria
 	err = checkPacket(rps[6], ber.ClassContext, ber.TypeConstructed, 0x3)
@@ -92,45 +128,50 @@ func parseSearchRequest(p *ber.Packet, el eventLog) (*SearchRequest, error) {
 	} else {
 		// This is likely some sort of complex search criteria.
 		// Try to generate a searchFingerPrint based on the values
+		// You will have to understand this fingerprint in your code
 		var getContextValue func(p *ber.Packet) string
+
 		getContextValue = func(p *ber.Packet) string {
-			ret := ""
+			var err error
+			var sb strings.Builder
+
 			if p.Value != nil {
-				ret = fmt.Sprint(p.Value)
+				_, err = sb.WriteString(fmt.Sprint(p.Value))
 			}
+
 			for _, child := range p.Children {
 				childVal := getContextValue(child)
-				if childVal != "" {
-					if ret != "" {
-						ret += ","
-					}
-					ret += childVal
-				}
+				_, err = sb.WriteRune(',')
+				_, err = sb.WriteString(childVal)
 			}
-			return ret
+
+			if err != nil {
+				log.Debugf("ldap-search: writing search-fingerprint failed: %s", err)
+				return ""
+			}
+
+			return sb.String()
 		}
 
-		ret.FilterAttr = "searchFingerprint"
-		ret.FilterValue = getContextValue(rps[6])
+		var buf strings.Builder
+		_, err = buf.WriteRune('\'')
+
+		ret.FilterAttr = "#search-fingerprint"
+		_, err = buf.WriteString(getContextValue(rps[6]))
+
 		for index := 7; index < len(rps); index++ {
-			value := getContextValue(rps[index])
-			if value != "" {
-				if ret.FilterValue != "" {
-					ret.FilterValue += ","
-				}
-				ret.FilterValue += value
+			if buf.Len() > 0 {
+				_, err = buf.WriteRune(',')
 			}
+			_, err = buf.WriteString(getContextValue(rps[index]))
 		}
 
+		_, err = buf.WriteRune('\'')
+		ret.FilterValue = buf.String()
 	}
 
-	el["ldap.search.basedn"] = ret.BaseDN
-	el["ldap.search.filter"] = ret.FilterAttr
-	el["ldap.search.filtervalue"] = ret.FilterValue
-	el["ldap.search.scope"] = ret.Scope
-	el["ldap.search.derefaliases"] = ret.DerefAliases
-	el["ldap.search.timelimit"] = ret.TimeLimit
-	el["ldap.search.sizelimit"] = ret.SizeLimit
+	el["ldap.search-filter"] = ret.FilterAttr
+	el["ldap.search-filtervalue"] = ret.FilterValue
 
 	return ret, nil
 }
@@ -255,7 +296,6 @@ func (h *searchFuncHandler) handle(p *ber.Packet, el eventLog) []*ber.Packet {
 	el["ldap.request-type"] = "search"
 
 	res := h.searchFunc(req)
-	// the function is telling us it is opting not to process this search request
 	if res == nil {
 		return nil
 	}

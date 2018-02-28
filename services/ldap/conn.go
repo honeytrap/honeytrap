@@ -1,5 +1,4 @@
-/*
-* Honeytrap
+/* * Honeytrap
 * Copyright (C) 2016-2018 DutchSec (https://dutchsec.com/)
 *
 * This program is free software; you can redistribute it and/or modify it under
@@ -30,62 +29,35 @@
  */
 package ldap
 
-import ber "github.com/go-asn1-ber/asn1-ber"
+import (
+	"bufio"
+	"crypto/tls"
+	"net"
+)
 
-// Used to return anonymous authstate
-type catchallFunc func() bool
-
-//CatchAll handles the not implemented LDAP requests
-type CatchAll struct {
-	catchallFunc catchallFunc
+// Conn is a connection object for an LDAP session
+type Conn struct {
+	conn      net.Conn
+	authState int
 }
 
-func (c *CatchAll) handle(p *ber.Packet, el eventLog) []*ber.Packet {
-
-	if p == nil {
-		return nil
+// NewConn create a new LDAP connection
+func NewConn(c net.Conn, a Authenticator) *Conn {
+	return &Conn{
+		conn: c,
+		auth: a,
 	}
 
-	el["ldap.payload"] = p.Bytes()
+	tlsConn := tls.Server(c.conn, tc)
 
-	if len(p.Children) < 2 {
-		// bad request
-		return nil
+	if err := tlsConn.Handshake(); err != nil {
+		tlsConn.Close()
+		return err
 	}
 
-	opcode := int(p.Children[1].Tag)
+	c.isTLS = true
+	c.conn = tlsConn
+	c.ConnReader = bufio.NewReader(tlsConn)
 
-	// This initializes with 0 as resultcode (success)
-	reth := &resultCodeHandler{}
-
-	if c.catchallFunc() {
-		// Not authenticated
-		reth.resultCode = 1 // operationsError
-	}
-
-	switch opcode {
-	case AppModifyRequest:
-		el["ldap.request-type"] = "modify"
-		reth.replyTypeID = AppModifyResponse
-	case AppAddRequest:
-		el["ldap.request-type"] = "add"
-		reth.replyTypeID = AppAddResponse
-	case AppDelRequest:
-		el["ldap.request-type"] = "delete"
-		reth.replyTypeID = AppDelResponse
-	case AppModifyDNRequest:
-		el["ldap.request-type"] = "modify-dn"
-		reth.replyTypeID = AppModifyDNResponse
-	case AppCompareRequest:
-		el["ldap.request-type"] = "compare"
-		reth.replyTypeID = AppCompareResponse
-	case AppAbandonRequest:
-		el["ldap.request-type"] = "abandon"
-		return nil // This needs no answer
-	default:
-		el["ldap.request-type"] = opcode
-		reth.resultCode = 2 // protocol error
-	}
-
-	return reth.handle(p, el)
+	return nil
 }

@@ -33,6 +33,8 @@ package ldap
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
+	"errors"
 	"net"
 	"strings"
 
@@ -40,6 +42,7 @@ import (
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/services"
+	ber "github.com/honeytrap/honeytrap/services/asn1-ber"
 	logging "github.com/op/go-logging"
 )
 
@@ -57,6 +60,11 @@ services=[ "ldap" ]
 port="udp/389"
 services=[ "ldap" ]
 
+#LDAPS
+[[port]]
+port="tcp/636"
+services=["ldap"]
+
 */
 
 var (
@@ -67,15 +75,27 @@ var (
 // LDAP service setup
 func LDAP(options ...services.ServicerFunc) services.Servicer {
 
+	store, err := getStorage()
+	if err != nil {
+		log.Errorf("LDAP: Could not initialize storage. %s", err.Error())
+	}
+
+	cert, err := store.Certificate()
+	if err != nil {
+		log.Errorf("TLS: %s", err.Error())
+	}
+
 	s := &ldapService{
 		Server: Server{
 			Handlers:    make([]requestHandler, 0, 4),
 			Credentials: []string{"root:root"},
 			anon:        true,
 		},
+
+		wantTLS: false,
 	}
 
-	// Set requestHandlers
+	// Set request handlers
 	s.setHandlers()
 
 	for _, o := range options {
@@ -90,7 +110,93 @@ func LDAP(options ...services.ServicerFunc) services.Servicer {
 type ldapService struct {
 	Server
 
+	*Conn
+
 	c pushers.Channel
+
+	wantTLS bool
+
+	tlsConfig *tls.Config
+}
+
+//Server ldap server data
+type Server struct {
+	Handlers []requestHandler
+
+	Users []string
+
+	conn    *Conn
+	tlsConf *tls.Config
+}
+
+type eventLog map[string]interface{}
+
+func (s *ldapService) setHandlers() {
+
+	s.Handlers = append(s.Handlers,
+		&extFuncHandler{
+			tlsFunc: func() error {
+				if s.tlsConfig != nil && !s.wantTLS {
+					s.wantTLS = true
+					return nil
+				}
+				return errors.New("services/ldap: TLS not available")
+			},
+		})
+
+	s.Handlers = append(s.Handlers,
+		&bindFuncHandler{
+			bindFunc: func(binddn string, bindpw []byte) bool {
+
+				var cred strings.Builder           // build "name:password" string
+				_, err := cred.WriteString(binddn) // binddn starts with cn=
+				_, err = cred.WriteRune(':')       // separator
+				_, err = cred.Write(bindpw)
+				if err != nil {
+					log.Debug("ldap.bind: couldn't construct bind name")
+					return false
+				}
+
+				for _, u := range s.Users {
+					if u == cred.String() {
+						return true
+					}
+				}
+				return false
+			},
+		})
+
+	s.Handlers = append(s.Handlers,
+		&searchFuncHandler{
+			searchFunc: func(req *SearchRequest) []*SearchResultEntry {
+
+				ret := make([]*SearchResultEntry, 0, 1)
+
+				// produce a single search result that matches whatever
+				// they are searching for
+				if req.FilterAttr == "uid" {
+					ret = append(ret, &SearchResultEntry{
+						DN: "cn=" + req.FilterValue + "," + req.BaseDN,
+						Attrs: map[string]interface{}{
+							"sn":            req.FilterValue,
+							"cn":            req.FilterValue,
+							"uid":           req.FilterValue,
+							"homeDirectory": "/home/" + req.FilterValue,
+							"objectClass": []string{
+								"top",
+								"posixAccount",
+								"inetOrgPerson",
+							},
+						},
+					})
+				}
+				return ret
+			},
+		},
+	)
+
+	// CatchAll should be the last handler
+	s.Handlers = append(s.Handlers, &CatchAll{})
 }
 
 //Server ldap server data
@@ -185,11 +291,15 @@ func (s *ldapService) Handle(ctx context.Context, conn net.Conn) error {
 
 	s.anon = true // start with anonymous authstate
 
+	// check port 636 for tls connection
+	if conn.LocalAddr().(*net.TCPAddr).Port == 636 {
+	}
+
 	br := bufio.NewReader(conn)
 
 	for {
 
-		p, err := ber.ReadPacket(br)
+		p, err := ber.ReadPacket(s.ConnReader)
 		if err != nil {
 			return err
 		}
@@ -221,18 +331,28 @@ func (s *ldapService) Handle(ctx context.Context, conn net.Conn) error {
 			return nil
 		}
 
-		// Handle request and create a response packet(ASN.1 BER)
+		// Handle request and send a response packet(ASN.1 BER)
 		for _, h := range s.Handlers {
 			plist := h.handle(p, elog)
 
 			if len(plist) > 0 {
 				for _, part := range plist {
-					if _, err := conn.Write(part.Bytes()); err != nil {
+					_, err := s.conn.Write(part.Bytes())
+					if err != nil {
 						return err
 					}
 				}
-				// Handled the request, break out of the handling loop
+				// request is handled
 				break
+			}
+		}
+
+		// switch to tls if neccessary
+		if s.wantTLS {
+			s.wantTLS = false
+			err := s.Conn.StartTLS(s.tlsConfig)
+			if err != nil {
+				return err
 			}
 		}
 
@@ -246,4 +366,5 @@ func (s *ldapService) Handle(ctx context.Context, conn net.Conn) error {
 		))
 
 	}
+	return nil
 }

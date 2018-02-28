@@ -19,6 +19,7 @@
 		"unparam",
 		"unused",
 		"varcheck"
+<<<<<<< HEAD
 	],
 
 	"Exclude": [
@@ -34,3 +35,7 @@
 	"Errors": true,
 	"Deadline": "10m"
 }
+=======
+	]
+}
+>>>>>>> f63d074... services/ldap: merge upstream master
