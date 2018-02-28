@@ -150,7 +150,7 @@ func htons(n uint16) uint16 {
 }
 
 // handleUDP will handle udp packets
-func (c *Canary) handleUDP(iph *ipv4.Header, data []byte) error {
+func (c *Canary) handleUDP(eh *ethernet.EthernetFrame, iph *ipv4.Header, data []byte) error {
 	hdr, err := udp.Unmarshal(data)
 	if err != nil {
 		return nil
@@ -179,6 +179,10 @@ func (c *Canary) handleUDP(iph *ipv4.Header, data []byte) error {
 					CanaryOptions,
 					EventCategoryTCP,
 					event.SeverityFatal,
+
+					event.SourceHardwareAddr(eh.Source),
+					event.DestinationHardwareAddr(eh.Destination),
+
 					event.SourceIP(iph.Src),
 					event.DestinationIP(iph.Dst),
 					event.SourcePort(hdr.Source),
@@ -202,13 +206,30 @@ func (c *Canary) handleUDP(iph *ipv4.Header, data []byte) error {
 		if fn, ok := handlers[hdr.Destination]; !ok {
 			// default handler
 			c.knockChan <- KnockUDPPort{
-				SourceIP:        iph.Src,
-				DestinationIP:   iph.Dst,
-				DestinationPort: hdr.Destination,
+				SourceHardwareAddr:      eh.Source,
+				DestinationHardwareAddr: eh.Destination,
+				SourceIP:                iph.Src,
+				DestinationIP:           iph.Dst,
+				DestinationPort:         hdr.Destination,
 			}
 
 			// do we only want to detect scans? Or also detect payloads?
-			c.events.Send(EventUDP(iph.Src, iph.Dst, hdr.Source, hdr.Destination, hdr.Payload))
+			c.events.Send(event.New(
+				SensorCanary,
+				EventCategoryUDP,
+
+				event.SourceHardwareAddr(eh.Source),
+				event.DestinationHardwareAddr(eh.Destination),
+
+				event.SourceIP(iph.Src),
+				event.DestinationIP(iph.Dst),
+
+				event.SourcePort(hdr.Source),
+				event.DestinationPort(hdr.Destination),
+
+				event.Payload(hdr.Payload),
+			))
+
 		} else if err := fn(iph, hdr); err != nil {
 			fmt.Printf("Could not decode udp packet: %s", err)
 			// return err
@@ -220,7 +241,7 @@ func (c *Canary) handleUDP(iph *ipv4.Header, data []byte) error {
 }
 
 // handleICMP will handle tcp packets
-func (c *Canary) handleICMP(iph *ipv4.Header, data []byte) error {
+func (c *Canary) handleICMP(eh *ethernet.EthernetFrame, iph *ipv4.Header, data []byte) error {
 	_, err := icmp.Parse(data)
 	if err != nil {
 		return err
@@ -231,8 +252,10 @@ func (c *Canary) handleICMP(iph *ipv4.Header, data []byte) error {
 	}
 
 	c.knockChan <- KnockICMP{
-		SourceIP:      iph.Src,
-		DestinationIP: iph.Dst,
+		SourceHardwareAddr:      eh.Source,
+		DestinationHardwareAddr: eh.Destination,
+		SourceIP:                iph.Src,
+		DestinationIP:           iph.Dst,
 	}
 
 	return nil
@@ -286,7 +309,7 @@ func (c *Canary) isMe(ip net.IP) bool {
 }
 
 // handleTCP will handle tcp packets
-func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
+func (c *Canary) handleTCP(eh *ethernet.EthernetFrame, iph *ipv4.Header, data []byte) error {
 	hdr, err := tcp.UnmarshalWithChecksum(data, iph.Dst, iph.Src)
 	if err == tcp.ErrInvalidChecksum {
 		// we are ignoring invalid checksums for now
@@ -457,6 +480,8 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 						CanaryOptions,
 						EventCategoryTCP,
 						event.SeverityFatal,
+						event.SourceHardwareAddr(eh.Source),
+						event.DestinationHardwareAddr(eh.Destination),
 						event.SourceIP(state.SrcIP),
 						event.DestinationIP(state.DestIP),
 						event.SourcePort(state.SrcPort),
@@ -492,7 +517,19 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 
 				state.socket.Close()
 
-				c.events.Send(EventTCPPayload(state.SrcIP, state.DestIP, state.SrcPort, state.DestPort, buff[:n]))
+				c.events.Send(event.New(
+					CanaryOptions,
+					EventCategoryTCP,
+					event.ServiceStarted,
+					event.SourceHardwareAddr(eh.Source),
+					event.DestinationHardwareAddr(eh.Destination),
+					event.SourceIP(state.SrcIP),
+					event.DestinationIP(state.DestIP),
+					event.SourcePort(state.SrcPort),
+					event.DestinationPort(state.DestPort),
+					event.Payload(buff[:n]),
+				))
+
 			} else if err := fn(state.socket); err != nil {
 				_ = fn
 			}
@@ -579,9 +616,11 @@ func (c *Canary) handleTCP(iph *ipv4.Header, data []byte) error {
 
 	if hdr.Ctrl&tcp.SYN == tcp.SYN {
 		c.knockChan <- KnockTCPPort{
-			SourceIP:        iph.Src,
-			DestinationIP:   iph.Dst,
-			DestinationPort: hdr.Destination,
+			SourceHardwareAddr:      eh.Source,
+			DestinationHardwareAddr: eh.Destination,
+			SourceIP:                iph.Src,
+			DestinationIP:           iph.Dst,
+			DestinationPort:         hdr.Destination,
 		}
 	}
 
@@ -1012,16 +1051,17 @@ func (c *Canary) Start(ctx context.Context) error {
 						} else {
 							data := iph.Payload[:]
 
+							// eh.Source, eh.Destination
 							switch iph.Protocol {
 							case 1 /* icmp */ :
-								c.handleICMP(iph, data)
+								c.handleICMP(eh, iph, data)
 							case 2 /* IGMP */ :
 
 							case 6 /* tcp */ :
 								// what interface?
-								c.handleTCP(iph, data)
+								c.handleTCP(eh, iph, data)
 							case 17 /* udp */ :
-								c.handleUDP(iph, data)
+								c.handleUDP(eh, iph, data)
 							default:
 								log.Debugf("Ignoring protocol: %x", iph.Protocol)
 							}

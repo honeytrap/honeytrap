@@ -47,20 +47,6 @@ var (
 	EventCategoryTCP = event.Category("tcp")
 )
 
-// EventTCPPayload will return a snmp event struct
-func EventTCPPayload(src, dst net.IP, srcport, dstport uint16, payload []byte) event.Event {
-	return event.New(
-		CanaryOptions,
-		EventCategoryTCP,
-		event.ServiceStarted,
-		event.SourceIP(src),
-		event.DestinationIP(dst),
-		event.SourcePort(srcport),
-		event.DestinationPort(dstport),
-		event.Payload(payload),
-	)
-}
-
 var (
 	// EventCategoryHTTP contains events for ssdp traffic
 	EventCategoryHTTP = event.Category("http")

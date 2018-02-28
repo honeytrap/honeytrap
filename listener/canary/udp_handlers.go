@@ -36,7 +36,6 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"net"
 	"net/http"
 
 	"github.com/google/gopacket/layers"
@@ -56,22 +55,6 @@ var (
 		SensorCanary,
 	)
 )
-
-// EventUDP will return a snmp event struct
-func EventUDP(sourceIP, destinationIP net.IP, srcport, dstport uint16, payload []byte) event.Event {
-	return event.New(
-		SensorCanary,
-		EventCategoryUDP,
-
-		event.SourceIP(sourceIP),
-		event.DestinationIP(destinationIP),
-
-		event.SourcePort(srcport),
-		event.DestinationPort(dstport),
-
-		event.Payload(payload),
-	)
-}
 
 var (
 	// EventCategorySSDP contains events for ssdp traffic
