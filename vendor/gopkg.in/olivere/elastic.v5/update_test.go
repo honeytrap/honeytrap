@@ -12,7 +12,8 @@ import (
 )
 
 func TestUpdateViaScript(t *testing.T) {
-	client := setupTestClient(t)
+	client := setupTestClient(t) // , SetTraceLog(log.New(os.Stdout, "", 0)))
+
 	update := client.Update().
 		Index("test").Type("type1").Id("1").
 		Script(NewScript("ctx._source.tags += tag").Params(map[string]interface{}{"tag": "blue"}).Lang("groovy"))
@@ -44,7 +45,7 @@ func TestUpdateViaScript(t *testing.T) {
 }
 
 func TestUpdateViaScriptId(t *testing.T) {
-	client := setupTestClient(t)
+	client := setupTestClient(t) // , SetTraceLog(log.New(os.Stdout, "", 0)))
 
 	scriptParams := map[string]interface{}{
 		"pageViewEvent": map[string]interface{}{
@@ -88,7 +89,7 @@ func TestUpdateViaScriptId(t *testing.T) {
 }
 
 func TestUpdateViaScriptFile(t *testing.T) {
-	client := setupTestClient(t)
+	client := setupTestClient(t) // , SetTraceLog(log.New(os.Stdout, "", 0)))
 
 	scriptParams := map[string]interface{}{
 		"pageViewEvent": map[string]interface{}{
@@ -133,7 +134,8 @@ func TestUpdateViaScriptFile(t *testing.T) {
 }
 
 func TestUpdateViaScriptAndUpsert(t *testing.T) {
-	client := setupTestClient(t)
+	client := setupTestClient(t) // , SetTraceLog(log.New(os.Stdout, "", 0)))
+
 	update := client.Update().
 		Index("test").Type("type1").Id("1").
 		Script(NewScript("ctx._source.counter += count").Params(map[string]interface{}{"count": 4})).
@@ -166,7 +168,8 @@ func TestUpdateViaScriptAndUpsert(t *testing.T) {
 }
 
 func TestUpdateViaDoc(t *testing.T) {
-	client := setupTestClient(t)
+	client := setupTestClient(t) // , SetTraceLog(log.New(os.Stdout, "", 0)))
+
 	update := client.Update().
 		Index("test").Type("type1").Id("1").
 		Doc(map[string]interface{}{"name": "new_name"}).
@@ -199,7 +202,8 @@ func TestUpdateViaDoc(t *testing.T) {
 }
 
 func TestUpdateViaDocAndUpsert(t *testing.T) {
-	client := setupTestClient(t)
+	client := setupTestClient(t) // , SetTraceLog(log.New(os.Stdout, "", 0)))
+
 	update := client.Update().
 		Index("test").Type("type1").Id("1").
 		Doc(map[string]interface{}{"name": "new_name"}).
@@ -234,7 +238,8 @@ func TestUpdateViaDocAndUpsert(t *testing.T) {
 }
 
 func TestUpdateViaDocAndUpsertAndFetchSource(t *testing.T) {
-	client := setupTestClient(t)
+	client := setupTestClient(t) // , SetTraceLog(log.New(os.Stdout, "", 0)))
+
 	update := client.Update().
 		Index("test").Type("type1").Id("1").
 		Doc(map[string]interface{}{"name": "new_name"}).
@@ -274,6 +279,7 @@ func TestUpdateViaDocAndUpsertAndFetchSource(t *testing.T) {
 
 func TestUpdateAndFetchSource(t *testing.T) {
 	client := setupTestClientAndCreateIndexAndAddDocs(t) // , SetTraceLog(log.New(os.Stdout, "", 0)))
+
 	res, err := client.Update().
 		Index(testIndexName).Type("tweet").Id("1").
 		Doc(map[string]interface{}{"user": "sandrae"}).

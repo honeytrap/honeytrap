@@ -279,6 +279,9 @@ func TestClientHealthcheckStartupTimeout(t *testing.T) {
 	if !IsConnErr(err) {
 		t.Fatal(err)
 	}
+	if !strings.Contains(err.Error(), "connection refused") {
+		t.Fatalf("expected error to contain %q, have %q", "connection refused", err.Error())
+	}
 	if duration < 5*time.Second {
 		t.Fatalf("expected a timeout in more than 5 seconds; got: %v", duration)
 	}
@@ -674,7 +677,7 @@ func TestClientSelectConnHealthy(t *testing.T) {
 	client, err := NewClient(
 		SetSniff(false),
 		SetHealthcheck(false),
-		SetURL("http://127.0.0.1:9200", "http://127.0.0.1:9201"))
+		SetURL("http://127.0.0.1:9200/node1", "http://127.0.0.1:9201/node2/"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -682,6 +685,54 @@ func TestClientSelectConnHealthy(t *testing.T) {
 	// Both are healthy, so we should get both URLs in round-robin
 	client.conns[0].MarkAsHealthy()
 	client.conns[1].MarkAsHealthy()
+
+	// #1: Return 1st
+	c, err := client.next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.URL() != client.conns[0].URL() {
+		t.Fatalf("expected %s; got: %s", c.URL(), client.conns[0].URL())
+	}
+	// #2: Return 2nd
+	c, err = client.next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.URL() != client.conns[1].URL() {
+		t.Fatalf("expected %s; got: %s", c.URL(), client.conns[1].URL())
+	}
+	// #3: Return 1st
+	c, err = client.next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.URL() != client.conns[0].URL() {
+		t.Fatalf("expected %s; got: %s", c.URL(), client.conns[0].URL())
+	}
+}
+
+func TestClientSelectConnHealthyWithURLPrefix(t *testing.T) {
+	client, err := NewClient(
+		SetSniff(false),
+		SetHealthcheck(false),
+		SetURL("http://127.0.0.1:9200/node1", "http://127.0.0.1:9201/node2/prefix/"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Both are healthy, so we should get both URLs in round-robin
+	client.conns[0].MarkAsHealthy()
+	client.conns[1].MarkAsHealthy()
+
+	// Check that the connection used the URLs, including its prefix
+	if want, have := "http://127.0.0.1:9200/node1", client.conns[0].URL(); want != have {
+		t.Fatalf("want Node[0] = %q, have %q", want, have)
+	}
+	// Note that it stripped the / off the suffix
+	if want, have := "http://127.0.0.1:9201/node2/prefix", client.conns[1].URL(); want != have {
+		t.Fatalf("want Node[1] = %q, have %q", want, have)
+	}
 
 	// #1: Return 1st
 	c, err := client.next()
