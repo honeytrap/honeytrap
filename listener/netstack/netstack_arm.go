@@ -1,4 +1,5 @@
-// +build linux,!amd64,!arm
+// +build linux
+// +build arm
 
 /*
 * Honeytrap
