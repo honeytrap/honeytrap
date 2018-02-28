@@ -396,6 +396,22 @@ func TestNilLookup(t *testing.T) {
 	assert.Nil(t, reader.Close(), "error on close")
 }
 
+func TestUsingClosedDatabase(t *testing.T) {
+	reader, _ := Open("test-data/test-data/MaxMind-DB-test-decoder.mmdb")
+	reader.Close()
+
+	var recordInterface interface{}
+
+	err := reader.Lookup(nil, recordInterface)
+	assert.Equal(t, err.Error(), "cannot call Lookup on a closed database")
+
+	_, err = reader.LookupOffset(nil)
+	assert.Equal(t, err.Error(), "cannot call LookupOffset on a closed database")
+
+	err = reader.Decode(0, recordInterface)
+	assert.Equal(t, err.Error(), "cannot call Decode on a closed database")
+}
+
 func checkMetadata(t *testing.T, reader *Reader, ipVersion uint, recordSize uint) {
 	metadata := reader.Metadata
 

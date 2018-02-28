@@ -14,8 +14,9 @@ type ConsumerMessage struct {
 	Topic          string
 	Partition      int32
 	Offset         int64
-	Timestamp      time.Time // only set if kafka is version 0.10+, inner message timestamp
-	BlockTimestamp time.Time // only set if kafka is version 0.10+, outer (compressed) block timestamp
+	Timestamp      time.Time       // only set if kafka is version 0.10+, inner message timestamp
+	BlockTimestamp time.Time       // only set if kafka is version 0.10+, outer (compressed) block timestamp
+	Headers        []*RecordHeader // only set if kafka is version 0.11+
 }
 
 // ConsumerError is what is provided to the user when an error occurs.
@@ -440,82 +441,51 @@ func (child *partitionConsumer) HighWaterMarkOffset() int64 {
 
 func (child *partitionConsumer) responseFeeder() {
 	var msgs []*ConsumerMessage
-	msgSent := false
+	expiryTicker := time.NewTicker(child.conf.Consumer.MaxProcessingTime)
+	firstAttempt := true
 
 feederLoop:
 	for response := range child.feeder {
 		msgs, child.responseResult = child.parseResponse(response)
-		expiryTicker := time.NewTicker(child.conf.Consumer.MaxProcessingTime)
 
 		for i, msg := range msgs {
 		messageSelect:
 			select {
 			case child.messages <- msg:
-				msgSent = true
+				firstAttempt = true
 			case <-expiryTicker.C:
-				if !msgSent {
+				if !firstAttempt {
 					child.responseResult = errTimedOut
 					child.broker.acks.Done()
 					for _, msg = range msgs[i:] {
 						child.messages <- msg
 					}
 					child.broker.input <- child
+					expiryTicker.Stop()
 					continue feederLoop
 				} else {
 					// current message has not been sent, return to select
 					// statement
-					msgSent = false
+					firstAttempt = false
 					goto messageSelect
 				}
 			}
 		}
 
-		expiryTicker.Stop()
 		child.broker.acks.Done()
 	}
 
+	expiryTicker.Stop()
 	close(child.messages)
 	close(child.errors)
 }
 
-func (child *partitionConsumer) parseResponse(response *FetchResponse) ([]*ConsumerMessage, error) {
-	block := response.GetBlock(child.topic, child.partition)
-	if block == nil {
-		return nil, ErrIncompleteResponse
-	}
-
-	if block.Err != ErrNoError {
-		return nil, block.Err
-	}
-
-	if len(block.MsgSet.Messages) == 0 {
-		// We got no messages. If we got a trailing one then we need to ask for more data.
-		// Otherwise we just poll again and wait for one to be produced...
-		if block.MsgSet.PartialTrailingMessage {
-			if child.conf.Consumer.Fetch.Max > 0 && child.fetchSize == child.conf.Consumer.Fetch.Max {
-				// we can't ask for more data, we've hit the configured limit
-				child.sendError(ErrMessageTooLarge)
-				child.offset++ // skip this one so we can keep processing future messages
-			} else {
-				child.fetchSize *= 2
-				if child.conf.Consumer.Fetch.Max > 0 && child.fetchSize > child.conf.Consumer.Fetch.Max {
-					child.fetchSize = child.conf.Consumer.Fetch.Max
-				}
-			}
-		}
-
-		return nil, nil
-	}
-
-	// we got messages, reset our fetch size in case it was increased for a previous request
-	child.fetchSize = child.conf.Consumer.Fetch.Default
-	atomic.StoreInt64(&child.highWaterMarkOffset, block.HighWaterMarkOffset)
-
-	incomplete := false
-	prelude := true
+func (child *partitionConsumer) parseMessages(msgSet *MessageSet) ([]*ConsumerMessage, error) {
 	var messages []*ConsumerMessage
-	for _, msgBlock := range block.MsgSet.Messages {
+	var incomplete bool
+	prelude := true
 
+	for _, msgBlock := range msgSet.Messages {
 		for _, msg := range msgBlock.Messages() {
 			offset := msg.Offset
 			if msg.Msg.Version >= 1 {
@@ -542,12 +512,122 @@ func (child *partitionConsumer) parseResponse(response *FetchResponse) ([]*Consu
 				incomplete = true
 			}
 		}
-
 	}
 
 	if incomplete || len(messages) == 0 {
 		return nil, ErrIncompleteResponse
 	}
+	return messages, nil
+}
+
+func (child *partitionConsumer) parseRecords(batch *RecordBatch) ([]*ConsumerMessage, error) {
+	var messages []*ConsumerMessage
+	var incomplete bool
+	prelude := true
+	originalOffset := child.offset
+
+	for _, rec := range batch.Records {
+		offset := batch.FirstOffset + rec.OffsetDelta
+		if prelude && offset < child.offset {
+			continue
+		}
+		prelude = false
+
+		if offset >= child.offset {
+			messages = append(messages, &ConsumerMessage{
+				Topic:     child.topic,
+				Partition: child.partition,
+				Key:       rec.Key,
+				Value:     rec.Value,
+				Offset:    offset,
+				Timestamp: batch.FirstTimestamp.Add(rec.TimestampDelta),
+				Headers:   rec.Headers,
+			})
+			child.offset = offset + 1
+		} else {
+			incomplete = true
+		}
+	}
+
+	if incomplete {
+		return nil, ErrIncompleteResponse
+	}
+
+	child.offset = batch.FirstOffset + int64(batch.LastOffsetDelta) + 1
+	if child.offset <= originalOffset {
+		return nil, ErrConsumerOffsetNotAdvanced
+	}
+
+	return messages, nil
+}
+
+func (child *partitionConsumer) parseResponse(response *FetchResponse) ([]*ConsumerMessage, error) {
+	block := response.GetBlock(child.topic, child.partition)
+	if block == nil {
+		return nil, ErrIncompleteResponse
+	}
+
+	if block.Err != ErrNoError {
+		return nil, block.Err
+	}
+
+	nRecs, err := block.numRecords()
+	if err != nil {
+		return nil, err
+	}
+	if nRecs == 0 {
+		partialTrailingMessage, err := block.isPartial()
+		if err != nil {
+			return nil, err
+		}
+		// We got no messages. If we got a trailing one then we need to ask for more data.
+		// Otherwise we just poll again and wait for one to be produced...
+		if partialTrailingMessage {
+			if child.conf.Consumer.Fetch.Max > 0 && child.fetchSize == child.conf.Consumer.Fetch.Max {
+				// we can't ask for more data, we've hit the configured limit
+				child.sendError(ErrMessageTooLarge)
+				child.offset++ // skip this one so we can keep processing future messages
+			} else {
+				child.fetchSize *= 2
+				if child.conf.Consumer.Fetch.Max > 0 && child.fetchSize > child.conf.Consumer.Fetch.Max {
+					child.fetchSize = child.conf.Consumer.Fetch.Max
+				}
+			}
+		}
+
+		return nil, nil
+	}
+
+	// we got messages, reset our fetch size in case it was increased for a previous request
+	child.fetchSize = child.conf.Consumer.Fetch.Default
+	atomic.StoreInt64(&child.highWaterMarkOffset, block.HighWaterMarkOffset)
+
+	messages := []*ConsumerMessage{}
+	for _, records := range block.RecordsSet {
+		if control, err := records.isControl(); err != nil || control {
+			continue
+		}
+
+		switch records.recordsType {
+		case legacyRecords:
+			messageSetMessages, err := child.parseMessages(records.msgSet)
+			if err != nil {
+				return nil, err
+			}
+
+			messages = append(messages, messageSetMessages...)
+		case defaultRecords:
+			recordBatchMessages, err := child.parseRecords(records.recordBatch)
+			if err != nil {
+				return nil, err
+			}
+
+			messages = append(messages, recordBatchMessages...)
+		default:
+			return nil, fmt.Errorf("unknown records type: %v", records.recordsType)
+		}
+	}
+
 	return messages, nil
 }
 
@@ -739,6 +819,10 @@ func (bc *brokerConsumer) fetchNewMessages() (*FetchResponse, error) {
 	if bc.consumer.conf.Version.IsAtLeast(V0_10_1_0) {
 		request.Version = 3
 		request.MaxBytes = MaxResponseSize
+	}
+	if bc.consumer.conf.Version.IsAtLeast(V0_11_0_0) {
+		request.Version = 4
+		request.Isolation = ReadUncommitted // We don't support yet transactions.
 	}
 
 	for child := range bc.subscriptions {

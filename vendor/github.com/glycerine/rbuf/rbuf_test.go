@@ -6,7 +6,7 @@ import (
 	"io"
 	"testing"
 
-	cv "github.com/smartystreets/goconvey/convey"
+	cv "github.com/glycerine/goconvey/convey"
 )
 
 func TestRingBufReadWrite(t *testing.T) {
