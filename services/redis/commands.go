@@ -34,7 +34,7 @@ import (
 	"fmt"
 )
 
-type cmd func(*redisService, []string, string) (string, bool)
+type cmd func(*redisService, []interface{}) (string, bool)
 
 var mapCmds = map[string]cmd{
 	"info": (*redisService).infoCmd,
@@ -55,16 +55,21 @@ var mapInfoCmds = map[string]infoSection{
 	"keyspace":    (*redisService).infoKeyspaceMsg,
 }
 
-func (s *redisService) infoCmd(args []string, userCmd string) (string, bool) {
+func (s *redisService) infoCmd(args []interface{}) (string, bool) {
 	switch len(args) {
-	case 1:
+	case 0:
 		return fmt.Sprintf(lenMsg(), len(s.infoSectionsMsg()), s.infoSectionsMsg()), false
-	case 2:
-		if fn, ok := mapInfoCmds[args[1]]; ok {
+	case 1:
+		_word := args[0].(redisDatum)
+		word, success := _word.ToString()
+		if !success {
+			return "Expected string argument, got something else", false
+		}
+		if fn, ok := mapInfoCmds[word]; ok {
 			return fmt.Sprintf(lenMsg(), len(fn(s)), fn(s)), false
-		} else if args[1] == "default" {
+		} else if word == "default" {
 			return fmt.Sprintf(lenMsg(), len(s.infoSectionsMsg()), s.infoSectionsMsg()), false
-		} else if args[1] == "all" {
+		} else if word == "all" {
 			return fmt.Sprintf(lenMsg(), len(s.allSectionsMsg()), s.allSectionsMsg()), false
 		} else {
 			return fmt.Sprintf(lenMsg(), len(lineBreakMsg()), lineBreakMsg()), false
