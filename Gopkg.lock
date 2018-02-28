@@ -34,7 +34,14 @@
 [[projects]]
   branch = "master"
   name = "github.com/dgraph-io/badger"
-  packages = [".","options","protos","skl","table","y"]
+  packages = [
+    ".",
+    "options",
+    "protos",
+    "skl",
+    "table",
+    "y"
+  ]
   revision = "94594b20babfa448fdf604b6b58b94b14b2650d9"
 
 [[projects]]
@@ -92,6 +99,12 @@
   revision = "54320fe9f6f340f8fbe3f34306e3c32589d97dc4"
 
 [[projects]]
+  name = "github.com/go-asn1-ber/asn1-ber"
+  packages = ["."]
+  revision = "379148ca0225df7a432012b8df0355c2a2063ac0"
+  version = "v1.2"
+
+[[projects]]
   branch = "master"
   name = "github.com/golang/protobuf"
   packages = ["proto"]
@@ -105,7 +118,12 @@
 
 [[projects]]
   name = "github.com/google/gopacket"
-  packages = [".","layers","pcap","pcapgo"]
+  packages = [
+    ".",
+    "layers",
+    "pcap",
+    "pcapgo"
+  ]
   revision = "11c65f1ca9081dfea43b4f9643f5c155583b73ba"
   version = "v1.1.14"
 
@@ -143,7 +161,12 @@
 [[projects]]
   branch = "master"
   name = "github.com/mailru/easyjson"
-  packages = [".","buffer","jlexer","jwriter"]
+  packages = [
+    ".",
+    "buffer",
+    "jlexer",
+    "jwriter"
+  ]
   revision = "32fa128f234d041f196a9f3e0fea5ac9772c08e1"
 
 [[projects]]
@@ -263,19 +286,40 @@
 [[projects]]
   branch = "master"
   name = "golang.org/x/crypto"
-  packages = ["curve25519","ed25519","ed25519/internal/edwards25519","internal/chacha20","poly1305","ssh","ssh/terminal"]
+  packages = [
+    "curve25519",
+    "ed25519",
+    "ed25519/internal/edwards25519",
+    "internal/chacha20",
+    "poly1305",
+    "ssh",
+    "ssh/terminal"
+  ]
   revision = "8c653846df49742c4c85ec37e5d9f8d3ba657895"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/net"
-  packages = ["bpf","context","internal/iana","internal/socket","internal/timeseries","ipv4","ipv6","trace"]
+  packages = [
+    "bpf",
+    "context",
+    "internal/iana",
+    "internal/socket",
+    "internal/timeseries",
+    "ipv4",
+    "ipv6",
+    "trace"
+  ]
   revision = "cbe0f9307d0156177f9dd5dc85da1a31abc5f2fb"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/sys"
-  packages = ["unix","windows","windows/registry"]
+  packages = [
+    "unix",
+    "windows",
+    "windows/registry"
+  ]
   revision = "f6cff0780e542efa0c8e864dc8fa522808f6a598"
 
 [[projects]]
@@ -286,7 +330,11 @@
 
 [[projects]]
   name = "gopkg.in/olivere/elastic.v5"
-  packages = [".","config","uritemplates"]
+  packages = [
+    ".",
+    "config",
+    "uritemplates"
+  ]
   revision = "02f6a01dc7f7fd2d65e89121e881aae3ba577a9a"
   version = "v5.0.65"
 
