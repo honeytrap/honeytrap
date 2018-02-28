@@ -110,9 +110,15 @@ func (s *SearchService) TimeoutInMillis(timeoutInMillis int) *SearchService {
 	return s
 }
 
+// TerminateAfter specifies the maximum number of documents to collect for
+// each shard, upon reaching which the query execution will terminate early.
+func (s *SearchService) TerminateAfter(terminateAfter int) *SearchService {
+	s.searchSource = s.searchSource.TerminateAfter(terminateAfter)
+	return s
+}
+
 // SearchType sets the search operation type. Valid values are:
-// "query_then_fetch", "query_and_fetch", "dfs_query_then_fetch",
-// "dfs_query_and_fetch", "count", "scan".
+// "dfs_query_then_fetch" and "query_then_fetch".
 // See https://www.elastic.co/guide/en/elasticsearch/reference/5.6/search-request-search-type.html
 // for details.
 func (s *SearchService) SearchType(searchType string) *SearchService {
@@ -268,6 +274,13 @@ func (s *SearchService) StoredFields(fields ...string) *SearchService {
 	return s
 }
 
+// TrackScores is applied when sorting and controls if scores will be
+// tracked as well. Defaults to false.
+func (s *SearchService) TrackScores(trackScores bool) *SearchService {
+	s.searchSource = s.searchSource.TrackScores(trackScores)
+	return s
+}
+
 // SearchAfter allows a different form of pagination by using a live cursor,
 // using the results of the previous page to help the retrieval of the next.
 //
@@ -401,7 +414,7 @@ func (s *SearchService) Do(ctx context.Context) (*SearchResult, error) {
 // SearchResult is the result of a search in Elasticsearch.
 type SearchResult struct {
 	TookInMillis int64          `json:"took"`              // search time in milliseconds
-	ScrollId     string         `json:"_scroll_id"`        // only used with Scroll and Scan operations
+	ScrollId     string         `json:"_scroll_id"`        // only used with Scroll operations
 	Hits         *SearchHits    `json:"hits"`              // the actual search hits
 	Suggest      SearchSuggest  `json:"suggest"`           // results from suggesters
 	Aggregations Aggregations   `json:"aggregations"`      // results from aggregations
@@ -430,6 +443,10 @@ func (r *SearchResult) Each(typ reflect.Type) []interface{} {
 	var slice []interface{}
 	for _, hit := range r.Hits.Hits {
 		v := reflect.New(typ).Elem()
+		if hit.Source == nil {
+			slice = append(slice, v.Interface())
+			continue
+		}
 		if err := json.Unmarshal(*hit.Source, v.Addr().Interface()); err == nil {
 			slice = append(slice, v.Interface())
 		}

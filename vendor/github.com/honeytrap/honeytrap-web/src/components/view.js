@@ -16,6 +16,7 @@ class View extends Component {
             <div className="col-sm-9 content">
                 <div className="dashhead">
                     <Header title={ this.props.title } subtitle={ this.props.subtitle } />
+                    <img src="/images/logo.png" style={{ width: '90px', float: 'right' }} className='pull-right' />
                     <div className="btn-toolbar dashhead-toolbar">
                         <div className="btn-toolbar-item input-with-icon">
                             <span className="icon"></span>

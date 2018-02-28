@@ -18,9 +18,8 @@ package badger
 
 import (
 	"bytes"
-	"container/heap"
-	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -51,12 +50,8 @@ type oracle struct {
 	isManaged bool // Does not change value, so no locking required.
 
 	sync.Mutex
+	writeLock  sync.Mutex
 	nextCommit uint64
-
-	// These two structures are used to figure out when a commit is done. The minimum done commit is
-	// used to update curRead.
-	commitMark     uint64Heap
-	pendingCommits map[uint64]struct{}
 
 	// commits stores a key fingerprint and latest commit counter for it.
 	// refCount is used to clear out commits map to avoid a memory blowup.
@@ -69,10 +64,14 @@ func (o *oracle) addRef() {
 
 func (o *oracle) decrRef() {
 	if count := atomic.AddInt64(&o.refCount, -1); count == 0 {
-		// Clear out pendingCommits maps to release memory.
+		// Clear out commits maps to release memory.
 		o.Lock()
-		y.AssertTrue(len(o.commitMark) == 0)
-		y.AssertTrue(len(o.pendingCommits) == 0)
+		// Avoids the race where something new is added to commitsMap
+		// after we check refCount and before we take Lock.
+		if atomic.LoadInt64(&o.refCount) != 0 {
+			o.Unlock()
+			return
+		}
 		if len(o.commits) >= 1000 { // If the map is still small, let it slide.
 			o.commits = make(map[uint64]uint64)
 		}
@@ -128,15 +127,6 @@ func (o *oracle) newCommitTs(txn *Txn) uint64 {
 	for _, w := range txn.writes {
 		o.commits[w] = ts // Update the commitTs.
 	}
-	if o.isManaged {
-		// No need to update the heap.
-		return ts
-	}
-	heap.Push(&o.commitMark, ts)
-	if _, has := o.pendingCommits[ts]; has {
-		panic(fmt.Sprintf("We shouldn't have the commit ts: %d", ts))
-	}
-	o.pendingCommits[ts] = struct{}{}
 	return ts
 }
 
@@ -145,29 +135,14 @@ func (o *oracle) doneCommit(cts uint64) {
 		// No need to update anything.
 		return
 	}
-	o.Lock()
-	defer o.Unlock()
 
-	if _, has := o.pendingCommits[cts]; !has {
-		panic(fmt.Sprintf("We should already have the commit ts: %d", cts))
-	}
-	delete(o.pendingCommits, cts)
-
-	var min uint64
-	for len(o.commitMark) > 0 {
-		ts := o.commitMark[0]
-		if _, has := o.pendingCommits[ts]; has {
-			// Still waiting for a txn to commit.
-			break
+	for {
+		curRead := atomic.LoadUint64(&o.curRead)
+		if cts <= curRead {
+			return
 		}
-		min = ts
-		heap.Pop(&o.commitMark)
+		atomic.CompareAndSwapUint64(&o.curRead, curRead, cts)
 	}
-	if min == 0 {
-		return
-	}
-	atomic.StoreUint64(&o.curRead, min)
-	// nextCommit must never be reset.
 }
 
 // Txn represents a Badger transaction.
@@ -179,7 +154,7 @@ type Txn struct {
 	reads  []uint64 // contains fingerprints of keys read.
 	writes []uint64 // contains fingerprints of keys written.
 
-	pendingWrites map[string]*entry // cache stores any writes done by txn.
+	pendingWrites map[string]*Entry // cache stores any writes done by txn.
 
 	db        *DB
 	callbacks []func()
@@ -189,7 +164,82 @@ type Txn struct {
 	count int64
 }
 
-func (txn *Txn) checkSize(e *entry) error {
+type pendingWritesIterator struct {
+	entries  []*Entry
+	nextIdx  int
+	readTs   uint64
+	reversed bool
+}
+
+func (pi *pendingWritesIterator) Next() {
+	pi.nextIdx++
+}
+
+func (pi *pendingWritesIterator) Rewind() {
+	pi.nextIdx = 0
+}
+
+func (pi *pendingWritesIterator) Seek(key []byte) {
+	key = y.ParseKey(key)
+	pi.nextIdx = sort.Search(len(pi.entries), func(idx int) bool {
+		cmp := bytes.Compare(pi.entries[idx].Key, key)
+		if !pi.reversed {
+			return cmp >= 0
+		}
+		return cmp <= 0
+	})
+}
+
+func (pi *pendingWritesIterator) Key() []byte {
+	y.AssertTrue(pi.Valid())
+	entry := pi.entries[pi.nextIdx]
+	return y.KeyWithTs(entry.Key, pi.readTs)
+}
+
+func (pi *pendingWritesIterator) Value() y.ValueStruct {
+	y.AssertTrue(pi.Valid())
+	entry := pi.entries[pi.nextIdx]
+	return y.ValueStruct{
+		Value:     entry.Value,
+		Meta:      entry.meta,
+		UserMeta:  entry.UserMeta,
+		ExpiresAt: entry.ExpiresAt,
+		Version:   pi.readTs,
+	}
+}
+
+func (pi *pendingWritesIterator) Valid() bool {
+	return pi.nextIdx < len(pi.entries)
+}
+
+func (pi *pendingWritesIterator) Close() error {
+	return nil
+}
+
+func (txn *Txn) newPendingWritesIterator(reversed bool) *pendingWritesIterator {
+	if !txn.update || len(txn.pendingWrites) == 0 {
+		return nil
+	}
+	entries := make([]*Entry, 0, len(txn.pendingWrites))
+	for _, e := range txn.pendingWrites {
+		entries = append(entries, e)
+	}
+	// Number of pending writes per transaction shouldn't be too big in general.
+	sort.Slice(entries, func(i, j int) bool {
+		cmp := bytes.Compare(entries[i].Key, entries[j].Key)
+		if !reversed {
+			return cmp < 0
+		}
+		return cmp > 0
+	})
+	return &pendingWritesIterator{
+		readTs:   txn.readTs,
+		entries:  entries,
+		reversed: reversed,
+	}
+}
+
+func (txn *Txn) checkSize(e *Entry) error {
 	count := txn.count + 1
 	// Extra bytes for version in key.
 	size := txn.size + int64(e.estimateSize(txn.db.opt.ValueThreshold)) + 10
@@ -205,11 +255,11 @@ func (txn *Txn) checkSize(e *entry) error {
 // It will return ErrReadOnlyTxn if update flag was set to false when creating the
 // transaction.
 func (txn *Txn) Set(key, val []byte) error {
-	e := &entry{
+	e := &Entry{
 		Key:   key,
 		Value: val,
 	}
-	return txn.setEntry(e)
+	return txn.SetEntry(e)
 }
 
 // SetWithMeta adds a key-value pair to the database, along with a metadata
@@ -217,8 +267,8 @@ func (txn *Txn) Set(key, val []byte) error {
 // interpret the value or store other contextual bits corresponding to the
 // key-value pair.
 func (txn *Txn) SetWithMeta(key, val []byte, meta byte) error {
-	e := &entry{Key: key, Value: val, UserMeta: meta}
-	return txn.setEntry(e)
+	e := &Entry{Key: key, Value: val, UserMeta: meta}
+	return txn.SetEntry(e)
 }
 
 // SetWithTTL adds a key-value pair to the database, along with a time-to-live
@@ -226,11 +276,13 @@ func (txn *Txn) SetWithMeta(key, val []byte, meta byte) error {
 // the time has elapsed , and be eligible for garbage collection.
 func (txn *Txn) SetWithTTL(key, val []byte, dur time.Duration) error {
 	expire := time.Now().Add(dur).Unix()
-	e := &entry{Key: key, Value: val, ExpiresAt: uint64(expire)}
-	return txn.setEntry(e)
+	e := &Entry{Key: key, Value: val, ExpiresAt: uint64(expire)}
+	return txn.SetEntry(e)
 }
 
-func (txn *Txn) setEntry(e *entry) error {
+// SetEntry takes an Entry struct and adds the key-value pair in the struct, along
+// with other metadata to the database.
+func (txn *Txn) SetEntry(e *Entry) error {
 	switch {
 	case !txn.update:
 		return ErrReadOnlyTxn
@@ -267,7 +319,7 @@ func (txn *Txn) Delete(key []byte) error {
 		return exceedsMaxKeySizeError(key)
 	}
 
-	e := &entry{
+	e := &Entry{
 		Key:  key,
 		meta: bitDelete,
 	}
@@ -294,6 +346,9 @@ func (txn *Txn) Get(key []byte) (item *Item, rerr error) {
 	item = new(Item)
 	if txn.update {
 		if e, has := txn.pendingWrites[string(key)]; has && bytes.Equal(key, e.Key) {
+			if isDeletedOrExpired(e.meta, e.ExpiresAt) {
+				return nil, ErrKeyNotFound
+			}
 			// Fulfill from cache.
 			item.meta = e.meta
 			item.val = e.Value
@@ -318,7 +373,7 @@ func (txn *Txn) Get(key []byte) (item *Item, rerr error) {
 	if vs.Value == nil && vs.Meta == 0 {
 		return nil, ErrKeyNotFound
 	}
-	if isDeletedOrExpired(vs) {
+	if isDeletedOrExpired(vs.Meta, vs.ExpiresAt) {
 		return nil, ErrKeyNotFound
 	}
 
@@ -332,6 +387,13 @@ func (txn *Txn) Get(key []byte) (item *Item, rerr error) {
 	return item, nil
 }
 
+func (txn *Txn) runCallbacks() {
+	for _, cb := range txn.callbacks {
+		cb()
+	}
+	txn.callbacks = nil
+}
+
 // Discard discards a created transaction. This method is very important and must be called. Commit
 // method calls this internally, however, calling this multiple times doesn't cause any issues. So,
 // this can safely be called via a defer right when transaction is created.
@@ -342,10 +404,8 @@ func (txn *Txn) Discard() {
 		return
 	}
 	txn.discarded = true
+	txn.runCallbacks()
 
-	for _, cb := range txn.callbacks {
-		cb()
-	}
 	if txn.update {
 		txn.db.orc.decrRef()
 	}
@@ -382,13 +442,14 @@ func (txn *Txn) Commit(callback func(error)) error {
 	}
 
 	state := txn.db.orc
+	state.writeLock.Lock()
 	commitTs := state.newCommitTs(txn)
 	if commitTs == 0 {
+		state.writeLock.Unlock()
 		return ErrConflict
 	}
-	defer state.doneCommit(commitTs)
 
-	entries := make([]*entry, 0, len(txn.pendingWrites)+1)
+	entries := make([]*Entry, 0, len(txn.pendingWrites)+1)
 	for _, e := range txn.pendingWrites {
 		// Suffix the keys with commit ts, so the key versions are sorted in
 		// descending order of commit timestamp.
@@ -396,21 +457,36 @@ func (txn *Txn) Commit(callback func(error)) error {
 		e.meta |= bitTxn
 		entries = append(entries, e)
 	}
-	e := &entry{
+	e := &Entry{
 		Key:   y.KeyWithTs(txnKey, commitTs),
 		Value: []byte(strconv.FormatUint(commitTs, 10)),
 		meta:  bitFinTxn,
 	}
 	entries = append(entries, e)
 
+	req, err := txn.db.sendToWriteCh(entries)
+	state.writeLock.Unlock()
+	if err != nil {
+		return err
+	}
+
+	txn.runCallbacks()
+
 	if callback == nil {
 		// If batchSet failed, LSM would not have been updated. So, no need to rollback anything.
 
 		// TODO: What if some of the txns successfully make it to value log, but others fail.
 		// Nothing gets updated to LSM, until a restart happens.
-		return txn.db.batchSet(entries)
+		defer state.doneCommit(commitTs)
+		return req.Wait()
 	}
-	return txn.db.batchSetAsync(entries, callback)
+	go func() {
+		err := req.Wait()
+		// Write is complete. Let's call the callback function now.
+		state.doneCommit(commitTs)
+		callback(err)
+	}()
+	return nil
 }
 
 // NewTransaction creates a new transaction. Badger supports concurrent execution of transactions,
@@ -442,7 +518,7 @@ func (db *DB) NewTransaction(update bool) *Txn {
 		size:   int64(len(txnKey) + 10), // Some buffer for the extra entry.
 	}
 	if update {
-		txn.pendingWrites = make(map[string]*entry)
+		txn.pendingWrites = make(map[string]*Entry)
 		txn.db.orc.addRef()
 	}
 	return txn
