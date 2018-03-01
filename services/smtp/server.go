@@ -28,11 +28,87 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package services
+package smtp
 
-/*
-// SMTP is a placeholder
-func (d *lowDirector) SMTP() func(net.Conn) {
-	return d.Echo()
+import (
+	"crypto/tls"
+	"net"
+	"sync"
+)
+
+type Handler interface {
+	Serve(msg Message) error
 }
-*/
+
+type HandlerFunc func(msg Message) error
+
+type ServeMux struct {
+	m  []HandlerFunc
+	mu sync.RWMutex
+}
+
+func (mux *ServeMux) HandleFunc(handler func(msg Message) error) {
+	mux.mu.Lock()
+	defer mux.mu.Unlock()
+
+	mux.m = append(mux.m, handler)
+}
+
+func HandleFunc(handler func(msg Message) error) *ServeMux {
+	DefaultServeMux.HandleFunc(handler)
+	return DefaultServeMux
+}
+
+var DefaultServeMux = NewServeMux()
+
+func NewServeMux() *ServeMux { return &ServeMux{m: make([]HandlerFunc, 0)} }
+
+func (s *ServeMux) Serve(msg Message) error {
+	for _, h := range s.m {
+		if err := h(msg); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type Server struct {
+	Banner string
+
+	Handler Handler
+
+	tlsConfig *tls.Config
+}
+
+func (s *Server) NewConn(rwc net.Conn, recv chan string) (c *conn, err error) {
+	c = &conn{
+		server: s,
+		rwc:    rwc,
+		rcv:    recv,
+		i:      0,
+	}
+
+	c.msg = c.newMessage()
+	return c, nil
+}
+
+func (s *Server) tlsConf(cert *tls.Certificate) {
+
+	s.tlsConfig = &tls.Config{
+		Certificates:       []tls.Certificate{*cert},
+		InsecureSkipVerify: true,
+	}
+}
+
+type serverHandler struct {
+	srv *Server
+}
+
+func (sh serverHandler) Serve(msg Message) {
+	handler := sh.srv.Handler
+	if handler == nil {
+		handler = DefaultServeMux
+	}
+
+	handler.Serve(msg)
+}
