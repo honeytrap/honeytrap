@@ -1,3 +1,5 @@
+// +build arm
+
 /*
 * Honeytrap
 * Copyright (C) 2016-2017 DutchSec (https://dutchsec.com/)
@@ -31,84 +33,13 @@
 package storage
 
 import (
-	"log"
-	"path/filepath"
-
 	"github.com/dgraph-io/badger"
+	"github.com/dgraph-io/badger/options"
 )
 
-type storage interface {
-	Get(string) error
-	Set(string, []byte) error
-}
-
-var db *badger.DB
-var dataDir string
-
-func SetDataDir(s string) {
-	dataDir = s
-	db = MustDB()
-}
-
-func MustDB() *badger.DB {
-	opts := badger.DefaultOptions
-
-	p := filepath.Join(dataDir, "badger.db")
-	opts.Dir = p
-	opts.ValueDir = p
-
-	for _, fn := range PlatformOptions {
-		fn(&opts)
-	}
-
-	db, err := badger.Open(opts)
-	if err != nil {
-		log.Fatal(err)
-		return nil
-	}
-
-	return db
-}
-
-type Storage interface {
-	Get(key string) ([]byte, error)
-	Set(key string, data []byte) error
-}
-
-func Namespace(namespace string) (*badgeStorage, error) {
-	return &badgeStorage{
-		db: db,
-	}, nil
-}
-
-type badgeStorage struct {
-	db *badger.DB
-}
-
-func (s *badgeStorage) Get(key string) ([]byte, error) {
-	val := []byte{}
-
-	err := s.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get([]byte(key))
-		if err != nil {
-			return err
-		}
-
-		v, err := item.Value()
-		if err != nil {
-			return err
-		}
-
-		val = v
-		return nil
-	})
-
-	return val, err
-}
-
-func (s *badgeStorage) Set(key string, data []byte) error {
-	return s.db.Update(func(txn *badger.Txn) error {
-		err := txn.Set([]byte(key), data)
-		return err
-	})
+var PlatformOptions = []func(*badger.Options){
+	func(opts *badger.Options) {
+		opts.TableLoadingMode = options.FileIO
+		opts.ValueLogLoadingMode = options.FileIO
+	},
 }
