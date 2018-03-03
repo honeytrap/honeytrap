@@ -31,6 +31,9 @@
 package web
 
 import (
+	"os"
+	"path/filepath"
+
 	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/pushers/eventbus"
 )
@@ -45,6 +48,13 @@ func WithEventBus(bus *eventbus.EventBus) func(*web) error {
 func WithDataDir(dataDir string) func(*web) error {
 	return func(w *web) error {
 		w.dataDir = dataDir
+
+		if filepath.IsAbs(dataDir) {
+		} else if pwd, err := os.Getwd(); err != nil {
+		} else {
+			w.dataDir = filepath.Join(pwd, dataDir)
+		}
+
 		return nil
 	}
 }
