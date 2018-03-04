@@ -119,8 +119,8 @@ func (sl *agentListener) serv(c *conn2) {
 		sl.Addresses,
 	})
 
-	fmt.Println("Agent connected (version=%s, commitid=%s)...", version, shortCommitID)
-	defer fmt.Println("Agent disconnected...")
+	log.Infof(color.YellowString("Agent connected (version=%s, commitid=%s)...", version, shortCommitID))
+	defer log.Infof(color.YellowString("Agent disconnected"))
 
 	out := make(chan interface{})
 
