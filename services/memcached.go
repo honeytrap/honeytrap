@@ -33,6 +33,7 @@ package services
 import (
 	"bufio"
 	"context"
+	"encoding/hex"
 	"net"
 
 	"github.com/honeytrap/honeytrap/event"
@@ -84,8 +85,8 @@ func (s *memcachedService) Handle(ctx context.Context, conn net.Conn) error {
 		}
 		// Strip trailing \r\n
 		sz := len(command)
-		if (sz >= 2) {
-			command = command[:sz - 2]
+		if sz >= 2 {
+			command = command[:sz-2]
 		}
 
 		s.ch.Send(event.New(
@@ -95,7 +96,8 @@ func (s *memcachedService) Handle(ctx context.Context, conn net.Conn) error {
 			event.Type("memcached-command"),
 			event.SourceAddr(conn.RemoteAddr()),
 			event.DestinationAddr(conn.LocalAddr()),
-			event.Custom("memcached.command", command),
+			event.Custom("memcached.command", string(command)),
+			event.Custom("memcached.command-hex", hex.EncodeToString(command)),
 		))
 
 		conn.Write([]byte("ERROR\r\n"))
