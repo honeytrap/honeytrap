@@ -180,6 +180,9 @@ func SourceAddr(addr net.Addr) Option {
 		if ta, ok := addr.(*net.TCPAddr); ok {
 			m.Store("source-ip", ta.IP.String())
 			m.Store("source-port", ta.Port)
+		} else if ua, ok := addr.(*net.UDPAddr); ok {
+			m.Store("source-ip", ua.IP.String())
+			m.Store("source-port", ua.Port)
 		}
 	}
 }
@@ -190,6 +193,9 @@ func DestinationAddr(addr net.Addr) Option {
 		if ta, ok := addr.(*net.TCPAddr); ok {
 			m.Store("destination-ip", ta.IP.String())
 			m.Store("destination-port", ta.Port)
+		} else if ua, ok := addr.(*net.UDPAddr); ok {
+			m.Store("destination-ip", ua.IP.String())
+			m.Store("destination-port", ua.Port)
 		}
 	}
 }
