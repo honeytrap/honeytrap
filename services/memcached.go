@@ -91,6 +91,7 @@ func (s *memcachedService) Handle(ctx context.Context, conn net.Conn) error {
 		s.ch.Send(event.New(
 			EventOptions,
 			event.Category("memcached"),
+			event.Protocol(conn.RemoteAddr().Network()),
 			event.Type("memcached-command"),
 			event.SourceAddr(conn.RemoteAddr()),
 			event.DestinationAddr(conn.LocalAddr()),
