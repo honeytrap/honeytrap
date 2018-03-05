@@ -68,6 +68,8 @@ func (ac *conn2) receive() (interface{}, error) {
 		o = &HandshakeResponse{}
 	case TypeReadWrite:
 		o = &ReadWrite{}
+	case TypeReadWriteUDP:
+		o = &ReadWriteUDP{}
 	case TypePing:
 		o = &Ping{}
 	case TypeEOF:
@@ -108,6 +110,8 @@ func (ac conn2) send(o encoding.BinaryMarshaler) error {
 		ac.Conn.Write([]byte{uint8(TypePing)})
 	case ReadWrite:
 		ac.Conn.Write([]byte{uint8(TypeReadWrite)})
+	case ReadWriteUDP:
+		ac.Conn.Write([]byte{uint8(TypeReadWriteUDP)})
 	case EOF:
 		ac.Conn.Write([]byte{uint8(TypeEOF)})
 	}

@@ -39,10 +39,11 @@ import (
 const (
 	TypeHello             int = 0x00
 	TypeReadWrite         int = 0x01
-	TypePing              int = 0x05
-	TypeEOF               int = 0x04
 	TypeHandshake         int = 0x02
 	TypeHandshakeResponse int = 0x03
+	TypeEOF               int = 0x04
+	TypePing              int = 0x05
+	TypeReadWriteUDP      int = 0x06
 )
 
 type Handshake struct {
@@ -52,6 +53,8 @@ type Handshake struct {
 	ShortCommitID string
 
 	Version string
+
+	Token string
 }
 
 func (r *Handshake) UnmarshalBinary(data []byte) error {
@@ -60,6 +63,7 @@ func (r *Handshake) UnmarshalBinary(data []byte) error {
 	r.Version = d.ReadString()
 	r.ShortCommitID = d.ReadString()
 	r.CommitID = d.ReadString()
+	r.Token = d.ReadString()
 	return nil
 }
 
@@ -72,6 +76,8 @@ func (h Handshake) MarshalBinary() ([]byte, error) {
 	e.WriteString(h.Version)
 	e.WriteString(h.ShortCommitID)
 	e.WriteString(h.CommitID)
+
+	e.WriteString(h.Token)
 
 	return buff.Bytes(), nil
 }
@@ -110,7 +116,6 @@ func (h HandshakeResponse) MarshalBinary() ([]byte, error) {
 }
 
 type Hello struct {
-	Token string
 	Laddr net.Addr
 	Raddr net.Addr
 }
@@ -119,10 +124,6 @@ func (h Hello) MarshalBinary() ([]byte, error) {
 	buff := bytes.Buffer{}
 
 	e := NewEncoder(&buff, binary.LittleEndian)
-
-	e.WriteUint8(0)
-
-	e.WriteString(h.Token)
 
 	e.WriteAddr(h.Laddr)
 	e.WriteAddr(h.Raddr)
@@ -135,45 +136,20 @@ func (h Hello) MarshalBinary() ([]byte, error) {
 func (h *Hello) UnmarshalBinary(data []byte) error {
 	decoder := NewDecoder(data)
 
-	_ = decoder.ReadUint8() /* protocol */
-
-	h.Token = decoder.ReadString()
 	h.Laddr = decoder.ReadAddr()
 	h.Raddr = decoder.ReadAddr()
 	return nil
 }
 
 type Ping struct {
-	Token string
-	Laddr net.Addr
-	Raddr net.Addr
 }
 
 func (h *Ping) UnmarshalBinary(data []byte) error {
-	decoder := NewDecoder(data)
-
-	_ = decoder.ReadUint8() /* protocol */
-
-	h.Token = decoder.ReadString()
-	h.Laddr = decoder.ReadAddr()
-	h.Raddr = decoder.ReadAddr()
 	return nil
 }
 
 func (h Ping) MarshalBinary() ([]byte, error) {
 	buff := bytes.Buffer{}
-
-	e := NewEncoder(&buff, binary.LittleEndian)
-
-	e.WriteUint8(0)
-
-	e.WriteString(h.Token)
-
-	e.WriteAddr(h.Laddr)
-	e.WriteAddr(h.Raddr)
-
-	e.Flush()
-
 	return buff.Bytes(), nil
 }
 
@@ -185,8 +161,6 @@ type EOF struct {
 func (r *EOF) UnmarshalBinary(data []byte) error {
 	decoder := NewDecoder(data)
 
-	decoder.ReadUint8()
-
 	r.Laddr = decoder.ReadAddr()
 	r.Raddr = decoder.ReadAddr()
 
@@ -197,8 +171,6 @@ func (h EOF) MarshalBinary() ([]byte, error) {
 	buff := bytes.Buffer{}
 
 	e := NewEncoder(&buff, binary.LittleEndian)
-
-	e.WriteUint8(0)
 
 	e.WriteAddr(h.Laddr)
 	e.WriteAddr(h.Raddr)
@@ -220,8 +192,6 @@ func (h ReadWrite) MarshalBinary() ([]byte, error) {
 
 	e := NewEncoder(&buff, binary.LittleEndian)
 
-	e.WriteUint8(0)
-
 	e.WriteAddr(h.Laddr)
 	e.WriteAddr(h.Raddr)
 
@@ -235,7 +205,37 @@ func (h ReadWrite) MarshalBinary() ([]byte, error) {
 func (r *ReadWrite) UnmarshalBinary(data []byte) error {
 	decoder := NewDecoder(data)
 
-	decoder.ReadUint8()
+	r.Laddr = decoder.ReadAddr()
+	r.Raddr = decoder.ReadAddr()
+
+	r.Payload = decoder.ReadData()
+
+	return nil
+}
+
+type ReadWriteUDP struct {
+	Laddr net.Addr
+	Raddr net.Addr
+
+	Payload []byte
+}
+
+func (h ReadWriteUDP) MarshalBinary() ([]byte, error) {
+	buff := bytes.Buffer{}
+
+	e := NewEncoder(&buff, binary.LittleEndian)
+
+	e.WriteAddr(h.Laddr)
+	e.WriteAddr(h.Raddr)
+
+	e.WriteData(h.Payload)
+
+	e.Flush()
+	return buff.Bytes(), nil
+}
+
+func (r *ReadWriteUDP) UnmarshalBinary(data []byte) error {
+	decoder := NewDecoder(data)
 
 	r.Laddr = decoder.ReadAddr()
 	r.Raddr = decoder.ReadAddr()

@@ -41,7 +41,7 @@ type DummyUDPConn struct {
 	Laddr *net.UDPAddr
 	Raddr *net.UDPAddr
 
-	C *net.UDPConn
+	Fn func(b []byte, addr *net.UDPAddr) (int, error)
 }
 
 func (dc *DummyUDPConn) Read(b []byte) (int, error) {
@@ -51,7 +51,11 @@ func (dc *DummyUDPConn) Read(b []byte) (int, error) {
 }
 
 func (dc *DummyUDPConn) Write(b []byte) (int, error) {
-	return dc.C.WriteToUDP(b[:], dc.Raddr)
+	if dc.Fn == nil {
+		return len(b), nil
+	}
+
+	return dc.Fn(b[:], dc.Raddr)
 }
 
 func (dc *DummyUDPConn) Close() error {

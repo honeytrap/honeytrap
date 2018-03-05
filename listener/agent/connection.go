@@ -75,15 +75,14 @@ func (dc *agentConnection) receive(data []byte) {
 }
 
 func (dc *agentConnection) Read(b []byte) (int, error) {
+	dc.m.Lock()
 	if len(dc.buff) != 0 {
-		dc.m.Lock()
-		defer dc.m.Unlock()
-
 		n := copy(b[:], dc.buff[0:])
 		dc.buff = dc.buff[n:]
-
+		dc.m.Unlock()
 		return n, nil
 	}
+	dc.m.Unlock()
 
 	after := noDeadline
 
@@ -101,12 +100,9 @@ func (dc *agentConnection) Read(b []byte) (int, error) {
 		}
 
 		dc.m.Lock()
-		defer dc.m.Unlock()
-
-		//		dc.buff = append(dc.buff, data[:]...)
-
 		n := copy(b[:], dc.buff[0:])
 		dc.buff = dc.buff[n:]
+		dc.m.Unlock()
 
 		return n, nil
 	}

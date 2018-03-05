@@ -101,6 +101,7 @@ func (sl *agentListener) serv(c *conn2) {
 
 	version := ""
 	shortCommitID := ""
+	token := ""
 
 	if p, err := c.receive(); err == io.EOF {
 		return
@@ -113,14 +114,15 @@ func (sl *agentListener) serv(c *conn2) {
 	} else {
 		version = h.Version
 		shortCommitID = h.ShortCommitID
+		token = h.Token
 	}
+
+	log.Infof(color.YellowString("Agent connected (version=%s, commitid=%s, token=%s)...", version, shortCommitID, token))
+	defer log.Infof(color.YellowString("Agent disconnected"))
 
 	c.send(HandshakeResponse{
 		sl.Addresses,
 	})
-
-	log.Infof(color.YellowString("Agent connected (version=%s, commitid=%s)...", version, shortCommitID))
-	defer log.Infof(color.YellowString("Agent disconnected"))
 
 	out := make(chan interface{})
 
@@ -159,7 +161,6 @@ func (sl *agentListener) serv(c *conn2) {
 			case <-ctx.Done():
 				return
 			}
-
 		}
 	}()
 
@@ -191,6 +192,25 @@ func (sl *agentListener) serv(c *conn2) {
 			}
 
 			conn.receive(v.Payload)
+		case *ReadWriteUDP:
+			sl.ch <- &listener.DummyUDPConn{
+				Buffer: v.Payload,
+				Laddr:  v.Laddr.(*net.UDPAddr),
+				Raddr:  v.Raddr.(*net.UDPAddr),
+				Fn: func(b []byte, addr *net.UDPAddr) (int, error) {
+					payload := make([]byte, len(b))
+					copy(payload, b)
+
+					p := ReadWriteUDP{
+						Laddr:   v.Laddr,
+						Raddr:   v.Raddr,
+						Payload: payload[:],
+					}
+
+					out <- p
+					return len(b), nil
+				},
+			}
 		case *EOF:
 			conn := conns.Get(v.Laddr, v.Raddr)
 			if conn == nil {
