@@ -35,6 +35,9 @@ func TestFTP(t *testing.T) {
 	c, _ := pushers.Dummy()
 	s.SetChannel(c)
 
+	//set user
+	s.server.Auth = FtpUser{user: password}
+
 	//Handle the connection
 	go func(conn net.Conn) {
 		if err := s.Handle(nil, conn); err != nil {
@@ -46,7 +49,6 @@ func TestFTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	//log.Debug("Test: client started")
 
 	if err := client.Login(user, password); err != nil {
 		t.Errorf("Could not login user: %s password: %s", user, password)

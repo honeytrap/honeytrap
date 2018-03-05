@@ -44,8 +44,6 @@ func FTP(options ...services.ServicerFunc) services.Servicer {
 		ftpusers[u[0]] = u[1]
 	}
 
-	log.Debugf("Users: %v", ftpusers)
-
 	opts := &ServerOpts{
 		Auth:           ftpusers,
 		Name:           s.ServerName,

@@ -972,7 +972,7 @@ func (cmd commandStor) Execute(conn *Conn, param string) {
 
 	nbytes, err := conn.driver.PutFile(param, conn.dataConn, conn.appendData)
 	if err == nil {
-		msg := fmt.Sprintf("OK, received %d bytes", strconv.Itoa(int(nbytes)))
+		msg := fmt.Sprintf("OK, received %d bytes", int(nbytes))
 		conn.writeMessage(226, msg)
 	} else {
 		conn.writeMessage(450, fmt.Sprintln("error during transfer:", err))
