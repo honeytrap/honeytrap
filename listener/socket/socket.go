@@ -122,7 +122,7 @@ func (sl *socketListener) Start(ctx context.Context) error {
 						Buffer: buf[:n],
 						Laddr:  ua,
 						Raddr:  raddr,
-						C:      l,
+						Fn:     l.WriteToUDP,
 					}
 				}
 			}()
