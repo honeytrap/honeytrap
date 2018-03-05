@@ -7,6 +7,7 @@ ARG LDFLAGS=""
 RUN go build -tags="" -ldflags="$(go run scripts/gen-ldflags.go)" -o /go/bin/app github.com/honeytrap/honeytrap
 
 FROM debian
+RUN apt-get update && apt-get install -y ca-certificates
 COPY --from=builder /go/bin/app /honeytrap/honeytrap
 
 RUN mkdir /config /data
