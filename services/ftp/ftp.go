@@ -38,12 +38,16 @@ func FTP(options ...services.ServicerFunc) services.Servicer {
 		o(s)
 	}
 
+	ftpusers := make(FtpUser)
+
+	for _, u := range s.Users {
+		ftpusers[u[0]] = u[1]
+	}
+
+	log.Debugf("Users: %v", ftpusers)
+
 	opts := &ServerOpts{
-		Auth: &FtpUser{
-			users: map[string]string{
-				"anonymous": "anonymous",
-			},
-		},
+		Auth:           ftpusers,
 		Name:           s.ServerName,
 		WelcomeMessage: s.Banner,
 		PassivePorts:   s.PsvPortRange,
@@ -80,6 +84,8 @@ type Opts struct {
 	PsvPortRange string `toml:"passive-port-range"`
 
 	ServerName string `toml:"name"`
+
+	Users [][]string `toml:"users"`
 }
 
 type ftpService struct {
