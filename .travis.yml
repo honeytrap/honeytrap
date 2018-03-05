@@ -1,7 +1,10 @@
 language: go
 
 go:
-- 1.9.1
+  - master
+  - tip
+  - 1.9.x
+  - 1.10.x
 
 sudo: required
 dist: trusty
