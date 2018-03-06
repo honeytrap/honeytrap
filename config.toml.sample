@@ -5,10 +5,188 @@ type="socket"
 type="ssh-simulator"
 port="tcp/8022"
 
-[service.telnet]
-type="telnet"
-port="tcp/8023"
+# Select capture capabilities. 
+# Defaults to none, but can be list of the following options: 
+#     quick       (capture protocol, ip, port)
+#     sniffer     (capture the first X bytes from each packet)  
+#     full        (makes a full network dump)
+# 
+# A filter and channel needs to be configured to process the output of each
+# capture item.
 
+capture = ["sniffer","quick"]
+
+# ####################### LISTENER END ####################################### #
+
+# ######################## PORTS BEGIN ####################################### #
+
+[[port]]
+port="tcp/2021"
+services=["ftp"] # These correspond to service names, not service types!
+
+[[port]]
+port="udp/53"
+services=["dns"]
+
+[[port]]
+port="tcp/23"
+services=["telnet01"]
+
+[[port]]
+port="tcp/8023"
+services=["telnet02"]
+
+[[port]]
+port="tcp/22"
+services=["ssh-auth"]
+
+[[port]]
+port="tcp/8080"
+services=["ethereum", "http_generic"]
+# If multiple services are specified, the first ones are tested first.
+
+[[port]]
+port="tcp/9200"
+services=["elasticsearch01"]
+
+[[port]]
+port="tcp/9300"
+services=["elasticsearch02"]
+
+# ######################## PORTS END ######################################### #
+
+# ####################### SERVICES BEGIN ##################################### #
+# Enable services. The services are defined by starting with a [[service]] field.
+# Each service requires that the "name" a "type" value are set. The name can be
+# freely chosen and is referred by in the channel output.
+# A complete list of available services and their specific configuration options 
+# can be found in <.....>. All services have the port and canary configuration
+# option. With the port options the service is connected to the specific port.
+# If no "port" value is given, it will connect to the default service type port
+# which can be found in <...>. The canary option is a boolean to enable or 
+# disable the usage of canaries, which will trigger alerts.
+
+[service.ftp]
+type="ftp"
+banner="Welcome to FTPd"
+name="FTPd"
+fs_base="/tmp"
+
+[service.dns]
+type="dns-proxy"
+director="googledns01"
+
+[service.telnet01]
+type="telnet"
+banner="test"
+canary="true"
+director="remote"
+
+[service.telnet02]
+type="telnet"
+banner="Extra telnet deamon"
+
+[service.ssh-auth]
+type="ssh-auth"
+#The banner string should be US ASCII, start with "SSH-2.0-" and should not include a newline.
+banner="SSH-2.0-OpenSSH_7.2p2 Ubuntu-4ubuntu2.2"
+canary="false"
+
+[service.elasticsearch01]
+type="http"
+director="lxc"
+
+[service.elasticsearch02]
+type="elasticsearch"
+banner="test"
+
+[service.ethereum]
+type="ethereum"
+cluster_name="Foobar"
+cluster_uuid="1765f877-4195-469c-9fd6-9ac23226baa7"
+banner="test"
+
+[service.http_generic]
+type="http"
+
+# ####################### SERVICES BEGIN ##################################### #
+
+
+# ####################### PROXIES BEGIN ###################################### #
+# Proxies reside between the listener and director and can intervene with the 
+# network traffic flow. For every proxy you need to set the name, type and
+# director value. The proxy name can be freely chosen and is referenced in the 
+# channel. Available proxy types can be found in <.......>, which also list the
+# specific configuration options for this proxy type. The director value should
+# match a configured director name in the next section.
+# Every proxy has a port configuration options. If no port is given, it defaults 
+# to the standard proxy type port which can be found in <....>. 
+# The proxies are initiated sequential, so we can end with a proxy type "all" that
+# passes the remaining traffic to one director.
+#
+#
+#[[proxy]]
+#name="ssh01"
+#type="ssh"
+#director="single-server01"
+#banner="bla" #-> should clone from dest
+#certificate=""
+#
+#[[proxy]]
+#name="ssh02"
+#type="ssh"
+#port="TCP/8022"
+#director="lxc"
+#banner="bla" #-> should clone from dest
+#certificate=""
+#
+#[[proxy]]
+#name="ssh03"
+#type="ssh"
+#port="TCP/22"
+#director="single-server02"
+#banner="bla" #-> should clone from dest
+#certificate=""
+#
+#
+#[[proxy]]
+#name="forwardallremaining"
+#director="all"
+
+# ####################### PROXIES END ######################################## #
+
+
+# ####################### DIRECTORS BEGIN #################################### #
+# Directors direct the network traffic to a specific destination. This can be
+# a container or vm managed by honeytrap or an other remote IP address. Each 
+# director must have a name and type defined. The director name should match the
+# director option in the proxy configuration. Available directors, with their
+# default configuration values, can be found in the folder "director"; they can
+# be enabled at compile time in honeytrap.go.
+
+[director.googledns]
+type="remote"
+host="8.8.8.8"
+
+[director.lxc]
+type="lxc"
+template="sshtrap"
+
+[director.qemu]
+type="qemu"
+image="generic"
+snapshot="20170101"
+
+# ####################### DIRECTORS END ###################################### #
+
+
+# ####################### CHANNELS BEGIN ##################################### #
+# The listener and every proxy, director and service generate events, alters and 
+# logging. These are send to channels. To define a channel you should select a  
+# type and give it a name. The specific configuration options per type can be 
+# found in <.....>. 
+
+# the console channel will log all events to the console
 [channel.console]
 type="console"
 

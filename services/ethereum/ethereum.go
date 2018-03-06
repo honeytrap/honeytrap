@@ -89,6 +89,8 @@ func Headers(headers map[string][]string) event.Option {
 	}
 }
 
+// Todo: implement CanHandle
+
 func (s *ethereumService) Handle(ctx context.Context, conn net.Conn) error {
 	defer conn.Close()
 
