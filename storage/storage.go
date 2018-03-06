@@ -78,6 +78,8 @@ type Storage interface {
 func Namespace(namespace string) (*badgeStorage, error) {
 	prefix := make([]byte, len(namespace)+1)
 
+	_ = copy(prefix, namespace)
+
 	prefix[len(namespace)] = byte('.')
 
 	return &badgeStorage{
