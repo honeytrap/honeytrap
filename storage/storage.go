@@ -95,7 +95,7 @@ type badgeStorage struct {
 func (s *badgeStorage) Get(key string) ([]byte, error) {
 	val := []byte{}
 
-	k := append(s.ns, []byte(key))
+	k := append(s.ns, key...)
 
 	err := s.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(k)
@@ -116,7 +116,7 @@ func (s *badgeStorage) Get(key string) ([]byte, error) {
 }
 
 func (s *badgeStorage) Set(key string, data []byte) error {
-	k := append(s.ns, []byte(key))
+	k := append(s.ns, key...)
 
 	return s.db.Update(func(txn *badger.Txn) error {
 		err := txn.Set(k, data)
