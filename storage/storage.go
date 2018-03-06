@@ -76,20 +76,29 @@ type Storage interface {
 }
 
 func Namespace(namespace string) (*badgeStorage, error) {
+	prefix := make([]byte, len(namespace)+1)
+
+	prefix[len(namespace)] = byte('.')
+
 	return &badgeStorage{
 		db: db,
+		ns: prefix,
 	}, nil
 }
 
 type badgeStorage struct {
 	db *badger.DB
+
+	ns []byte
 }
 
 func (s *badgeStorage) Get(key string) ([]byte, error) {
 	val := []byte{}
 
+	k := append(s.ns, []byte(key))
+
 	err := s.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get([]byte(key))
+		item, err := txn.Get(k)
 		if err != nil {
 			return err
 		}
@@ -107,8 +116,10 @@ func (s *badgeStorage) Get(key string) ([]byte, error) {
 }
 
 func (s *badgeStorage) Set(key string, data []byte) error {
+	k := append(s.ns, []byte(key))
+
 	return s.db.Update(func(txn *badger.Txn) error {
-		err := txn.Set([]byte(key), data)
+		err := txn.Set(k, data)
 		return err
 	})
 }
