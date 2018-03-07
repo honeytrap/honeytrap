@@ -176,7 +176,7 @@ type ServiceMap struct {
  *         - If it implements CanHandle, peek the connection and pass it to
  *           CanHandle. If it returns true, pick it
  */
-func (hc *Honeytrap) findService(conn net.Conn) *ServiceMap {
+func (hc *Honeytrap) findService(conn net.Conn) (*ServiceMap, net.Conn) {
 	localAddr := conn.LocalAddr()
 	var port int
 	switch localAddr.(type) {
@@ -191,7 +191,7 @@ func (hc *Honeytrap) findService(conn net.Conn) *ServiceMap {
 	if !ok {
 		// No logging, it will be reported by the caller instead
 		// Todo(capacitorset): implement port "any"?
-		return nil
+		return nil, nil
 	}
 	var serviceCandidates []*ServiceMap
 	for _, serviceName := range serviceNames {
@@ -200,7 +200,7 @@ func (hc *Honeytrap) findService(conn net.Conn) *ServiceMap {
 		serviceCandidates = append(serviceCandidates, hc.services[serviceName])
 	}
 	if len(serviceCandidates) == 1 {
-		return serviceCandidates[0]
+		return serviceCandidates[0], conn
 	}
 
 	peekUninitialized := true
@@ -212,7 +212,7 @@ func (hc *Honeytrap) findService(conn net.Conn) *ServiceMap {
 		ch, ok := service.Service.(services.CanHandlerer)
 		if !ok {
 			// Service does not implement CanHandle, assume it can handle the connection
-			return service
+			return service, conn
 		}
 		// Service implements CanHandle, initialize it if needed and run the checks
 		if peekUninitialized {
@@ -223,21 +223,21 @@ func (hc *Honeytrap) findService(conn net.Conn) *ServiceMap {
 			_n, err := pConn.Peek(buffer)
 			n = _n // avoid silly "variable not used" warning
 			if err == io.EOF {
-				return nil
+				return nil, nil
 			} else if err != nil {
 				log.Errorf(color.RedString("Could not peek bytes: %s", err.Error()))
-				return nil
+				return nil, nil
 			}
 			peekUninitialized = false
 		}
 		if ch.CanHandle(buffer[:n]) {
 			// Service supports payload
 			// TODO(capacitorset): pass peeked connection rather than the actual one
-			return service
+			return service, pConn
 		}
 	}
 	// No service can handle the connection. Let the caller deal with it.
-	return nil
+	return nil, nil
 }
 
 func (hc *Honeytrap) heartbeat() {
@@ -648,7 +648,10 @@ func (hc *Honeytrap) handle(conn net.Conn) {
 	log.Debug("Accepted connection for %s => %s", conn.RemoteAddr(), conn.LocalAddr())
 	defer log.Debug("Disconnected connection for %s => %s", conn.RemoteAddr(), conn.LocalAddr())
 
-	sm := hc.findService(conn)
+	/* conn is the original connection. newConn can be either the same
+	 * connection, or a wrapper in the form of a PeekConnection.
+	 */
+	sm, newConn := hc.findService(conn)
 	if sm == nil {
 		log.Debug("No suitable handler for %s => %s", conn.RemoteAddr(), conn.LocalAddr())
 		return
@@ -657,7 +660,7 @@ func (hc *Honeytrap) handle(conn net.Conn) {
 	log.Debug("Handling connection for %s => %s %s(%s)", conn.RemoteAddr(), conn.LocalAddr(), sm.Name, sm.Type)
 
 	ctx := context.Background()
-	if err := sm.Service.Handle(ctx, conn); err != nil {
+	if err := sm.Service.Handle(ctx, newConn); err != nil {
 		log.Errorf(color.RedString("Error handling service: %s: %s", sm.Name, err.Error()))
 	}
 }
