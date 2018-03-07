@@ -500,6 +500,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 
 	if err := l.Start(ctx); err != nil {
 		fmt.Println(color.RedString("Error starting listener: %s", err.Error()))
+		return
 	}
 
 	incoming := make(chan net.Conn)

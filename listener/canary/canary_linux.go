@@ -1012,12 +1012,12 @@ func (c *Canary) transmit(fd int32) error {
 
 // Run will start Canary
 func (c *Canary) Start(ctx context.Context) error {
+	go c.knockDetector(ctx)
+
 	go func() {
 		<-ctx.Done()
 		c.Close()
 	}()
-
-	go c.knockDetector()
 
 	var (
 		events [MaxEpollEvents]syscall.EpollEvent
@@ -1030,8 +1030,15 @@ func (c *Canary) Start(ctx context.Context) error {
 
 		for {
 			nevents, err := syscall.EpollWait(c.epfd, events[:], -1)
-			if err != nil {
-				log.Errorf("Error epollwait: %s", err.Error())
+			if err == nil {
+			} else if errno, ok := err.(syscall.Errno); !ok {
+				log.Fatalf("Error epollwait: %s", err.Error())
+				return
+			} else if errno.Temporary() {
+				log.Fatalf("Temporary epollwait error: %s, retrying.", err.Error())
+				continue
+			} else {
+				log.Fatalf("Error epollwait: %s", err.Error())
 				return
 			}
 
