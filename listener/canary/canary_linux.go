@@ -1035,7 +1035,7 @@ func (c *Canary) Start(ctx context.Context) error {
 				log.Fatalf("Error epollwait: %s", err.Error())
 				return
 			} else if errno.Temporary() {
-				log.Fatalf("Temporary epollwait error: %s, retrying.", err.Error())
+				log.Errorf("Temporary epollwait error: %s, retrying.", err.Error())
 				continue
 			} else {
 				log.Fatalf("Error epollwait: %s", err.Error())
