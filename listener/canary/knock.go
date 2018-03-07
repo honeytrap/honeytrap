@@ -34,6 +34,7 @@ package canary
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net"
 	"strings"
@@ -170,7 +171,7 @@ func (k KnockICMP) NewGroup() *KnockGroup {
 	}
 }
 
-func (c *Canary) knockDetector() {
+func (c *Canary) knockDetector(ctx context.Context) {
 	knocks := NewUniqueSet(func(v1, v2 interface{}) bool {
 		k1, k2 := v1.(*KnockGroup), v2.(*KnockGroup)
 		if k1.Protocol != k2.Protocol {
@@ -194,6 +195,8 @@ func (c *Canary) knockDetector() {
 
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case sk := <-c.knockChan:
 			grouper := sk.(KnockGrouper)
 			knock := knocks.Add(grouper.NewGroup()).(*KnockGroup)
