@@ -130,6 +130,7 @@ func serve(c *cli.Context) error {
 	configCandidates := []string{
 		c.String("config"),
 		"/etc/honeytrap/config.toml",
+		"/etc/honeytrap.toml",
 	}
 
 	successful := false
