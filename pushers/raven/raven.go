@@ -101,7 +101,7 @@ func (hc RavenBackend) run() {
 
 			c, _, err := d.Dial(hc.Server, headers)
 			if err != nil {
-				log.Errorf("Error connecting to Raven server: %s", err.Error())
+				log.Errorf("Error connecting to Raven server: %s: %s", hc.Server, err.Error())
 				return
 			}
 
