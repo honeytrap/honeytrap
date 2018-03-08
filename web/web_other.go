@@ -139,7 +139,7 @@ func New(options ...func(*web) error) (*web, error) {
 		messageCh: make(chan json.Marshaler),
 
 		hotCountries: NewSafeArray(),
-		events:       NewSafeArray(),
+		events:       NewLimitedSafeArray(1000),
 	}
 
 	for _, optionFn := range options {
