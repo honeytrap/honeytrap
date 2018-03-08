@@ -27,24 +27,31 @@
 * Honeytrap" logo and retain the original copyright notice. If the display of the
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
- */
-package pushers
+*/
+package storers
 
-import (
-	"github.com/honeytrap/honeytrap/event"
-	"github.com/honeytrap/honeytrap/storers"
-)
+import "github.com/honeytrap/honeytrap/event"
 
-func MustDummy(...func(Channel) error) Channel {
-	return &dummyChannel{}
+type StoredFile struct {
+	Reference string
+	Backend string
 }
 
-func Dummy(...func(Channel) error) (Channel, error) {
-	return &dummyChannel{}, nil
+func (f *StoredFile) ToMap() map[string]interface{} {
+	out := make(map[string]interface{})
+	out["reference"] = f.Reference
+	out["backend"] = f.Backend
+	return out
 }
 
-type dummyChannel struct { }
+func (f *StoredFile) ToEvent() event.Event {
+	var out event.Event
+	out.Store("reference", f.Reference)
+	out.Store("backend", f.Backend)
+	return out
+}
 
-func (dc *dummyChannel) Send(event.Event) { }
-func (dc *dummyChannel) SendFile([]byte) { }
-func (dc *dummyChannel) SetStorer(storer storers.Storer) { }
+type Storer interface {
+	Push([]byte) StoredFile
+	Fetch(StoredFile) ([]byte, error)
+}

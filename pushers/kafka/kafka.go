@@ -39,6 +39,7 @@ import (
 	"github.com/honeytrap/honeytrap/pushers"
 
 	logging "github.com/op/go-logging"
+	"github.com/honeytrap/honeytrap/storers"
 )
 
 var (
@@ -55,6 +56,7 @@ type Backend struct {
 	producer sarama.AsyncProducer
 
 	ch chan map[string]interface{}
+	storers.Storer
 }
 
 func New(options ...func(pushers.Channel) error) (pushers.Channel, error) {
@@ -112,4 +114,14 @@ func (hc Backend) Send(message event.Event) {
 	})
 
 	hc.ch <- mp
+}
+
+// Must be called as a goroutine in order to be non-blocking
+func (hc Backend) SendFile(file []byte) {
+	ref := hc.Storer.Push(file)
+	hc.ch <- ref.ToMap()
+}
+
+func (hc Backend) SetStorer(storer storers.Storer) {
+	hc.Storer = storer
 }

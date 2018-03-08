@@ -356,11 +356,16 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			continue
 		}
 
-		if channelFunc, err := pushers.Get(x.Type, hc.dataDir); err != nil {
-			log.Error("Couldn't load type %s for channel %s: %s", x.Type, key, err.Error())
-		} else if d, err := channelFunc(
+		channelFunc, err := pushers.Get(x.Type, hc.dataDir)
+		if err != nil {
+			log.Error("Can't use type %s in channel %s: %s", x.Type, key, err.Error())
+			continue
+		}
+		d, err := channelFunc(
 			pushers.WithConfig(s),
-		); err != nil {
+			pushers.WithStorer(s),
+		)
+		if err != nil {
 			log.Fatalf("Error initializing channel %s(%s): %s", key, x.Type, err)
 		} else {
 			channels[key] = d

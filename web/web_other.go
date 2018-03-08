@@ -50,6 +50,7 @@ import (
 	assets "github.com/honeytrap/honeytrap-web"
 	logging "github.com/op/go-logging"
 	maxminddb "github.com/oschwald/maxminddb-golang"
+	"github.com/honeytrap/honeytrap/storers"
 )
 
 var log = logging.MustGetLogger("web")
@@ -104,6 +105,7 @@ type web struct {
 
 	eventCh   chan event.Event
 	messageCh chan json.Marshaler
+	Storer    storers.Storer
 
 	// Registered connections.
 	connections map[*connection]bool
@@ -346,6 +348,15 @@ func resolver(dataDir string, outCh chan event.Event) chan event.Event {
 
 func (web *web) Send(evt event.Event) {
 	web.eventCh <- evt
+}
+// Must be called as a goroutine in order to be non-blocking
+func (web *web) SendFile(file []byte) {
+	ref := web.Storer.Push(file)
+	web.eventCh <- ref.ToEvent()
+}
+
+func (web *web) SetStorer(storer storers.Storer) {
+	web.Storer = storer
 }
 
 func (web *web) ServeWS(w http.ResponseWriter, r *http.Request) {

@@ -44,6 +44,7 @@ import (
 
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
+	"github.com/honeytrap/honeytrap/storers"
 )
 
 var (
@@ -61,6 +62,7 @@ func New(options ...func(pushers.Channel) error) (pushers.Channel, error) {
 	c := Console{
 		Writer: os.Stdout,
 		ch:     ch,
+		Storer: nil,
 	}
 
 	for _, optionFn := range options {
@@ -79,6 +81,7 @@ type Console struct {
 
 	ch     chan map[string]interface{}
 	config Config
+	storers.Storer
 }
 
 func printify(s string) string {
@@ -134,4 +137,14 @@ func (b *Console) Send(e event.Event) {
 	})
 
 	b.ch <- mp
+}
+
+// Must be called as a goroutine in order to be non-blocking
+func (b *Console) SendFile(file []byte) {
+	ref := b.Storer.Push(file)
+	b.ch <- ref.ToMap()
+}
+
+func (b *Console) SetStorer(storer storers.Storer) {
+	b.Storer = storer
 }

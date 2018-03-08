@@ -33,6 +33,7 @@ package pulsar
 import (
 	"crypto/tls"
 	"fmt"
+	"github.com/honeytrap/honeytrap/storers"
 	"io"
 	"net/http"
 	"runtime"
@@ -84,6 +85,7 @@ type producer struct {
 	Config
 
 	ch        chan Message
+	storers.Storer
 	ws        *websocket.Conn
 	queueName string
 }
@@ -186,6 +188,23 @@ func (p *producer) run() {
 
 		log.Errorf("Connection lost. Reconnecting in 5 seconds.")
 	}
+}
+
+func (p *producer) SendFile(file []byte) {
+	ref := p.Storer.Push(file)
+	msg, err := json.Marshal(ref.ToMap())
+	if err != nil {
+		log.Errorf("Failed to serialize event: %s", err.Error())
+		return
+	}
+
+	p.ch <- Message{
+		Data: msg,
+	}
+}
+
+func (p *producer) SetStorer(storer storers.Storer) {
+	p.Storer = storer
 }
 
 func (p *producer) Send(e event.Event) {

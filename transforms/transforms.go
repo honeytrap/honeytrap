@@ -35,6 +35,7 @@ import (
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/plugins"
 	"github.com/honeytrap/honeytrap/pushers"
+	"github.com/honeytrap/honeytrap/storers"
 )
 
 type transformChannel struct {
@@ -44,6 +45,15 @@ type transformChannel struct {
 
 func (c transformChannel) Send(input event.Event) {
 	c.fn(input, c.destination.Send)
+}
+
+func (c transformChannel) SendFile(arg []byte) {
+	// File transforms are currently not supported, and they will work transparently
+	c.destination.SendFile(arg)
+}
+
+func (c transformChannel) SetStorer(storer storers.Storer) {
+	c.destination.SetStorer(storer)
 }
 
 func Transform(dest pushers.Channel, fn TransformFunc) pushers.Channel {

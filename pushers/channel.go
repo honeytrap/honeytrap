@@ -37,12 +37,15 @@ import (
 
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/plugins"
+	"github.com/honeytrap/honeytrap/storers"
 )
 
 // Channel defines a interface which exposes a single method for delivering
 // PushMessages to a giving underline service.
 type Channel interface {
 	Send(event.Event)
+	SendFile([]byte)
+	SetStorer(storers.Storer)
 }
 
 type ChannelFunc func(...func(Channel) error) (Channel, error)
@@ -64,8 +67,45 @@ func Register(key string, fn ChannelFunc) ChannelFunc {
 
 func WithConfig(c toml.Primitive) func(Channel) error {
 	return func(d Channel) error {
-		err := toml.PrimitiveDecode(c, d)
-		return err
+		return toml.PrimitiveDecode(c, d)
+	}
+}
+
+func WithStorer(c toml.Primitive) func(Channel) error {
+	/* Example config:
+
+	[channel.file]
+	type="file"
+	filename="honeytrap.log"
+	[channel.file.payloadStorage]
+	backend="fs"
+	fsPath="/tmp"
+	*/
+	x := struct {
+		PayloadStorage struct {
+			Backend string `toml:"backend"`
+
+			// Settings for backend "fs"
+			FsPath    string `toml:"fsPath"`
+		} `toml:"payloadStorage"`
+	}{}
+	toml.PrimitiveDecode(c, &x)
+	config := x.PayloadStorage
+	var storer storers.Storer
+	switch config.Backend {
+	case "fs":
+		if config.FsPath == "" {
+			panic("No path given for FSStorer")
+		}
+		storer = storers.FSStorer{Path: config.FsPath}
+	case "":
+		panic("No storage backend configured for channel")
+	default:
+		panic("Invalid storage backend configured: " + config.Backend)
+	}
+	return func(d Channel) error {
+		d.SetStorer(storer)
+		return nil
 	}
 }
 

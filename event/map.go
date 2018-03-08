@@ -36,7 +36,7 @@ import (
 	"time"
 )
 
-// Event defines a object which adds key-value pairs into a map type for event data.
+// Event defines an object which adds key-value pairs into a map type for event data.
 type Event struct {
 	sm *sync.Map
 }

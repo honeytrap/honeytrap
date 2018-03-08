@@ -42,6 +42,7 @@ import (
 
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
+	"github.com/honeytrap/honeytrap/storers"
 	logging "github.com/op/go-logging"
 )
 
@@ -66,6 +67,7 @@ type Backend struct {
 	Config
 
 	ch chan map[string]interface{}
+	storers.Storer
 }
 
 // New returns a new instance of a Backend.
@@ -225,6 +227,16 @@ func (b Backend) Send(e event.Event) {
 	})
 
 	b.ch <- mp
+}
+
+// Must be called as a goroutine in order to be non-blocking
+func (b Backend) SendFile(file []byte) {
+	ref := b.Storer.Push(file)
+	b.ch <- ref.ToMap()
+}
+
+func (hc Backend) SetStorer(storer storers.Storer) {
+	hc.Storer = storer
 }
 
 // Message defines the base message to be included sent to a slack endpoint.

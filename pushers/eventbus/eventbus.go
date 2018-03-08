@@ -33,6 +33,7 @@ package eventbus
 import (
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
+	"github.com/honeytrap/honeytrap/storers"
 )
 
 // EventBus defines a structure which provides a pubsub bus where message.Events
@@ -56,5 +57,18 @@ func (eb *EventBus) Subscribe(channel pushers.Channel) error {
 func (eb *EventBus) Send(e event.Event) {
 	for _, subscriber := range eb.subscribers {
 		subscriber.Send(e)
+	}
+}
+
+// SendFile delivers the file to all subscribers.
+func (eb *EventBus) SendFile(file []byte) {
+	for _, subscriber := range eb.subscribers {
+		subscriber.SendFile(file)
+	}
+}
+
+func (eb *EventBus) SetStorer(storer storers.Storer) {
+	for _, subscriber := range eb.subscribers {
+		subscriber.SetStorer(storer)
 	}
 }

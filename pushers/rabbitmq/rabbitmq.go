@@ -32,6 +32,7 @@ package rabbitmq
 
 import (
 	"fmt"
+	"github.com/honeytrap/honeytrap/storers"
 	"io"
 
 	"github.com/honeytrap/honeytrap/event"
@@ -102,8 +103,18 @@ type AMQPObject struct {
 	AMQPConfig
 	io.Writer
 	ch          chan map[string]interface{}
+	storers.Storer
 	amqpChannel *amqp.Channel
 	queueName   string
+}
+
+func (b *AMQPObject) SendFile(file []byte) {
+	ref := b.Storer.Push(file)
+	b.ch <- ref.ToMap()
+}
+
+func (b *AMQPObject) SetStorer(storer storers.Storer) {
+	b.Storer = storer
 }
 
 func (b *AMQPObject) Send(e event.Event) {
