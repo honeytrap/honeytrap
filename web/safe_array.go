@@ -35,24 +35,43 @@ import (
 	"sync"
 )
 
-func NewSafeArray() *SafeArray {
+// NewLimitedSafeArray returns a SafeArray with a max limit items.
+func NewLimitedSafeArray(limit int) *SafeArray {
 	return &SafeArray{
 		array: []interface{}{},
+		limit: limit,
 	}
 }
 
+// NewSafeArray returns a unlimited SafeArray.
+func NewSafeArray() *SafeArray {
+	return &SafeArray{
+		array: []interface{}{},
+		limit: 0,
+	}
+}
+
+// SafeArray is a thread safe array implementation.
 type SafeArray struct {
 	array []interface{}
+	limit int
 	m     sync.Mutex
 }
 
+// Append will append an item.
 func (sa *SafeArray) Append(v interface{}) {
 	sa.m.Lock()
 	defer sa.m.Unlock()
 
+	if sa.limit == 0 {
+	} else if len(sa.array) > sa.limit {
+		sa.array = sa.array[1:]
+	}
+
 	sa.array = append(sa.array, v)
 }
 
+// Range will enumerate through all array items.
 func (sa *SafeArray) Range(fn func(interface{}) bool) {
 	sa.m.Lock()
 	defer sa.m.Unlock()
@@ -66,6 +85,7 @@ func (sa *SafeArray) Range(fn func(interface{}) bool) {
 	}
 }
 
+// MarshalJSON will marshall the array contents to JSON.
 func (sa *SafeArray) MarshalJSON() ([]byte, error) {
 	sa.m.Lock()
 	defer sa.m.Unlock()
