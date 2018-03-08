@@ -96,30 +96,57 @@ type Cmd struct {
 	*cli.App
 }
 
+func tryConfig(path string) (server.OptionFn, error) {
+	u, err := url.Parse(path)
+	if err != nil {
+		return nil, err
+	}
+	switch u.Scheme {
+	case "":
+		fallthrough
+	case "file":
+		fn, err := server.WithConfig(u.Path)
+		if err != nil {
+			return nil, err
+		}
+		return fn, nil
+	case "http":
+		fallthrough
+	case "https":
+		fn, err := server.WithRemoteConfig(path)
+		if err != nil {
+			return nil, err
+		}
+		return fn, nil
+	default:
+		return nil, fmt.Errorf("Unknown path scheme %s", u.Scheme)
+	}
+}
+
 func serve(c *cli.Context) error {
 	var options []server.OptionFn
 
-	if v := c.String("config"); v == "" {
-	} else if u, err := url.Parse(v); err != nil {
-		ec := cli.NewExitError(err.Error(), 1)
-		return ec
-	} else if u.Scheme == "" || u.Scheme == "file" {
-		fn, err := server.WithConfig(u.Path)
+	// Honeytrap will search for a config file in these files, in descending priority
+	configCandidates := []string{
+		c.String("config"),
+		"/etc/honeytrap/config.toml",
+		"/etc/honeytrap.toml",
+	}
+
+	successful := false
+	for _, candidate := range configCandidates {
+		fn, err := tryConfig(candidate)
 		if err != nil {
-			ec := cli.NewExitError(err.Error(), 1)
-			return ec
+			log.Error("Failed to read config file %s: %s", candidate, err.Error())
+			continue
 		}
+		log.Debug("Using config file %s\n", candidate)
 		options = append(options, fn)
-	} else if u.Scheme == "http" || u.Scheme == "https" {
-		fn, err := server.WithRemoteConfig(v)
-		if err != nil {
-			ec := cli.NewExitError(err.Error(), 1)
-			return ec
-		}
-		options = append(options, fn)
-	} else {
-		ec := cli.NewExitError(color.RedString("[!] Check your config -c"), 1)
-		return ec
+		successful = true
+		break
+	}
+	if !successful {
+		return cli.NewExitError("No configuration file found! Check your config (-c).", 1)
 	}
 
 	if d := c.String("data"); d == "" {
