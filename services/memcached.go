@@ -100,7 +100,67 @@ func (s *memcachedService) Handle(ctx context.Context, conn net.Conn) error {
 			event.Custom("memcached.command-hex", hex.EncodeToString(command)),
 		))
 
-		conn.Write([]byte("ERROR\r\n"))
+		// we return errors for udp connections, to prevent udp amplification
+		if conn.RemoteAddr().Network() == "udp" {
+			conn.Write([]byte("ERROR\r\n"))
+			continue
+		}
+
+		if string(command) == "stats" {
+			conn.Write([]byte(`
+STAT pid 2080
+STAT uptime 3151236
+STAT time 1520550684
+STAT version 1.4.13
+STAT libevent 2.0.16-stable
+STAT pointer_size 64
+STAT rusage_user 371.247201
+STAT rusage_system 1839.982991
+STAT curr_connections 8
+STAT total_connections 5547233
+STAT connection_structures 55
+STAT reserved_fds 20
+STAT cmd_get 22076096
+STAT cmd_set 21
+STAT cmd_flush 3
+STAT cmd_touch 0
+STAT get_hits 22076066
+STAT get_misses 30
+STAT delete_misses 0
+STAT delete_hits 0
+STAT incr_misses 0
+STAT incr_hits 0
+STAT decr_misses 0
+STAT decr_hits 0
+STAT cas_misses 0
+STAT cas_hits 0
+STAT cas_badval 0
+STAT touch_hits 0
+STAT touch_misses 0
+STAT auth_cmds 0
+STAT auth_errors 0
+STAT bytes_read 286857265
+STAT bytes_written 129670828957
+STAT limit_maxbytes 67108864
+STAT accepting_conns 1
+STAT listen_disabled_num 0
+STAT threads 4
+STAT conn_yields 0
+STAT hash_power_level 16
+STAT hash_bytes 524288
+STAT hash_is_expanding 0
+STAT expired_unfetched 0
+STAT evicted_unfetched 0
+STAT bytes 29828
+STAT curr_items 5
+STAT total_items 21
+STAT evictions 0
+STAT reclaimed 3
+END\r\n
+`))
+		} else {
+			conn.Write([]byte("ERROR\r\n"))
+		}
 	}
 
 	return nil
