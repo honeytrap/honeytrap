@@ -100,7 +100,10 @@ func (hc Backend) run() {
 		case doc := <-hc.ch:
 			buffer := &bytes.Buffer{}
 
-			err := json.NewEncoder(buffer).Encode(doc)
+			if err := json.NewEncoder(buffer).Encode(doc); err != nil {
+				log.Errorf("Could not marshal data: %s", err.Error())
+				continue
+			}
 
 			req, err := http.NewRequest(http.MethodPost, hc.URL, buffer)
 			if err != nil {
