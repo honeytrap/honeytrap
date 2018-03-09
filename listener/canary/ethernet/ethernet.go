@@ -65,8 +65,8 @@ func (ef *EthernetFrame) Marshal() ([]byte, error) {
 	}
 
 	data := [14]byte{}
-	copy(data[0:6], ef.Destination)
-	copy(data[6:12], ef.Source)
+	copy(ef.Destination, data[0:6])
+	copy(ef.Source, data[6:12])
 	data[12] = uint8((ef.Type >> 8) & 0xFF)
 	data[13] = uint8(ef.Type & 0xFF)
 	return data[:], nil
