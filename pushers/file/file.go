@@ -82,7 +82,7 @@ func New(options ...func(pushers.Channel) error) (pushers.Channel, error) {
 		fc.File = filepath.Join(pwd, fc.File)
 	}
 
-	fc.timeout = config.MakeDuration(fc.Timeout, int(defaultWaitTime))
+	fc.timeout = config.MakeDuration(fc.Timeout, uint64(defaultWaitTime))
 
 	return &fc, nil
 }
