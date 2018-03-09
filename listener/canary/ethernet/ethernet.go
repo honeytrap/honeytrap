@@ -46,7 +46,10 @@ type EthernetFrame struct {
 }
 
 func Parse(data []byte) (*EthernetFrame, error) {
-	eh := &EthernetFrame{}
+	eh := &EthernetFrame{
+		Source:      make([]byte, 6),
+		Destination: make([]byte, 6),
+	}
 	return eh, eh.Unmarshal(data)
 }
 
