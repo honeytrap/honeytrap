@@ -31,7 +31,6 @@
 package marija
 
 import (
-	"bytes"
 	"crypto/tls"
 	"encoding/json"
 	"net/http"
@@ -40,6 +39,8 @@ import (
 
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
+
+	"io"
 
 	logging "github.com/op/go-logging"
 )
@@ -98,14 +99,21 @@ func (hc Backend) run() {
 	docs := []map[string]interface{}{}
 
 	send := func(docs []map[string]interface{}) {
-		buffer := &bytes.Buffer{}
+		pr, pw := io.Pipe()
+		go func() {
+			var err error
 
-		if err := json.NewEncoder(buffer).Encode(docs); err != nil {
-			log.Errorf("Could not marshal data: %s", err.Error())
-			return
-		}
+			defer pw.CloseWithError(err)
 
-		req, err := http.NewRequest(http.MethodPost, hc.URL, buffer)
+			for _, doc := range docs {
+				err = json.NewEncoder(pw).Encode(doc)
+				if err != nil {
+					return
+				}
+			}
+		}()
+
+		req, err := http.NewRequest(http.MethodPost, hc.URL, pr)
 		if err != nil {
 			log.Errorf("Could create new request: %s", err.Error())
 			return
