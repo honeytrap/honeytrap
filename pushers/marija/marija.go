@@ -96,9 +96,13 @@ func (hc Backend) run() {
 		},
 	}
 
-	docs := []map[string]interface{}{}
+	docs := make([]map[string]interface{}, 0)
 
 	send := func(docs []map[string]interface{}) {
+		if len(docs) == 0 {
+			return
+		}
+
 		pr, pw := io.Pipe()
 		go func() {
 			var err error
@@ -142,11 +146,11 @@ func (hc Backend) run() {
 
 			send(docs)
 
-			docs = []map[string]interface{}{}
+			docs = make([]map[string]interface{}, 0)
 		case <-time.After(time.Second * 2):
 			send(docs)
 
-			docs = []map[string]interface{}{}
+			docs = make([]map[string]interface{}, 0)
 		}
 	}
 }
