@@ -36,16 +36,16 @@ import (
 )
 
 //ConvertToInt wraps the internal int coverter
-func ConvertToInt(target string, def int) int {
+func ConvertToInt(target string, def uint64) int {
 	fo, err := strconv.Atoi(target)
 	if err != nil {
-		return def
+		return int(def)
 	}
 	return fo
 }
 
 // MakeDuration should become internal functions , config should return time.Duration
-func MakeDuration(target string, def int) time.Duration {
+func MakeDuration(target string, def uint64) time.Duration {
 	if !elapso.MatchString(target) {
 		return time.Duration(def)
 	}
