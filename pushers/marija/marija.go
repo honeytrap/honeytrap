@@ -95,34 +95,50 @@ func (hc Backend) run() {
 		},
 	}
 
+	docs := []map[string]interface{}{}
+
+	send := func(docs []map[string]interface{}) {
+		buffer := &bytes.Buffer{}
+
+		if err := json.NewEncoder(buffer).Encode(docs); err != nil {
+			log.Errorf("Could not marshal data: %s", err.Error())
+			return
+		}
+
+		req, err := http.NewRequest(http.MethodPost, hc.URL, buffer)
+		if err != nil {
+			log.Errorf("Could create new request: %s", err.Error())
+			return
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Errorf("Could not submit event to Marija: %s", err.Error())
+			return
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			log.Errorf("Could not submit event to Marija: %d", resp.StatusCode)
+			return
+		}
+	}
+
 	for {
 		select {
 		case doc := <-hc.ch:
-			buffer := &bytes.Buffer{}
+			docs = append(docs, doc)
 
-			if err := json.NewEncoder(buffer).Encode(doc); err != nil {
-				log.Errorf("Could not marshal data: %s", err.Error())
+			if len(docs) < 10 {
 				continue
 			}
 
-			req, err := http.NewRequest(http.MethodPost, hc.URL, buffer)
-			if err != nil {
-				log.Errorf("Could create new request: %s", err.Error())
-				continue
-			}
+			send(docs)
 
-			resp, err := client.Do(req)
-			if err != nil {
-				log.Errorf("Could not submit event to Marija: %s", err.Error())
-				continue
-			}
+			docs = []map[string]interface{}{}
+		case <-time.After(time.Second * 2):
+			send(docs)
 
-			if resp.StatusCode != http.StatusOK {
-				log.Errorf("Could not submit event to Marija: %d", resp.StatusCode)
-				continue
-			}
-
-		case <-time.After(time.Second * 10):
+			docs = []map[string]interface{}{}
 		}
 	}
 }
