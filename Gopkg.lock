@@ -266,6 +266,12 @@
   revision = "f6cff0780e542efa0c8e864dc8fa522808f6a598"
 
 [[projects]]
+  branch = "master"
+  name = "golang.org/x/time"
+  packages = ["rate"]
+  revision = "6dc17368e09b0e8634d71cac8168d853e869a0c7"
+
+[[projects]]
   name = "gopkg.in/olivere/elastic.v5"
   packages = [".","config","uritemplates"]
   revision = "02f6a01dc7f7fd2d65e89121e881aae3ba577a9a"
@@ -280,6 +286,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "7214017e74ed75afee4b0777b3ba65653ee8afcc650b35e204964b6648ae076f"
+  inputs-digest = "c4b72c7a989147e490f1e5e0f5268aabf7cfe16299404267990e9c645d78ce16"
   solver-name = "gps-cdcl"
   solver-version = 1
