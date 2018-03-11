@@ -45,7 +45,9 @@ var (
 )
 
 func Memcached(options ...ServicerFunc) Servicer {
-	s := &memcachedService{}
+	s := &memcachedService{
+		limiter: NewLimiter(),
+	}
 
 	for _, o := range options {
 		o(s)
@@ -59,6 +61,8 @@ type memcachedServiceConfig struct {
 
 type memcachedService struct {
 	memcachedServiceConfig
+
+	limiter *Limiter
 
 	ch pushers.Channel
 }
@@ -102,8 +106,11 @@ func (s *memcachedService) Handle(ctx context.Context, conn net.Conn) error {
 
 		// we return errors for udp connections, to prevent udp amplification
 		if conn.RemoteAddr().Network() == "udp" {
-			conn.Write([]byte("ERROR\r\n"))
-			continue
+			if s.limiter.Allow(conn.RemoteAddr()) {
+				conn.Write([]byte("ERROR\r\n"))
+			}
+
+			return nil
 		}
 
 		if string(command) == "stats" {
