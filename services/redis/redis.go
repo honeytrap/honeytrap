@@ -51,26 +51,28 @@ var (
 )
 
 func REDIS(options ...services.ServicerFunc) services.Servicer {
+
 	s := &redisService{
-		redisServiceConfig: redisServiceConfig{
-			Version: "4.0.6",
-			Os:      "Linux 4.9.49-moby x86_64",
-		},
+		RedisServiceConfig: RedisServiceConfiguration{},
 	}
+
 	for _, o := range options {
 		o(s)
 	}
+
+	s.RedisServiceConfig, errList = s.configureRedisService()
+
+	if len(errList) != 0 {
+		for field, reason := range errList {
+			log.Errorf("Could not add [%s]: %s", field, reason)
+		}
+	}
+
 	return s
 }
 
-type redisServiceConfig struct {
-	Version string `toml:"version"`
-
-	Os string `toml:"os"`
-}
-
 type redisService struct {
-	redisServiceConfig
+	RedisServiceConfig RedisServiceConfiguration `toml:"config"`
 
 	ch pushers.Channel
 }
