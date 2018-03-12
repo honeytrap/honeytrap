@@ -38,7 +38,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
-	"path"
+	"path/filepath"
 	"time"
 
 	"github.com/honeytrap/honeytrap/event"
@@ -47,10 +47,9 @@ import (
 	logging "github.com/op/go-logging"
 )
 
-var log = logging.MustGetLogger("services/ipp")
-
 var (
-	_ = services.Register("ipp", IPP)
+	log = logging.MustGetLogger("services/ipp")
+	_   = services.Register("ipp", IPP)
 )
 
 func IPP(options ...services.ServicerFunc) services.Servicer {
@@ -144,7 +143,7 @@ func (s *ippService) Handle(ctx context.Context, conn net.Conn) error {
 			ext = ".octet-stream"
 		}
 
-		p := path.Join(s.StorageDir, fmt.Sprintf("%s%s", time.Now().Format("ipp-20060102150405"), ext))
+		p := filepath.Join(s.StorageDir, fmt.Sprintf("%s%s", time.Now().Format("ipp-20060102150405"), ext))
 		log.Debugf("Data size %v, file %v", len(ippResp.data), p)
 
 		ioutil.WriteFile(p, ippResp.data, 0644)
