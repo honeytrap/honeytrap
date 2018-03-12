@@ -145,7 +145,7 @@ func (s *ippService) Handle(ctx context.Context, conn net.Conn) error {
 		case "image/pwg-raster":
 			ext = ".ras"
 		case "application/octet-stream":
-			ext = ".octet-stream"
+			ext = extension(ippResp.data)
 		}
 
 		p := filepath.Join(s.StorageDir, fmt.Sprintf("%s%s", time.Now().Format("ipp-20060102150405"), ext))
