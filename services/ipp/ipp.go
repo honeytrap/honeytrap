@@ -110,7 +110,7 @@ func (s *ippService) Handle(ctx context.Context, conn net.Conn) error {
 		return nil
 	}
 
-	ippReq, err := ioutil.ReadAll(req.Body)
+	b_ippReq, err := ioutil.ReadAll(req.Body)
 	if err != nil {
 		log.Error("Error reading request: ", err.Error())
 		return err
@@ -120,7 +120,12 @@ func (s *ippService) Handle(ctx context.Context, conn net.Conn) error {
 		return err
 	}
 
-	ippResp, err := IPPHandler(ippReq)
+	reqMessage := &ippMsg{}
+	if err := reqMessage.decode(b_ippReq); err != nil {
+		return err
+	}
+
+	ippResp, err := reqMessage.Handle()
 	if err != nil {
 		return err
 	}
@@ -149,6 +154,7 @@ func (s *ippService) Handle(ctx context.Context, conn net.Conn) error {
 		ioutil.WriteFile(p, ippResp.data, 0644)
 
 		ippResp.data = []byte("Print data stored to " + p)
+
 	}
 
 	s.ch.Send(event.New(
@@ -157,10 +163,13 @@ func (s *ippService) Handle(ctx context.Context, conn net.Conn) error {
 		event.Type("request"),
 		event.SourceAddr(conn.RemoteAddr()),
 		event.DestinationAddr(conn.LocalAddr()),
-		event.Custom("http.url", req.URL.String()),
-		event.Custom("ipp.uri", ippResp.uri),
-		event.Custom("ipp.user", ippResp.username),
-		event.Custom("ipp.job-name", string(ippResp.jobname)),
+		event.Custom("ipp.operation", opString[reqMessage.statusCode]),
+		event.Custom("ipp.requestid", fmt.Sprintf("%d", reqMessage.requestId)),
+		event.Custom("ipp.version", fmt.Sprintf("%d.%d", reqMessage.versionMajor, reqMessage.versionMinor)),
+		event.Custom("ipp.path", req.URL.String()),
+		event.Custom("ipp.uri", reqMessage.uri),
+		event.Custom("ipp.user", reqMessage.username),
+		event.Custom("ipp.job-name", string(reqMessage.jobname)),
 		event.Custom("ipp.data", string(ippResp.data)),
 	))
 
