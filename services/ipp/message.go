@@ -78,6 +78,15 @@ const (
 	sOk int16 = 0x0000 //successful-ok
 )
 
+var opString = map[int16]string{
+	0x0002: "print-job",
+	0x0004: "validate-job",
+	0x0005: "create-job",
+	0x0009: "get-job-attributes",
+	0x000b: "get-printer-attributes",
+	0x400b: "cups-get-devices",
+}
+
 type ippMsg struct {
 
 	//IPP message, request and response
@@ -188,38 +197,40 @@ func (r *ippMsg) setGetDevices() {
 }
 
 // Returns a IPP response based on the IPP request
-func IPPHandler(ippBody []byte) (*ippMsg, error) {
-	body := &ippMsg{}
+func (m *ippMsg) Handle() (*ippMsg, error) {
+	/*
+		body := &ippMsg{}
 
-	err := body.decode(ippBody)
-	if err != nil {
-		return nil, err
-	}
+		err := body.decode(b_ippreq)
+		if err != nil {
+			return nil, err
+		}
+	*/
 
 	//Response structure
 	rbody := &ippMsg{
-		versionMajor: body.versionMajor,
-		versionMinor: body.versionMinor,
+		versionMajor: m.versionMajor,
+		versionMinor: m.versionMinor,
 		statusCode:   sOk,
-		requestId:    body.requestId,
-		data:         body.data,
+		requestId:    m.requestId,
+		data:         m.data,
 	}
 
 	//Set operation attributes
-	for _, g := range body.attributes {
+	for _, g := range m.attributes {
 		if g.tag == opAttribTag {
 			rbody.setOpAttribResponse(g)
 			break
 		}
 	}
 
-	switch body.statusCode { //operation-id
+	switch m.statusCode { //operation-id
 	case opGetPrinterAttrib:
 		log.Debug("Get Printer Attributes")
 		rbody.setGetPrinterResponse()
 	case opPrintJob:
 		log.Debug("Print Job")
-		rbody.setPrintJobResponse(body)
+		rbody.setPrintJobResponse(m)
 	case opValidateJob:
 		log.Debug("Validate Job")
 	case opGetJobAttrib:
