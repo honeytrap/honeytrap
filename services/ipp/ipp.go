@@ -163,7 +163,7 @@ func (s *ippService) Handle(ctx context.Context, conn net.Conn) error {
 		event.Type("request"),
 		event.SourceAddr(conn.RemoteAddr()),
 		event.DestinationAddr(conn.LocalAddr()),
-		event.Custom("ipp.operation", opString[reqMessage.statusCode]),
+		event.Custom("ipp.operation", opText(reqMessage.statusCode)),
 		event.Custom("ipp.requestid", fmt.Sprintf("%d", reqMessage.requestId)),
 		event.Custom("ipp.version", fmt.Sprintf("%d.%d", reqMessage.versionMajor, reqMessage.versionMinor)),
 		event.Custom("ipp.path", req.URL.String()),
@@ -199,4 +199,12 @@ func (s *ippService) Handle(ctx context.Context, conn net.Conn) error {
 	}
 
 	return nil
+}
+
+func opText(code int16) string {
+	if txt, ok := opString[code]; ok {
+		return txt
+	}
+
+	return fmt.Sprintf("%#x: unknown opcode", code)
 }
