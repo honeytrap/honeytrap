@@ -84,7 +84,6 @@ var globalFlags = []cli.Flag{
 	},
 	cli.BoolFlag{Name: "cpu-profile", Usage: "Enable cpu profiler"},
 	cli.BoolFlag{Name: "mem-profile", Usage: "Enable memory profiler"},
-	cli.BoolFlag{Name: "profiler", Usage: "Enable web profiler"},
 
 	cli.BoolFlag{Name: "list-services", Usage: "List the available services"},
 	cli.BoolFlag{Name: "list-channels", Usage: "List the available channels"},
