@@ -1,6 +1,8 @@
 package ftp
 
 import (
+	"fmt"
+	"io/ioutil"
 	"net"
 	"os"
 	"testing"
@@ -19,8 +21,15 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	storage.SetDataDir("/tmp")
-	os.Exit(m.Run())
+	temp_dir, err := ioutil.TempDir("", "")
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	storage.SetDataDir(temp_dir)
+	exit_code := m.Run()
+	os.RemoveAll(temp_dir)
+	os.Exit(exit_code)
 }
 
 func TestFTP(t *testing.T) {
