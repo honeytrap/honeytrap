@@ -1058,14 +1058,16 @@ func (c *Canary) Start(ctx context.Context) error {
 						// no packets received
 					} else if eh, err := ethernet.Parse(buffer[:n]); err != nil {
 					} else if eh.Type == EthernetTypeARP {
-						c.handleARP(eh.Payload[:])
+						data := make([]byte, len(eh.Payload))
+						copy(data, eh.Payload[:])
+						c.handleARP(data)
 					} else if eh.Type == EthernetTypeIPv4 {
 						if iph, err := ipv4.Parse(eh.Payload[:]); err != nil {
 							log.Debugf("Error parsing ip header: %s", err.Error())
 						} else {
-							data := iph.Payload[:]
+							data := make([]byte, len(iph.Payload))
+							copy(data, iph.Payload[:])
 
-							// eh.Source, eh.Destination
 							switch iph.Protocol {
 							case 1 /* icmp */ :
 								c.handleICMP(eh, iph, data)
