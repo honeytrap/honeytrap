@@ -91,7 +91,7 @@ func (c *conn) ReadLine() (string, error) {
 }
 
 func startState(c *conn) stateFn {
-	c.PrintfLine("220 %s", c.server.Banner)
+	c.PrintfLine("220 %s", c.server.Banner.String())
 	return helloState
 }
 

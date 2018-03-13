@@ -28,89 +28,57 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package smtp
+package banner
 
 import (
-	"crypto/tls"
-	"net"
-	"sync"
-
-	"github.com/honeytrap/honeytrap/services/banner"
+	"strings"
+	"text/template"
+	"time"
 )
 
-type Handler interface {
-	Serve(msg Message) error
-}
+// Create a Banner template "[Host] [Text] [datetime]"
+func New(Host, Text string, DateTime bool) (*BannerT, error) {
+	var tmpl strings.Builder
 
-type HandlerFunc func(msg Message) error
-
-type ServeMux struct {
-	m  []HandlerFunc
-	mu sync.RWMutex
-}
-
-func (mux *ServeMux) HandleFunc(handler func(msg Message) error) {
-	mux.mu.Lock()
-	defer mux.mu.Unlock()
-
-	mux.m = append(mux.m, handler)
-}
-
-func HandleFunc(handler func(msg Message) error) *ServeMux {
-	DefaultServeMux.HandleFunc(handler)
-	return DefaultServeMux
-}
-
-var DefaultServeMux = NewServeMux()
-
-func NewServeMux() *ServeMux { return &ServeMux{m: make([]HandlerFunc, 0)} }
-
-func (s *ServeMux) Serve(msg Message) error {
-	for _, h := range s.m {
-		if err := h(msg); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-type Server struct {
-	Banner *banner.BannerT
-
-	Handler Handler
-
-	tlsConfig *tls.Config
-}
-
-func (s *Server) NewConn(rwc net.Conn, recv chan string) (c *conn, err error) {
-	c = &conn{
-		server: s,
-		rwc:    rwc,
-		rcv:    recv,
-		i:      0,
+	if Host != "" {
+		tmpl.WriteString(Host)
+		tmpl.WriteString(" ")
 	}
 
-	c.msg = c.newMessage()
-	return c, nil
-}
-
-func (s *Server) tlsConf(cert *tls.Certificate) {
-
-	s.tlsConfig = &tls.Config{
-		Certificates:       []tls.Certificate{*cert},
-		InsecureSkipVerify: true,
-	}
-}
-
-type serverHandler struct {
-	srv *Server
-}
-
-func (sh serverHandler) Serve(msg Message) {
-	handler := sh.srv.Handler
-	if handler == nil {
-		handler = DefaultServeMux
+	if Text != "" {
+		tmpl.WriteString(Text)
+		tmpl.WriteString(" ")
 	}
 
-	handler.Serve(msg)
+	if DateTime {
+		tmpl.WriteString("{{datetime}}")
+	}
+
+	t, err := template.New("").Funcs(template.FuncMap{
+		"datetime": func() string {
+			return time.Now().Format(time.RFC3339)
+		},
+	}).Parse(tmpl.String())
+	if err != nil {
+		return nil, err
+	}
+
+	return &BannerT{
+		tmpl: t,
+	}, nil
+}
+
+type BannerT struct {
+	tmpl *template.Template
+}
+
+// Banner string with updated datetime (if set to true in New)
+func (t *BannerT) String() string {
+	var parsed strings.Builder
+
+	if err := t.tmpl.Execute(&parsed, ""); err != nil {
+		return ""
+	}
+
+	return parsed.String()
 }
