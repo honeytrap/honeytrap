@@ -22,7 +22,7 @@ func TestBannerNoDateTime(t *testing.T) {
 			t.Log(err)
 		}
 
-		got := tmpl.Banner()
+		got := tmpl.String()
 		if got != c.want {
 			t.Errorf("Banner want [%q] got [%q]", c.want, got)
 		}
@@ -54,7 +54,7 @@ func TestBannerWithDateTime(t *testing.T) {
 			t.Log(err)
 		}
 
-		got := tmpl.Banner()
+		got := tmpl.String()
 		if w := want.String(); w != got {
 			t.Errorf("Banner want [%q] got [%q]", w, got)
 		}

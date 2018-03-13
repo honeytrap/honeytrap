@@ -37,7 +37,7 @@ import (
 )
 
 // Create a Banner template "[Host] [Text] [datetime]"
-func New(Host, Text string, DateTime bool) (*bannerT, error) {
+func New(Host, Text string, DateTime bool) (*BannerT, error) {
 	var tmpl strings.Builder
 
 	if Host != "" {
@@ -63,17 +63,17 @@ func New(Host, Text string, DateTime bool) (*bannerT, error) {
 		return nil, err
 	}
 
-	return &bannerT{
+	return &BannerT{
 		tmpl: t,
 	}, nil
 }
 
-type bannerT struct {
+type BannerT struct {
 	tmpl *template.Template
 }
 
 // Banner string with updated datetime (if set to true in New)
-func (t *bannerT) Banner() string {
+func (t *BannerT) String() string {
 	var parsed strings.Builder
 
 	if err := t.tmpl.Execute(&parsed, ""); err != nil {

@@ -37,6 +37,7 @@ import (
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/services"
+	"github.com/honeytrap/honeytrap/services/banner"
 	logging "github.com/op/go-logging"
 )
 
@@ -50,7 +51,7 @@ func SMTP(options ...services.ServicerFunc) services.Servicer {
 
 	s := &SMTPService{
 		Config: Config{
-			Banner: "SMTPd",
+			Text: "SMTPd",
 			srv: &Server{
 				tlsConfig: nil,
 			},
@@ -77,7 +78,14 @@ func SMTP(options ...services.ServicerFunc) services.Servicer {
 		}
 	}
 
-	s.srv.Banner = s.Banner
+	// Set Banner template
+	s.srv.Banner, _ = banner.New(s.Host, s.Text, true)
+	/*
+		if err != nil {
+			log.Errorf("No Banner set: %q", err.Error())
+		}
+	*/
+	log.Infof("Banner: %q", s.srv.Banner.String())
 
 	handler := HandleFunc(func(msg Message) error {
 		s.receiveChan <- msg
@@ -90,7 +98,9 @@ func SMTP(options ...services.ServicerFunc) services.Servicer {
 }
 
 type Config struct {
-	Banner string `toml:"banner"`
+	Host string `toml:"host"`
+
+	Text string `toml:"text"`
 
 	srv *Server
 

@@ -34,6 +34,8 @@ import (
 	"crypto/tls"
 	"net"
 	"sync"
+
+	"github.com/honeytrap/honeytrap/services/banner"
 )
 
 type Handler interface {
@@ -73,7 +75,7 @@ func (s *ServeMux) Serve(msg Message) error {
 }
 
 type Server struct {
-	Banner string
+	Banner *banner.BannerT
 
 	Handler Handler
 
