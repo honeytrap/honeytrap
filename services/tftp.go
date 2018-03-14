@@ -45,7 +45,9 @@ var (
 )
 
 func TFTP(options ...ServicerFunc) Servicer {
-	s := &tftpService{}
+	s := &tftpService{
+		limiter: NewLimiter(),
+	}
 	for _, o := range options {
 		o(s)
 	}
@@ -62,6 +64,8 @@ type tftpFile struct {
 type tftpService struct {
 	ch pushers.Channel
 
+	limiter *Limiter
+
 	buffers map[string]*tftpFile
 }
 
@@ -70,7 +74,15 @@ func (s *tftpService) SetChannel(c pushers.Channel) {
 }
 
 func (s *tftpService) Handle(ctx context.Context, conn net.Conn) error {
-	if conn.RemoteAddr().Network() != "udp" {
+	if conn.RemoteAddr().Network() == "udp" {
+		/* Selectively drop packets to prevent amplification attacks. This is a
+		 * simple approach that "just works", since for each client packet there
+		 * is one response packet from the server
+		 */
+		if !s.limiter.Allow(conn.RemoteAddr()) {
+			return nil
+		}
+	} else {
 		log.Error("Expected UDP connection, got %s", conn.RemoteAddr().Network())
 	}
 
