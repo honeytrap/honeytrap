@@ -32,9 +32,13 @@ package services
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/hex"
+	"fmt"
 	"net"
+
+	"strconv"
 
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
@@ -113,7 +117,10 @@ func (s *memcachedService) Handle(ctx context.Context, conn net.Conn) error {
 			return nil
 		}
 
-		if string(command) == "stats" {
+		parts := bytes.Split(command, []byte{0x20})
+
+		switch string(parts[0]) {
+		case "stats":
 			conn.Write([]byte(`
 STAT pid 2080
 STAT uptime 3151236
@@ -165,7 +172,55 @@ STAT evictions 0
 STAT reclaimed 3
 END\r\n
 `))
-		} else {
+		case "add":
+			fallthrough
+		case "replace":
+			fallthrough
+		case "prepend":
+			fallthrough
+		case "append":
+			fallthrough
+		case "set":
+			if len(parts) < 5 {
+				return fmt.Errorf("Invalid number of arguments: %s", string(command))
+			}
+
+			key := string(parts[1])
+			flags := string(parts[2])
+			expireTime := string(parts[3])
+			byteCount := string(parts[4])
+
+			count := 0
+			if v, err := strconv.Atoi(byteCount); err != nil {
+				return fmt.Errorf("Byte count is not a number: %s", string(command))
+			} else {
+				count = v
+			}
+
+			buff := make([]byte, count)
+			n, err := conn.Read(buff)
+			if err != nil {
+				return err
+			}
+
+			buff = buff[:n]
+
+			s.ch.Send(event.New(
+				EventOptions,
+				event.Category("memcached"),
+				event.Protocol(conn.RemoteAddr().Network()),
+				event.Type(fmt.Sprintf("memcached-%s", string(parts[0]))),
+				event.SourceAddr(conn.RemoteAddr()),
+				event.DestinationAddr(conn.LocalAddr()),
+				event.Custom("memcached-key", key),
+				event.Custom("memcached-flags", flags),
+				event.Custom("memcached-expire_time", expireTime),
+				event.Custom("memcached-bytes", byteCount),
+				event.Payload(buff),
+			))
+
+			conn.Write([]byte("STORED\r\n"))
+		default:
 			conn.Write([]byte("ERROR\r\n"))
 		}
 	}
