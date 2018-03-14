@@ -77,7 +77,8 @@ func (c *Canary) DecodeSSDP(iph *ipv4.Header, udph *udp.Header) error {
 	c.events.Send(event.New(
 		CanaryOptions,
 		EventCategorySSDP,
-		event.ServiceStarted,
+
+		event.Protocol("udp"),
 
 		event.SourceIP(iph.Src),
 		event.DestinationIP(iph.Dst),
@@ -119,7 +120,8 @@ func (c *Canary) DecodeSIP(iph *ipv4.Header, udph *udp.Header) error {
 	c.events.Send(event.New(
 		CanaryOptions,
 		EventCategorySIP,
-		event.ServiceStarted,
+
+		event.Protocol("udp"),
 
 		event.SourceIP(iph.Src),
 		event.DestinationIP(iph.Dst),
@@ -152,7 +154,8 @@ func (c *Canary) DecodeSNMPTrap(iph *ipv4.Header, udph *udp.Header) error {
 	c.events.Send(event.New(
 		CanaryOptions,
 		EventCategorySNMPTrap,
-		event.ServiceStarted,
+
+		event.Protocol("udp"),
 
 		event.SourceIP(iph.Src),
 		event.DestinationIP(iph.Dst),
@@ -174,7 +177,8 @@ func (c *Canary) DecodeSNMP(iph *ipv4.Header, udph *udp.Header) error {
 	c.events.Send(event.New(
 		CanaryOptions,
 		EventCategorySNMP,
-		event.ServiceStarted,
+
+		event.Protocol("udp"),
 
 		event.SourceIP(iph.Src),
 		event.DestinationIP(iph.Dst),
@@ -224,7 +228,8 @@ func (c *Canary) DecodeNTP(iph *ipv4.Header, udph *udp.Header) error {
 	c.events.Send(event.New(
 		CanaryOptions,
 		EventCategoryNTP,
-		event.ServiceStarted,
+
+		event.Protocol("udp"),
 
 		event.SourceIP(iph.Src),
 		event.DestinationIP(iph.Dst),
@@ -265,7 +270,8 @@ func (c *Canary) DecodeDNS(iph *ipv4.Header, udph *udp.Header) error {
 		c.events.Send(event.New(
 			CanaryOptions,
 			EventCategoryDNSQuery,
-			event.ServiceStarted,
+
+			event.Protocol("udp"),
 
 			event.SourceIP(iph.Src),
 			event.DestinationIP(iph.Dst),
@@ -281,7 +287,8 @@ func (c *Canary) DecodeDNS(iph *ipv4.Header, udph *udp.Header) error {
 		c.events.Send(event.New(
 			CanaryOptions,
 			EventCategoryDNSOther,
-			event.ServiceStarted,
+
+			event.Protocol("udp"),
 
 			event.SourceIP(iph.Src),
 			event.DestinationIP(iph.Dst),

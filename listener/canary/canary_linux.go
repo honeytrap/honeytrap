@@ -220,6 +220,7 @@ func (c *Canary) handleUDP(eh *ethernet.Frame, iph *ipv4.Header, data []byte) er
 				SensorCanary,
 				EventCategoryUDP,
 
+				event.Protocol("udp"),
 				event.SourceHardwareAddr(eh.Source),
 				event.DestinationHardwareAddr(eh.Destination),
 
@@ -522,6 +523,7 @@ func (c *Canary) handleTCP(eh *ethernet.Frame, iph *ipv4.Header, data []byte) er
 					CanaryOptions,
 					EventCategoryTCP,
 					event.ServiceStarted,
+					event.Protocol("tcp"),
 					event.SourceHardwareAddr(eh.Source),
 					event.DestinationHardwareAddr(eh.Destination),
 					event.SourceIP(state.SrcIP),
