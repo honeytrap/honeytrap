@@ -216,7 +216,7 @@ END\r\n
 				event.Custom("memcached-flags", flags),
 				event.Custom("memcached-expire_time", expireTime),
 				event.Custom("memcached-bytes", byteCount),
-				event.Payload(buff),
+				event.Payload(buff[:80]),
 			))
 
 			conn.Write([]byte("STORED\r\n"))
