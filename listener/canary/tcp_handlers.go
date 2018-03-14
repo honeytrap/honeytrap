@@ -69,7 +69,7 @@ func (c *Canary) DecodeHTTP(conn net.Conn) error {
 	c.events.Send(event.New(
 		CanaryOptions,
 		EventCategoryHTTP,
-		event.ServiceStarted,
+		event.Protocol("tcp"),
 		event.SourceAddr(conn.RemoteAddr()),
 		event.DestinationAddr(conn.LocalAddr()),
 		event.Custom("http.method", request.Method),
@@ -114,7 +114,7 @@ func (c *Canary) DecodeElasticsearch(conn net.Conn) error {
 	c.events.Send(event.New(
 		CanaryOptions,
 		EventCategoryElasticsearch,
-		event.ServiceStarted,
+		event.Protocol("tcp"),
 		event.SourceAddr(conn.RemoteAddr()),
 		event.DestinationAddr(conn.LocalAddr()),
 		event.Custom("http.method", request.Method),
@@ -161,7 +161,7 @@ func (c *Canary) DecodeHTTPS(conn net.Conn) error {
 	options := []event.Option{
 		CanaryOptions,
 		EventCategoryHTTPS,
-		event.ServiceStarted,
+		event.Protocol("tcp"),
 		event.SourceAddr(conn.RemoteAddr()),
 		event.DestinationAddr(conn.LocalAddr()),
 		event.Payload(buff[:n]),
@@ -237,7 +237,7 @@ func (c *Canary) DecodeMSSQL(conn net.Conn) error {
 	c.events.Send(event.New(
 		CanaryOptions,
 		EventCategoryMSSQL,
-		event.ServiceStarted,
+		event.Protocol("tcp"),
 		event.SourceAddr(conn.RemoteAddr()),
 		event.DestinationAddr(conn.LocalAddr()),
 		event.Payload(buff[:n]),
@@ -262,7 +262,7 @@ func (c *Canary) DecodeTelnet(conn net.Conn) error {
 	c.events.Send(event.New(
 		CanaryOptions,
 		EventCategoryTelnet,
-		event.ServiceStarted,
+		event.Protocol("tcp"),
 		event.SourceAddr(conn.RemoteAddr()),
 		event.DestinationAddr(conn.LocalAddr()),
 		event.Payload(buff[:n]),
@@ -287,7 +287,7 @@ func (c *Canary) DecodeRedis(conn net.Conn) error {
 	c.events.Send(event.New(
 		CanaryOptions,
 		EventCategoryRedis,
-		event.ServiceStarted,
+		event.Protocol("tcp"),
 		event.SourceAddr(conn.RemoteAddr()),
 		event.DestinationAddr(conn.LocalAddr()),
 		event.Payload(buff[:n]),
@@ -312,7 +312,7 @@ func (c *Canary) DecodeRDP(conn net.Conn) error {
 	c.events.Send(event.New(
 		CanaryOptions,
 		EventCategoryRDP,
-		event.ServiceStarted,
+		event.Protocol("tcp"),
 		event.SourceAddr(conn.RemoteAddr()),
 		event.DestinationAddr(conn.LocalAddr()),
 		event.Payload(buff[:n]),
@@ -337,7 +337,7 @@ func (c *Canary) DecodeFTP(conn net.Conn) error {
 	c.events.Send(event.New(
 		CanaryOptions,
 		EventCategoryNBTIP,
-		event.ServiceStarted,
+		event.Protocol("tcp"),
 		event.SourceAddr(conn.RemoteAddr()),
 		event.DestinationAddr(conn.LocalAddr()),
 		event.Payload(buff[:n]),
@@ -362,7 +362,7 @@ func (c *Canary) DecodeNBTIP(conn net.Conn) error {
 	c.events.Send(event.New(
 		CanaryOptions,
 		EventCategoryNBTIP,
-		event.ServiceStarted,
+		event.Protocol("tcp"),
 		event.SourceAddr(conn.RemoteAddr()),
 		event.DestinationAddr(conn.LocalAddr()),
 		event.Payload(buff[:n]),
@@ -387,7 +387,7 @@ func (c *Canary) DecodeSMBIP(conn net.Conn) error {
 	options := []event.Option{
 		CanaryOptions,
 		EventCategorySMBIP,
-		event.ServiceStarted,
+		event.Protocol("tcp"),
 		event.SourceAddr(conn.RemoteAddr()),
 		event.DestinationAddr(conn.LocalAddr()),
 		event.Payload(buff[:n]),
