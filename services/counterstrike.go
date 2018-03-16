@@ -94,6 +94,8 @@ func (s *counterStrikeService) SetChannel(c pushers.Channel) {
 	s.ch = c
 }
 
+func (s *counterStrikeService) SetDataDir(string) {}
+
 func (s *counterStrikeService) Handle(ctx context.Context, conn net.Conn) error {
 	b := bufio.NewReader(conn)
 

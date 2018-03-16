@@ -79,6 +79,8 @@ func (s *telnetService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
+func (s *telnetService) SetDataDir(string) {}
+
 func (s *telnetService) Handle(ctx context.Context, conn net.Conn) error {
 	id := xid.New()
 

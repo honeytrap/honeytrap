@@ -68,6 +68,8 @@ func (s *copyService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
+func (s *copyService) SetDataDir(string) {}
+
 func (s *copyService) Handle(ctx context.Context, conn net.Conn) error {
 	defer conn.Close()
 	switch conn.(type) {

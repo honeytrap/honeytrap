@@ -102,6 +102,8 @@ func (s *sshJailService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
+func (s *sshJailService) SetDataDir(string) {}
+
 func (s *sshJailService) Handle(ctx context.Context, conn net.Conn) error {
 	id := xid.New()
 

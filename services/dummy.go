@@ -56,6 +56,8 @@ func (s *dummyService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
+func (s *dummyService) SetDataDir(string) {}
+
 func (s *dummyService) Handle(ctx context.Context, conn net.Conn) error {
 	b := bufio.NewReader(conn)
 	for {

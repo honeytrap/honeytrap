@@ -84,6 +84,8 @@ func (s *ethereumService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
+func (s *ethereumService) SetDataDir(string) {}
+
 func Headers(headers map[string][]string) event.Option {
 	return func(m event.Event) {
 		for name, h := range headers {

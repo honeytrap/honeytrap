@@ -91,6 +91,8 @@ func (s *ippService) SetChannel(c pushers.Channel) {
 	s.ch = c
 }
 
+func (s *ippService) SetDataDir(string) {}
+
 func (s *ippService) Handle(ctx context.Context, conn net.Conn) error {
 
 	br := bufio.NewReader(conn)

@@ -70,6 +70,8 @@ func (s *memcachedService) SetChannel(c pushers.Channel) {
 	s.ch = c
 }
 
+func (s *memcachedService) SetDataDir(string) {}
+
 func (s *memcachedService) Handle(ctx context.Context, conn net.Conn) error {
 	b := bufio.NewReader(conn)
 

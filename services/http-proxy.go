@@ -73,6 +73,8 @@ func (s *httpProxy) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
+func (s *httpProxy) SetDataDir(string) {}
+
 func (s *httpProxy) Handle(ctx context.Context, conn net.Conn) error {
 	defer conn.Close()
 

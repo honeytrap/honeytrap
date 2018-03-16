@@ -86,6 +86,8 @@ func (s *sshProxyService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
+func (s *sshProxyService) SetDataDir(string) {}
+
 func (s *sshProxyService) SetDirector(d director.Director) {
 	s.d = d
 }

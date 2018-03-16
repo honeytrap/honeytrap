@@ -484,6 +484,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		options := []services.ServicerFunc{
 			services.WithChannel(hc.bus),
 			services.WithConfig(s, hc.config),
+			services.WithDataDir(hc.dataDir),
 		}
 
 		if x.Director == "" {

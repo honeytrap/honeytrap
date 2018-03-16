@@ -69,6 +69,8 @@ func (s *dnsProxy) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
+func (s *dnsProxy) SetDataDir(string) {}
+
 func (s *dnsProxy) Handle(ctx context.Context, conn net.Conn) error {
 	defer conn.Close()
 
