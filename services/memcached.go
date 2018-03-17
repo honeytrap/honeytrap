@@ -80,10 +80,13 @@ func (s *memcachedService) Handle(ctx context.Context, conn net.Conn) error {
 
 	// memcached behaves differently over UDP: it has an 8-bytes header
 	if conn.RemoteAddr().Network() == "udp" {
-		_, err := b.Discard(8)
+		hdr := make([]byte, 8)
+		_, err := b.Read(hdr)
 		if err != nil {
 			log.Error("Error processing UDP header: %s", err.Error())
 		}
+
+		_ = hdr
 	}
 
 	for {
@@ -109,17 +112,16 @@ func (s *memcachedService) Handle(ctx context.Context, conn net.Conn) error {
 		))
 
 		// we return errors for udp connections, to prevent udp amplification
-		if conn.RemoteAddr().Network() == "udp" {
-			if s.limiter.Allow(conn.RemoteAddr()) {
-				conn.Write([]byte("ERROR\r\n"))
-			}
-
+		if conn.RemoteAddr().Network() != "udp" {
+		} else if !s.limiter.Allow(conn.RemoteAddr()) {
 			return nil
 		}
 
 		parts := bytes.Split(command, []byte{0x20})
 
 		switch string(parts[0]) {
+		case "flush_all":
+			conn.Write([]byte(`OK\r\n`))
 		case "stats":
 			conn.Write([]byte(`
 STAT pid 2080
@@ -180,6 +182,8 @@ END\r\n
 			fallthrough
 		case "append":
 			fallthrough
+		case "cas":
+			fallthrough
 		case "set":
 			if len(parts) < 5 {
 				return fmt.Errorf("Invalid number of arguments: %s", string(command))
@@ -197,13 +201,19 @@ END\r\n
 				count = v
 			}
 
-			buff := make([]byte, count)
-			n, err := conn.Read(buff)
+			buff := make([]byte, 80)
+
+			n, err := b.Read(buff)
 			if err != nil {
 				return err
 			}
 
 			buff = buff[:n]
+
+			// discard rest of payload
+			count -= n
+
+			b.Discard(count)
 
 			s.ch.Send(event.New(
 				EventOptions,
@@ -212,11 +222,12 @@ END\r\n
 				event.Type(fmt.Sprintf("memcached-%s", string(parts[0]))),
 				event.SourceAddr(conn.RemoteAddr()),
 				event.DestinationAddr(conn.LocalAddr()),
-				event.Custom("memcached-key", key),
-				event.Custom("memcached-flags", flags),
-				event.Custom("memcached-expire_time", expireTime),
-				event.Custom("memcached-bytes", byteCount),
-				event.Payload(buff[:80]),
+				event.Custom("memcached.command", string(parts[0])),
+				event.Custom("memcached.key", key),
+				event.Custom("memcached.flags", flags),
+				event.Custom("memcached.expire-time", expireTime),
+				event.Custom("memcached.bytes", byteCount),
+				event.Payload(buff),
 			))
 
 			conn.Write([]byte("STORED\r\n"))
