@@ -38,6 +38,7 @@ type cmd func(*redisService, []interface{}) (string, bool)
 
 var mapCmds = map[string]cmd{
 	"info": (*redisService).infoCmd,
+	"auth": (*redisService).authCmd,
 	// ...
 }
 
@@ -78,5 +79,14 @@ func (s *redisService) infoCmd(args []interface{}) (string, bool) {
 		return fmt.Sprintf(lenMsg(), len(lineBreakMsg()), lineBreakMsg()), false
 	default:
 		return errorMsg("syntax"), false
+	}
+}
+
+func (s *redisService) authCmd(args []interface{}) (string, bool) {
+	switch len(args) {
+	case 1:
+		return errorMsg("invalidpass"), false
+	default:
+		return fmt.Sprintf(errorMsg("wgnumber"), "auth"), false
 	}
 }
