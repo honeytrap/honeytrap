@@ -226,7 +226,23 @@ func errorMsg(errType string) string {
 		return "-ERR wrong number of arguments for '%s' command\r\n"
 	case "noneed":
 		return "-ERR Client sent AUTH, but no password is set\r\n"
-	default:
+	case "unknown":
 		return "-ERR unknown command '%s'\r\n"
+	default:
+		log.Errorf("Unknown basic error")
+		return ""
+	}
+}
+
+func errorConfig(errType string) string {
+	switch errType {
+	case "config":
+		return "-ERR CONFIG subcommand must be one of GET, SET, RESETSTAT, REWRITE\r\n"
+	case "wgnumber":
+		return "-ERR wrong number of arguments for CONFIG %s\r\n"
+	default:
+		log.Errorf("Unknown config error")
+		return ""
+
 	}
 }

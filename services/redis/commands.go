@@ -37,8 +37,11 @@ import (
 type cmd func(*redisService, []interface{}) (string, bool)
 
 var mapCmds = map[string]cmd{
-	"info": (*redisService).infoCmd,
-	"auth": (*redisService).authCmd,
+	"info":     (*redisService).infoCmd,
+	"flushall": (*redisService).flushallCmd,
+	"save":     (*redisService).saveCmd,
+	"set":      (*redisService).setCmd,
+	"config":   (*redisService).configCmd,
 	// ...
 }
 
@@ -54,6 +57,13 @@ var mapInfoCmds = map[string]infoSection{
 	"cpu":         (*redisService).infoCPUMsg,
 	"cluster":     (*redisService).infoClusterMsg,
 	"keyspace":    (*redisService).infoKeyspaceMsg,
+}
+
+var mapConfigCmds = map[string]cmd{
+	"get":       (*redisService).configGetCmd,
+	"set":       (*redisService).configSetCmd,
+	"resetstat": (*redisService).configResetstatCmd,
+	"rewrite":   (*redisService).configRewriteCmd,
 }
 
 func (s *redisService) infoCmd(args []interface{}) (string, bool) {
@@ -104,5 +114,113 @@ func (s *redisService) authCmd(args []interface{}) (string, bool) {
 
 	default:
 		return fmt.Sprintf(errorMsg("wgnumber"), "auth"), false
+
+	}
+}
+
+func (s *redisService) flushallCmd(args []interface{}) (string, bool) {
+	switch len(args) {
+	case 0:
+		return "+OK\r\n", false
+	case 1:
+		_word := args[0].(redisDatum)
+		word, success := _word.ToString()
+		if !success {
+			return "Expected string argument, got something else", false
+		}
+		if word == "async" {
+			return "+OK\r\n", false
+		}
+		fallthrough
+	default:
+		return errorMsg("syntax"), false
+
+	}
+}
+
+func (s *redisService) saveCmd(args []interface{}) (string, bool) {
+	switch len(args) {
+	case 0:
+		return "+OK\r\n", false
+	default:
+		return fmt.Sprintf(errorMsg("wgnumber"), "save"), false
+	}
+}
+
+func (s *redisService) setCmd(args []interface{}) (string, bool) {
+	switch len(args) {
+	case 2:
+		return "+OK\r\n", false
+	case 0:
+		fallthrough
+	case 1:
+		return fmt.Sprintf(errorMsg("wgnumber"), "set"), false
+	default:
+		return errorMsg("syntax"), false
+	}
+}
+
+func (s *redisService) configCmd(args []interface{}) (string, bool) {
+	if len(args) == 0 {
+		return fmt.Sprintf(errorMsg("wgnumber"), "config"), false
+	}
+
+	_word := args[0].(redisDatum)
+	word, success := _word.ToString()
+	if !success {
+		return "Expected string argument, got something else", false
+	}
+
+	switch word {
+	case "get":
+		return s.configGetCmd(args)
+	case "set":
+		return s.configSetCmd(args)
+	case "resetstat":
+		return s.configResetstatCmd(args)
+	case "rewrite":
+		return s.configRewriteCmd(args)
+	default:
+		return errorConfig("config"), false
+	}
+}
+
+func (s *redisService) configGetCmd(args []interface{}) (string, bool) {
+	switch len(args) {
+	case 2:
+		// [...]
+		return "*0\r\n", false
+	default:
+		return fmt.Sprintf(errorConfig("wgnumber"), "get"), false
+	}
+}
+
+func (s *redisService) configSetCmd(args []interface{}) (string, bool) {
+	switch len(args) {
+
+	case 3:
+		// [check parameters]
+		return "+OK\r\n", false
+	default:
+		return fmt.Sprintf(errorConfig("wgnumber"), "set"), false
+	}
+}
+
+func (s *redisService) configResetstatCmd(args []interface{}) (string, bool) {
+	switch len(args) {
+	case 0:
+		// [linked to INFO]
+		return "+OK\r\n", false
+	default:
+		return fmt.Sprintf(errorConfig("wgnumber"), "resetstat"), false
+	}
+}
+
+func (s *redisService) configRewriteCmd(args []interface{}) (string, bool) {
+	switch len(args) {
+	case 0:
+		return "+OK\r\n", false
+	default:
+		return fmt.Sprintf(errorConfig("wgnumber"), "rewrite"), false
 	}
 }
