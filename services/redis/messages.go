@@ -224,6 +224,8 @@ func errorMsg(errType string) string {
 		return "-ERR invalid password\r\n"
 	case "wgnumber":
 		return "-ERR wrong number of arguments for '%s' command\r\n"
+	case "noneed":
+		return "-ERR Client sent AUTH, but no password is set\r\n"
 	default:
 		return "-ERR unknown command '%s'\r\n"
 	}

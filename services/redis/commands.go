@@ -85,7 +85,23 @@ func (s *redisService) infoCmd(args []interface{}) (string, bool) {
 func (s *redisService) authCmd(args []interface{}) (string, bool) {
 	switch len(args) {
 	case 1:
-		return errorMsg("invalidpass"), false
+		if s.Auth {
+			_word := args[0].(redisDatum)
+			word, success := _word.ToString()
+			if !success {
+				return "Expected string argument, got something else", false
+			}
+			if word == s.Password {
+				s.Logged = true
+				return "+OK\r\n", false
+			} else {
+				s.Logged = false
+				return errorMsg("invalidpass"), false
+			}
+		} else {
+			return errorMsg("noneed"), false
+		}
+
 	default:
 		return fmt.Sprintf(errorMsg("wgnumber"), "auth"), false
 	}
