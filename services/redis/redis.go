@@ -120,7 +120,7 @@ func parseRedisData(scanner *bufio.Scanner) (redisDatum, error) {
 			items = append(items, item)
 		}
 		return redisDatum{DataType: dataType, Content: items}, nil
-	} else if dataType == 0x2b { // 0x2a = '+', introduces a simple string
+	} else if dataType == 0x2b { // 0x2b = '+', introduces a simple string
 		return redisDatum{DataType: dataType, Content: cmd[1:]}, nil
 	} else if dataType == 0x24 { // 0x24 = '$', introduces a bulk string
 		// Read (and ignore) string length
