@@ -39,13 +39,13 @@ import (
 )
 
 func Storage() (*agentListenerStorage, error) {
-	if s, err := storage.Namespace("agent"); err == nil {
+	s, err := storage.Namespace("agent")
+	if err == nil {
 		return &agentListenerStorage{
 			s,
 		}, nil
-	} else {
-		return nil, err
 	}
+	return nil, err
 }
 
 type agentListenerStorage struct {

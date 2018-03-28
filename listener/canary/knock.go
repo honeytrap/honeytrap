@@ -174,23 +174,11 @@ func (k KnockICMP) NewGroup() *KnockGroup {
 func (c *Canary) knockDetector(ctx context.Context) {
 	knocks := NewUniqueSet(func(v1, v2 interface{}) bool {
 		k1, k2 := v1.(*KnockGroup), v2.(*KnockGroup)
-		if k1.Protocol != k2.Protocol {
-			return false
-		}
-
-		if bytes.Compare(k1.SourceHardwareAddr, k2.SourceHardwareAddr) != 0 {
-			return false
-		}
-
-		if bytes.Compare(k1.DestinationHardwareAddr, k2.DestinationHardwareAddr) != 0 {
-			return false
-		}
-
-		if bytes.Compare(k1.SourceIP, k2.SourceIP) != 0 {
-			return false
-		}
-
-		return bytes.Compare(k1.DestinationIP, k2.DestinationIP) == 0
+		return k1.Protocol == k2.Protocol &&
+			bytes.Equal(k1.SourceHardwareAddr, k2.SourceHardwareAddr) &&
+			bytes.Equal(k1.DestinationHardwareAddr, k2.DestinationHardwareAddr) &&
+			k1.SourceIP.Equal(k2.SourceIP) &&
+			k1.DestinationIP.Equal(k2.DestinationIP)
 	})
 
 	for {

@@ -37,8 +37,8 @@ import (
 )
 
 var (
-	ErrEndpointsNotSet = errors.New("Endpoints has not been set.")
-	ErrTokenNotSet     = errors.New("Token has not been set.")
+	ErrEndpointsNotSet = errors.New("Endpoints has not been set")
+	ErrTokenNotSet     = errors.New("Token has not been set")
 )
 
 // Config defines a struct which holds configuration values for a SearchBackend.

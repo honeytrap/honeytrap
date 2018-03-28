@@ -41,13 +41,11 @@ import (
 )
 
 func genLDFlags(version string) string {
-	var ldflagsStr string
-	ldflagsStr = "-X github.com/honeytrap/honeytrap/cmd.Version=" + version
-	ldflagsStr += " -X github.com/honeytrap/honeytrap/cmd.ReleaseTag=" + releaseTag(version)
-	ldflagsStr += " -X github.com/honeytrap/honeytrap/cmd.CommitID=" + commitID()
-	ldflagsStr += " -X github.com/honeytrap/honeytrap/cmd.ShortCommitID=" + commitID()[:12]
-	ldflagsStr += " -X github.com/honeytrap/honeytrap/cmd.GOPATH=" + os.Getenv("GOPATH")
-	return ldflagsStr
+	return "-X github.com/honeytrap/honeytrap/cmd.Version=" + version +
+		" -X github.com/honeytrap/honeytrap/cmd.ReleaseTag=" + releaseTag(version) +
+		" -X github.com/honeytrap/honeytrap/cmd.CommitID=" + commitID() +
+		" -X github.com/honeytrap/honeytrap/cmd.ShortCommitID=" + commitID()[:12] +
+		" -X github.com/honeytrap/honeytrap/cmd.GOPATH=" + os.Getenv("GOPATH")
 }
 
 // genReleaseTag prints release tag to the console for easy git tagging.

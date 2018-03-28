@@ -66,5 +66,5 @@ func (d *qemuDirector) SetChannel(eb pushers.Channel) {
 }
 
 func (d *qemuDirector) Dial(conn net.Conn) (net.Conn, error) {
-	return nil, errors.New("Qemu director not implemented yet.")
+	return nil, errors.New("Qemu director not implemented yet")
 }

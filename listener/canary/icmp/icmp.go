@@ -230,7 +230,7 @@ type ICMPv4 struct {
 
 	Checksum uint16
 
-	Id  uint16
+	ID  uint16
 	Seq uint16
 }
 
@@ -238,11 +238,11 @@ func Parse(data []byte) (*ICMPv4, error) {
 	i := ICMPv4{}
 	i.TypeCode = CreateICMPv4TypeCode(data[0], data[1])
 	i.Checksum = binary.BigEndian.Uint16(data[2:4])
-	i.Id = binary.BigEndian.Uint16(data[4:6])
+	i.ID = binary.BigEndian.Uint16(data[4:6])
 	i.Seq = binary.BigEndian.Uint16(data[6:8])
 	return &i, nil
 }
 
 func (i ICMPv4) String() string {
-	return fmt.Sprintf("type=%s, checksum=%d, id=%d, seq=%d", i.TypeCode.String(), i.Checksum, i.Id, i.Seq)
+	return fmt.Sprintf("type=%s, checksum=%d, id=%d, seq=%d", i.TypeCode.String(), i.Checksum, i.ID, i.Seq)
 }

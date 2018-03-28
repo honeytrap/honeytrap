@@ -52,7 +52,7 @@ var (
 )
 
 // Config defines a struct which holds configuration field values used by the
-// SlackBackend for it's message delivery to the slack channel API.
+// Backend for it's message delivery to the slack channel API.
 type Config struct {
 	WebhookURL string `toml:"webhook_url"`
 	Username   string `toml:"username"`
@@ -60,17 +60,17 @@ type Config struct {
 	IconEmoji  string `toml:"icon_emoji"`
 }
 
-// SlackBackend provides a struct which holds the configured means by which
+// Backend provides a struct which holds the configured means by which
 // slack notifications are sent into giving slack groups and channels.
-type SlackBackend struct {
+type Backend struct {
 	Config
 
 	ch chan map[string]interface{}
 }
 
-// New returns a new instance of a SlackBackend.
+// New returns a new instance of a Backend.
 func New(options ...func(pushers.Channel) error) (pushers.Channel, error) {
-	c := SlackBackend{
+	c := Backend{
 		ch: make(chan map[string]interface{}, 100),
 	}
 
@@ -87,7 +87,7 @@ func New(options ...func(pushers.Channel) error) (pushers.Channel, error) {
 	return &c, nil
 }
 
-func (b SlackBackend) run() {
+func (b Backend) run() {
 	client := &http.Client{
 		Transport: &http.Transport{
 			MaxIdleConnsPerHost: 5,
@@ -156,8 +156,6 @@ func (b SlackBackend) run() {
 			switch vo := value.(type) {
 			case string:
 				fieldAttachment.AddField(name, vo)
-				break
-
 			default:
 				data, err := json.Marshal(value)
 				if err != nil {
@@ -174,8 +172,8 @@ func (b SlackBackend) run() {
 		newMessage.AddAttachment(Attachment{
 			Title:    "Event Data",
 			Author:   "HoneyTrap",
-			Fallback: string(messageBuffer.Bytes()),
-			Text:     string(messageBuffer.Bytes()),
+			Fallback: messageBuffer.String(),
+			Text:     messageBuffer.String(),
 		})
 
 		data := new(bytes.Buffer)
@@ -216,7 +214,7 @@ func (b SlackBackend) run() {
 
 // Send delivers the giving push messages to the required slack channel.
 // TODO: Ask if Send shouldnt return an error to allow proper delivery validation.
-func (b SlackBackend) Send(e event.Event) {
+func (b Backend) Send(e event.Event) {
 	mp := make(map[string]interface{})
 
 	e.Range(func(key, value interface{}) bool {

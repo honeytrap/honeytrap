@@ -145,8 +145,7 @@ func mailFromState(c *conn) stateFn {
 	} else if isCommand(line, "BDAT") {
 		parts := strings.Split(line, " ")
 
-		count := int64(0)
-		var err error
+		var count int64
 		if count, err = strconv.ParseInt(parts[1], 10, 32); err != nil {
 			return errorState("[bdat]: error %s", err)
 		}

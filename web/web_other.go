@@ -85,11 +85,7 @@ func download(url string, dest string) error {
 	defer f.Close()
 
 	_, err = io.Copy(f, gzf)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
 
 const geoLiteURL = "http://geolite.maxmind.com/download/geoip/database/GeoLite2-City.mmdb.gz"
@@ -271,9 +267,9 @@ func (msg Message) MarshalJSON() ([]byte, error) {
 	return json.Marshal(m)
 }
 
-func Data(type_ string, data interface{}) json.Marshaler {
+func Data(t string, data interface{}) json.Marshaler {
 	return &Message{
-		Type: type_,
+		Type: t,
 		Data: data,
 	}
 }
@@ -296,20 +292,20 @@ func filter(outCh chan event.Event) chan event.Event {
 }
 
 func resolver(dataDir string, outCh chan event.Event) chan event.Event {
-	db_path := path.Join(dataDir, "GeoLite2-Country.mmdb")
+	dbPath := path.Join(dataDir, "GeoLite2-Country.mmdb")
 
-	_, err := os.Stat(db_path)
+	_, err := os.Stat(dbPath)
 	if os.IsNotExist(err) {
-		if err = download(geoLiteURL, db_path); err != nil {
+		err = download(geoLiteURL, dbPath)
+		if err != nil {
 			log.Fatal(err)
 			return outCh
-		} else {
 		}
 	}
 
 	ch := make(chan event.Event)
 	go func() {
-		db, err := maxminddb.Open(db_path)
+		db, err := maxminddb.Open(dbPath)
 		if err != nil {
 			log.Fatal(err)
 		}

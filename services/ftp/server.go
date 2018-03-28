@@ -18,7 +18,7 @@ type ServerOpts struct {
 	Hostname string
 
 	// Public IP of the server
-	PublicIp string
+	PublicIP string
 
 	// Passive ports, port range to choose from e.g. "10-20"
 	PassivePorts string
@@ -72,7 +72,7 @@ func serverOptsWithDefaults(opts *ServerOpts) *ServerOpts {
 	newOpts.TLS = opts.TLS
 	newOpts.ExplicitFTPS = opts.ExplicitFTPS
 
-	newOpts.PublicIp = opts.PublicIp
+	newOpts.PublicIP = opts.PublicIP
 	newOpts.PassivePorts = opts.PassivePorts
 
 	return &newOpts
@@ -87,7 +87,7 @@ func NewServer(opts *ServerOpts) *Server {
 	return s
 }
 
-// NewConn constructs a new object that will handle the FTP protocol over
+// newConn constructs a new object that will handle the FTP protocol over
 // an active net.TCPConn. The TCP connection should already be open before
 // it is handed to this functions. driver is an instance of FTPDriver that
 // will handle all auth and persistence details.
