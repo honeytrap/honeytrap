@@ -31,7 +31,6 @@
 package ipv4
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"net"
@@ -121,10 +120,6 @@ func (h *Header) Marshal() ([]byte, error) {
 	}
 	if len(h.Options) > 0 {
 		copy(b[HeaderLen:], h.Options)
-	}
-
-	if bytes.Compare(b[len(b)-4:], []byte{0, 0, 0, 0}) == 0 {
-		panic("Padding added (ip)")
 	}
 
 	return b, nil
