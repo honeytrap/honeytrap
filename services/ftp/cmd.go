@@ -217,6 +217,12 @@ func (cmd commandCwd) RequireAuth() bool {
 }
 
 func (cmd commandCwd) Execute(conn *Conn, param string) {
+
+	if conn.user == "anonymous" {
+		conn.writeMessage(450, "Restricted: Anonymous user can't change directories")
+		return
+	}
+
 	err := conn.driver.ChangeDir(param)
 	path := conn.driver.CurDir()
 	if err == nil {
@@ -244,6 +250,12 @@ func (cmd commandDele) RequireAuth() bool {
 }
 
 func (cmd commandDele) Execute(conn *Conn, param string) {
+
+	if conn.user == "anonymous" {
+		conn.writeMessage(450, "Restricted: Anonymous user can't delete files")
+		return
+	}
+
 	err := conn.driver.DeleteFile(param)
 	if err == nil {
 		conn.writeMessage(250, "File deleted")
@@ -423,6 +435,12 @@ func (cmd commandMkd) RequireAuth() bool {
 }
 
 func (cmd commandMkd) Execute(conn *Conn, param string) {
+
+	if conn.user == "anonymous" {
+		conn.writeMessage(450, "Restricted: Anonymous user can't create directories")
+		return
+	}
+
 	err := conn.driver.MakeDir(param)
 	if err == nil {
 		conn.writeMessage(257, "Directory created")
@@ -643,9 +661,16 @@ func (cmd commandRetr) RequireAuth() bool {
 }
 
 func (cmd commandRetr) Execute(conn *Conn, param string) {
+
 	defer func() {
 		conn.lastFilePos = 0
 	}()
+
+	if conn.user == "anonymous" {
+		conn.writeMessage(450, "Restricted: Anonymous user can't download")
+		return
+	}
+
 	bytes, data, err := conn.driver.GetFile(param, conn.lastFilePos)
 	if err == nil {
 		defer data.Close()
@@ -671,6 +696,12 @@ func (cmd commandRest) RequireAuth() bool {
 }
 
 func (cmd commandRest) Execute(conn *Conn, param string) {
+
+	if conn.user == "anonymous" {
+		conn.writeMessage(450, "Restricted: Anonymous user can't transfer files")
+		return
+	}
+
 	var err error
 	conn.lastFilePos, err = strconv.ParseInt(param, 10, 64)
 	if err != nil {
@@ -700,6 +731,12 @@ func (cmd commandRnfr) RequireAuth() bool {
 }
 
 func (cmd commandRnfr) Execute(conn *Conn, param string) {
+
+	if conn.user == "anonymous" {
+		conn.writeMessage(450, "Restricted: Anonymous user can't rename")
+		return
+	}
+
 	conn.renameFrom = param
 	conn.writeMessage(350, "Requested file action pending further information.")
 }
@@ -721,6 +758,12 @@ func (cmd commandRnto) RequireAuth() bool {
 }
 
 func (cmd commandRnto) Execute(conn *Conn, param string) {
+
+	if conn.user == "anonymous" {
+		conn.writeMessage(450, "Restricted: Anonymous user can't rename")
+		return
+	}
+
 	err := conn.driver.Rename(conn.renameFrom, param)
 	defer func() {
 		conn.renameFrom = ""
@@ -750,6 +793,12 @@ func (cmd commandRmd) RequireAuth() bool {
 }
 
 func (cmd commandRmd) Execute(conn *Conn, param string) {
+
+	if conn.user == "anonymous" {
+		conn.writeMessage(450, "Restricted: Anonymous user can't delete directories")
+		return
+	}
+
 	err := conn.driver.DeleteDir(param)
 	if err == nil {
 		conn.writeMessage(250, "Directory deleted")
@@ -970,13 +1019,19 @@ func (cmd commandStor) Execute(conn *Conn, param string) {
 		conn.appendData = false
 	}()
 
-	bytes, err := conn.driver.PutFile(param, conn.dataConn, conn.appendData)
-	if err == nil {
-		msg := "OK, received " + strconv.Itoa(int(bytes)) + " bytes"
-		conn.writeMessage(226, msg)
-	} else {
-		conn.writeMessage(450, fmt.Sprintln("error during transfer:", err))
+	if conn.user == "anonymous" {
+		conn.writeMessage(450, "Restricted: Anonymous user can't upload files")
+		return
 	}
+
+	nbytes, err := conn.driver.PutFile(param, conn.dataConn, conn.appendData)
+	if err != nil {
+		conn.writeMessage(450, fmt.Sprintln("error during transfer:", err))
+		return
+	}
+
+	msg := "OK, received " + strconv.Itoa(int(nbytes)) + " bytes"
+	conn.writeMessage(226, msg)
 }
 
 // commandStru responds to the STRU FTP command.
