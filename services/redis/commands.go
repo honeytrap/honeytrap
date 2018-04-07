@@ -32,6 +32,7 @@ package redis
 
 import (
 	"fmt"
+	"strings"
 )
 
 type cmd func(*redisService, []interface{}) (string, bool)
@@ -65,6 +66,7 @@ func (s *redisService) infoCmd(args []interface{}) (string, bool) {
 		if !success {
 			return "Expected string argument, got something else", false
 		}
+		word = strings.ToLower(word)
 		if fn, ok := mapInfoCmds[word]; ok {
 			return fmt.Sprintf(lenMsg(), len(fn(s)), fn(s)), false
 		} else if word == "default" {
