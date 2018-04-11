@@ -180,9 +180,11 @@ func SourceAddr(addr net.Addr) Option {
 		if ta, ok := addr.(*net.TCPAddr); ok {
 			m.Store("source-ip", ta.IP.String())
 			m.Store("source-port", ta.Port)
+			m.Store("protocol", "tcp")
 		} else if ua, ok := addr.(*net.UDPAddr); ok {
 			m.Store("source-ip", ua.IP.String())
 			m.Store("source-port", ua.Port)
+			m.Store("protocol", "udp")
 		}
 	}
 }
@@ -195,7 +197,6 @@ func DestinationAddr(addr net.Addr) Option {
 			m.Store("destination-port", ta.Port)
 		} else if ua, ok := addr.(*net.UDPAddr); ok {
 			m.Store("destination-ip", ua.IP.String())
-			m.Store("destination-port", ua.Port)
 		}
 	}
 }
@@ -260,13 +261,6 @@ func DestinationPort(port uint16) Option {
 func Service(v string) Option {
 	return func(m Event) {
 		m.Store("service", v)
-	}
-}
-
-// Protocol sets the protocol of the event
-func Protocol(v string) Option {
-	return func(m Event) {
-		m.Store("protocol", v)
 	}
 }
 
