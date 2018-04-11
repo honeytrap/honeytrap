@@ -28,89 +28,61 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package pushers
+package transforms
 
 import (
 	"fmt"
-
-	"github.com/BurntSushi/toml"
-
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/plugins"
+	"github.com/honeytrap/honeytrap/pushers"
 )
 
-// Channel defines a interface which exposes a single method for delivering
-// PushMessages to a giving underline service.
-type Channel interface {
-	Send(event.Event)
+type transformChannel struct {
+	destination pushers.Channel
+	fn          TransformFunc
 }
 
-type ChannelFunc func(...func(Channel) error) (Channel, error)
-
-var (
-	channels = map[string]ChannelFunc{}
-)
-
-func Range(fn func(string)) {
-	for k := range channels {
-		fn(k)
-	}
+func (c transformChannel) Send(input event.Event) {
+	c.fn(input, c.destination.Send)
 }
 
-func Register(key string, fn ChannelFunc) ChannelFunc {
-	channels[key] = fn
-	return fn
+func Transform(dest pushers.Channel, fn TransformFunc) pushers.Channel {
+	return transformChannel{destination: dest, fn: fn}
 }
 
-func WithConfig(c toml.Primitive) func(Channel) error {
-	return func(d Channel) error {
-		err := toml.PrimitiveDecode(c, d)
-		return err
-	}
+type TransformFunc func(e event.Event, send func(event.Event))
+
+var staticTransforms = make(map[string]TransformFunc)
+
+// Registers a static transform.
+func Register(name string, fn TransformFunc) int {
+	staticTransforms[name] = fn
+	// The return value is unused, but it allows for `var _ = Register("name", handler)`
+	return 0
 }
 
-// Gets a static or dynamic channel implementation, giving priority to static ones.
-func Get(name, folder string) (ChannelFunc, error) {
-	staticCh, ok := channels[name]
+// Gets a static or dynamic transform, giving priority to static ones.
+func Get(name, folder string) (TransformFunc, error) {
+	staticPl, ok := staticTransforms[name]
 	if ok {
-		return staticCh, nil
+		return staticPl, nil
 	}
 
 	// todo: add Lua support (issue #272)
-	sym, found, err := plugins.Get(name, "Channel", folder)
+	sym, found, err := plugins.Get(name, "Transform", folder)
 	if !found {
-		return nil, fmt.Errorf("Channel %s not found", name)
+		return nil, fmt.Errorf("Transform %s not found", name)
 	}
 	if err != nil {
 		return nil, err
 	}
-	return sym.(ChannelFunc), nil
+	return sym.(func() TransformFunc)(), nil
 }
 
-func MustGet(name, folder string) ChannelFunc {
+func MustGet(name, folder string) TransformFunc {
 	out, err := Get(name, folder)
 	if err != nil {
 		panic(err.Error())
 	}
 	return out
-}
-
-type tokenChannel struct {
-	Channel
-
-	Token string
-}
-
-// Send delivers the slice of PushMessages and using the internal filters
-// to filter out the desired messages allowed for all registered backends.
-func (mc tokenChannel) Send(e event.Event) {
-	mc.Channel.Send(event.Apply(e, event.Token(mc.Token)))
-}
-
-// TokenChannel returns a Channel to set token value.
-func TokenChannel(channel Channel, token string) Channel {
-	return tokenChannel{
-		Channel: channel,
-		Token:   token,
-	}
 }
