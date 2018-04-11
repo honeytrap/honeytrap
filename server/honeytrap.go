@@ -92,6 +92,7 @@ import (
 
 	"github.com/honeytrap/honeytrap/transforms"
 	"github.com/honeytrap/honeytrap/transforms/filters"
+	"github.com/honeytrap/honeytrap/transforms/yara"
 	"github.com/op/go-logging"
 )
 
@@ -324,6 +325,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			Services   []string `toml:"services"`
 			Categories []string `toml:"categories"`
 			Plugin     string   `toml:"plugin"`
+			Yara       string   `toml:"yara"`
 		}{}
 
 		err := toml.PrimitiveDecode(s, &x)
@@ -355,6 +357,10 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 					log.Errorf("Couldn't load plugin %s: %s", x.Plugin, err.Error())
 				}
 				channel = transforms.Transform(channel, t)
+			}
+
+			if len(x.Yara) != 0 {
+				channel = transforms.Transform(channel, yara.Yara(x.Yara))
 			}
 
 			if err := hc.bus.Subscribe(channel); err != nil {
