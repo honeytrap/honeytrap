@@ -99,3 +99,23 @@ func Get(key string) (ChannelFunc, bool) {
 
 	return sym.(ChannelFunc), true
 }
+
+type tokenChannel struct {
+	Channel
+
+	Token string
+}
+
+// Send delivers the slice of PushMessages and using the internal filters
+// to filter out the desired messages allowed for all registered backends.
+func (mc tokenChannel) Send(e event.Event) {
+	mc.Channel.Send(event.Apply(e, event.Token(mc.Token)))
+}
+
+// TokenChannel returns a Channel to set token value.
+func TokenChannel(channel Channel, token string) Channel {
+	return tokenChannel{
+		Channel: channel,
+		Token:   token,
+	}
+}

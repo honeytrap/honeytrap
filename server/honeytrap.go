@@ -91,6 +91,8 @@ import (
 	_ "github.com/honeytrap/honeytrap/pushers/splunk"        // Registers splunk backend.
 
 	logging "github.com/op/go-logging"
+	"github.com/honeytrap/honeytrap/transforms"
+	"github.com/honeytrap/honeytrap/transforms/filters"
 )
 
 var log = logging.MustGetLogger("honeytrap/server")
@@ -339,11 +341,11 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			channel = pushers.TokenChannel(channel, hc.token)
 
 			if len(x.Categories) != 0 {
-				channel = pushers.FilterChannel(channel, pushers.RegexFilterFunc("category", x.Categories))
+				channel = transforms.Transform(channel, filters.FieldRegex("category", x.Categories))
 			}
 
 			if len(x.Services) != 0 {
-				channel = pushers.FilterChannel(channel, pushers.RegexFilterFunc("service", x.Services))
+				channel = transforms.Transform(channel, filters.FieldRegex("service", x.Services))
 			}
 
 			if err := hc.bus.Subscribe(channel); err != nil {
