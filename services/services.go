@@ -69,7 +69,29 @@ func Get(key string) (func(...ServicerFunc) Servicer, bool) {
 		return fn, true
 	}
 
-	return nil, false
+	/*
+		luaPl, ok := readfile(name)
+		if ok {
+			return lua.New(luaPl), nil
+		}
+	*/
+
+	// messy, todo: fix/choose path
+	// https://stackoverflow.com/a/17617721
+	usr, _ := user.Current()
+	home := usr.HomeDir
+	dynamicPl, err := plugin.Open(path.Join(home, ".honeytrap", key+".so"))
+	if err != nil {
+		log.Errorf("Couldn't load dynamic plugin: %s", err.Error())
+		return nil, false
+	}
+	sym, err := dynamicPl.Lookup("Plugin")
+	if err != nil {
+		log.Errorf("Couldn't lookup Plugin symbol: %s", err.Error())
+		return nil, false
+	}
+
+	return sym.(func(...ServicerFunc) Servicer), true
 }
 
 type CanHandlerer interface {
