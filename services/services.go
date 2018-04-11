@@ -40,6 +40,9 @@ import (
 	"github.com/honeytrap/honeytrap/pushers"
 
 	logging "github.com/op/go-logging"
+	"os/user"
+	"path"
+	"plugin"
 )
 
 var log = logging.MustGetLogger("services")
@@ -56,19 +59,17 @@ func Register(key string, fn func(...ServicerFunc) Servicer) func(...ServicerFun
 }
 
 func Range(fn func(string)) {
-	for k, _ := range services {
+	for k := range services {
 		fn(k)
 	}
 }
 
 func Get(key string) (func(...ServicerFunc) Servicer, bool) {
-	d := Dummy
-
 	if fn, ok := services[key]; ok {
 		return fn, true
 	}
 
-	return d, false
+	return nil, false
 }
 
 type CanHandlerer interface {
