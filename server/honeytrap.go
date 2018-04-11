@@ -90,7 +90,7 @@ import (
 	_ "github.com/honeytrap/honeytrap/pushers/slack"         // Registers slack backend.
 	_ "github.com/honeytrap/honeytrap/pushers/splunk"        // Registers splunk backend.
 
-	logging "github.com/op/go-logging"
+	"github.com/honeytrap/honeytrap/plugins"
 	"github.com/honeytrap/honeytrap/transforms"
 	"github.com/honeytrap/honeytrap/transforms/filters"
 )
@@ -323,6 +323,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			Channels   []string `toml:"channel"`
 			Services   []string `toml:"services"`
 			Categories []string `toml:"categories"`
+			Plugin     string   `toml:"plugin"`
 		}{}
 
 		err := toml.PrimitiveDecode(s, &x)
@@ -346,6 +347,10 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 
 			if len(x.Services) != 0 {
 				channel = transforms.Transform(channel, filters.FieldRegex("service", x.Services))
+			}
+
+			if len(x.Plugin) != 0 {
+				channel = transforms.Transform(channel, plugins.MustGet(x.Plugin))
 			}
 
 			if err := hc.bus.Subscribe(channel); err != nil {
