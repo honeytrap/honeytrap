@@ -114,7 +114,6 @@ func (s *tftpService) Handle(ctx context.Context, conn net.Conn) error {
 		s.ch.Send(event.New(
 			EventOptions,
 			event.Category("tftp"),
-			event.Protocol(conn.RemoteAddr().Network()),
 			event.Type("tftp-read"),
 			event.SourceAddr(conn.RemoteAddr()),
 			event.DestinationAddr(conn.LocalAddr()),
@@ -152,7 +151,6 @@ func (s *tftpService) Handle(ctx context.Context, conn net.Conn) error {
 		s.ch.Send(event.New(
 			EventOptions,
 			event.Category("tftp"),
-			event.Protocol(conn.RemoteAddr().Network()),
 			event.Type("tftp-write"),
 			event.SourceAddr(conn.RemoteAddr()),
 			event.DestinationAddr(conn.LocalAddr()),
@@ -197,7 +195,6 @@ func (s *tftpService) Handle(ctx context.Context, conn net.Conn) error {
 			s.ch.Send(event.New(
 				EventOptions,
 				event.Category("tftp"),
-				event.Protocol(conn.RemoteAddr().Network()),
 				event.Type("tftp-write-file"),
 				event.SourceAddr(conn.RemoteAddr()),
 				event.DestinationAddr(conn.LocalAddr()),
