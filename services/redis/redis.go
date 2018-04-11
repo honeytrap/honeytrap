@@ -141,7 +141,7 @@ func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
 
 	scanner := bufio.NewScanner(conn)
 
-	for true {
+	for {
 		datum, err := parseRedisData(scanner)
 
 		if err != nil {

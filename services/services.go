@@ -56,7 +56,7 @@ func Register(key string, fn func(...ServicerFunc) Servicer) func(...ServicerFun
 }
 
 func Range(fn func(string)) {
-	for k, _ := range services {
+	for k := range services {
 		fn(k)
 	}
 }

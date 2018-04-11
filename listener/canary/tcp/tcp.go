@@ -71,61 +71,61 @@ type Header struct {
 	opts [4]Option
 }
 
-// TCPOptionKind represents a TCP option code.
-type TCPOptionKind uint8
+// OptionKind represents a TCP option code.
+type OptionKind uint8
 
 const (
-	TCPOptionKindEndList                         = 0
-	TCPOptionKindNop                             = 1
-	TCPOptionKindMSS                             = 2  // len = 4
-	TCPOptionKindWindowScale                     = 3  // len = 3
-	TCPOptionKindSACKPermitted                   = 4  // len = 2
-	TCPOptionKindSACK                            = 5  // len = n
-	TCPOptionKindEcho                            = 6  // len = 6, obsolete
-	TCPOptionKindEchoReply                       = 7  // len = 6, obsolete
-	TCPOptionKindTimestamps                      = 8  // len = 10
-	TCPOptionKindPartialOrderConnectionPermitted = 9  // len = 2, obsolete
-	TCPOptionKindPartialOrderServiceProfile      = 10 // len = 3, obsolete
-	TCPOptionKindCC                              = 11 // obsolete
-	TCPOptionKindCCNew                           = 12 // obsolete
-	TCPOptionKindCCEcho                          = 13 // obsolete
-	TCPOptionKindAltChecksum                     = 14 // len = 3, obsolete
-	TCPOptionKindAltChecksumData                 = 15 // len = n, obsolete
+	optionKindEndList                         = 0
+	optionKindNop                             = 1
+	optionKindMSS                             = 2  // len = 4
+	optionKindWindowScale                     = 3  // len = 3
+	optionKindSACKPermitted                   = 4  // len = 2
+	optionKindSACK                            = 5  // len = n
+	optionKindEcho                            = 6  // len = 6, obsolete
+	optionKindEchoReply                       = 7  // len = 6, obsolete
+	optionKindTimestamps                      = 8  // len = 10
+	optionKindPartialOrderConnectionPermitted = 9  // len = 2, obsolete
+	optionKindPartialOrderServiceProfile      = 10 // len = 3, obsolete
+	optionKindCC                              = 11 // obsolete
+	optionKindCCNew                           = 12 // obsolete
+	optionKindCCEcho                          = 13 // obsolete
+	optionKindAltChecksum                     = 14 // len = 3, obsolete
+	optionKindAltChecksumData                 = 15 // len = n, obsolete
 )
 
-func (k TCPOptionKind) String() string {
+func (k OptionKind) String() string {
 	switch k {
-	case TCPOptionKindEndList:
+	case optionKindEndList:
 		return "EndList"
-	case TCPOptionKindNop:
+	case optionKindNop:
 		return "NOP"
-	case TCPOptionKindMSS:
+	case optionKindMSS:
 		return "MSS"
-	case TCPOptionKindWindowScale:
+	case optionKindWindowScale:
 		return "WindowScale"
-	case TCPOptionKindSACKPermitted:
+	case optionKindSACKPermitted:
 		return "SACKPermitted"
-	case TCPOptionKindSACK:
+	case optionKindSACK:
 		return "SACK"
-	case TCPOptionKindEcho:
+	case optionKindEcho:
 		return "Echo"
-	case TCPOptionKindEchoReply:
+	case optionKindEchoReply:
 		return "EchoReply"
-	case TCPOptionKindTimestamps:
+	case optionKindTimestamps:
 		return "Timestamps"
-	case TCPOptionKindPartialOrderConnectionPermitted:
+	case optionKindPartialOrderConnectionPermitted:
 		return "PartialOrderConnectionPermitted"
-	case TCPOptionKindPartialOrderServiceProfile:
+	case optionKindPartialOrderServiceProfile:
 		return "PartialOrderServiceProfile"
-	case TCPOptionKindCC:
+	case optionKindCC:
 		return "CC"
-	case TCPOptionKindCCNew:
+	case optionKindCCNew:
 		return "CCNew"
-	case TCPOptionKindCCEcho:
+	case optionKindCCEcho:
 		return "CCEcho"
-	case TCPOptionKindAltChecksum:
+	case optionKindAltChecksum:
 		return "AltChecksum"
-	case TCPOptionKindAltChecksumData:
+	case optionKindAltChecksumData:
 		return "AltChecksumData"
 	default:
 		return fmt.Sprintf("Unknown(%d)", k)
@@ -133,7 +133,7 @@ func (k TCPOptionKind) String() string {
 }
 
 type Option struct {
-	OptionType   TCPOptionKind
+	OptionType   OptionKind
 	OptionLength uint8
 	OptionData   []byte
 }
@@ -144,13 +144,13 @@ func (t Option) String() string {
 		hd = " 0x" + hd
 	}
 	switch t.OptionType {
-	case TCPOptionKindMSS:
+	case optionKindMSS:
 		return fmt.Sprintf("Option(%s:%v%s)",
 			t.OptionType,
 			binary.BigEndian.Uint16(t.OptionData),
 			hd)
 
-	case TCPOptionKindTimestamps:
+	case optionKindTimestamps:
 		if len(t.OptionData) == 8 {
 			return fmt.Sprintf("Option(%s:%v/%v%s)",
 				t.OptionType,
@@ -229,19 +229,20 @@ func (hdr *Header) Unmarshal(data []byte) error {
 	hdr.Payload = data[dataStart:]
 	// From here on, data points just to the header options.
 	data = data[20:dataStart]
+Loop:
 	for len(data) > 0 {
 		if hdr.Options == nil {
 			// Pre-allocate to avoid allocating a slice.
 			hdr.Options = hdr.opts[:0]
 		}
-		hdr.Options = append(hdr.Options, Option{OptionType: TCPOptionKind(data[0])})
+		hdr.Options = append(hdr.Options, Option{OptionType: OptionKind(data[0])})
 		opt := &hdr.Options[len(hdr.Options)-1]
 		switch opt.OptionType {
-		case TCPOptionKindEndList: // End of options
+		case optionKindEndList: // End of options
 			opt.OptionLength = 1
 			hdr.Padding = data[1:]
-			break
-		case TCPOptionKindNop: // 1 byte padding
+			break Loop
+		case optionKindNop: // 1 byte padding
 			opt.OptionLength = 1
 		default:
 			opt.OptionLength = data[1]
@@ -288,45 +289,45 @@ func (hdr *Header) MarshalWithChecksum(src, dest net.IP) ([]byte, error) {
 
 var lotsOfZeros [1024]byte
 
-func (t *Header) Marshal() ([]byte, error) {
+func (hdr *Header) Marshal() ([]byte, error) {
 	var optionLength int
-	for _, o := range t.Options {
+	for _, o := range hdr.Options {
 		switch o.OptionType {
 		case 0, 1:
-			optionLength += 1
+			optionLength++
 		default:
 			optionLength += 2 + len(o.OptionData)
 		}
 	}
 
 	if rem := optionLength % 4; rem != 0 {
-		t.Padding = lotsOfZeros[:4-rem]
+		hdr.Padding = lotsOfZeros[:4-rem]
 	}
 
-	t.DataOffset = uint8((len(t.Padding) + optionLength + 20) / 4)
+	hdr.DataOffset = uint8((len(hdr.Padding) + optionLength + 20) / 4)
 
 	/*
-		bytes, err := b.PrependBytes(20 + optionLength + len(t.Padding))
+		bytes, err := b.PrependBytes(20 + optionLength + len(hdr.Padding))
 		if err != nil {
 			return err
 		}
 	*/
 
-	bytes := make([]byte, 20+optionLength+len(t.Padding)+len(t.Payload))
-	copy(bytes[20+optionLength+len(t.Padding):], t.Payload)
+	bytes := make([]byte, 20+optionLength+len(hdr.Padding)+len(hdr.Payload))
+	copy(bytes[20+optionLength+len(hdr.Padding):], hdr.Payload)
 
-	binary.BigEndian.PutUint16(bytes, uint16(t.Source))
-	binary.BigEndian.PutUint16(bytes[2:], uint16(t.Destination))
-	binary.BigEndian.PutUint32(bytes[4:], t.SeqNum)
-	binary.BigEndian.PutUint32(bytes[8:], t.AckNum)
+	binary.BigEndian.PutUint16(bytes, uint16(hdr.Source))
+	binary.BigEndian.PutUint16(bytes[2:], uint16(hdr.Destination))
+	binary.BigEndian.PutUint32(bytes[4:], hdr.SeqNum)
+	binary.BigEndian.PutUint32(bytes[8:], hdr.AckNum)
 
-	bytes[12] = t.DataOffset << 4
-	bytes[13] = ((t.ECN << 6) | uint8(t.Ctrl))
-	binary.BigEndian.PutUint16(bytes[14:], t.Window)
-	binary.BigEndian.PutUint16(bytes[18:], t.Urgent)
+	bytes[12] = hdr.DataOffset << 4
+	bytes[13] = ((hdr.ECN << 6) | uint8(hdr.Ctrl))
+	binary.BigEndian.PutUint16(bytes[14:], hdr.Window)
+	binary.BigEndian.PutUint16(bytes[18:], hdr.Urgent)
 
 	start := 20
-	for _, o := range t.Options {
+	for _, o := range hdr.Options {
 		bytes[start] = byte(o.OptionType)
 		switch o.OptionType {
 		case 0, 1:
@@ -340,20 +341,20 @@ func (t *Header) Marshal() ([]byte, error) {
 		}
 	}
 
-	copy(bytes[start:], t.Padding)
+	copy(bytes[start:], hdr.Padding)
 
 	/*
 		if /* opts.ComputeChecksums * true {
 			// zero out checksum bytes in current serialization.
 			bytes[16] = 0
 			bytes[17] = 0
-			csum, err := t.computeChecksum(b.Bytes(), IPProtocolTCP)
+			csum, err := hdr.computeChecksum(b.Bytes(), IPProtocolTCP)
 			if err != nil {
 				return err
 			}
-			t.Checksum = csum
+			hdr.Checksum = csum
 		}
-		binary.BigEndian.PutUint16(bytes[16:], t.Checksum)
+		binary.BigEndian.PutUint16(bytes[16:], hdr.Checksum)
 	*/
 	return bytes, nil
 }

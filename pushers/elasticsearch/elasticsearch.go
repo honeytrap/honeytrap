@@ -51,9 +51,9 @@ var (
 
 var log = logging.MustGetLogger("channels/elasticsearch")
 
-// ElasticSearchBackend defines a struct which provides a channel for delivery
+// Backend defines a struct which provides a channel for delivery
 // push messages to an elasticsearch api.
-type ElasticSearchBackend struct {
+type Backend struct {
 	Config
 
 	es *elastic.Client
@@ -63,7 +63,7 @@ type ElasticSearchBackend struct {
 func New(options ...func(pushers.Channel) error) (pushers.Channel, error) {
 	ch := make(chan map[string]interface{}, 100)
 
-	c := ElasticSearchBackend{
+	c := Backend{
 		ch: ch,
 	}
 
@@ -85,7 +85,7 @@ func New(options ...func(pushers.Channel) error) (pushers.Channel, error) {
 	return &c, nil
 }
 
-func (hc ElasticSearchBackend) run() {
+func (hc Backend) run() {
 	log.Debug("Indexer started...")
 	defer log.Debug("Indexer stopped...")
 
@@ -127,7 +127,7 @@ func (hc ElasticSearchBackend) run() {
 }
 
 // Send delivers the giving push messages into the internal elastic search endpoint.
-func (hc ElasticSearchBackend) Send(message event.Event) {
+func (hc Backend) Send(message event.Event) {
 	mp := make(map[string]interface{})
 
 	message.Range(func(key, value interface{}) bool {

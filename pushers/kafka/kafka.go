@@ -47,9 +47,9 @@ var (
 
 var log = logging.MustGetLogger("channels/kafka")
 
-// KafkaBackend defines a struct which provides a channel for delivery
+// Backend defines a struct which provides a channel for delivery
 // push messages to an elasticsearch api.
-type KafkaBackend struct {
+type Backend struct {
 	Config
 
 	producer sarama.AsyncProducer
@@ -60,7 +60,7 @@ type KafkaBackend struct {
 func New(options ...func(pushers.Channel) error) (pushers.Channel, error) {
 	ch := make(chan map[string]interface{}, 100)
 
-	c := KafkaBackend{
+	c := Backend{
 		ch: ch,
 	}
 
@@ -71,18 +71,18 @@ func New(options ...func(pushers.Channel) error) (pushers.Channel, error) {
 	config := sarama.NewConfig()
 	config.Producer.Return.Successes = true
 
-	if producer, err := sarama.NewAsyncProducer(c.Brokers, config); err != nil {
+	producer, err := sarama.NewAsyncProducer(c.Brokers, config)
+	if err != nil {
 		return nil, err
-	} else {
-		c.producer = producer
 	}
+	c.producer = producer
 
 	go c.run()
 
 	return &c, nil
 }
 
-func (hc KafkaBackend) run() {
+func (hc Backend) run() {
 	defer hc.producer.AsyncClose()
 
 	for doc := range <-hc.ch {
@@ -101,7 +101,7 @@ func (hc KafkaBackend) run() {
 }
 
 // Send delivers the giving push messages into the internal elastic search endpoint.
-func (hc KafkaBackend) Send(message event.Event) {
+func (hc Backend) Send(message event.Event) {
 	mp := make(map[string]interface{})
 
 	message.Range(func(key, value interface{}) bool {

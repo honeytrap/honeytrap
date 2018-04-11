@@ -85,8 +85,8 @@ type netstackListener struct {
 	eb pushers.Channel
 }
 
-func (d *netstackListener) SetChannel(eb pushers.Channel) {
-	d.eb = eb
+func (l *netstackListener) SetChannel(eb pushers.Channel) {
+	l.eb = eb
 }
 
 func New(options ...func(listener.Listener) error) (listener.Listener, error) {
@@ -105,11 +105,11 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 	return &l, nil
 }
 
-func (nl *netstackListener) Start(ctx context.Context) error {
+func (l *netstackListener) Start(ctx context.Context) error {
 	// Parse the IP address. Support both ipv4 and ipv6.
-	parsedAddr := net.ParseIP(nl.Addr)
+	parsedAddr := net.ParseIP(l.Addr)
 	if parsedAddr == nil {
-		return fmt.Errorf("Bad IP address: %v", nl.Addr)
+		return fmt.Errorf("Bad IP address: %v", l.Addr)
 	}
 
 	var addr tcpip.Address
@@ -121,7 +121,7 @@ func (nl *netstackListener) Start(ctx context.Context) error {
 		addr = tcpip.Address(parsedAddr.To16())
 		proto = ipv6.ProtocolNumber
 	} else {
-		return fmt.Errorf("Unknown IP type: %v", nl.Addr)
+		return fmt.Errorf("Unknown IP type: %v", l.Addr)
 	}
 
 	// Create the stack with ip and tcp protocols, then add a tun-based
@@ -129,7 +129,7 @@ func (nl *netstackListener) Start(ctx context.Context) error {
 	s := stack.New([]string{ipv4.ProtocolName, ipv6.ProtocolName}, []string{tcp.ProtocolName})
 
 	// todo: only one interface supported now
-	tunName := nl.Interfaces[0]
+	tunName := l.Interfaces[0]
 
 	mtu, err := rawfile.GetMTU(tunName)
 	if err != nil {
@@ -160,7 +160,7 @@ func (nl *netstackListener) Start(ctx context.Context) error {
 		},
 	})
 
-	for _, address := range nl.Addresses {
+	for _, address := range l.Addresses {
 		go func() {
 			if ta, ok := address.(*net.TCPAddr); ok {
 				// Create TCP endpoint, bind it, then start listening.
@@ -195,7 +195,7 @@ func (nl *netstackListener) Start(ctx context.Context) error {
 						log.Fatal("Accept() failed:", err)
 					}
 
-					nl.ch <- newConn(wq, n)
+					l.ch <- newConn(wq, n)
 				}
 			}
 		}()

@@ -95,7 +95,7 @@ func (v *valInt) encode(buf decoder.EncoderType) {
 func (v *valInt) decode(dec decoder.Decoder) error {
 
 	v.name = dec.Data()
-	//Read value lenght field away, is always 4
+	//Read value length field away, is always 4
 	_ = dec.Int16()
 	v.val = append(v.val, dec.Int32())
 
@@ -150,11 +150,7 @@ func (v *valStr) decode(dec decoder.Decoder) error {
 	}
 	dec.Seek(-1) //Rewind tag
 
-	if err := dec.LastError(); err != nil {
-		return err
-	}
-
-	return nil
+	return dec.LastError()
 }
 
 func (v *valBool) encode(buf decoder.EncoderType) {
@@ -201,11 +197,7 @@ func (v *valBool) decode(dec decoder.Decoder) error {
 	}
 	dec.Seek(-1) //Rewind tag
 
-	if err := dec.LastError(); err != nil {
-		return err
-	}
-
-	return nil
+	return dec.LastError()
 }
 
 func (v *valRangeInt) encode(buf decoder.EncoderType) {
@@ -225,9 +217,5 @@ func (v *valRangeInt) decode(dec decoder.Decoder) error {
 	v.low = dec.Int32()
 	v.high = dec.Int32()
 
-	if err := dec.LastError(); err != nil {
-		return err
-	}
-
-	return nil
+	return dec.LastError()
 }

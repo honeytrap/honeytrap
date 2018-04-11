@@ -54,8 +54,8 @@ var (
 
 // Elasticsearch is a placeholder
 func Elasticsearch(options ...services.ServicerFunc) services.Servicer {
-	s := &elasticsearchService{
-		elasticsearchServiceConfig: elasticsearchServiceConfig{},
+	s := &service{
+		serviceConfig: serviceConfig{},
 	}
 
 	for _, o := range options {
@@ -65,19 +65,19 @@ func Elasticsearch(options ...services.ServicerFunc) services.Servicer {
 	return s
 }
 
-type elasticsearchServiceConfig struct {
+type serviceConfig struct {
 	Name        string `toml:"name"`
 	ClusterName string `toml:"cluster_name"`
 	ClusterUUID string `toml:"cluster_uuid"`
 }
 
-type elasticsearchService struct {
-	elasticsearchServiceConfig
+type service struct {
+	serviceConfig
 
 	c pushers.Channel
 }
 
-func (s *elasticsearchService) SetChannel(c pushers.Channel) {
+func (s *service) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
@@ -89,7 +89,7 @@ func Headers(headers map[string][]string) event.Option {
 	}
 }
 
-func (s *elasticsearchService) Handle(ctx context.Context, conn net.Conn) error {
+func (s *service) Handle(ctx context.Context, conn net.Conn) error {
 	defer conn.Close()
 
 	br := bufio.NewReader(conn)

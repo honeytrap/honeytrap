@@ -40,7 +40,7 @@ import (
 	"strings"
 	"time"
 
-	isatty "github.com/mattn/go-isatty"
+	"github.com/mattn/go-isatty"
 
 	"github.com/BurntSushi/toml"
 	"github.com/fatih/color"
@@ -144,7 +144,7 @@ func (hc *Honeytrap) startAgentServer() {
 }
 
 // EventServiceStarted will return a service started Event struct
-func EventServiceStarted(service string, primitive toml.Primitive) event.Event {
+func EventServiceStarted(service string) event.Event {
 	return event.New(
 		event.Category(service),
 		event.ServiceSensor,
@@ -210,18 +210,15 @@ func (hc *Honeytrap) heartbeat() {
 
 	count := 0
 
-	for {
-		select {
-		case <-beat:
-			hc.bus.Send(event.New(
-				event.Sensor("honeytrap"),
-				event.Category("heartbeat"),
-				event.SeverityInfo,
-				event.Custom("sequence", count),
-			))
+	for range beat {
+		hc.bus.Send(event.New(
+			event.Sensor("honeytrap"),
+			event.Category("heartbeat"),
+			event.SeverityInfo,
+			event.Custom("sequence", count),
+		))
 
-			count++
-		}
+		count++
 	}
 }
 

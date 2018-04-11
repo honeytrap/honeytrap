@@ -39,7 +39,7 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-func PrivateKey(data []byte) *privateKey {
+func makePrivateKey(data []byte) *privateKey {
 	privblk := pem.Block{
 		Type:    "RSA PRIVATE KEY",
 		Headers: nil,
@@ -56,7 +56,7 @@ func PrivateKey(data []byte) *privateKey {
 	return &privateKey{private}
 }
 
-// PrivateKey holds the ssh.Signer instance to unsign received data.
+// privateKey holds the ssh.Signer instance to unsign received data.
 type privateKey struct {
 	ssh.Signer
 }
@@ -68,7 +68,7 @@ func (t *privateKey) UnmarshalText(data []byte) (err error) {
 		return err
 	}
 
-	(*t) = privateKey{private}
+	*t = privateKey{private}
 	return err
 }
 

@@ -59,8 +59,8 @@ const (
 	textWithoutLang  byte = 0x41
 	nameWithoutLang  byte = 0x42
 	valKeyword       byte = 0x44
-	valUri           byte = 0x45
-	valUriScheme     byte = 0x46
+	valURI           byte = 0x45
+	valURIScheme     byte = 0x46
 	valCharSet       byte = 0x47 //attributes-charset
 	naturelLang      byte = 0x48 //attributes-naturel-language
 	mimeMediaType    byte = 0x49
@@ -84,7 +84,7 @@ type ippMsg struct {
 	versionMajor byte
 	versionMinor byte
 	statusCode   int16 //is operation-id in request
-	requestId    int32
+	requestID    int32
 	attributes   []*attribGroup
 
 	//Extra, for our own use
@@ -101,7 +101,7 @@ func (m *ippMsg) decode(raw []byte) error {
 	m.versionMajor = dec.Byte()
 	m.versionMinor = dec.Byte()
 	m.statusCode = dec.Int16()
-	m.requestId = dec.Int32()
+	m.requestID = dec.Int32()
 
 	// Groups, dtag is a delimiter(group) tag
 	for dtag := dec.Byte(); dtag != endAttribTag; dtag = dec.Byte() {
@@ -124,24 +124,24 @@ func (m *ippMsg) decode(raw []byte) error {
 }
 
 // Encodes the ipp response message suitable for http transport
-func (v *ippMsg) encode() *bytes.Buffer {
+func (m *ippMsg) encode() *bytes.Buffer {
 	buf := decoder.NewEncoder()
 
 	// Header
-	buf.WriteUint8(v.versionMajor)
-	buf.WriteUint8(v.versionMinor)
-	buf.WriteUint16(v.statusCode)
-	buf.WriteUint32(v.requestId)
+	buf.WriteUint8(m.versionMajor)
+	buf.WriteUint8(m.versionMinor)
+	buf.WriteUint16(m.statusCode)
+	buf.WriteUint32(m.requestID)
 
-	if v.attributes != nil {
-		for _, group := range v.attributes {
+	if m.attributes != nil {
+		for _, group := range m.attributes {
 			group.encode(buf)
 		}
 	}
 	return &buf.Buffer
 }
 
-func (r *ippMsg) setOpAttribResponse(gin *attribGroup) {
+func (m *ippMsg) setOpAttribResponse(gin *attribGroup) {
 	grp := &attribGroup{tag: gin.tag}
 
 	for _, v := range gin.val {
@@ -152,43 +152,43 @@ func (r *ippMsg) setOpAttribResponse(gin *attribGroup) {
 			grp.val = append(grp.val, v)
 		}
 	}
-	r.attributes = append(r.attributes, grp)
+	m.attributes = append(m.attributes, grp)
 }
 
-func (r *ippMsg) setGetPrinterResponse() {
+func (m *ippMsg) setGetPrinterResponse() {
 	//Append a printer profile
-	r.attributes = append(r.attributes, model)
+	m.attributes = append(m.attributes, model)
 }
 
-func (r *ippMsg) setPrintJobResponse(b *ippMsg) {
+func (m *ippMsg) setPrintJobResponse(b *ippMsg) {
 
 	for _, g := range b.attributes {
 		if g.tag == opAttribTag {
 			for _, val := range g.val {
 				v, _ := val.(*valStr)
 				if v.name == "printer-uri" {
-					r.uri = v.val[0]
+					m.uri = v.val[0]
 				} else if v.name == "requesting-user-name" {
-					r.username = v.val[0]
+					m.username = v.val[0]
 				} else if v.name == "document-format" {
-					r.format = v.val[0]
+					m.format = v.val[0]
 				} else if v.name == "job-name" {
-					r.jobname = v.val[0]
+					m.jobname = v.val[0]
 				}
 			}
 			break
 		}
 	}
-	r.data = b.data
+	m.data = b.data
 }
 
-func (r *ippMsg) setGetDevices() {
+func (m *ippMsg) setGetDevices() {
 	grp := &attribGroup{tag: printerAttribTag}
-	r.attributes = append(r.attributes, grp)
+	m.attributes = append(m.attributes, grp)
 }
 
 // Returns a IPP response based on the IPP request
-func IPPHandler(ippBody []byte) (*ippMsg, error) {
+func ippHandler(ippBody []byte) (*ippMsg, error) {
 	body := &ippMsg{}
 
 	err := body.decode(ippBody)
@@ -201,7 +201,7 @@ func IPPHandler(ippBody []byte) (*ippMsg, error) {
 		versionMajor: body.versionMajor,
 		versionMinor: body.versionMinor,
 		statusCode:   sOk,
-		requestId:    body.requestId,
+		requestID:    body.requestID,
 		data:         body.data,
 	}
 
