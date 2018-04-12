@@ -38,7 +38,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
-	"path"
+	"path/filepath"
 	"time"
 
 	"github.com/honeytrap/honeytrap/event"
@@ -47,10 +47,9 @@ import (
 	logging "github.com/op/go-logging"
 )
 
-var log = logging.MustGetLogger("services/ipp")
-
 var (
-	_ = services.Register("ipp", IPP)
+	log = logging.MustGetLogger("services/ipp")
+	_   = services.Register("ipp", IPP)
 )
 
 func IPP(options ...services.ServicerFunc) services.Servicer {
@@ -111,7 +110,7 @@ func (s *ippService) Handle(ctx context.Context, conn net.Conn) error {
 		return nil
 	}
 
-	ippReq, err := ioutil.ReadAll(req.Body)
+	b_ippReq, err := ioutil.ReadAll(req.Body)
 	if err != nil {
 		log.Error("Error reading request: ", err.Error())
 		return err
@@ -121,7 +120,12 @@ func (s *ippService) Handle(ctx context.Context, conn net.Conn) error {
 		return err
 	}
 
-	ippResp, err := IPPHandler(ippReq)
+	reqMessage := &ippMsg{}
+	if err := reqMessage.decode(b_ippReq); err != nil {
+		return err
+	}
+
+	ippResp, err := reqMessage.Handle()
 	if err != nil {
 		return err
 	}
@@ -144,12 +148,13 @@ func (s *ippService) Handle(ctx context.Context, conn net.Conn) error {
 			ext = ".octet-stream"
 		}
 
-		p := path.Join(s.StorageDir, fmt.Sprintf("%s%s", time.Now().Format("ipp-20060102150405"), ext))
+		p := filepath.Join(s.StorageDir, fmt.Sprintf("%s%s", time.Now().Format("ipp-20060102150405"), ext))
 		log.Debugf("Data size %v, file %v", len(ippResp.data), p)
 
 		ioutil.WriteFile(p, ippResp.data, 0644)
 
 		ippResp.data = []byte("Print data stored to " + p)
+
 	}
 
 	s.ch.Send(event.New(
@@ -158,10 +163,13 @@ func (s *ippService) Handle(ctx context.Context, conn net.Conn) error {
 		event.Type("request"),
 		event.SourceAddr(conn.RemoteAddr()),
 		event.DestinationAddr(conn.LocalAddr()),
-		event.Custom("http.url", req.URL.String()),
-		event.Custom("ipp.uri", ippResp.uri),
-		event.Custom("ipp.user", ippResp.username),
-		event.Custom("ipp.job-name", string(ippResp.jobname)),
+		event.Custom("ipp.operation", opText(reqMessage.statusCode)),
+		event.Custom("ipp.requestid", fmt.Sprintf("%d", reqMessage.requestId)),
+		event.Custom("ipp.version", fmt.Sprintf("%d.%d", reqMessage.versionMajor, reqMessage.versionMinor)),
+		event.Custom("ipp.path", req.URL.String()),
+		event.Custom("ipp.uri", reqMessage.uri),
+		event.Custom("ipp.user", reqMessage.username),
+		event.Custom("ipp.job-name", string(reqMessage.jobname)),
 		event.Custom("ipp.data", string(ippResp.data)),
 	))
 
@@ -191,4 +199,12 @@ func (s *ippService) Handle(ctx context.Context, conn net.Conn) error {
 	}
 
 	return nil
+}
+
+func opText(code int16) string {
+	if txt, ok := opString[code]; ok {
+		return txt
+	}
+
+	return fmt.Sprintf("%#x: unknown opcode", code)
 }
