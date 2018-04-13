@@ -5,7 +5,55 @@ type="socket"
 type="ssh-simulator"
 port="tcp/8022"
 
-[service.telnet]
+# Select capture capabilities. 
+# Defaults to none, but can be list of the following options: 
+#     quick       (capture protocol, ip, port)
+#     sniffer     (capture the first X bytes from each packet)  
+#     full        (makes a full network dump)
+# 
+# A filter and channel needs to be configured to process the output of each
+# capture item.
+
+capture = ["sniffer","quick"]
+
+# ####################### LISTENER END ####################################### #
+
+
+# ####################### SERVICES BEGIN ##################################### #
+# Enable services. The services are defined by starting with a [[service]] field.
+# Each service requires that the "name" a "type" value are set. The name can be
+# freely chosen and is referred by in the channel output.
+# A complete list of available services and their specific configuration options 
+# can be found in <.....>. All services have the port and canary configuration
+# option. With the port options the service is connected to the specific port.
+# If no "port" value is given, it will connect to the default service type port
+# which can be found in <...>. The canary option is a boolean to enable or 
+# disable the usage of canaries, which will trigger alerts.
+
+
+[service.ftp]
+type="ftp"
+port="TCP/8021"
+banner="Welcome to FTPd"
+name="FTPd"
+fs_base="/tmp"
+#users=[ [username, password], ...]
+users=[ ["anonymous", "anonymous"], ["admin", "admin"] ]
+#passive-port-range="20250-20300"
+
+[service.dns]
+type="dns-proxy"
+port="UDP/53"
+director="googledns01"
+
+[service.telnet01]
+type="telnet"
+port="TCP/23"
+banner="test"
+canary="true" 
+director="remote"
+
+[service.telnet02]
 type="telnet"
 port="tcp/8023"
 
