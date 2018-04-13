@@ -1,3 +1,33 @@
+/*
+* Honeytrap
+* Copyright (C) 2016-2018 DutchSec (https://dutchsec.com/)
+*
+* This program is free software; you can redistribute it and/or modify it under
+* the terms of the GNU Affero General Public License version 3 as published by the
+* Free Software Foundation.
+*
+* This program is distributed in the hope that it will be useful, but WITHOUT
+* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+* FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+* details.
+*
+* You should have received a copy of the GNU Affero General Public License
+* version 3 along with this program in the file "LICENSE".  If not, see
+* <http://www.gnu.org/licenses/agpl-3.0.txt>.
+*
+* See https://honeytrap.io/ for more details. All requests should be sent to
+* licensing@honeytrap.io
+*
+* The interactive user interfaces in modified source and object code versions
+* of this program must display Appropriate Legal Notices, as required under
+* Section 5 of the GNU Affero General Public License version 3.
+*
+* In accordance with Section 7(b) of the GNU Affero General Public License version 3,
+* these Appropriate Legal Notices must retain the display of the "Powered by
+* Honeytrap" logo and retain the original copyright notice. If the display of the
+* logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
+* must display the words "Powered by Honeytrap" and retain the original copyright notice.
+ */
 package ftp
 
 import (
@@ -9,18 +39,18 @@ import (
 	"github.com/honeytrap/honeytrap/services/filesystem"
 )
 
-type FtpFs struct {
+type Fs struct {
 	*filesystem.Htfs
 }
 
-func NewFileDriver(f *filesystem.Htfs) *FtpFs {
-	return &FtpFs{f}
+func NewFileDriver(f *filesystem.Htfs) *Fs {
+	return &Fs{f}
 }
 
-func (ftp *FtpFs) Init() {
+func (ftp *Fs) Init() {
 }
 
-func (ftp *FtpFs) Stat(path string) (os.FileInfo, error) {
+func (ftp *Fs) Stat(path string) (os.FileInfo, error) {
 	p := ftp.RealPath(path)
 
 	info, err := os.Lstat(p)
@@ -31,12 +61,12 @@ func (ftp *FtpFs) Stat(path string) (os.FileInfo, error) {
 	return info, nil
 }
 
-func (ftp *FtpFs) ChangeDir(path string) error {
+func (ftp *Fs) ChangeDir(path string) error {
 
-	return ftp.ChangeDir(path)
+	return ftp.Htfs.ChangeDir(path)
 }
 
-func (ftp *FtpFs) ListDir(path string) []os.FileInfo {
+func (ftp *Fs) ListDir(path string) []os.FileInfo {
 	p := ftp.RealPath(path)
 
 	dir, err := os.Open(p)
@@ -52,7 +82,7 @@ func (ftp *FtpFs) ListDir(path string) []os.FileInfo {
 	return list
 }
 
-func (ftp *FtpFs) DeleteDir(path string) error {
+func (ftp *Fs) DeleteDir(path string) error {
 	p := ftp.RealPath(path)
 
 	info, err := os.Lstat(p)
@@ -61,31 +91,31 @@ func (ftp *FtpFs) DeleteDir(path string) error {
 	}
 
 	if !info.IsDir() {
-		return errors.New("FtpFs: not a directory")
+		return errors.New("Fs: not a directory")
 	}
 
 	return os.Remove(p)
 }
 
-func (ftp *FtpFs) DeleteFile(path string) error {
+func (ftp *Fs) DeleteFile(path string) error {
 	p := ftp.RealPath(path)
 	return os.Remove(p)
 }
 
-func (ftp *FtpFs) Rename(from, to string) error {
+func (ftp *Fs) Rename(from, to string) error {
 	frompath := ftp.RealPath(from)
 	topath := ftp.RealPath(to)
 
 	return os.Rename(frompath, topath)
 }
 
-func (ftp *FtpFs) MakeDir(path string) error {
+func (ftp *Fs) MakeDir(path string) error {
 	p := ftp.RealPath(path)
 
 	return os.Mkdir(p, 0770)
 }
 
-func (ftp *FtpFs) GetFile(path string, offset int64) (int64, io.ReadCloser, error) {
+func (ftp *Fs) GetFile(path string, offset int64) (int64, io.ReadCloser, error) {
 	p := ftp.RealPath(path)
 
 	of, err := os.Open(p)
@@ -103,7 +133,7 @@ func (ftp *FtpFs) GetFile(path string, offset int64) (int64, io.ReadCloser, erro
 	return info.Size(), of, nil
 }
 
-func (ftp *FtpFs) PutFile(path string, data io.Reader, appendData bool) (int64, error) {
+func (ftp *Fs) PutFile(path string, data io.Reader, appendData bool) (int64, error) {
 	p := ftp.RealPath(path)
 
 	var isExist bool
@@ -163,6 +193,6 @@ func (ftp *FtpFs) PutFile(path string, data io.Reader, appendData bool) (int64, 
 	return bytes, nil
 }
 
-func (ftp *FtpFs) CurDir() string {
+func (ftp *Fs) CurDir() string {
 	return ftp.Cwd()
 }
