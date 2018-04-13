@@ -45,6 +45,7 @@ type storage interface {
 var db *badger.DB
 var dataDir string
 
+// SetDataDir
 func SetDataDir(s string) {
 	if db != nil {
 		return
@@ -54,6 +55,7 @@ func SetDataDir(s string) {
 	db = MustDB()
 }
 
+// MustDB
 func MustDB() *badger.DB {
 	opts := badger.DefaultOptions
 
@@ -74,11 +76,13 @@ func MustDB() *badger.DB {
 	return db
 }
 
+// Storage interface
 type Storage interface {
 	Get(key string) ([]byte, error)
 	Set(key string, data []byte) error
 }
 
+// Namespace sets the namespace prefix
 func Namespace(namespace string) (*badgeStorage, error) {
 	prefix := make([]byte, len(namespace)+1)
 
