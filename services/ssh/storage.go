@@ -51,8 +51,8 @@ type sshStorage struct {
 func (s *sshStorage) PrivateKey() *privateKey {
 	if data, err := s.Get("private-key"); err == nil {
 		return PrivateKey(data)
-	} else if err != nil {
-		log.Errorf("Could not load private key: %s", err.Error())
+	} else {
+		log.Debugf("Could not load private-key: %s", err.Error())
 	}
 
 	if data, err := generateKey(); err != nil {
