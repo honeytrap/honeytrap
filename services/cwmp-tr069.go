@@ -34,12 +34,13 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/xml"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
 
-	"encoding/xml"
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
 )
@@ -98,6 +99,15 @@ func parseXML(data []byte) (msg functionCall, err error) {
 	if err != nil {
 		return functionCall{}, err
 	}
+	defer func() {
+		if r := recover(); r != nil {
+			/* If elements are missing in the XML, the property access will fail.
+			 * This block catches these errors, and returns a plain error instead.
+			 */
+			msg = functionCall{}
+			err = fmt.Errorf("XML panic")
+		}
+	}()
 	return functionCall{
 		method:       root.Body.Method.XMLName.Local,
 		argumentsXML: root.Body.Method.Body,
@@ -125,9 +135,7 @@ func (s *cwmpService) Handle(ctx context.Context, conn net.Conn) error {
 
 		if len(requestBody) > 0 {
 			msg, err := parseXML([]byte(requestBody))
-			if err != nil {
-				return err
-			}
+			// Send the event even if an error occurs; error out only later
 			s.c.Send(event.New(
 				EventOptions,
 				event.Category("cwmp"),
@@ -143,6 +151,9 @@ func (s *cwmpService) Handle(ctx context.Context, conn net.Conn) error {
 				event.Custom("cwmp.argumentsXML", msg.argumentsXML),
 				Headers(req.Header),
 			))
+			if err != nil {
+				return err
+			}
 		}
 
 		resp := http.Response{
