@@ -35,16 +35,16 @@ import (
 	"time"
 )
 
-//ConvertToInt wraps the internal int coverter
-func ConvertToInt(target string, def uint64) int {
+//ConvertToUint64 wraps the internal int converter
+func ConvertToUint64(target string, def uint64) uint64 {
 	fo, err := strconv.Atoi(target)
 	if err != nil {
-		return int(def)
+		return def
 	}
-	return fo
+	return uint64(fo)
 }
 
-// MakeDuration should become internal functions , config should return time.Duration
+// MakeDuration should become internal functions, config should return time.Duration
 func MakeDuration(target string, def uint64) time.Duration {
 	if !elapso.MatchString(target) {
 		return time.Duration(def)
@@ -62,7 +62,7 @@ func MakeDuration(target string, def uint64) time.Duration {
 		return time.Duration(def)
 	}
 
-	dur := time.Duration(ConvertToInt(match[1], def))
+	dur := time.Duration(ConvertToUint64(match[1], def))
 
 	mtype := match[2]
 
