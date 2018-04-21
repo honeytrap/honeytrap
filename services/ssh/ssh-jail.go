@@ -57,11 +57,11 @@ import (
 )
 
 var (
-	_ = services.Register("ssh-jail", SSHJail)
+	_ = services.Register("ssh-jail", Jail)
 )
 
-func SSHJail(options ...services.ServicerFunc) services.Servicer {
-	s, err := Storage()
+func Jail(options ...services.ServicerFunc) services.Servicer {
+	s, err := getStorage()
 	if err != nil {
 		log.Errorf("Could not initialize storage: ", err.Error())
 	}
@@ -361,7 +361,6 @@ func (s *sshJailService) Handle(ctx context.Context, conn net.Conn) error {
 					// no reply
 				} else if err := req.Reply(b, nil); err != nil {
 					log.Errorf("wantreply: ", err)
-				} else {
 				}
 
 				func() {
@@ -553,7 +552,6 @@ func (s *sshJailService) Handle(ctx context.Context, conn net.Conn) error {
 						}
 
 						return
-					} else {
 					}
 				}()
 			}

@@ -30,7 +30,7 @@ func TestSMTP(t *testing.T) {
 	defer server.Close()
 
 	//Create Servicer
-	s := SMTP().(*SMTPService)
+	s := SMTP().(*Service)
 
 	// Create channel
 	dc, _ := pushers.Dummy()

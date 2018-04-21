@@ -32,12 +32,12 @@ package services
 
 import (
 	"context"
-	"io"
 	"net"
 
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/listener"
 	"github.com/honeytrap/honeytrap/pushers"
+	"io"
 )
 
 var (
@@ -62,31 +62,27 @@ func (s *echoService) SetChannel(c pushers.Channel) {
 }
 
 func (s *echoService) Handle(ctx context.Context, conn net.Conn) error {
-	if _, ok := conn.(*listener.DummyUDPConn); ok {
-		defer conn.Close()
-
-		buff := [65535]byte{}
-
-		n, err := conn.Read(buff[:])
-		if err != nil {
-			return err
-		}
-		s.c.Send(event.New(
-			EventOptions,
-			event.Category("echo"),
-			event.SourceAddr(conn.RemoteAddr()),
-			event.DestinationAddr(conn.LocalAddr()),
-			event.Payload(buff[:n]),
-		))
-
-		if _, err = conn.Write(buff[:n]); err != nil {
-			return err
-		}
-
+	if _, ok := conn.(*listener.DummyUDPConn); !ok {
+		_, err := io.Copy(conn, conn)
 		return err
-	} else if _, err := io.Copy(conn, conn); err != nil {
-		return err
-	} else {
-		return nil
 	}
+
+	defer conn.Close()
+
+	buff := [65535]byte{}
+
+	n, err := conn.Read(buff[:])
+	if err != nil {
+		return err
+	}
+	s.c.Send(event.New(
+		EventOptions,
+		event.Category("echo"),
+		event.SourceAddr(conn.RemoteAddr()),
+		event.DestinationAddr(conn.LocalAddr()),
+		event.Payload(buff[:n]),
+	))
+
+	_, err = conn.Write(buff[:n])
+	return err
 }

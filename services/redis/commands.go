@@ -65,15 +65,17 @@ func (s *redisService) infoCmd(args []interface{}) (string, bool) {
 		if !success {
 			return "Expected string argument, got something else", false
 		}
-		if fn, ok := mapInfoCmds[word]; ok {
+		fn, ok := mapInfoCmds[word]
+		if ok {
 			return fmt.Sprintf(lenMsg(), len(fn(s)), fn(s)), false
-		} else if word == "default" {
-			return fmt.Sprintf(lenMsg(), len(s.infoSectionsMsg()), s.infoSectionsMsg()), false
-		} else if word == "all" {
-			return fmt.Sprintf(lenMsg(), len(s.allSectionsMsg()), s.allSectionsMsg()), false
-		} else {
-			return fmt.Sprintf(lenMsg(), len(lineBreakMsg()), lineBreakMsg()), false
 		}
+		if word == "default" {
+			return fmt.Sprintf(lenMsg(), len(s.infoSectionsMsg()), s.infoSectionsMsg()), false
+		}
+		if word == "all" {
+			return fmt.Sprintf(lenMsg(), len(s.allSectionsMsg()), s.allSectionsMsg()), false
+		}
+		return fmt.Sprintf(lenMsg(), len(lineBreakMsg()), lineBreakMsg()), false
 	default:
 		return errorMsg("syntax"), false
 	}

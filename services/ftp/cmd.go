@@ -273,8 +273,16 @@ func (cmd commandEprt) Execute(conn *Conn, param string) {
 	delim := string(param[0:1])
 	parts := strings.Split(param, delim)
 	addressFamily, err := strconv.Atoi(parts[1])
+	if err != nil {
+		conn.writeMessage(450, "Invalid addr")
+		return
+	}
 	host := parts[2]
 	port, err := strconv.Atoi(parts[3])
+	if err != nil {
+		conn.writeMessage(450, "Invalid port")
+		return
+	}
 	if addressFamily != 1 && addressFamily != 2 {
 		conn.writeMessage(522, "Network protocol not supported, use (1,2)")
 		return
@@ -327,7 +335,7 @@ func (cmd commandEpsv) Execute(conn *Conn, param string) {
 	conn.writeMessage(229, msg)
 }
 
-// commandList responds to the LIST FTP command. It allows the client to retreive
+// commandList responds to the LIST FTP command. It allows the client to retrieve
 // a detailed listing of the contents of a directory.
 type commandList struct{}
 
@@ -355,7 +363,7 @@ func (cmd commandList) Execute(conn *Conn, param string) {
 }
 
 // commandNlst responds to the NLST FTP command. It allows the client to
-// retreive a list of filenames in the current directory.
+// retrieve a list of filenames in the current directory.
 type commandNlst struct{}
 
 func (cmd commandNlst) IsExtend() bool {
@@ -382,7 +390,7 @@ func (cmd commandNlst) Execute(conn *Conn, param string) {
 }
 
 // commandMdtm responds to the MDTM FTP command. It allows the client to
-// retreive the last modified time of a file.
+// retrieve the last modified time of a file.
 type commandMdtm struct{}
 
 func (cmd commandMdtm) IsExtend() bool {
@@ -647,12 +655,16 @@ func (cmd commandRetr) Execute(conn *Conn, param string) {
 		conn.lastFilePos = 0
 	}()
 	bytes, data, err := conn.driver.GetFile(param, conn.lastFilePos)
-	if err == nil {
-		defer data.Close()
-		conn.writeMessage(150, fmt.Sprintf("Data transfer starting %v bytes", bytes))
-		err = conn.sendOutofBandDataWriter(data)
-	} else {
+	if err != nil {
 		conn.writeMessage(551, "File not available")
+		return
+	}
+	defer data.Close()
+	conn.writeMessage(150, fmt.Sprintf("Data transfer starting %v bytes", bytes))
+	err = conn.sendOutofBandDataWriter(data)
+	if err != nil {
+		conn.writeMessage(551, "File not available")
+		return
 	}
 }
 
@@ -941,10 +953,9 @@ func (cmd commandSize) Execute(conn *Conn, param string) {
 	if err != nil {
 		log.Debugf("Size: error(%s)", err.Error())
 		conn.writeMessage(450, fmt.Sprintln("path", param, "not found"))
-	} else {
-		conn.writeMessage(213, strconv.Itoa(int(stat.Size())))
+		return
 	}
-	conn.writeMessage(450, fmt.Sprintln("path", param, "not found"))
+	conn.writeMessage(213, strconv.Itoa(int(stat.Size())))
 }
 
 // commandStor responds to the STOR FTP command. It allows the user to upload a

@@ -57,27 +57,27 @@ type Handshake struct {
 	Token string
 }
 
-func (r *Handshake) UnmarshalBinary(data []byte) error {
+func (hs *Handshake) UnmarshalBinary(data []byte) error {
 	d := NewDecoder(data)
-	r.ProtocolVersion = d.ReadUint16()
-	r.Version = d.ReadString()
-	r.ShortCommitID = d.ReadString()
-	r.CommitID = d.ReadString()
-	r.Token = d.ReadString()
+	hs.ProtocolVersion = d.ReadUint16()
+	hs.Version = d.ReadString()
+	hs.ShortCommitID = d.ReadString()
+	hs.CommitID = d.ReadString()
+	hs.Token = d.ReadString()
 	return nil
 }
 
-func (h Handshake) MarshalBinary() ([]byte, error) {
+func (hs Handshake) MarshalBinary() ([]byte, error) {
 	buff := bytes.Buffer{}
 
 	e := NewEncoder(&buff, binary.LittleEndian)
 
-	e.WriteUint16(h.ProtocolVersion)
-	e.WriteString(h.Version)
-	e.WriteString(h.ShortCommitID)
-	e.WriteString(h.CommitID)
+	e.WriteUint16(hs.ProtocolVersion)
+	e.WriteString(hs.Version)
+	e.WriteString(hs.ShortCommitID)
+	e.WriteString(hs.CommitID)
 
-	e.WriteString(h.Token)
+	e.WriteString(hs.Token)
 
 	return buff.Bytes(), nil
 }
@@ -158,24 +158,24 @@ type EOF struct {
 	Raddr net.Addr
 }
 
-func (r *EOF) UnmarshalBinary(data []byte) error {
+func (e *EOF) UnmarshalBinary(data []byte) error {
 	decoder := NewDecoder(data)
 
-	r.Laddr = decoder.ReadAddr()
-	r.Raddr = decoder.ReadAddr()
+	e.Laddr = decoder.ReadAddr()
+	e.Raddr = decoder.ReadAddr()
 
 	return nil
 }
 
-func (h EOF) MarshalBinary() ([]byte, error) {
+func (e EOF) MarshalBinary() ([]byte, error) {
 	buff := bytes.Buffer{}
 
-	e := NewEncoder(&buff, binary.LittleEndian)
+	enc := NewEncoder(&buff, binary.LittleEndian)
 
-	e.WriteAddr(h.Laddr)
-	e.WriteAddr(h.Raddr)
+	enc.WriteAddr(e.Laddr)
+	enc.WriteAddr(e.Raddr)
 
-	e.Flush()
+	enc.Flush()
 
 	return buff.Bytes(), nil
 }
@@ -187,28 +187,28 @@ type ReadWrite struct {
 	Payload []byte
 }
 
-func (h ReadWrite) MarshalBinary() ([]byte, error) {
+func (rw ReadWrite) MarshalBinary() ([]byte, error) {
 	buff := bytes.Buffer{}
 
 	e := NewEncoder(&buff, binary.LittleEndian)
 
-	e.WriteAddr(h.Laddr)
-	e.WriteAddr(h.Raddr)
+	e.WriteAddr(rw.Laddr)
+	e.WriteAddr(rw.Raddr)
 
-	e.WriteData(h.Payload)
+	e.WriteData(rw.Payload)
 
 	e.Flush()
 
 	return buff.Bytes(), nil
 }
 
-func (r *ReadWrite) UnmarshalBinary(data []byte) error {
+func (rw *ReadWrite) UnmarshalBinary(data []byte) error {
 	decoder := NewDecoder(data)
 
-	r.Laddr = decoder.ReadAddr()
-	r.Raddr = decoder.ReadAddr()
+	rw.Laddr = decoder.ReadAddr()
+	rw.Raddr = decoder.ReadAddr()
 
-	r.Payload = decoder.ReadData()
+	rw.Payload = decoder.ReadData()
 
 	return nil
 }
@@ -220,27 +220,27 @@ type ReadWriteUDP struct {
 	Payload []byte
 }
 
-func (h ReadWriteUDP) MarshalBinary() ([]byte, error) {
+func (rwu ReadWriteUDP) MarshalBinary() ([]byte, error) {
 	buff := bytes.Buffer{}
 
 	e := NewEncoder(&buff, binary.LittleEndian)
 
-	e.WriteAddr(h.Laddr)
-	e.WriteAddr(h.Raddr)
+	e.WriteAddr(rwu.Laddr)
+	e.WriteAddr(rwu.Raddr)
 
-	e.WriteData(h.Payload)
+	e.WriteData(rwu.Payload)
 
 	e.Flush()
 	return buff.Bytes(), nil
 }
 
-func (r *ReadWriteUDP) UnmarshalBinary(data []byte) error {
+func (rwu *ReadWriteUDP) UnmarshalBinary(data []byte) error {
 	decoder := NewDecoder(data)
 
-	r.Laddr = decoder.ReadAddr()
-	r.Raddr = decoder.ReadAddr()
+	rwu.Laddr = decoder.ReadAddr()
+	rwu.Raddr = decoder.ReadAddr()
 
-	r.Payload = decoder.ReadData()
+	rwu.Payload = decoder.ReadData()
 
 	return nil
 }

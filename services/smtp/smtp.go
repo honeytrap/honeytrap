@@ -48,7 +48,7 @@ var (
 // SMTP
 func SMTP(options ...services.ServicerFunc) services.Servicer {
 
-	s := &SMTPService{
+	s := &Service{
 		Config: Config{
 			Banner: "SMTPd",
 			srv: &Server{
@@ -63,7 +63,7 @@ func SMTP(options ...services.ServicerFunc) services.Servicer {
 		o(s)
 	}
 
-	if store, err := Storage(); err != nil {
+	if store, err := getStorage(); err != nil {
 		log.Errorf("Could not initialize storage: %s", err.Error())
 	} else {
 
@@ -97,17 +97,17 @@ type Config struct {
 	receiveChan chan Message
 }
 
-type SMTPService struct {
+type Service struct {
 	Config
 
 	ch pushers.Channel
 }
 
-func (s *SMTPService) SetChannel(c pushers.Channel) {
+func (s *Service) SetChannel(c pushers.Channel) {
 	s.ch = c
 }
 
-func (s *SMTPService) Handle(ctx context.Context, conn net.Conn) error {
+func (s *Service) Handle(ctx context.Context, conn net.Conn) error {
 
 	rcvLine := make(chan string)
 
@@ -141,10 +141,7 @@ func (s *SMTPService) Handle(ctx context.Context, conn net.Conn) error {
 	}()
 
 	//Create new smtp server connection
-	c, err := s.srv.NewConn(conn, rcvLine)
-	if err != nil {
-		return err
-	}
+	c := s.srv.newConn(conn, rcvLine)
 	// Start server loop
 	c.serve()
 	return nil

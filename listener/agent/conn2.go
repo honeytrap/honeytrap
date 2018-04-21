@@ -48,18 +48,18 @@ func (c *conn2) Handshake() error {
 	return nil
 }
 
-func (ac *conn2) receive() (interface{}, error) {
+func (c *conn2) receive() (interface{}, error) {
 	buff := make([]byte, 1)
 
-	if _, err := ac.Conn.Read(buff); err != nil {
+	if _, err := c.Conn.Read(buff); err != nil {
 		return nil, err
 	}
 
-	type_ := int(buff[0])
+	msgType := int(buff[0])
 
 	var o encoding.BinaryUnmarshaler
 
-	switch type_ {
+	switch msgType {
 	case TypeHello:
 		o = &Hello{}
 	case TypeHandshake:
@@ -78,7 +78,7 @@ func (ac *conn2) receive() (interface{}, error) {
 
 	buff = make([]byte, 2)
 
-	if _, err := ac.Conn.Read(buff); err != nil {
+	if _, err := c.Conn.Read(buff); err != nil {
 		return nil, err
 	}
 
@@ -86,7 +86,7 @@ func (ac *conn2) receive() (interface{}, error) {
 
 	buff = make([]byte, size)
 
-	if _, err := ac.Conn.Read(buff); err != nil {
+	if _, err := c.Conn.Read(buff); err != nil {
 		return nil, err
 	}
 
@@ -97,23 +97,23 @@ func (ac *conn2) receive() (interface{}, error) {
 	return o, nil
 }
 
-func (ac conn2) send(o encoding.BinaryMarshaler) error {
+func (c conn2) send(o encoding.BinaryMarshaler) error {
 	// write type
 	switch o.(type) {
 	case Hello:
-		ac.Conn.Write([]byte{uint8(TypeHello)})
+		c.Conn.Write([]byte{uint8(TypeHello)})
 	case Handshake:
-		ac.Conn.Write([]byte{uint8(TypeHandshake)})
+		c.Conn.Write([]byte{uint8(TypeHandshake)})
 	case HandshakeResponse:
-		ac.Conn.Write([]byte{uint8(TypeHandshakeResponse)})
+		c.Conn.Write([]byte{uint8(TypeHandshakeResponse)})
 	case Ping:
-		ac.Conn.Write([]byte{uint8(TypePing)})
+		c.Conn.Write([]byte{uint8(TypePing)})
 	case ReadWrite:
-		ac.Conn.Write([]byte{uint8(TypeReadWrite)})
+		c.Conn.Write([]byte{uint8(TypeReadWrite)})
 	case ReadWriteUDP:
-		ac.Conn.Write([]byte{uint8(TypeReadWriteUDP)})
+		c.Conn.Write([]byte{uint8(TypeReadWriteUDP)})
 	case EOF:
-		ac.Conn.Write([]byte{uint8(TypeEOF)})
+		c.Conn.Write([]byte{uint8(TypeEOF)})
 	}
 
 	data, err := o.MarshalBinary()
@@ -124,11 +124,11 @@ func (ac conn2) send(o encoding.BinaryMarshaler) error {
 	buff := make([]byte, 2)
 	binary.LittleEndian.PutUint16(buff[0:2], uint16(len(data)))
 
-	if _, err := ac.Conn.Write(buff); err != nil {
+	if _, err := c.Conn.Write(buff); err != nil {
 		return err
 	}
 
-	if _, err := ac.Conn.Write(data[:]); err != nil {
+	if _, err := c.Conn.Write(data[:]); err != nil {
 		return err
 	}
 

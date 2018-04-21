@@ -43,14 +43,12 @@ import (
 	"github.com/honeytrap/honeytrap/storage"
 )
 
-func Storage() (*smtpStorage, error) {
-	if s, err := storage.Namespace("smtp"); err == nil {
-		return &smtpStorage{
-			s,
-		}, nil
-	} else {
+func getStorage() (*smtpStorage, error) {
+	s, err := storage.Namespace("smtp")
+	if err != nil {
 		return nil, err
 	}
+	return &smtpStorage{s,}, nil
 }
 
 type smtpStorage struct {

@@ -73,7 +73,7 @@ func TestChannelsRavenSend(t *testing.T) {
 
 	c.Send(event.New())
 
-	kb := c.(*RavenBackend)
+	kb := c.(*Backend)
 
 	select {
 	case _ = <-kb.producer.Successes():

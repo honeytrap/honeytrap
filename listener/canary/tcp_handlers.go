@@ -40,6 +40,7 @@ import (
 	"net/http"
 
 	"github.com/honeytrap/honeytrap/event"
+	"bytes"
 )
 
 var (
@@ -381,6 +382,7 @@ func (c *Canary) DecodeSMBIP(conn net.Conn) error {
 
 	buff := make([]byte, 2048)
 	n, _ := conn.Read(buff)
+	r := bytes.NewBuffer(buff)
 
 	options := []event.Option{
 		CanaryOptions,
@@ -391,23 +393,26 @@ func (c *Canary) DecodeSMBIP(conn net.Conn) error {
 		event.Payload(buff[:n]),
 	}
 
-	offset := 0
-	if buff[0] == 0xFE {
+	magicBytes := make([]byte, 4)
+	r.Read(magicBytes)
+	smb2Header := []byte{0xFE, byte('S'), byte('M'), byte('B')}
+	if bytes.Equal(magicBytes, smb2Header) {
 		// https://wiki.wireshark.org/SMB2
 		options = append(options, event.Custom("smb.version", "2"))
 
-		offset++
+		lengthBuf := make([]byte, 2)
+		r.Read(lengthBuf)
+		// length := binary.BigEndian.Uint16(lengthBuf)
+		r.Next(2) // padding
 
-		length := binary.BigEndian.Uint16(buff[offset : offset+2])
-		offset += 4
-		_ = length
-
-		status := binary.BigEndian.Uint16(buff[offset : offset+4])
-		offset += 4
+		statusBuf := make([]byte, 4)
+		r.Read(statusBuf)
+		status := binary.BigEndian.Uint16(statusBuf)
 		options = append(options, event.Custom("smb.status", fmt.Sprintf("%d", status)))
 
-		opcode := binary.BigEndian.Uint16(buff[offset : offset+2])
-		offset += 4
+		opcodeBuf := make([]byte, 2)
+		r.Read(opcodeBuf)
+		opcode := binary.BigEndian.Uint16(opcodeBuf)
 
 		if v, ok := map[uint16]string{
 			0x00: "SMB2/NegotiateProtocol",

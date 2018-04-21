@@ -127,13 +127,13 @@ func (s *httpsService) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 
 	pub := &priv.PublicKey
 
-	ca_b, err := x509.CreateCertificate(rand.Reader, ca, ca, pub, priv)
+	certBytes, err := x509.CreateCertificate(rand.Reader, ca, ca, pub, priv)
 	if err != nil {
 		return nil, err
 	}
 
 	cert := &tls.Certificate{
-		Certificate: [][]byte{ca_b},
+		Certificate: [][]byte{certBytes},
 		PrivateKey:  priv,
 	}
 

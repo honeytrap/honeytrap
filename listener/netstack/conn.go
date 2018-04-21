@@ -72,11 +72,11 @@ func (dc *Conn) Read(b []byte) (int, error) {
 
 func (dc *Conn) Write(b []byte) (int, error) {
 	v := buffer.NewViewFromBytes(b)
-	if n, err := dc.ep.Write(v, nil); err != nil {
+	n, err := dc.ep.Write(v, nil)
+	if err != nil {
 		return 0, errors.New("XXX")
-	} else {
-		return int(n), nil
 	}
+	return int(n), nil
 }
 
 func (dc *Conn) Close() error {

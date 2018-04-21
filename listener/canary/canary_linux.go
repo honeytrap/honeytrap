@@ -131,13 +131,15 @@ type Canary struct {
 
 	stateTable StateTable
 
-	txqueue *Queue
+	// txqueue *Queue  <unused>
 }
 
-// Queue contains packets for delivery.
+/*
+// Queue contains packets for delivery. (currently unused)
 type Queue struct {
 	packets []interface{}
 }
+*/
 
 // Taken from https://github.com/xiezhenye/harp/blob/master/src/arp/arp.go#L53
 func htons(n uint16) uint16 {
@@ -150,7 +152,7 @@ func htons(n uint16) uint16 {
 }
 
 // handleUDP will handle udp packets
-func (c *Canary) handleUDP(eh *ethernet.EthernetFrame, iph *ipv4.Header, data []byte) error {
+func (c *Canary) handleUDP(eh *ethernet.Frame, iph *ipv4.Header, data []byte) error {
 	hdr, err := udp.Unmarshal(data)
 	if err != nil {
 		return nil
@@ -241,7 +243,7 @@ func (c *Canary) handleUDP(eh *ethernet.EthernetFrame, iph *ipv4.Header, data []
 }
 
 // handleICMP will handle tcp packets
-func (c *Canary) handleICMP(eh *ethernet.EthernetFrame, iph *ipv4.Header, data []byte) error {
+func (c *Canary) handleICMP(eh *ethernet.Frame, iph *ipv4.Header, data []byte) error {
 	_, err := icmp.Parse(data)
 	if err != nil {
 		return err
@@ -279,10 +281,9 @@ func (c *Canary) handleARP(data []byte) error {
 	}
 
 	for _, networkInterface := range c.networkInterfaces {
-		if bytes.Compare(arp.TargetMAC[:], networkInterface.HardwareAddr) == 0 {
+		if bytes.Equal(arp.TargetMAC[:], networkInterface.HardwareAddr) {
 			if arp.Opcode == 0x01 {
 				// fmt.Printf("ARP: Who has %s? tell %s.", net.IPv4(arp.TargetIP[0], arp.TargetIP[1], arp.TargetIP[2], arp.TargetIP[3]).String(), net.IPv4(arp.SenderIP[0], arp.SenderIP[1], arp.SenderIP[2], arp.SenderIP[3]).String())
-			} else {
 			}
 		} else {
 			// 			fmt.Println("ARP: not for me")
@@ -309,7 +310,7 @@ func (c *Canary) isMe(ip net.IP) bool {
 }
 
 // handleTCP will handle tcp packets
-func (c *Canary) handleTCP(eh *ethernet.EthernetFrame, iph *ipv4.Header, data []byte) error {
+func (c *Canary) handleTCP(eh *ethernet.Frame, iph *ipv4.Header, data []byte) error {
 	hdr, err := tcp.UnmarshalWithChecksum(data, iph.Dst, iph.Src)
 	if err == tcp.ErrInvalidChecksum {
 		// we are ignoring invalid checksums for now
@@ -784,7 +785,7 @@ func (c *Canary) send(state *State, payload []byte, flags tcp.Flag) error {
 
 	}
 
-	ef := ethernet.EthernetFrame{
+	ef := ethernet.Frame{
 		Source:      c.networkInterfaces[0].HardwareAddr,
 		Destination: ae.HardwareAddress,
 		Type:        0x0800,
@@ -923,8 +924,8 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 	return l, nil
 }
 
-func (l *Canary) SetChannel(c pushers.Channel) {
-	l.events = c
+func (c *Canary) SetChannel(ch pushers.Channel) {
+	c.events = ch
 }
 
 func (c *Canary) Accept() (net.Conn, error) {

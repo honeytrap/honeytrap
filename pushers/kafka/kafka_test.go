@@ -84,10 +84,10 @@ func TestChannelsKafkaSend(t *testing.T) {
 
 	c.Send(event.New())
 
-	kb := c.(*KafkaBackend)
+	kb := c.(*Backend)
 
 	select {
-	case _ = <-kb.producer.Successes():
+	case <-kb.producer.Successes():
 	case msg := <-kb.producer.Errors():
 		t.Error(msg.Err)
 	}
