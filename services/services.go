@@ -32,28 +32,29 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"net"
 
 	"github.com/BurntSushi/toml"
+	"github.com/op/go-logging"
+
 	"github.com/honeytrap/honeytrap/director"
 	"github.com/honeytrap/honeytrap/event"
+	"github.com/honeytrap/honeytrap/plugins"
 	"github.com/honeytrap/honeytrap/pushers"
-
-	logging "github.com/op/go-logging"
-	"os/user"
-	"path"
-	"plugin"
 )
 
 var log = logging.MustGetLogger("services")
 
 var (
-	services = map[string]func(...ServicerFunc) Servicer{}
+	services = map[string]Service{}
 )
 
 type ServicerFunc func(Servicer) error
 
-func Register(key string, fn func(...ServicerFunc) Servicer) func(...ServicerFunc) Servicer {
+type Service func(...ServicerFunc) Servicer
+
+func Register(key string, fn Service) Service {
 	services[key] = fn
 	return fn
 }
@@ -64,34 +65,30 @@ func Range(fn func(string)) {
 	}
 }
 
-func Get(key string) (func(...ServicerFunc) Servicer, bool) {
-	if fn, ok := services[key]; ok {
-		return fn, true
+// Gets a static or dynamic service, giving priority to static ones.
+func Get(name, folder string) (Service, error) {
+	staticSvc, ok := services[name]
+	if ok {
+		return staticSvc, nil
 	}
 
-	/*
-		luaPl, ok := readfile(name)
-		if ok {
-			return lua.New(luaPl), nil
-		}
-	*/
-
-	// messy, todo: fix/choose path
-	// https://stackoverflow.com/a/17617721
-	usr, _ := user.Current()
-	home := usr.HomeDir
-	dynamicPl, err := plugin.Open(path.Join(home, ".honeytrap", key+".so"))
+	// todo: add Lua support (issue #272)
+	sym, found, err := plugins.Get(name, "Service", folder)
+	if !found {
+		return nil, fmt.Errorf("Service %s not found", name)
+	}
 	if err != nil {
-		log.Errorf("Couldn't load dynamic plugin: %s", err.Error())
-		return nil, false
+		return nil, err
 	}
-	sym, err := dynamicPl.Lookup("Plugin")
-	if err != nil {
-		log.Errorf("Couldn't lookup Plugin symbol: %s", err.Error())
-		return nil, false
-	}
+	return sym.(Service), nil
+}
 
-	return sym.(func(...ServicerFunc) Servicer), true
+func MustGet(name, folder string) Service {
+	out, err := Get(name, folder)
+	if err != nil {
+		panic(err.Error())
+	}
+	return out
 }
 
 type CanHandlerer interface {

@@ -31,12 +31,13 @@
 package pushers
 
 import (
+	"fmt"
+
 	"github.com/BurntSushi/toml"
+	"github.com/op/go-logging"
+
 	"github.com/honeytrap/honeytrap/event"
-	logging "github.com/op/go-logging"
-	"os/user"
-	"plugin"
-	"path"
+	"github.com/honeytrap/honeytrap/plugins"
 )
 
 var log = logging.MustGetLogger("honeytrap:channels")
@@ -71,33 +72,30 @@ func WithConfig(c toml.Primitive) func(Channel) error {
 	}
 }
 
-func Get(key string) (ChannelFunc, bool) {
-	if fn, ok := channels[key]; ok {
-		return fn, true
-	}
-	/*
-	luaPl, ok := readfile(name)
+// Gets a static or dynamic channel implementation, giving priority to static ones.
+func Get(name, folder string) (ChannelFunc, error) {
+	staticCh, ok := channels[name]
 	if ok {
-		return lua.New(luaPl), nil
-	}
-*/
-
-	// messy, todo: fix/choose path
-	// https://stackoverflow.com/a/17617721
-	usr, _ := user.Current()
-	home := usr.HomeDir
-	dynamicPl, err := plugin.Open(path.Join(home, ".honeytrap", key+".so"))
-	if err != nil {
-		log.Errorf("Couldn't load dynamic plugin: %s", err.Error())
-		return nil, false
-	}
-	sym, err := dynamicPl.Lookup("Channel")
-	if err != nil {
-		log.Errorf("Couldn't lookup Channel symbol: %s", err.Error())
-		return nil, false
+		return staticCh, nil
 	}
 
-	return sym.(ChannelFunc), true
+	// todo: add Lua support (issue #272)
+	sym, found, err := plugins.Get(name, "Channel", folder)
+	if !found {
+		return nil, fmt.Errorf("Channel %s not found", name)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return sym.(ChannelFunc), nil
+}
+
+func MustGet(name, folder string) ChannelFunc {
+	out, err := Get(name, folder)
+	if err != nil {
+		panic(err.Error())
+	}
+	return out
 }
 
 type tokenChannel struct {

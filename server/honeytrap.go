@@ -90,9 +90,9 @@ import (
 	_ "github.com/honeytrap/honeytrap/pushers/slack"         // Registers slack backend.
 	_ "github.com/honeytrap/honeytrap/pushers/splunk"        // Registers splunk backend.
 
-	"github.com/honeytrap/honeytrap/plugins"
 	"github.com/honeytrap/honeytrap/transforms"
 	"github.com/honeytrap/honeytrap/transforms/filters"
+	"github.com/op/go-logging"
 )
 
 var log = logging.MustGetLogger("honeytrap/server")
@@ -307,8 +307,8 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			continue
 		}
 
-		if channelFunc, ok := pushers.Get(x.Type); !ok {
-			log.Error("Channel %s not supported on platform (%s)", x.Type, key)
+		if channelFunc, err := pushers.Get(x.Type, hc.dataDir); err != nil {
+			log.Error("Couldn't load type %s for channel %s: %s", x.Type, key, err.Error())
 		} else if d, err := channelFunc(
 			pushers.WithConfig(s),
 		); err != nil {
@@ -350,7 +350,11 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			}
 
 			if len(x.Plugin) != 0 {
-				channel = transforms.Transform(channel, plugins.MustGet(x.Plugin))
+				t, err := transforms.Get(x.Plugin, hc.dataDir)
+				if err != nil {
+					log.Errorf("Couldn't load plugin %s: %s", x.Plugin, err.Error())
+				}
+				channel = transforms.Transform(channel, t)
 			}
 
 			if err := hc.bus.Subscribe(channel); err != nil {
@@ -470,9 +474,9 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			continue
 		}
 
-		fn, ok := services.Get(x.Type)
-		if !ok {
-			log.Error(color.RedString("Could not find type %s for service %s", x.Type, key))
+		fn, err := services.Get(x.Type, hc.dataDir)
+		if err != nil {
+			log.Error(color.RedString("Error loading type %s for service %s: %s", x.Type, key, err.Error()))
 			continue
 		}
 
