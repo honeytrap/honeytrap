@@ -34,6 +34,9 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/event"
 	logging "github.com/op/go-logging"
+	"os/user"
+	"plugin"
+	"path"
 )
 
 var log = logging.MustGetLogger("honeytrap:channels")
@@ -72,5 +75,27 @@ func Get(key string) (ChannelFunc, bool) {
 	if fn, ok := channels[key]; ok {
 		return fn, true
 	}
-	return nil, false
+	/*
+	luaPl, ok := readfile(name)
+	if ok {
+		return lua.New(luaPl), nil
+	}
+*/
+
+	// messy, todo: fix/choose path
+	// https://stackoverflow.com/a/17617721
+	usr, _ := user.Current()
+	home := usr.HomeDir
+	dynamicPl, err := plugin.Open(path.Join(home, ".honeytrap", key+".so"))
+	if err != nil {
+		log.Errorf("Couldn't load dynamic plugin: %s", err.Error())
+		return nil, false
+	}
+	sym, err := dynamicPl.Lookup("Channel")
+	if err != nil {
+		log.Errorf("Couldn't lookup Channel symbol: %s", err.Error())
+		return nil, false
+	}
+
+	return sym.(ChannelFunc), true
 }
