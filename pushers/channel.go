@@ -69,11 +69,8 @@ func WithConfig(c toml.Primitive) func(Channel) error {
 }
 
 func Get(key string) (ChannelFunc, bool) {
-	d := Dummy
-
 	if fn, ok := channels[key]; ok {
 		return fn, true
 	}
-
-	return d, false
+	return nil, false
 }
