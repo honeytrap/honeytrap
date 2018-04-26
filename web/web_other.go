@@ -116,6 +116,8 @@ type web struct {
 
 	hotCountries *SafeArray
 	events       *SafeArray
+
+	handleRequest func(message []byte) ([]byte, error)
 }
 
 func New(options ...func(*web) error) (*web, error) {
@@ -133,6 +135,8 @@ func New(options ...func(*web) error) (*web, error) {
 
 		eventCh:   nil,
 		messageCh: make(chan json.Marshaler),
+
+		handleRequest: nil,
 
 		hotCountries: NewSafeArray(),
 		events:       NewLimitedSafeArray(1000),
@@ -363,8 +367,8 @@ func (web *web) ServeWS(w http.ResponseWriter, r *http.Request) {
 
 	log.Info("Connection upgraded.")
 	defer func() {
-		c.web.unregister <- c
-		c.ws.Close()
+		web.unregister <- c
+		ws.Close()
 
 		log.Info("Connection closed")
 	}()
@@ -384,4 +388,8 @@ func (web *web) ServeWS(w http.ResponseWriter, r *http.Request) {
 
 	go c.writePump()
 	c.readPump()
+}
+
+func (web *web) RegisterHandleRequest(HandleRequest func(message []byte) ([]byte, error)) {
+	web.handleRequest = HandleRequest
 }

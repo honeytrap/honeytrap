@@ -46,6 +46,7 @@ import (
 
 	"bytes"
 
+	"github.com/honeytrap/honeytrap/scripter"
 	"github.com/rs/xid"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/terminal"
@@ -106,10 +107,16 @@ type sshSimulatorService struct {
 
 	Credentials []string    `toml:"credentials"`
 	key         *privateKey `toml:"private-key"`
+
+	scr scripter.Scripter
 }
 
 func (s *sshSimulatorService) CanHandle(payload []byte) bool {
 	return bytes.HasPrefix(payload, []byte("SSH"))
+}
+
+func (s *sshSimulatorService) SetScripter(scr scripter.Scripter) {
+	s.scr = scr
 }
 
 func (s *sshSimulatorService) SetChannel(c pushers.Channel) {
@@ -133,6 +140,7 @@ func PayloadDecoder(payload []byte) *payloadDecoder {
 }
 
 func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
+	scrConn := s.scr.GetConnection("ssh-simulator", conn)
 	id := xid.New()
 
 	var connOptions event.Option = nil
@@ -361,9 +369,11 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 					log.Errorf("wantreply: ", err)
 				}
 
-				s.c.Send(event.New(
-					options...,
-				))
+				if req.Type != "exec" {
+					s.c.Send(event.New(
+						options...,
+					))
+				}
 
 				func() {
 					if req.Type == "shell" {
@@ -397,6 +407,12 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 								continue
 							}
 
+							resp, err := scrConn.Handle(line)
+							if err != nil {
+								resp = fmt.Sprintf("%s: command not found\n", line)
+								log.Errorf("Error running scripter: %s", err.Error())
+							}
+
 							s.c.Send(event.New(
 								services.EventOptions,
 								event.Category("ssh"),
@@ -405,14 +421,39 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 								event.DestinationAddr(conn.LocalAddr()),
 								event.Custom("ssh.sessionid", id.String()),
 								event.Custom("ssh.command", line),
+								event.Custom("response", resp),
 							))
 
-							term.Write([]byte(fmt.Sprintf("%s: command not found\n", line)))
+							term.Write([]byte(resp))
 						}
 					} else if req.Type == "exec" {
 						defer channel.Close()
 
-						channel.Write([]byte(fmt.Sprintf("%s: command not found\n", "ls")))
+						decoder := PayloadDecoder(req.Payload)
+
+						for {
+							if decoder.Available() == 0 {
+								break
+							}
+
+							payload := decoder.String()
+
+							resp, err := scrConn.Handle(payload)
+
+							if err != nil {
+								resp = fmt.Sprintf("%s: command not found\n", payload)
+								log.Errorf("Error running scripter: %s", err.Error())
+								break
+							}
+
+							options = append(options, event.Custom("response", resp))
+							s.c.Send(event.New(
+								options...,
+							))
+
+							channel.Write([]byte(resp))
+						}
+
 						channel.SendRequest("exit-status", false, []byte{0, 0, 0, 0})
 						return
 					} else {

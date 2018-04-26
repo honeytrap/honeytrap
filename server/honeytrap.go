@@ -46,13 +46,17 @@ import (
 
 	"github.com/honeytrap/honeytrap/cmd"
 	"github.com/honeytrap/honeytrap/config"
+	"github.com/honeytrap/honeytrap/scripter"
 	"github.com/honeytrap/honeytrap/web"
 
 	"github.com/honeytrap/honeytrap/director"
+	// Import your directors here.
 	_ "github.com/honeytrap/honeytrap/director/forward"
 	_ "github.com/honeytrap/honeytrap/director/lxc"
 	// _ "github.com/honeytrap/honeytrap/director/qemu"
-	// Import your directors here.
+
+	// Import your scripters here.
+	_ "github.com/honeytrap/honeytrap/scripter/lua"
 
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/pushers/eventbus"
@@ -62,6 +66,7 @@ import (
 	_ "github.com/honeytrap/honeytrap/services/eos"
 	_ "github.com/honeytrap/honeytrap/services/ethereum"
 	_ "github.com/honeytrap/honeytrap/services/ftp"
+	_ "github.com/honeytrap/honeytrap/services/generic"
 	_ "github.com/honeytrap/honeytrap/services/ipp"
 	_ "github.com/honeytrap/honeytrap/services/ldap"
 	_ "github.com/honeytrap/honeytrap/services/redis"
@@ -96,6 +101,8 @@ import (
 	_ "github.com/honeytrap/honeytrap/pushers/slack"
 	_ "github.com/honeytrap/honeytrap/pushers/splunk"
 
+	"encoding/json"
+	"github.com/honeytrap/honeytrap/utils"
 	"github.com/op/go-logging"
 )
 
@@ -120,6 +127,8 @@ type Honeytrap struct {
 	// Maps a port and a protocol to an array of pointers to services
 	tcpPorts map[int][]*ServiceMap
 	udpPorts map[int][]*ServiceMap
+
+	scripters map[string]scripter.Scripter
 }
 
 // New returns a new instance of a Honeytrap struct.
@@ -216,7 +225,7 @@ func (hc *Honeytrap) findService(conn net.Conn) (*ServiceMap, net.Conn, error) {
 
 	peekUninitialized := true
 	var tConn net.Conn
-	var pConn *peekConnection
+	var pConn *utils.PeekConn
 	var n int
 	buffer := make([]byte, 1024)
 	for _, service := range serviceCandidates {
@@ -229,7 +238,7 @@ func (hc *Honeytrap) findService(conn net.Conn) (*ServiceMap, net.Conn, error) {
 		if peekUninitialized {
 			// wrap connection in a connection with deadlines
 			tConn = TimeoutConn(conn, time.Second*30)
-			pConn = PeekConnection(tConn)
+			pConn = utils.PeekConnection(tConn)
 			log.Debug("Peeking connection %s => %s", conn.RemoteAddr(), conn.LocalAddr())
 			_n, err := pConn.Peek(buffer)
 			n = _n // avoid silly "variable not used" warning
@@ -302,6 +311,17 @@ func IsTerminal(f *os.File) bool {
 	return false
 }
 
+func (hc *Honeytrap) HandleRequests(message []byte) ([]byte, error) {
+	var js map[string]interface{}
+	json.Unmarshal(message, &js)
+
+	if sType, ok := js["type"]; ok && sType == "scripter" {
+		return scripter.HandleRequests(hc.scripters, message)
+	}
+
+	return nil, nil
+}
+
 // Run will start honeytrap
 func (hc *Honeytrap) Run(ctx context.Context) {
 	if IsTerminal(os.Stdout) {
@@ -324,7 +344,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 
 	hc.profiler.Start()
 
-	w, err := web.New(
+	web, err := web.New(
 		web.WithEventBus(hc.bus),
 		web.WithDataDir(hc.dataDir),
 		web.WithConfig(hc.config.Web),
@@ -332,8 +352,8 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 	if err != nil {
 		log.Error("Error parsing configuration of web: %s", err.Error())
 	}
-
-	w.Start()
+	web.RegisterHandleRequest(hc.HandleRequests)
+	web.Start()
 
 	channels := map[string]pushers.Channel{}
 	isChannelUsed := make(map[string]bool)
@@ -426,7 +446,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		}
 
 		if x.Type == "" {
-			log.Error("Error parsing configuration of service %s: type not set", key)
+			log.Error("Error parsing configuration of director %s: type not set", key)
 			continue
 		}
 
@@ -441,6 +461,44 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			directors[key] = d
 		}
 	}
+
+	// initialize scripters
+	scripters := map[string]scripter.Scripter{}
+	availableScripterNames := scripter.GetAvailableScripterNames()
+
+	for key, s := range hc.config.Scripters {
+		x := struct {
+			Type string `toml:"type"`
+		}{}
+
+		err := hc.config.PrimitiveDecode(s, &x)
+		if err != nil {
+			log.Error("Error parsing configuration of scripter: %s", err.Error())
+			continue
+		}
+
+		if x.Type == "" {
+			log.Error("Error parsing configuration of scripter %s: type not set", key)
+			continue
+		}
+
+		if scripterFunc, ok := scripter.Get(x.Type); !ok {
+			log.Error("Scripter type=%s not supported on platform (scripter=%s). Available scripters: %s", x.Type, key, strings.Join(availableScripterNames, ", "))
+		} else if scr, err := scripterFunc(
+			key,
+			scripter.WithConfig(s),
+			scripter.WithChannel(hc.bus),
+		); err != nil {
+			log.Fatalf("Error initializing scripter %s(%s): %s", key, x.Type, err)
+		} else {
+			scripters[key] = scr
+		}
+	}
+
+	hc.scripters = scripters
+
+	//Set an interval that checks for script-connections that haven't been used for a long time and can be garbage collected.
+	scripter.SetConnectionChecker(scripters)
 
 	// initialize listener
 	x := struct {
@@ -461,6 +519,11 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		enabledDirectorNames = append(enabledDirectorNames, key)
 	}
 
+	var enabledScripterNames []string
+	for key := range scripters {
+		enabledScripterNames = append(enabledScripterNames, key)
+	}
+
 	serviceList := make(map[string]*ServiceMap)
 	isServiceUsed := make(map[string]bool) // Used to check that every service is used by a port
 	// same for proxies
@@ -468,6 +531,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		x := struct {
 			Type     string `toml:"type"`
 			Director string `toml:"director"`
+			Scripter string `toml:"scripter"`
 			Port     string `toml:"port"`
 		}{}
 
@@ -492,6 +556,14 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			options = append(options, services.WithDirector(d))
 		} else {
 			log.Error(color.RedString("Could not find director=%s for service=%s. Enabled directors: %s", x.Director, key, strings.Join(enabledDirectorNames, ", ")))
+			continue
+		}
+
+		if x.Scripter == "" {
+		} else if scr, ok := scripters[x.Scripter]; ok {
+			options = append(options, services.WithScripter(key, scr))
+		} else {
+			log.Error(color.RedString("Could not find scripter=%s for service=%s. Enabled scripters: %s", x.Scripter, key, strings.Join(enabledScripterNames, ", ")))
 			continue
 		}
 
