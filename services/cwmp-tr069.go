@@ -64,8 +64,15 @@ type cwmpService struct {
 }
 
 func (s *cwmpService) CanHandle(payload []byte) bool {
-	return bytes.HasPrefix(payload, []byte("GET")) ||
-		bytes.HasPrefix(payload, []byte("POST"))
+	if bytes.HasPrefix(payload, []byte("GET")) {
+		return true
+	}
+	if bytes.HasPrefix(payload, []byte("POST")) {
+		return bytes.Contains(payload, []byte("<")) &&
+			(bytes.Contains(payload, []byte("SOAP")) || bytes.Contains(payload, []byte("soap"))) &&
+			bytes.Contains(payload, []byte("xml"))
+	}
+	return false
 }
 
 func (s *cwmpService) SetChannel(c pushers.Channel) {
