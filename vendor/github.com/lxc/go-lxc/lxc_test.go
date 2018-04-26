@@ -37,10 +37,7 @@ func PathExists(name string) bool {
 }
 
 func unprivileged() bool {
-	if os.Geteuid() != 0 {
-		return true
-	}
-	return false
+	return os.Geteuid() != 0
 }
 
 func supported(moduleName string) bool {
@@ -153,11 +150,7 @@ func TestCreate(t *testing.T) {
 		t.Errorf(err.Error())
 	}
 
-	options := DownloadTemplateOptions
-	if !unprivileged() {
-		options = BusyboxTemplateOptions
-	}
-	if err := c.Create(options); err != nil {
+	if err := c.Create(BusyboxTemplateOptions); err != nil {
 		t.Errorf(err.Error())
 	}
 }
@@ -674,7 +667,13 @@ func TestConfigKeys(t *testing.T) {
 		t.Errorf(err.Error())
 	}
 
-	keys := strings.Join(c.ConfigKeys("lxc.network.0"), " ")
+	keys := ""
+	if VersionAtLeast(2, 1, 0) {
+		keys = strings.Join(c.ConfigKeys("lxc.net.0"), " ")
+	} else {
+		keys = strings.Join(c.ConfigKeys("lxc.network.0"), " ")
+	}
+
 	if !strings.Contains(keys, "mtu") {
 		t.Errorf("Keys failed...")
 	}
@@ -687,6 +686,17 @@ func TestInterfaces(t *testing.T) {
 	}
 
 	if _, err := c.Interfaces(); err != nil {
+		t.Errorf(err.Error())
+	}
+}
+
+func TestInterfaceStats(t *testing.T) {
+	c, err := NewContainer(ContainerName)
+	if err != nil {
+		t.Errorf(err.Error())
+	}
+
+	if _, err := c.InterfaceStats(); err != nil {
 		t.Errorf(err.Error())
 	}
 }
@@ -934,12 +944,7 @@ func TestRunCommandNoWait(t *testing.T) {
 		t.FailNow()
 	}
 
-	options := DownloadTemplateOptions
-	if !unprivileged() {
-		options = BusyboxTemplateOptions
-	}
-
-	if err := c.Create(options); err != nil {
+	if err := c.Create(BusyboxTemplateOptions); err != nil {
 		t.Errorf(err.Error())
 		t.FailNow()
 	}
@@ -1011,7 +1016,7 @@ func TestRunCommand(t *testing.T) {
 	if err != nil {
 		t.Errorf(err.Error())
 	}
-	if ok != true {
+	if !ok {
 		t.Errorf("Expected success")
 	}
 
@@ -1020,7 +1025,7 @@ func TestRunCommand(t *testing.T) {
 	if err != nil {
 		t.Errorf(err.Error())
 	}
-	if ok != false {
+	if ok {
 		t.Errorf("Expected failure")
 	}
 }
@@ -1040,7 +1045,7 @@ func TestCommandWithEnv(t *testing.T) {
 	if err != nil {
 		t.Errorf(err.Error())
 	}
-	if ok != true {
+	if !ok {
 		t.Errorf("Expected success")
 	}
 }
@@ -1060,7 +1065,7 @@ func TestCommandWithEnvToKeep(t *testing.T) {
 	if err != nil {
 		t.Errorf(err.Error())
 	}
-	if ok != true {
+	if !ok {
 		t.Errorf("Expected success")
 	}
 }
@@ -1079,7 +1084,7 @@ func TestCommandWithCwd(t *testing.T) {
 	if err != nil {
 		t.Errorf(err.Error())
 	}
-	if ok != true {
+	if !ok {
 		t.Errorf("Expected success")
 	}
 }
@@ -1099,7 +1104,7 @@ func TestCommandWithUIDGID(t *testing.T) {
 	if err != nil {
 		t.Errorf(err.Error())
 	}
-	if ok != true {
+	if !ok {
 		t.Errorf("Expected success")
 	}
 }
@@ -1135,7 +1140,7 @@ func TestCommandWithArch(t *testing.T) {
 	if err != nil {
 		t.Errorf(err.Error())
 	}
-	if ok != true {
+	if !ok {
 		t.Errorf("Expected success")
 	}
 }
@@ -1355,6 +1360,9 @@ func TestDestroyAllSnapshots(t *testing.T) {
 	}
 
 	if err := c.DestroyAllSnapshots(); err != nil {
+		if err == ErrNotSupported {
+			t.Skip("skipping due to lxc version.")
+		}
 		t.Errorf(err.Error())
 	}
 }
@@ -1455,5 +1463,17 @@ func TestState(t *testing.T) {
 
 	if X.state.String() != "" {
 		t.Error("zero value of State should be invalid")
+	}
+}
+
+func TestSupportedConfigItems(t *testing.T) {
+	if VersionAtLeast(2, 1, 0) {
+		if !IsSupportedConfigItem("lxc.arch") {
+			t.Errorf("IsSupportedConfigItem failed to detect \"lxc.arch\" as supported config item...")
+		}
+
+		if IsSupportedConfigItem("lxc.nonsense") {
+			t.Errorf("IsSupportedConfigItem failed to detect \"lxc.nonsense\" as unsupported config item...")
+		}
 	}
 }

@@ -153,12 +153,6 @@
   version = "v1.2.0"
 
 [[projects]]
-  branch = "v3"
-  name = "github.com/honeytrap/golxc"
-  packages = ["."]
-  revision = "365776ef525bf6740eb39531895cb95f7d3fb2b5"
-
-[[projects]]
   branch = "master"
   name = "github.com/honeytrap/honeytrap-web"
   packages = ["."]
@@ -169,6 +163,12 @@
   name = "github.com/honeytrap/protocol"
   packages = ["."]
   revision = "b1ce3685e6dbd9d813b76ee47ca2ce08de8aa530"
+
+[[projects]]
+  branch = "v2"
+  name = "github.com/lxc/go-lxc"
+  packages = ["."]
+  revision = "2660c429a942a4a21455765c7046dde612c1baa7"
 
 [[projects]]
   branch = "master"
@@ -192,12 +192,6 @@
   packages = ["."]
   revision = "0360b2af4f38e8d38c7fce2a9f4e702702d73a39"
   version = "v0.0.3"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/mattn/go-pkg-xmlx"
-  packages = ["."]
-  revision = "db53493302d1dfcc6b9f16016e3c43cedaf5213d"
 
 [[projects]]
   name = "github.com/miekg/dns"
@@ -353,6 +347,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "841e1fd95088fb424ac9be3cb501d3fdaf602e344f44de6dd237bf12ff9442e8"
+  inputs-digest = "7016119de4c9e5d0df7d3704faf7cfabdee15474c7136acf47566a940c8422e9"
   solver-name = "gps-cdcl"
   solver-version = 1
