@@ -40,8 +40,7 @@ script:
   - go test -race -coverprofile=coverage.txt -covermode=atomic
   - go build ./...
   - GOARCH=arm go build ./...
-  - gometalinter --deadline 2m --vendor --sort=linter ./... --exclude='blank import' --exclude='should have comment' --exclude='should be of 
-the form "' --exclude='can be annoying to use' # Report warnings, but do not fail if there are any
+  - gometalinter --deadline 2m --vendor --sort=linter ./... --exclude='blank import' --exclude='should have comment' --exclude='should be of the form "' --exclude='can be annoying to use' # Report warnings, but do not fail if there are any
 
 after_success:
 - bash <(curl -s https://codecov.io/bash)
