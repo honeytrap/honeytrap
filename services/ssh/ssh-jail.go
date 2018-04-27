@@ -453,16 +453,6 @@ func (s *sshJailService) Handle(ctx context.Context, conn net.Conn) error {
 
 							inPipe.Write([]byte(fmt.Sprintf("%s\n", line)))
 						}
-
-						s.c.Send(event.New(
-							services.EventOptions,
-							event.Category("ssh"),
-							event.Type("shell"),
-							event.SourceAddr(conn.RemoteAddr()),
-							event.DestinationAddr(conn.LocalAddr()),
-							event.Custom("ssh.sessionid", id.String()),
-							event.Custom("ssh.recording", twrc.String()),
-						))
 					} else if req.Type == "exec" {
 						defer channel.Close()
 
@@ -474,8 +464,6 @@ func (s *sshJailService) Handle(ctx context.Context, conn net.Conn) error {
 							}
 
 							payload := decoder.String()
-
-							fmt.Println(payload)
 
 							arguments := []string{fmt.Sprintf("--name=%s", id), fmt.Sprintf("--overlay-named=%s", id), "--quiet", "--private-dev", "--private-tmp", "--private-opt=aabb", "--", "bash", "-c"}
 							arguments = append(arguments, payload)
