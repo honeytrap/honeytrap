@@ -393,16 +393,6 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 
 							term.Write([]byte(fmt.Sprintf("%s: command not found\n", line)))
 						}
-
-						s.c.Send(event.New(
-							services.EventOptions,
-							event.Category("ssh"),
-							event.Type("ssh-session"),
-							event.SourceAddr(conn.RemoteAddr()),
-							event.DestinationAddr(conn.LocalAddr()),
-							event.Custom("ssh.sessionid", id.String()),
-							event.Custom("ssh.recording", twrc.String()),
-						))
 					} else if req.Type == "exec" {
 						defer channel.Close()
 
