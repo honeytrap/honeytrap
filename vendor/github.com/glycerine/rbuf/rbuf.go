@@ -158,17 +158,6 @@ func (b *FixedSizeRingBuf) Read(p []byte) (n int, err error) {
 	return b.ReadAndMaybeAdvance(p, true)
 }
 
-func (b *FixedSizeRingBuf) ReadUint32() (uint32, error) {
-	buff := [2]byte{}
-
-	_, err := b.ReadAndMaybeAdvance(buff[:], true)
-	if err != nil {
-		return 0, err
-	}
-
-	return uint32(buff[0])<<8 + uint32(buff[1]), nil
-}
-
 // ReadWithoutAdvance(): if you want to Read the data and leave
 // it in the buffer, so as to peek ahead for example.
 func (b *FixedSizeRingBuf) ReadWithoutAdvance(p []byte) (n int, err error) {

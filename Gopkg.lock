@@ -194,12 +194,6 @@
   version = "v0.0.3"
 
 [[projects]]
-  branch = "master"
-  name = "github.com/mattn/go-pkg-xmlx"
-  packages = ["."]
-  revision = "db53493302d1dfcc6b9f16016e3c43cedaf5213d"
-
-[[projects]]
   name = "github.com/miekg/dns"
   packages = ["."]
   revision = "5364553f1ee9cddc7ac8b62dce148309c386695b"
@@ -285,6 +279,12 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/streadway/amqp"
+  packages = ["."]
+  revision = "8e4aba63da9fc5571e01c6a45dc809a58cbc5a68"
+
+[[projects]]
+  branch = "master"
   name = "golang.org/x/crypto"
   packages = [
     "curve25519",
@@ -353,6 +353,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "841e1fd95088fb424ac9be3cb501d3fdaf602e344f44de6dd237bf12ff9442e8"
+  inputs-digest = "764f5b1775069a653a43e67a637f23950b5ee0a2a18273705d5f0b25a5559565"
   solver-name = "gps-cdcl"
   solver-version = 1
