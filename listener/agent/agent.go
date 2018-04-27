@@ -66,8 +66,8 @@ type agentConfig struct {
 }
 
 // AddAddress will add the addresses to listen to
-func (sc *agentListener) AddAddress(a net.Addr) {
-	sc.Addresses = append(sc.Addresses, a)
+func (al *agentListener) AddAddress(a net.Addr) {
+	al.Addresses = append(al.Addresses, a)
 }
 
 // New will initialize the agent listener
@@ -86,7 +86,7 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 	return &l, nil
 }
 
-func (sl *agentListener) serv(c *conn2) {
+func (al *agentListener) serv(c *conn2) {
 	defer func() {
 		if err := recover(); err != nil {
 			trace := make([]byte, 1024)
@@ -99,29 +99,29 @@ func (sl *agentListener) serv(c *conn2) {
 
 	log.Debugf("Agent connecting from remote address: %s", c.RemoteAddr())
 
-	version := ""
-	shortCommitID := ""
-	token := ""
-
-	if p, err := c.receive(); err == io.EOF {
+	p, err := c.receive()
+	if err == io.EOF {
 		return
-	} else if err != nil {
+	}
+	if err != nil {
 		log.Errorf("Error receiving object: %s", err.Error())
 		return
-	} else if h, ok := p.(*Handshake); !ok {
+	}
+	h, ok := p.(*Handshake)
+	if !ok {
 		log.Errorf("Expected handshake from Agent")
 		return
-	} else {
-		version = h.Version
-		shortCommitID = h.ShortCommitID
-		token = h.Token
 	}
+
+	version := h.Version
+	shortCommitID := h.ShortCommitID
+	token := h.Token
 
 	log.Infof(color.YellowString("Agent connected (version=%s, commitid=%s, token=%s)...", version, shortCommitID, token))
 	defer log.Infof(color.YellowString("Agent disconnected"))
 
 	c.send(HandshakeResponse{
-		sl.Addresses,
+		al.Addresses,
 	})
 
 	out := make(chan interface{})
@@ -184,7 +184,7 @@ func (sl *agentListener) serv(c *conn2) {
 
 			conns.Add(ac)
 
-			sl.ch <- ac
+			al.ch <- ac
 		case *ReadWrite:
 			conn := conns.Get(v.Laddr, v.Raddr)
 			if conn == nil {
@@ -193,7 +193,7 @@ func (sl *agentListener) serv(c *conn2) {
 
 			conn.receive(v.Payload)
 		case *ReadWriteUDP:
-			sl.ch <- &listener.DummyUDPConn{
+			al.ch <- &listener.DummyUDPConn{
 				Buffer: v.Payload,
 				Laddr:  v.Laddr.(*net.UDPAddr),
 				Raddr:  v.Raddr.(*net.UDPAddr),
@@ -224,12 +224,10 @@ func (sl *agentListener) serv(c *conn2) {
 			log.Debugf("Received ping from agent: %s", c.RemoteAddr())
 		}
 	}
-
-	return
 }
 
 // Start the listener
-func (sl *agentListener) Start(ctx context.Context) error {
+func (al *agentListener) Start(ctx context.Context) error {
 	storage, err := Storage()
 	if err != nil {
 		return err
@@ -248,8 +246,8 @@ func (sl *agentListener) Start(ctx context.Context) error {
 	}
 
 	listen := ":1339"
-	if sl.Listen != "" {
-		listen = sl.Listen
+	if al.Listen != "" {
+		listen = al.Listen
 	}
 
 	listener, err := libdisco.Listen("tcp", listen, &serverConfig)
@@ -268,7 +266,7 @@ func (sl *agentListener) Start(ctx context.Context) error {
 				continue
 			}
 
-			go sl.serv(Conn2(c))
+			go al.serv(Conn2(c))
 		}
 	}()
 
@@ -276,7 +274,7 @@ func (sl *agentListener) Start(ctx context.Context) error {
 }
 
 // Accept a new connection
-func (sl *agentListener) Accept() (net.Conn, error) {
-	c := <-sl.ch
+func (al *agentListener) Accept() (net.Conn, error) {
+	c := <-al.ch
 	return c, nil
 }

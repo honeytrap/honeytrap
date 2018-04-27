@@ -52,7 +52,7 @@ import (
 )
 
 var (
-	_ = services.Register("ssh-simulator", SSHSimulator)
+	_ = services.Register("ssh-simulator", Simulator)
 )
 
 var motd = `Welcome to Ubuntu 16.04.1 LTS (GNU/Linux 4.4.0-31-generic x86_64)
@@ -71,8 +71,8 @@ Ubuntu 16.04.1 LTS                          built 2016-12-10
 last login: Sun Nov 19 19:40:44 2017 from 172.16.84.1
 `
 
-func SSHSimulator(options ...services.ServicerFunc) services.Servicer {
-	s, err := Storage()
+func Simulator(options ...services.ServicerFunc) services.Servicer {
+	s, err := getStorage()
 	if err != nil {
 		log.Errorf("Could not initialize storage: ", err.Error())
 	}
@@ -343,7 +343,6 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 					// no reply
 				} else if err := req.Reply(b, nil); err != nil {
 					log.Errorf("wantreply: ", err)
-				} else {
 				}
 
 				s.c.Send(event.New(
@@ -394,16 +393,6 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 
 							term.Write([]byte(fmt.Sprintf("%s: command not found\n", line)))
 						}
-
-						s.c.Send(event.New(
-							services.EventOptions,
-							event.Category("ssh"),
-							event.Type("ssh-session"),
-							event.SourceAddr(conn.RemoteAddr()),
-							event.DestinationAddr(conn.LocalAddr()),
-							event.Custom("ssh.sessionid", id.String()),
-							event.Custom("ssh.recording", twrc.String()),
-						))
 					} else if req.Type == "exec" {
 						defer channel.Close()
 

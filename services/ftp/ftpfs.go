@@ -9,18 +9,18 @@ import (
 	"github.com/honeytrap/honeytrap/services/filesystem"
 )
 
-type FtpFs struct {
+type Fs struct {
 	*filesystem.Htfs
 }
 
-func NewFileDriver(f *filesystem.Htfs) *FtpFs {
-	return &FtpFs{f}
+func NewFileDriver(f *filesystem.Htfs) *Fs {
+	return &Fs{f}
 }
 
-func (ftp *FtpFs) Init() {
+func (ftp *Fs) Init() {
 }
 
-func (ftp *FtpFs) Stat(path string) (os.FileInfo, error) {
+func (ftp *Fs) Stat(path string) (os.FileInfo, error) {
 	p := ftp.RealPath(path)
 
 	info, err := os.Lstat(p)
@@ -31,12 +31,12 @@ func (ftp *FtpFs) Stat(path string) (os.FileInfo, error) {
 	return info, nil
 }
 
-func (ftp *FtpFs) ChangeDir(path string) error {
+func (ftp *Fs) ChangeDir(path string) error {
 
 	return ftp.ChangeDir(path)
 }
 
-func (ftp *FtpFs) ListDir(path string) []os.FileInfo {
+func (ftp *Fs) ListDir(path string) []os.FileInfo {
 	p := ftp.RealPath(path)
 
 	dir, err := os.Open(p)
@@ -52,7 +52,7 @@ func (ftp *FtpFs) ListDir(path string) []os.FileInfo {
 	return list
 }
 
-func (ftp *FtpFs) DeleteDir(path string) error {
+func (ftp *Fs) DeleteDir(path string) error {
 	p := ftp.RealPath(path)
 
 	info, err := os.Lstat(p)
@@ -67,25 +67,25 @@ func (ftp *FtpFs) DeleteDir(path string) error {
 	return os.Remove(p)
 }
 
-func (ftp *FtpFs) DeleteFile(path string) error {
+func (ftp *Fs) DeleteFile(path string) error {
 	p := ftp.RealPath(path)
 	return os.Remove(p)
 }
 
-func (ftp *FtpFs) Rename(from, to string) error {
+func (ftp *Fs) Rename(from, to string) error {
 	frompath := ftp.RealPath(from)
 	topath := ftp.RealPath(to)
 
 	return os.Rename(frompath, topath)
 }
 
-func (ftp *FtpFs) MakeDir(path string) error {
+func (ftp *Fs) MakeDir(path string) error {
 	p := ftp.RealPath(path)
 
 	return os.Mkdir(p, 0770)
 }
 
-func (ftp *FtpFs) GetFile(path string, offset int64) (int64, io.ReadCloser, error) {
+func (ftp *Fs) GetFile(path string, offset int64) (int64, io.ReadCloser, error) {
 	p := ftp.RealPath(path)
 
 	of, err := os.Open(p)
@@ -103,7 +103,7 @@ func (ftp *FtpFs) GetFile(path string, offset int64) (int64, io.ReadCloser, erro
 	return info.Size(), of, nil
 }
 
-func (ftp *FtpFs) PutFile(path string, data io.Reader, appendData bool) (int64, error) {
+func (ftp *Fs) PutFile(path string, data io.Reader, appendData bool) (int64, error) {
 	p := ftp.RealPath(path)
 
 	var isExist bool
@@ -163,6 +163,6 @@ func (ftp *FtpFs) PutFile(path string, data io.Reader, appendData bool) (int64, 
 	return bytes, nil
 }
 
-func (ftp *FtpFs) CurDir() string {
+func (ftp *Fs) CurDir() string {
 	return ftp.Cwd()
 }

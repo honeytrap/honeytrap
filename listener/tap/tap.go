@@ -68,8 +68,8 @@ type tapListener struct {
 	net.Listener
 }
 
-func (d *tapListener) SetChannel(eb pushers.Channel) {
-	d.eb = eb
+func (l *tapListener) SetChannel(eb pushers.Channel) {
+	l.eb = eb
 }
 
 func New(options ...func(listener.Listener) error) (listener.Listener, error) {

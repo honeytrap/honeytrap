@@ -33,11 +33,7 @@ package listener
 import (
 	"context"
 	"net"
-
-	logging "github.com/op/go-logging"
 )
-
-var log = logging.MustGetLogger("honeytrap:listener")
 
 var (
 	listeners = map[string]func(...func(Listener) error) (Listener, error){}
@@ -59,7 +55,7 @@ func Get(key string) (func(...func(Listener) error) (Listener, error), bool) {
 }
 
 func Range(fn func(string)) {
-	for k, _ := range listeners {
+	for k := range listeners {
 		fn(k)
 	}
 }

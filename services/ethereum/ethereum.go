@@ -179,9 +179,5 @@ func (s *ethereumService) Handle(ctx context.Context, conn net.Conn) error {
 
 	resp.Body = ioutil.NopCloser(&buff)
 
-	if err := resp.Write(conn); err != nil {
-		return err
-	}
-
-	return nil
+	return resp.Write(conn)
 }

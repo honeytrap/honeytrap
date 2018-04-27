@@ -19,11 +19,6 @@
 #define LXC_DEVEL 0
 #endif
 
-#define VERSION_AT_LEAST(major, minor, micro)							\
-	((LXC_DEVEL == 1) || (!(major > LXC_VERSION_MAJOR ||					\
-	major == LXC_VERSION_MAJOR && minor > LXC_VERSION_MINOR ||				\
-	major == LXC_VERSION_MAJOR && minor == LXC_VERSION_MINOR && micro > LXC_VERSION_MICRO)))
-
 bool go_lxc_defined(struct lxc_container *c) {
 	return c->is_defined(c);
 }
@@ -415,6 +410,9 @@ bool go_lxc_restore(struct lxc_container *c, char *directory, bool verbose) {
 }
 
 int go_lxc_migrate(struct lxc_container *c, unsigned int cmd, struct migrate_opts *opts, struct extra_migrate_opts *extras) {
+#if VERSION_AT_LEAST(3, 0, 0)
+	opts->features_to_check = extras->features_to_check;
+#endif
 #if VERSION_AT_LEAST(2, 0, 4)
 	opts->action_script = extras->action_script;
 	opts->ghost_limit = extras->ghost_limit;
@@ -442,6 +440,28 @@ bool go_lxc_attach_interface(struct lxc_container *c, const char *dev, const cha
 bool go_lxc_detach_interface(struct lxc_container *c, const char *dev, const char *dst_dev) {
 #if VERSION_AT_LEAST(1, 1, 0)
 	return c->detach_interface(c, dev, dst_dev);
+#else
+	return false;
+#endif
+}
+
+bool go_lxc_config_item_is_supported(const char *key)
+{
+#if VERSION_AT_LEAST(2, 1, 0)
+	return lxc_config_item_is_supported(key);
+#else
+	return false;
+#endif
+}
+
+int go_lxc_error_num(struct lxc_container *c)
+{
+	return c->error_num;
+}
+
+int go_lxc_console_log(struct lxc_container *c, struct lxc_console_log *log) {
+#if VERSION_AT_LEAST(3, 0, 0)
+	return c->console_log(c, log);
 #else
 	return false;
 #endif

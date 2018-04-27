@@ -70,7 +70,7 @@ func (c *Connections) Delete(ac *agentConnection) {
 	}
 }
 
-func (c Connections) Get(laddr net.Addr, raddr net.Addr) *agentConnection {
+func (c *Connections) Get(laddr net.Addr, raddr net.Addr) *agentConnection {
 	c.m.Lock()
 	defer c.m.Unlock()
 

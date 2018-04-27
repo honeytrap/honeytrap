@@ -49,13 +49,13 @@ func (conn *Conn) IsLogin() bool {
 	return len(conn.user) > 0
 }
 
-func (conn *Conn) PublicIp() string {
-	return conn.server.PublicIp
+func (conn *Conn) PublicIP() string {
+	return conn.server.PublicIP
 }
 
 func (conn *Conn) passiveListenIP() string {
-	if len(conn.PublicIp()) > 0 {
-		return conn.PublicIp()
+	if len(conn.PublicIP()) > 0 {
+		return conn.PublicIP()
 	}
 	return conn.conn.LocalAddr().(*net.TCPAddr).IP.String()
 }

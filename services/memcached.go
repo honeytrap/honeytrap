@@ -60,12 +60,7 @@ func Memcached(options ...ServicerFunc) Servicer {
 	return s
 }
 
-type memcachedServiceConfig struct {
-}
-
 type memcachedService struct {
-	memcachedServiceConfig
-
 	limiter *Limiter
 
 	ch pushers.Channel
@@ -194,12 +189,11 @@ END\r\n
 			expireTime := string(parts[3])
 			byteCount := string(parts[4])
 
-			count := 0
-			if v, err := strconv.Atoi(byteCount); err != nil {
+			v, err := strconv.Atoi(byteCount)
+			if err != nil {
 				return fmt.Errorf("Byte count is not a number: %s", string(command))
-			} else {
-				count = v
 			}
+			count := v
 
 			buff := make([]byte, 80)
 

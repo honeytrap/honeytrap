@@ -121,7 +121,7 @@ func (s *ippService) Handle(ctx context.Context, conn net.Conn) error {
 		return err
 	}
 
-	ippResp, err := IPPHandler(ippReq)
+	ippResp, err := ippHandler(ippReq)
 	if err != nil {
 		return err
 	}

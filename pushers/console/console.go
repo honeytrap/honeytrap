@@ -43,15 +43,10 @@ import (
 
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
-	"github.com/op/go-logging"
 )
 
 var (
 	_ = pushers.Register("console", New)
-)
-
-var (
-	log = logging.MustGetLogger("console")
 )
 
 // Config defines the config used to setup the Console.

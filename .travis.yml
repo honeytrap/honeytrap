@@ -30,16 +30,16 @@ install:
   - sudo add-apt-repository -y ppa:ubuntu-lxc/stable
   - sudo apt-get update -qq
   - sudo apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confnew" lxc-dev
-  - go get -u -v github.com/alecthomas/gometalinter
+  - go get -u -v gopkg.in/alecthomas/gometalinter.v2
   - go get -u -v github.com/honeytrap/honeytrap
-  - gometalinter --install
+  - gometalinter.v2 --install
 
 script:
-  # - gometalinter --deadline 2m --errors --vendor ./...
   - go test -v ./...
   - go test -race -coverprofile=coverage.txt -covermode=atomic
   - go build ./...
   - GOARCH=arm go build ./...
+  - gometalinter.v2 --fast --deadline 10m --errors --vendor --sort=linter ./... --exclude='blank import' --exclude='should have comment' --exclude='should be of the form "' --exclude='can be annoying to use' # Report warnings, but do not fail if there are any
 
 after_success:
 - bash <(curl -s https://codecov.io/bash)

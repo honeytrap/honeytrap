@@ -42,10 +42,10 @@ type Event struct {
 	sm *syncmap.Map
 }
 
-func (b Event) MarshalJSON() ([]byte, error) {
+func (e Event) MarshalJSON() ([]byte, error) {
 	m := map[string]interface{}{}
 
-	b.Range(func(key, value interface{}) bool {
+	e.Range(func(key, value interface{}) bool {
 		if keyName, ok := key.(string); ok {
 			m[keyName] = value
 		}
