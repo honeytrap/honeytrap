@@ -981,13 +981,17 @@ func updateTCPChecksum(iph *ipv4.Header, data []byte) {
 // send will queue a packet for sending
 func (c *Canary) transmit(fd int32) error {
 	for {
-		len, err := c.buffer.ReadUint32()
+		buff := [2]byte{}
+
+		_, err := c.buffer.ReadAndMaybeAdvance(buff[:], true)
 		if err == io.EOF {
 			break
 		} else if err != nil {
 			log.Errorf("Error reading buffer 1: %s", err)
 			return err
 		}
+
+		len := uint32(buff[0])<<8 + uint32(buff[1])
 
 		buffer := make([]byte, len)
 		n, err := c.buffer.Read(buffer)
