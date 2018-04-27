@@ -45,6 +45,14 @@ import (
 	"github.com/honeytrap/honeytrap/pushers"
 )
 
+/* Example config:
+
+[service.cwmp]
+type="cwmp"
+port="tcp/3890"
+
+*/
+
 var (
 	_ = Register("cwmp", CWMP)
 )
