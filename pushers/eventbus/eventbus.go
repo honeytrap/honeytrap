@@ -33,10 +33,7 @@ package eventbus
 import (
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
-	logging "github.com/op/go-logging"
 )
-
-var log = logging.MustGetLogger("eventbus")
 
 // EventBus defines a structure which provides a pubsub bus where message.Events
 // are sent along it's wires for delivery

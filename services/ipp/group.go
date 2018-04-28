@@ -55,7 +55,7 @@ func (ag *attribGroup) decode(dec decoder.Decoder) error {
 			v = &valStr{tag: vtag}
 		case valCharSet:
 			v = &valStr{tag: vtag}
-		case valUri:
+		case valURI:
 			v = &valStr{tag: vtag}
 		case valRangeOfInt:
 			v = &valInt{tag: vtag}
@@ -92,7 +92,7 @@ func (ag *attribGroup) encode(buf decoder.EncoderType) error {
 	return nil
 }
 
-var model *attribGroup = &attribGroup{
+var model = &attribGroup{
 	tag: printerAttribTag,
 	val: []ValueType{
 		&valStr{valKeyword, "compression-supported", []string{"none"}},

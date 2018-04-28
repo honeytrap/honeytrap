@@ -91,7 +91,7 @@ func (f *Htfs) ChangeDir(path string) error {
 		return nil
 	}
 
-	return errors.New(fmt.Sprintf("Not a directory: %s", path))
+	return fmt.Errorf("Not a directory: %s", path)
 }
 
 func New(base, serviceName, serviceRoot string) (*Htfs, error) {
@@ -121,7 +121,7 @@ func New(base, serviceName, serviceRoot string) (*Htfs, error) {
 	}
 
 	if _, err := os.Stat(root); os.IsNotExist(err) {
-		return nil, errors.New(fmt.Sprintf("Bad root path: %s", root))
+		return nil, fmt.Errorf("Bad root path: %s", root)
 	}
 
 	return &Htfs{

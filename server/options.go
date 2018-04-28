@@ -100,16 +100,17 @@ func WithDataDir(s string) (OptionFn, error) {
 	}
 
 	p, err = filepath.Abs(p)
+	if err != nil {
+		return nil, err
+	}
 	_, err = os.Stat(p)
-
-	switch {
-	case err == nil:
-		break
-	case os.IsNotExist(err):
-		if err = os.Mkdir(p, 0755); err != nil {
-			return nil, err
+	if err != nil {
+		if os.IsNotExist(err) {
+			err = os.Mkdir(p, 0755)
+			if err != nil {
+				return nil, err
+			}
 		}
-	default:
 		return nil, err
 	}
 

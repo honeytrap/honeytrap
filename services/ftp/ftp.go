@@ -19,7 +19,7 @@ var (
 
 func FTP(options ...services.ServicerFunc) services.Servicer {
 
-	store, err := Storage()
+	store, err := getStorage()
 	if err != nil {
 		log.Errorf("FTP: Could not initialize storage. %s", err.Error())
 	}
@@ -39,7 +39,7 @@ func FTP(options ...services.ServicerFunc) services.Servicer {
 	}
 
 	opts := &ServerOpts{
-		Auth: &FtpUser{
+		Auth: &User{
 			users: map[string]string{
 				"anonymous": "anonymous",
 			},
@@ -105,18 +105,15 @@ func (s *ftpService) Handle(ctx context.Context, conn net.Conn) error {
 	ftpConn := s.server.newConn(conn, s.driver, s.recv)
 
 	go func() {
-		for {
-			select {
-			case msg := <-s.recv:
-				s.c.Send(event.New(
-					services.EventOptions,
-					event.Category("ftp"),
-					event.SourceAddr(conn.RemoteAddr()),
-					event.DestinationAddr(conn.LocalAddr()),
-					event.Custom("ftp.sessionid", ftpConn.sessionid),
-					event.Custom("ftp.command", strings.Trim(msg, "\r\n")),
-				))
-			}
+		for msg := range s.recv {
+			s.c.Send(event.New(
+				services.EventOptions,
+				event.Category("ftp"),
+				event.SourceAddr(conn.RemoteAddr()),
+				event.DestinationAddr(conn.LocalAddr()),
+				event.Custom("ftp.sessionid", ftpConn.sessionid),
+				event.Custom("ftp.command", strings.Trim(msg, "\r\n")),
+			))
 		}
 	}()
 

@@ -33,10 +33,7 @@ package pushers
 import (
 	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/event"
-	logging "github.com/op/go-logging"
 )
-
-var log = logging.MustGetLogger("honeytrap:channels")
 
 // Channel defines a interface which exposes a single method for delivering
 // PushMessages to a giving underline service.
@@ -51,7 +48,7 @@ var (
 )
 
 func Range(fn func(string)) {
-	for k, _ := range channels {
+	for k := range channels {
 		fn(k)
 	}
 }

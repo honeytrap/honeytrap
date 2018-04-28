@@ -80,7 +80,7 @@ func (d *Decode) Byte() byte {
 	}
 
 	defer func() {
-		d.offset += 1
+		d.offset++
 	}()
 
 	return d.data[d.offset]

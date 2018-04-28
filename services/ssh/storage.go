@@ -34,14 +34,12 @@ import (
 	"github.com/honeytrap/honeytrap/storage"
 )
 
-func Storage() (*sshStorage, error) {
-	if s, err := storage.Namespace("ssh"); err == nil {
-		return &sshStorage{
-			s,
-		}, nil
-	} else {
+func getStorage() (*sshStorage, error) {
+	s, err := storage.Namespace("ssh")
+	if err != nil {
 		return nil, err
 	}
+	return &sshStorage{s}, nil
 }
 
 type sshStorage struct {
@@ -49,20 +47,22 @@ type sshStorage struct {
 }
 
 func (s *sshStorage) PrivateKey() *privateKey {
-	if data, err := s.Get("private-key"); err == nil {
-		return PrivateKey(data)
-	} else if err != nil {
-		log.Errorf("Could not load private key: %s", err.Error())
+	if keyBytes, err := s.Get("private-key"); err == nil {
+		return makePrivateKey(keyBytes)
 	}
 
-	if data, err := generateKey(); err != nil {
+	log.Debugf("Could not load private-key, generating one.")
+
+	keyBytes, err := generateKey()
+	if err != nil {
 		log.Errorf("Could not generate ssh key: %s", err.Error())
 		return nil
-	} else if err := s.Set("private-key", data); err != nil {
+	}
+	err = s.Set("private-key", keyBytes)
+	if err != nil {
 		log.Errorf("Could not persist ssh key: %s", err.Error())
 		return nil
-	} else {
-		return PrivateKey(data)
-
 	}
+
+	return makePrivateKey(keyBytes)
 }

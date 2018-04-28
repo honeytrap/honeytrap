@@ -43,8 +43,8 @@ import (
 )
 
 var (
-	ErrElasticsearchNoURL   = errors.New("Elasticsearch url has not been set.")
-	ErrElasticsearchNoIndex = errors.New("Elasticsearch index has not been set.")
+	ErrElasticsearchNoURL   = errors.New("Elasticsearch url has not been set")
+	ErrElasticsearchNoIndex = errors.New("Elasticsearch index has not been set")
 )
 
 // Config defines a struct which holds configuration values for a SearchBackend.
@@ -70,25 +70,27 @@ func (c *Config) UnmarshalTOML(p interface{}) error {
 
 	data, _ := p.(map[string]interface{})
 
-	if v, ok := data["url"]; !ok {
+	v, ok := data["url"]
+	if !ok {
 		return ErrElasticsearchNoURL
-	} else if s, ok := v.(string); !ok {
-	} else if u, err := url.Parse(s); err != nil {
-		return err
-	} else {
-		parts := strings.Split(u.Path, "/")
-		if len(parts) != 2 {
-			return ErrElasticsearchNoIndex
-		}
-
-		c.Index = parts[1]
-
-		// remove path
-		u.Path = ""
-		c.options = append(c.options, elastic.SetURL(u.String()))
-
-		log.Debugf("Using URL: %s with index: %s", u.String(), c.Index)
 	}
+	s, _ := v.(string)
+	u, err := url.Parse(s)
+	if err != nil {
+		return err
+	}
+	parts := strings.Split(u.Path, "/")
+	if len(parts) != 2 {
+		return ErrElasticsearchNoIndex
+	}
+
+	c.Index = parts[1]
+
+	// remove path
+	u.Path = ""
+	c.options = append(c.options, elastic.SetURL(u.String()))
+
+	log.Debugf("Using URL: %s with index: %s", u.String(), c.Index)
 
 	if username, ok := data["username"]; !ok {
 	} else if password := data["password"]; !ok {

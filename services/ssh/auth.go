@@ -45,13 +45,13 @@ import (
 )
 
 var (
-	_ = services.Register("ssh-auth", SSHAuth)
+	_ = services.Register("ssh-auth", Auth)
 )
 
-func SSHAuth(options ...services.ServicerFunc) services.Servicer {
-	s, err := Storage()
+func Auth(options ...services.ServicerFunc) services.Servicer {
+	s, err := getStorage()
 	if err != nil {
-		log.Errorf("Could not initialize storage: ", err.Error())
+		log.Errorf("Could not initialize storage: %s", err.Error())
 	}
 
 	banner := "SSH-2.0-OpenSSH_6.6.1p1 2020Ubuntu-2ubuntu2"

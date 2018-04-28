@@ -38,7 +38,7 @@ func (e *Encoder) WriteUint32(v int32) {
 	e.Write(b[:])
 }
 
-// if zero is true, write zero lenght
+// if zero is true, write zero length
 func (e *Encoder) WriteData(v string, zero bool) {
 
 	if zero {

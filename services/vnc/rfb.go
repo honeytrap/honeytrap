@@ -72,7 +72,7 @@ func newConn(width, height int, c net.Conn) *Conn {
 		feed:       feed,
 		Feed:       feed, // the send-only version
 		event:      event,
-		Event:      event, // the recieve-only version
+		Event:      event, // the receive-only version
 	}
 	return conn
 }
@@ -395,7 +395,7 @@ func (c *Conn) pushGenericLocked(im image.Image) {
 			r16 = inRange(r16, c.format.RedMax)
 			g16 = inRange(g16, c.format.GreenMax)
 			b16 = inRange(b16, c.format.BlueMax)
-			var u32 uint32 = (r16 << c.format.RedShift) |
+			u32 := (r16 << c.format.RedShift) |
 				(g16 << c.format.GreenShift) |
 				(b16 << c.format.BlueShift)
 			var v interface{}

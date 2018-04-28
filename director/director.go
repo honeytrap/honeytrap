@@ -35,11 +35,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/pushers"
-
-	logging "github.com/op/go-logging"
 )
-
-var log = logging.MustGetLogger("honeytrap:director")
 
 var (
 	directors = map[string]func(...func(Director) error) (Director, error){}
@@ -51,13 +47,11 @@ func Register(key string, fn func(...func(Director) error) (Director, error)) fu
 }
 
 func Get(key string) (func(...func(Director) error) (Director, error), bool) {
-	d := Dummy
-
 	if fn, ok := directors[key]; ok {
 		return fn, true
 	}
 
-	return d, false
+	return nil, false
 }
 
 func GetAvailableDirectorNames() []string {

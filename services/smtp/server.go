@@ -63,8 +63,8 @@ var DefaultServeMux = NewServeMux()
 
 func NewServeMux() *ServeMux { return &ServeMux{m: make([]HandlerFunc, 0)} }
 
-func (s *ServeMux) Serve(msg Message) error {
-	for _, h := range s.m {
+func (mux *ServeMux) Serve(msg Message) error {
+	for _, h := range mux.m {
 		if err := h(msg); err != nil {
 			return err
 		}
@@ -80,8 +80,8 @@ type Server struct {
 	tlsConfig *tls.Config
 }
 
-func (s *Server) NewConn(rwc net.Conn, recv chan string) (c *conn, err error) {
-	c = &conn{
+func (s *Server) newConn(rwc net.Conn, recv chan string) *conn {
+	c := &conn{
 		server: s,
 		rwc:    rwc,
 		rcv:    recv,
@@ -89,11 +89,10 @@ func (s *Server) NewConn(rwc net.Conn, recv chan string) (c *conn, err error) {
 	}
 
 	c.msg = c.newMessage()
-	return c, nil
+	return c
 }
 
 func (s *Server) tlsConf(cert *tls.Certificate) {
-
 	s.tlsConfig = &tls.Config{
 		Certificates:       []tls.Certificate{*cert},
 		InsecureSkipVerify: true,

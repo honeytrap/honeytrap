@@ -13,14 +13,14 @@ import (
 	"github.com/honeytrap/honeytrap/storage"
 )
 
-func Storage() (*ftpStorage, error) {
-	if s, err := storage.Namespace("ftp"); err != nil {
+func getStorage() (*ftpStorage, error) {
+	s, err := storage.Namespace("ftp")
+	if err != nil {
 		return nil, err
-	} else {
-		return &ftpStorage{
-			s,
-		}, nil
 	}
+	return &ftpStorage{
+		s,
+	}, nil
 }
 
 type ftpStorage struct {

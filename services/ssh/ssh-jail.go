@@ -57,11 +57,11 @@ import (
 )
 
 var (
-	_ = services.Register("ssh-jail", SSHJail)
+	_ = services.Register("ssh-jail", Jail)
 )
 
-func SSHJail(options ...services.ServicerFunc) services.Servicer {
-	s, err := Storage()
+func Jail(options ...services.ServicerFunc) services.Servicer {
+	s, err := getStorage()
 	if err != nil {
 		log.Errorf("Could not initialize storage: ", err.Error())
 	}
@@ -361,7 +361,6 @@ func (s *sshJailService) Handle(ctx context.Context, conn net.Conn) error {
 					// no reply
 				} else if err := req.Reply(b, nil); err != nil {
 					log.Errorf("wantreply: ", err)
-				} else {
 				}
 
 				func() {
@@ -454,16 +453,6 @@ func (s *sshJailService) Handle(ctx context.Context, conn net.Conn) error {
 
 							inPipe.Write([]byte(fmt.Sprintf("%s\n", line)))
 						}
-
-						s.c.Send(event.New(
-							services.EventOptions,
-							event.Category("ssh"),
-							event.Type("shell"),
-							event.SourceAddr(conn.RemoteAddr()),
-							event.DestinationAddr(conn.LocalAddr()),
-							event.Custom("ssh.sessionid", id.String()),
-							event.Custom("ssh.recording", twrc.String()),
-						))
 					} else if req.Type == "exec" {
 						defer channel.Close()
 
@@ -475,8 +464,6 @@ func (s *sshJailService) Handle(ctx context.Context, conn net.Conn) error {
 							}
 
 							payload := decoder.String()
-
-							fmt.Println(payload)
 
 							arguments := []string{fmt.Sprintf("--name=%s", id), fmt.Sprintf("--overlay-named=%s", id), "--quiet", "--private-dev", "--private-tmp", "--private-opt=aabb", "--", "bash", "-c"}
 							arguments = append(arguments, payload)
@@ -553,7 +540,6 @@ func (s *sshJailService) Handle(ctx context.Context, conn net.Conn) error {
 						}
 
 						return
-					} else {
 					}
 				}()
 			}

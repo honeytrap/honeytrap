@@ -40,7 +40,7 @@ import (
 	"strings"
 	"time"
 
-	isatty "github.com/mattn/go-isatty"
+	"github.com/mattn/go-isatty"
 
 	"github.com/BurntSushi/toml"
 	"github.com/fatih/color"
@@ -82,14 +82,15 @@ import (
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/server/profiler"
 
-	_ "github.com/honeytrap/honeytrap/pushers/console"       // Registers stdout backend.
-	_ "github.com/honeytrap/honeytrap/pushers/elasticsearch" // Registers elasticsearch backend.
-	_ "github.com/honeytrap/honeytrap/pushers/file"          // Registers file backend.
-	_ "github.com/honeytrap/honeytrap/pushers/kafka"         // Registers kafka backend.
-	_ "github.com/honeytrap/honeytrap/pushers/marija"        // Registers marija backend.
-	_ "github.com/honeytrap/honeytrap/pushers/raven"         // Registers raven backend.
-	_ "github.com/honeytrap/honeytrap/pushers/slack"         // Registers slack backend.
-	_ "github.com/honeytrap/honeytrap/pushers/splunk"        // Registers splunk backend.
+	_ "github.com/honeytrap/honeytrap/pushers/console"
+	_ "github.com/honeytrap/honeytrap/pushers/elasticsearch"
+	_ "github.com/honeytrap/honeytrap/pushers/file"
+	_ "github.com/honeytrap/honeytrap/pushers/kafka"
+	_ "github.com/honeytrap/honeytrap/pushers/marija"
+	_ "github.com/honeytrap/honeytrap/pushers/rabbitmq"
+	_ "github.com/honeytrap/honeytrap/pushers/raven"
+	_ "github.com/honeytrap/honeytrap/pushers/slack"
+	_ "github.com/honeytrap/honeytrap/pushers/splunk"
 
 	logging "github.com/op/go-logging"
 )
@@ -145,7 +146,7 @@ func (hc *Honeytrap) startAgentServer() {
 }
 
 // EventServiceStarted will return a service started Event struct
-func EventServiceStarted(service string, primitive toml.Primitive) event.Event {
+func EventServiceStarted(service string) event.Event {
 	return event.New(
 		event.Category(service),
 		event.ServiceSensor,
@@ -211,18 +212,15 @@ func (hc *Honeytrap) heartbeat() {
 
 	count := 0
 
-	for {
-		select {
-		case <-beat:
-			hc.bus.Send(event.New(
-				event.Sensor("honeytrap"),
-				event.Category("heartbeat"),
-				event.SeverityInfo,
-				event.Custom("sequence", count),
-			))
+	for range beat {
+		hc.bus.Send(event.New(
+			event.Sensor("honeytrap"),
+			event.Category("heartbeat"),
+			event.SeverityInfo,
+			event.Custom("sequence", count),
+		))
 
-			count++
-		}
+		count++
 	}
 }
 

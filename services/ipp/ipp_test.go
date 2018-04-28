@@ -132,7 +132,7 @@ func TestIPPDecode(t *testing.T) {
 		versionMajor: 2,
 		versionMinor: 0,
 		statusCode:   123, //bogus code
-		requestId:    23,
+		requestID:    23,
 	}
 	grp := &attribGroup{
 		tag: opAttribTag,
@@ -157,8 +157,8 @@ func TestIPPDecode(t *testing.T) {
 	if ippnew.versionMajor != ipp.versionMajor {
 		t.Errorf("IPP Decoding error: versionMajor is %v, want %v", ippnew.versionMajor, ipp.versionMajor)
 	}
-	if ippnew.requestId != ipp.requestId {
-		t.Errorf("IPP Decoding error: requestId is %v, want %v", ippnew.requestId, ipp.requestId)
+	if ippnew.requestID != ipp.requestID {
+		t.Errorf("IPP Decoding error: requestID is %v, want %v", ippnew.requestID, ipp.requestID)
 	}
 	if len(ipp.attributes) != len(ippnew.attributes) {
 		t.Errorf("IPP Decoding: Amount of groups is %v, want %v", len(ippnew.attributes), len(ipp.attributes))

@@ -89,45 +89,6 @@ type Honeycast struct {
 	manager  *director.ContainerConnections
 }
 
-// NewHoneycast returns a new instance of a Honeycast struct.
-func NewHoneycast(config *config.Config, manager *director.ContainerConnections, dir director.Director, options ...HoneycastOption) *Honeycast {
-	panic("Don't use this functionality")
-
-	// Create the database we desire.
-	// TODO: Should we really panic here, it makes sense to do that, since it's the server
-	// right?
-	bolted, err := NewBolted(fmt.Sprintf("%s-bolted", config.Token), event.ContainersSensorName, event.ConnectionSensorName, event.ServiceSensorName, event.SessionSensorName, event.PingSensorName, event.DataSensorName, event.ErrorsSensorName, event.EventSensorName)
-
-	if err != nil {
-		log.Errorf("Failed to created BoltDB session: %+q", err)
-		panic(err)
-	}
-
-	var hc Honeycast
-	hc.config = config
-	hc.bolted = bolted
-	hc.director = dir
-	hc.manager = manager
-	hc.TreeMux = httptreemux.New()
-	hc.socket = NewSocketcast(config, bolted, AcceptAllOrigins)
-
-	// Register endpoints for events.
-	hc.TreeMux.Handle("GET", "/", hc.Index)
-	hc.TreeMux.Handle("GET", "/events", hc.Events)
-	hc.TreeMux.Handle("GET", "/sessions", hc.Sessions)
-	hc.TreeMux.Handle("GET", "/ws", hc.socket.ServeHandle)
-
-	// Register endpoints for metrics details
-	hc.TreeMux.Handle("GET", "/metrics/attackers", hc.Attackers)
-	hc.TreeMux.Handle("GET", "/metrics/containers", hc.Containers)
-
-	// Register endpoints for container interaction details
-	hc.TreeMux.Handle("DELETE", "/containers/clients/:container_id", hc.ContainerClientDelete)
-	hc.TreeMux.Handle("DELETE", "/containers/connections/:container_id", hc.ContainerConnectionsDelete)
-
-	return &hc
-}
-
 // ContainerClientDelete services the request to delete a giving containers client detail without
 // affecting the existing connections.
 func (h *Honeycast) ContainerClientDelete(w http.ResponseWriter, r *http.Request, params map[string]string) {

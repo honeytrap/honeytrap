@@ -52,9 +52,9 @@ var (
 
 var log = logging.MustGetLogger("channels/raven")
 
-// RavenBackend defines a struct which provides a channel for delivery
+// Backend defines a struct which provides a channel for delivery
 // push messages to an elasticsearch api.
-type RavenBackend struct {
+type Backend struct {
 	Config
 
 	ch chan event.Event
@@ -63,7 +63,7 @@ type RavenBackend struct {
 func New(options ...func(pushers.Channel) error) (pushers.Channel, error) {
 	ch := make(chan event.Event, 100)
 
-	c := RavenBackend{
+	c := Backend{
 		ch: ch,
 	}
 
@@ -81,7 +81,7 @@ func Insecure(config *tls.Config) *tls.Config {
 	return config
 }
 
-func (hc RavenBackend) run() {
+func (hc Backend) run() {
 	tlsClientConfig := &tls.Config{}
 
 	if hc.Insecure {
@@ -116,12 +116,12 @@ func (hc RavenBackend) run() {
 				defer close(readChan)
 
 				for {
-					if _, r, err := c.ReadMessage(); err != nil {
+					_, r, err := c.ReadMessage()
+					if err != nil {
 						log.Errorf("Error received: %s", err.Error())
 						return
-					} else {
-						readChan <- r
 					}
+					readChan <- r
 				}
 			}(c)
 
@@ -136,15 +136,20 @@ func (hc RavenBackend) run() {
 						_ = data
 					case evt := <-hc.ch:
 						// we'll ignore heartbeats, those are generated within the protocol
-						if category := evt.Get("category"); category == "heartbeat" {
-						} else if data, err := json.Marshal(evt); err != nil {
+						category := evt.Get("category")
+						if category == "heartbeat" {
+							continue
+						}
+						data, err := json.Marshal(evt);
+						if err != nil {
 							// handle errors
 							log.Errorf("Error occurred while marshalling: %s", err.Error())
 							continue
-						} else if err := c.WriteMessage(websocket.BinaryMessage, data); err != nil {
+						}
+						err = c.WriteMessage(websocket.BinaryMessage, data)
+						if err != nil {
 							log.Errorf("Could not write: %s", err.Error())
 							return
-						} else {
 						}
 					}
 				}
@@ -158,6 +163,6 @@ func (hc RavenBackend) run() {
 }
 
 // Send delivers the giving push messages into the internal elastic search endpoint.
-func (hc RavenBackend) Send(message event.Event) {
+func (hc Backend) Send(message event.Event) {
 	hc.ch <- message
 }

@@ -57,7 +57,7 @@ func TestEcho(t *testing.T) {
 		buffer = buffer[:n]
 	}
 
-	if bytes.Compare(test, buffer) != 0 {
+	if !bytes.Equal(test, buffer) {
 		t.Errorf("Test failed: got %+#v, expected %+#v", buffer, test)
 		return
 	}

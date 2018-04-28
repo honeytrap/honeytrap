@@ -70,7 +70,8 @@ func (s *copyService) SetChannel(c pushers.Channel) {
 
 func (s *copyService) Handle(ctx context.Context, conn net.Conn) error {
 	defer conn.Close()
-	if _, ok := conn.(*listener.DummyUDPConn); ok {
+	switch conn.(type) {
+	case *listener.DummyUDPConn:
 		defer s.c.Send(event.New(
 			EventOptions,
 			event.Category("copy"),
@@ -89,8 +90,8 @@ func (s *copyService) Handle(ctx context.Context, conn net.Conn) error {
 		go io.Copy(conn2, conn)
 		_, err = io.Copy(conn, conn2)
 
-		return nil
-	} else if _, ok := conn.(*net.TCPConn); ok {
+		return err
+	case *net.TCPConn:
 		defer s.c.Send(event.New(
 			EventOptions,
 			event.Category("copy"),
@@ -109,7 +110,7 @@ func (s *copyService) Handle(ctx context.Context, conn net.Conn) error {
 		go io.Copy(conn2, conn)
 		_, err = io.Copy(conn, conn2)
 		return err
-	} else {
+	default:
 		return nil
 	}
 }

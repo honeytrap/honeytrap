@@ -41,9 +41,9 @@ import (
 func (s *redisService) REDISHandler(command string, args []interface{}) (string, bool) {
 	// Convert the command to lowercase
 	command = strings.ToLower(command)
-	if fn, ok := mapCmds[command]; ok {
-		return fn(s, args)
-	} else {
+	fn, ok := mapCmds[command]
+	if !ok {
 		return fmt.Sprintf(errorMsg("unknown"), command), false
 	}
+	return fn(s, args)
 }

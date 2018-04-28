@@ -44,12 +44,21 @@ type Header struct {
 }
 
 func Unmarshal(data []byte) (*Header, error) {
+	if len(data) < 8 {
+		return nil, fmt.Errorf("Incorrect UDP header size: %d", len(data))
+	}
+
 	hdr := Header{}
 	hdr.Source = binary.BigEndian.Uint16(data[0:2])
 	hdr.Destination = binary.BigEndian.Uint16(data[2:4])
 	hdr.Length = binary.BigEndian.Uint16(data[4:6])
 	hdr.Checksum = binary.BigEndian.Uint16(data[6:8])
 	hdr.Payload = data[8:]
+
+	if len(data) != int(hdr.Length) {
+		return nil, fmt.Errorf("UDP payload length and size doesn't match, got %d, expected %d", len(data), hdr.Length)
+	}
+
 	return &hdr, nil
 }
 

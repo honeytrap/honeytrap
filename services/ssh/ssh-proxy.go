@@ -49,11 +49,11 @@ import (
 )
 
 var (
-	_ = services.Register("ssh-proxy", SSHProxy)
+	_ = services.Register("ssh-proxy", Proxy)
 )
 
-func SSHProxy(options ...services.ServicerFunc) services.Servicer {
-	s, err := Storage()
+func Proxy(options ...services.ServicerFunc) services.Servicer {
+	s, err := getStorage()
 	if err != nil {
 		log.Errorf("Could not initialize storage: ", err.Error())
 	}
@@ -249,7 +249,6 @@ func (s *sshProxyService) Handle(ctx context.Context, conn net.Conn) error {
 
 				if err := req.Reply(b, nil); err != nil {
 					log.Errorf("wantreply: ", err)
-				} else {
 				}
 
 				s.c.Send(event.New(

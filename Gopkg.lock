@@ -122,12 +122,6 @@
   version = "v1.2.0"
 
 [[projects]]
-  branch = "v3"
-  name = "github.com/honeytrap/golxc"
-  packages = ["."]
-  revision = "365776ef525bf6740eb39531895cb95f7d3fb2b5"
-
-[[projects]]
   branch = "master"
   name = "github.com/honeytrap/honeytrap-web"
   packages = ["."]
@@ -138,6 +132,12 @@
   name = "github.com/honeytrap/protocol"
   packages = ["."]
   revision = "b1ce3685e6dbd9d813b76ee47ca2ce08de8aa530"
+
+[[projects]]
+  branch = "v2"
+  name = "github.com/lxc/go-lxc"
+  packages = ["."]
+  revision = "2660c429a942a4a21455765c7046dde612c1baa7"
 
 [[projects]]
   branch = "master"
@@ -243,6 +243,12 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/streadway/amqp"
+  packages = ["."]
+  revision = "8e4aba63da9fc5571e01c6a45dc809a58cbc5a68"
+
+[[projects]]
+  branch = "master"
   name = "golang.org/x/crypto"
   packages = ["curve25519","ed25519","ed25519/internal/edwards25519","internal/chacha20","poly1305","ssh","ssh/terminal"]
   revision = "8c653846df49742c4c85ec37e5d9f8d3ba657895"
@@ -286,6 +292,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "c4b72c7a989147e490f1e5e0f5268aabf7cfe16299404267990e9c645d78ce16"
+  inputs-digest = "45cce0dc8135ec03e0e87f2d7fdf547e9519bff8bbeadaccbfa4e3e0e0260995"
   solver-name = "gps-cdcl"
   solver-version = 1
