@@ -526,6 +526,11 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			log.Error("Port %d was already defined, ignoring the newer definition", port)
 			continue
 		}
+
+		if len(x.Services) == 0 {
+			log.Warningf("Port %d has no services defined", port)
+		}
+
 		// check for the existence of the named services
 		for _, service := range x.Services {
 			found := false
