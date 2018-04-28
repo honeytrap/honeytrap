@@ -97,6 +97,7 @@ func (s *sshProxyService) Handle(ctx context.Context, conn net.Conn) error {
 
 	config := ssh.ServerConfig{
 		ServerVersion: s.Banner,
+		MaxAuthTries:  -1,
 		PublicKeyCallback: func(cm ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
 			s.c.Send(event.New(
 				services.EventOptions,
