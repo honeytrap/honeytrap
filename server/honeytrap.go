@@ -33,7 +33,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"runtime"
@@ -91,7 +90,7 @@ import (
 	_ "github.com/honeytrap/honeytrap/pushers/slack"         // Registers slack backend.
 	_ "github.com/honeytrap/honeytrap/pushers/splunk"        // Registers splunk backend.
 
-	logging "github.com/op/go-logging"
+	"github.com/op/go-logging"
 )
 
 var log = logging.MustGetLogger("honeytrap/server")
@@ -170,37 +169,35 @@ type ServiceMap struct {
 /* Finds a service that can handle the given connection.
  * The service is picked (among those configured for the given port) as follows:
  *
+ *     If there are no services for the given port, return an error
  *     If there is only one service, pick it
  *     For each service (as sorted in the config file):
  *         - If it does not implement CanHandle, pick it
- *         - If it implements CanHandle, peek the connection and pass it to
- *           CanHandle. If it returns true, pick it
+ *         - If it implements CanHandle, peek the connection and pass the peeked
+ *           data to CanHandle. If it returns true, pick it
  */
-func (hc *Honeytrap) findService(conn net.Conn) (*ServiceMap, net.Conn) {
+func (hc *Honeytrap) findService(conn net.Conn) (*ServiceMap, net.Conn, error) {
 	localAddr := conn.LocalAddr()
 	var port int
-	switch localAddr.(type) {
+	switch a := localAddr.(type) {
 	case *net.TCPAddr:
-		port = localAddr.(*net.TCPAddr).Port
+		port = a.Port
 	case *net.UDPAddr:
-		port = localAddr.(*net.UDPAddr).Port
+		port = a.Port
 	default:
-		log.Errorf("Unknown address type!")
+		return nil, nil, fmt.Errorf("unknown address type %T", a)
 	}
 	serviceNames, ok := hc.ports[port]
 	if !ok {
-		// No logging, it will be reported by the caller instead
 		// Todo(capacitorset): implement port "any"?
-		return nil, nil
+		return nil, nil, fmt.Errorf("no services for the given port")
 	}
 	var serviceCandidates []*ServiceMap
 	for _, serviceName := range serviceNames {
-		// The second variable is unused, we already checked for the existence
-		// of the service name when parsing the config
 		serviceCandidates = append(serviceCandidates, hc.services[serviceName])
 	}
 	if len(serviceCandidates) == 1 {
-		return serviceCandidates[0], conn
+		return serviceCandidates[0], conn, nil
 	}
 
 	peekUninitialized := true
@@ -212,7 +209,7 @@ func (hc *Honeytrap) findService(conn net.Conn) (*ServiceMap, net.Conn) {
 		ch, ok := service.Service.(services.CanHandlerer)
 		if !ok {
 			// Service does not implement CanHandle, assume it can handle the connection
-			return service, conn
+			return service, conn, nil
 		}
 		// Service implements CanHandle, initialize it if needed and run the checks
 		if peekUninitialized {
@@ -222,22 +219,19 @@ func (hc *Honeytrap) findService(conn net.Conn) (*ServiceMap, net.Conn) {
 			log.Debug("Peeking connection %s => %s", conn.RemoteAddr(), conn.LocalAddr())
 			_n, err := pConn.Peek(buffer)
 			n = _n // avoid silly "variable not used" warning
-			if err == io.EOF {
-				return nil, nil
-			} else if err != nil {
-				log.Errorf(color.RedString("Could not peek bytes: %s", err.Error()))
-				return nil, nil
+			if err != nil {
+				return nil, nil, fmt.Errorf("could not peek bytes: %s", err.Error())
 			}
 			peekUninitialized = false
 		}
 		if ch.CanHandle(buffer[:n]) {
 			// Service supports payload
-			// TODO(capacitorset): pass peeked connection rather than the actual one
-			return service, pConn
+			return service, pConn, nil
 		}
 	}
-	// No service can handle the connection. Let the caller deal with it.
-	return nil, nil
+	// There are some services for that port, but non can handle the connection.
+	// Let the caller deal with it.
+	return nil, nil, fmt.Errorf("No suitable service for the given port")
 }
 
 func (hc *Honeytrap) heartbeat() {
@@ -262,14 +256,14 @@ func ToAddr(input string) (net.Addr, string, int, error) {
 	parts := strings.Split(input, "/")
 
 	if len(parts) != 2 {
-		return nil, "", 0, fmt.Errorf("Error parsing port string")
+		return nil, "", 0, fmt.Errorf("wrong format (needs to be \"protocol/port\")")
 	}
 
 	proto := parts[0]
 	portStr := parts[1]
 	portInt16, err := strconv.ParseInt(portStr, 10, 16)
 	if err != nil {
-		return nil, "", 0, fmt.Errorf("Error parsing port value: %s", err.Error())
+		return nil, "", 0, fmt.Errorf("error parsing port value: %s", err.Error())
 	}
 	port := int(portInt16)
 	switch proto {
@@ -280,7 +274,7 @@ func ToAddr(input string) (net.Addr, string, int, error) {
 		addr, err := net.ResolveUDPAddr("udp", ":"+portStr)
 		return addr, proto, port, err
 	default:
-		return nil, "", 0, fmt.Errorf("Unknown protocol %s", proto)
+		return nil, "", 0, fmt.Errorf("unknown protocol %s", proto)
 	}
 }
 
@@ -524,7 +518,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			continue
 		}
 		if addr == nil {
-			log.Error("Failed to bind (addr is nil)")
+			log.Error("Failed to bind: addr is nil")
 			continue
 		}
 
@@ -651,9 +645,9 @@ func (hc *Honeytrap) handle(conn net.Conn) {
 	/* conn is the original connection. newConn can be either the same
 	 * connection, or a wrapper in the form of a PeekConnection.
 	 */
-	sm, newConn := hc.findService(conn)
+	sm, newConn, err := hc.findService(conn)
 	if sm == nil {
-		log.Debug("No suitable handler for %s => %s", conn.RemoteAddr(), conn.LocalAddr())
+		log.Debug("No suitable handler for %s => %s: %s", conn.RemoteAddr(), conn.LocalAddr(), err.Error())
 		return
 	}
 
