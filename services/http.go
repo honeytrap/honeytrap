@@ -36,6 +36,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"strings"
@@ -128,6 +129,20 @@ func (s *httpService) Handle(ctx context.Context, conn net.Conn) error {
 			return err
 		}
 
+		defer req.Body.Close()
+
+		body := make([]byte, 1024)
+
+		n, err := req.Body.Read(body)
+		if err == io.EOF {
+		} else if err != nil {
+			return err
+		}
+
+		body = body[:n]
+
+		io.Copy(ioutil.Discard, req.Body)
+
 		s.c.Send(event.New(
 			EventOptions,
 			event.Category("http"),
@@ -138,6 +153,7 @@ func (s *httpService) Handle(ctx context.Context, conn net.Conn) error {
 			event.Custom("http.proto", req.Proto),
 			event.Custom("http.host", req.Host),
 			event.Custom("http.url", req.URL.String()),
+			event.Payload(body),
 			Headers(req.Header),
 			Cookies(req.Cookies()),
 		))
