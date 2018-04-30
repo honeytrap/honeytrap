@@ -35,8 +35,8 @@ import (
 	"time"
 )
 
-//ConvertToUint64 wraps the internal int converter
-func ConvertToUint64(target string, def uint64) uint64 {
+//convertToUint64 wraps the internal int converter
+func convertToUint64(target string, def uint64) uint64 {
 	fo, err := strconv.Atoi(target)
 	if err != nil {
 		return def
@@ -62,7 +62,7 @@ func MakeDuration(target string, def uint64) time.Duration {
 		return time.Duration(def)
 	}
 
-	dur := time.Duration(ConvertToUint64(match[1], def))
+	dur := time.Duration(convertToUint64(match[1], def))
 
 	mtype := match[2]
 
