@@ -444,6 +444,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 	}
 
 	serviceList := make(map[string]*ServiceMap)
+	isServiceUsed := make(map[string]bool) // Used to check that every service is used by a port
 	// same for proxies
 	for key, s := range hc.config.Services {
 		x := struct {
@@ -488,6 +489,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			Name:    key,
 			Type:    x.Type,
 		}
+		isServiceUsed[key] = false
 		log.Infof("Configured service %s (%s)", x.Type, key)
 	}
 
@@ -540,6 +542,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 				log.Error("Unknown service '%s' in ports", serviceName)
 			}
 			servicePtrs = append(servicePtrs, ptr)
+			isServiceUsed[serviceName] = true
 		}
 		switch proto {
 		case "tcp":
@@ -567,6 +570,12 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		a.AddAddress(addr)
 
 		log.Infof("Configured port %s/%s", addr.Network(), addr.String())
+	}
+
+	for name, isUsed := range isServiceUsed {
+		if !isUsed {
+			log.Warningf("Service %s is defined but not used", name)
+		}
 	}
 
 	if err := l.Start(ctx); err != nil {
