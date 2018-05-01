@@ -157,6 +157,8 @@ var ethereumMethods = map[string]func(map[string]interface{}) map[string]interfa
 	},
 }
 
+// Todo: implement CanHandle
+
 func (s *ethereumService) Handle(ctx context.Context, conn net.Conn) error {
 	defer conn.Close()
 
