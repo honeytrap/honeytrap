@@ -47,6 +47,7 @@ import (
 
 	"github.com/honeytrap/honeytrap/cmd"
 	"github.com/honeytrap/honeytrap/config"
+	"github.com/honeytrap/honeytrap/lua"
 	"github.com/honeytrap/honeytrap/web"
 
 	"github.com/honeytrap/honeytrap/director"
@@ -109,6 +110,8 @@ type Honeytrap struct {
 
 	director director.Director
 
+	lua *lua.Lua
+
 	token string
 
 	dataDir string
@@ -126,9 +129,13 @@ func New(options ...OptionFn) (*Honeytrap, error) {
 	// Initialize all channels within the provided config.
 	conf := &config.Default
 
+	// Lua state without anything loaded
+	lua := &lua.Default
+
 	h := &Honeytrap{
 		config:   conf,
 		director: director.MustDummy(),
+		lua:      lua,
 		bus:      bus,
 		profiler: profiler.Dummy(),
 	}
@@ -442,6 +449,13 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 	var enabledDirectorNames []string
 	for key := range directors {
 		enabledDirectorNames = append(enabledDirectorNames, key)
+	}
+
+	// Loading lua scripts
+	hc.lua = lua.New()
+	if err := hc.lua.LoadScripts(); err != nil {
+		fmt.Println(color.RedString("Error loading Lua scripts: %s", err.Error()))
+		return
 	}
 
 	serviceList := make(map[string]*ServiceMap)

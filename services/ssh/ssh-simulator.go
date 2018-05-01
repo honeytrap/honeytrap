@@ -46,7 +46,6 @@ import (
 
 	"bytes"
 
-	"github.com/honeytrap/honeytrap/lua"
 	"github.com/rs/xid"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/terminal"
@@ -386,12 +385,6 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 								continue
 							}
 
-							// Get string from Lua service
-							var response string
-							if response, err = lua.Handle(line); err != nil {
-								log.Errorf("Error responding to message '%s': %s\n", line, err)
-							}
-
 							s.c.Send(event.New(
 								services.EventOptions,
 								event.Category("ssh"),
@@ -401,10 +394,10 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 								event.Custom("ssh.sessionid", id.String()),
 								event.Custom("ssh.command", line),
 								// Not sure we want to keep the response in ES, but keeping it for now for clarity
-								event.Custom("ssh.response", response),
+								event.Custom("ssh.response", line),
 							))
 
-							term.Write([]byte(response))
+							term.Write([]byte(line))
 						}
 					} else if req.Type == "exec" {
 						defer channel.Close()
