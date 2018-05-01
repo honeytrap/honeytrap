@@ -93,6 +93,20 @@ func Headers(headers map[string][]string) event.Option {
 }
 
 var ethereumMethods = map[string]func(map[string]interface{}) map[string]interface{}{
+	"eth_mining": func(m map[string]interface{}) map[string]interface{} {
+		return map[string]interface{}{
+			"id":      m["id"],
+			"jsonrpc": m["jsonrpc"],
+			"result":  true,
+		}
+	},
+	"eth_coinbase": func(m map[string]interface{}) map[string]interface{} {
+		return map[string]interface{}{
+			"id":      m["id"],
+			"jsonrpc": m["jsonrpc"],
+			"result":  []string{"0x407d73d8a49eeb85d32cf465507dd71d507100c1"},
+		}
+	},
 	"eth_accounts": func(m map[string]interface{}) map[string]interface{} {
 		return map[string]interface{}{
 			"id":      m["id"],
