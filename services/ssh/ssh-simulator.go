@@ -80,9 +80,10 @@ func Simulator(options ...services.ServicerFunc) services.Servicer {
 	banner := "SSH-2.0-OpenSSH_6.6.1p1 2020Ubuntu-2ubuntu2"
 
 	service := &sshSimulatorService{
-		key:    s.PrivateKey(),
-		Banner: banner,
-		MOTD:   motd,
+		key:          s.PrivateKey(),
+		Banner:       banner,
+		MOTD:         motd,
+		MaxAuthTries: -1,
 		Credentials: []string{
 			"*",
 		},
@@ -100,6 +101,8 @@ type sshSimulatorService struct {
 
 	Banner string `toml:"banner"`
 	MOTD   string `toml:"motd"`
+
+	MaxAuthTries int `toml:"max-auth-tries"`
 
 	Credentials []string    `toml:"credentials"`
 	key         *privateKey `toml:"private-key"`
@@ -134,6 +137,7 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 
 	config := ssh.ServerConfig{
 		ServerVersion: s.Banner,
+		MaxAuthTries:  s.MaxAuthTries,
 		PublicKeyCallback: func(cm ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
 			s.c.Send(event.New(
 				services.EventOptions,
@@ -393,16 +397,6 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 
 							term.Write([]byte(fmt.Sprintf("%s: command not found\n", line)))
 						}
-
-						s.c.Send(event.New(
-							services.EventOptions,
-							event.Category("ssh"),
-							event.Type("ssh-session"),
-							event.SourceAddr(conn.RemoteAddr()),
-							event.DestinationAddr(conn.LocalAddr()),
-							event.Custom("ssh.sessionid", id.String()),
-							event.Custom("ssh.recording", twrc.String()),
-						))
 					} else if req.Type == "exec" {
 						defer channel.Close()
 

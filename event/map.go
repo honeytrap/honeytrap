@@ -32,14 +32,13 @@ package event
 
 import (
 	"encoding/json"
+	"sync"
 	"time"
-
-	"golang.org/x/sync/syncmap"
 )
 
 // Event defines a object which adds key-value pairs into a map type for event data.
 type Event struct {
-	sm *syncmap.Map
+	sm *sync.Map
 }
 
 func (e Event) MarshalJSON() ([]byte, error) {
@@ -58,7 +57,7 @@ func (e Event) MarshalJSON() ([]byte, error) {
 // New returns a new Event with the options applied.
 func New(opts ...Option) Event {
 	e := Event{
-		sm: new(syncmap.Map),
+		sm: new(sync.Map),
 	}
 
 	e.sm.Store("date", time.Now())

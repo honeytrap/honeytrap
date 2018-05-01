@@ -81,14 +81,15 @@ import (
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/server/profiler"
 
-	_ "github.com/honeytrap/honeytrap/pushers/console"       // Registers stdout backend.
-	_ "github.com/honeytrap/honeytrap/pushers/elasticsearch" // Registers elasticsearch backend.
-	_ "github.com/honeytrap/honeytrap/pushers/file"          // Registers file backend.
-	_ "github.com/honeytrap/honeytrap/pushers/kafka"         // Registers kafka backend.
-	_ "github.com/honeytrap/honeytrap/pushers/marija"        // Registers marija backend.
-	_ "github.com/honeytrap/honeytrap/pushers/raven"         // Registers raven backend.
-	_ "github.com/honeytrap/honeytrap/pushers/slack"         // Registers slack backend.
-	_ "github.com/honeytrap/honeytrap/pushers/splunk"        // Registers splunk backend.
+	_ "github.com/honeytrap/honeytrap/pushers/console"
+	_ "github.com/honeytrap/honeytrap/pushers/elasticsearch"
+	_ "github.com/honeytrap/honeytrap/pushers/file"
+	_ "github.com/honeytrap/honeytrap/pushers/kafka"
+	_ "github.com/honeytrap/honeytrap/pushers/marija"
+	_ "github.com/honeytrap/honeytrap/pushers/rabbitmq"
+	_ "github.com/honeytrap/honeytrap/pushers/raven"
+	_ "github.com/honeytrap/honeytrap/pushers/slack"
+	_ "github.com/honeytrap/honeytrap/pushers/splunk"
 
 	"github.com/op/go-logging"
 )

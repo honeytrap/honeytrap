@@ -101,10 +101,19 @@ func (s *service) Handle(ctx context.Context, conn net.Conn) error {
 		return err
 	}
 
-	data, err := ioutil.ReadAll(req.Body)
-	if err != nil {
+	defer req.Body.Close()
+
+	body := make([]byte, 1024)
+
+	n, err := req.Body.Read(body)
+	if err == io.EOF {
+	} else if err != nil {
 		return err
 	}
+
+	body = body[:n]
+
+	io.Copy(ioutil.Discard, req.Body)
 
 	s.c.Send(event.New(
 		services.EventOptions,
@@ -116,7 +125,7 @@ func (s *service) Handle(ctx context.Context, conn net.Conn) error {
 		event.Custom("http.proto", req.Proto),
 		event.Custom("http.host", req.Host),
 		event.Custom("http.url", req.URL.String()),
-		event.Payload(data),
+		event.Payload(body),
 		Headers(req.Header),
 	))
 

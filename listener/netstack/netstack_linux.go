@@ -161,7 +161,7 @@ func (l *netstackListener) Start(ctx context.Context) error {
 	})
 
 	for _, address := range l.Addresses {
-		go func() {
+		go func(address net.Addr) {
 			if ta, ok := address.(*net.TCPAddr); ok {
 				// Create TCP endpoint, bind it, then start listening.
 				var wq waiter.Queue
@@ -172,7 +172,11 @@ func (l *netstackListener) Start(ctx context.Context) error {
 
 				defer ep.Close()
 
-				if err := ep.Bind(tcpip.FullAddress{0, "", uint16(ta.Port)}, nil); err != nil {
+				if err := ep.Bind(tcpip.FullAddress{
+					NIC:  0,
+					Addr: "",
+					Port: uint16(ta.Port),
+				}, nil); err != nil {
 					log.Fatal("Bind failed: ", err)
 				}
 
@@ -198,7 +202,7 @@ func (l *netstackListener) Start(ctx context.Context) error {
 					l.ch <- newConn(wq, n)
 				}
 			}
-		}()
+		}(address)
 
 	}
 	return nil

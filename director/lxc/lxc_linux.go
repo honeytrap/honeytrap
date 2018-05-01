@@ -38,14 +38,12 @@ import (
 	"fmt"
 	"hash/fnv"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/honeytrap/honeytrap/director"
 	"github.com/honeytrap/honeytrap/pushers"
-
-	"golang.org/x/sync/syncmap"
-
-	"github.com/honeytrap/golxc"
+	"github.com/lxc/go-lxc"
 )
 
 var (
@@ -62,14 +60,14 @@ func New(options ...func(director.Director) error) (director.Director, error) {
 		optionFn(d)
 	}
 
-	d.cache = &syncmap.Map{} // map[string]*lxcContainer{}
+	d.cache = &sync.Map{} // map[string]*lxcContainer{}
 	return d, nil
 }
 
 type lxcDirector struct {
 	template string
 	eb       pushers.Channel
-	cache    *syncmap.Map // map[string]*lxcContainer
+	cache    *sync.Map // map[string]*lxcContainer
 }
 
 func (d *lxcDirector) SetChannel(eb pushers.Channel) {
