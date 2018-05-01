@@ -112,7 +112,9 @@ type Honeytrap struct {
 
 	dataDir string
 
-	ports map[int][]string // Maps a port to an array of service names
+	// Maps a port and a protocol to an array of service names
+	tcpPorts map[int][]string
+	udpPorts map[int][]string
 
 	services map[string]*ServiceMap // Maps a service name to a service implementation
 }
@@ -180,19 +182,27 @@ type ServiceMap struct {
 func (hc *Honeytrap) findService(conn net.Conn) (*ServiceMap, net.Conn, error) {
 	localAddr := conn.LocalAddr()
 	var port int
+	var serviceNames []string
+	// Todo(capacitorset): implement port "any"?
 	switch a := localAddr.(type) {
 	case *net.TCPAddr:
 		port = a.Port
+		tmp, ok := hc.tcpPorts[port]
+		if !ok {
+			return nil, nil, fmt.Errorf("no services for the given port")
+		}
+		serviceNames = tmp // prevent variable shadowing and "unused variable" error
 	case *net.UDPAddr:
 		port = a.Port
+		tmp, ok := hc.udpPorts[port]
+		if !ok {
+			return nil, nil, fmt.Errorf("no services for the given port")
+		}
+		serviceNames = tmp
 	default:
 		return nil, nil, fmt.Errorf("unknown address type %T", a)
 	}
-	serviceNames, ok := hc.ports[port]
-	if !ok {
-		// Todo(capacitorset): implement port "any"?
-		return nil, nil, fmt.Errorf("no services for the given port")
-	}
+
 	var serviceCandidates []*ServiceMap
 	for _, serviceName := range serviceNames {
 		serviceCandidates = append(serviceCandidates, hc.services[serviceName])
@@ -501,7 +511,8 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		log.Fatalf("Error initializing listener %s: %s", x.Type, err)
 	}
 
-	hc.ports = make(map[int][]string)
+	hc.tcpPorts = make(map[int][]string)
+	hc.udpPorts = make(map[int][]string)
 	for _, s := range hc.config.Ports {
 		x := struct {
 			Port     string   `toml:"port"`
@@ -513,18 +524,13 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			continue
 		}
 
-		addr, _, port, err := ToAddr(x.Port)
+		addr, proto, port, err := ToAddr(x.Port)
 		if err != nil {
 			log.Error("Error parsing port string: %s", err.Error())
 			continue
 		}
 		if addr == nil {
 			log.Error("Failed to bind: addr is nil")
-			continue
-		}
-
-		if _, ok := hc.ports[port]; ok {
-			log.Error("Port %d was already defined, ignoring the newer definition", port)
 			continue
 		}
 
@@ -545,7 +551,23 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 				log.Error("Unknown service '%s' in ports", service)
 			}
 		}
-		hc.ports[port] = x.Services
+		switch proto {
+		case "tcp":
+			if _, ok := hc.tcpPorts[port]; ok {
+				log.Error("Port tcp/%d was already defined, ignoring the newer definition", port)
+				continue
+			}
+			hc.tcpPorts[port] = x.Services
+		case "udp":
+			if _, ok := hc.udpPorts[port]; ok {
+				log.Error("Port udp/%d was already defined, ignoring the newer definition", port)
+				continue
+			}
+			hc.udpPorts[port] = x.Services
+		default:
+			log.Errorf("Unknown protocol %s", proto)
+			continue
+		}
 
 		a, ok := l.(listener.AddAddresser)
 		if !ok {
