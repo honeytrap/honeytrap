@@ -112,11 +112,9 @@ type Honeytrap struct {
 
 	dataDir string
 
-	// Maps a port and a protocol to an array of service names
-	tcpPorts map[int][]string
-	udpPorts map[int][]string
-
-	services map[string]*ServiceMap // Maps a service name to a service implementation
+	// Maps a port and a protocol to an array of pointers to services
+	tcpPorts map[int][]*ServiceMap
+	udpPorts map[int][]*ServiceMap
 }
 
 // New returns a new instance of a Honeytrap struct.
@@ -182,7 +180,7 @@ type ServiceMap struct {
 func (hc *Honeytrap) findService(conn net.Conn) (*ServiceMap, net.Conn, error) {
 	localAddr := conn.LocalAddr()
 	var port int
-	var serviceNames []string
+	var serviceCandidates []*ServiceMap
 	// Todo(capacitorset): implement port "any"?
 	switch a := localAddr.(type) {
 	case *net.TCPAddr:
@@ -191,22 +189,18 @@ func (hc *Honeytrap) findService(conn net.Conn) (*ServiceMap, net.Conn, error) {
 		if !ok {
 			return nil, nil, fmt.Errorf("no services for the given port")
 		}
-		serviceNames = tmp // prevent variable shadowing and "unused variable" error
+		serviceCandidates = tmp // prevent variable shadowing and "unused variable" error
 	case *net.UDPAddr:
 		port = a.Port
 		tmp, ok := hc.udpPorts[port]
 		if !ok {
 			return nil, nil, fmt.Errorf("no services for the given port")
 		}
-		serviceNames = tmp
+		serviceCandidates = tmp
 	default:
 		return nil, nil, fmt.Errorf("unknown address type %T", a)
 	}
 
-	var serviceCandidates []*ServiceMap
-	for _, serviceName := range serviceNames {
-		serviceCandidates = append(serviceCandidates, hc.services[serviceName])
-	}
 	if len(serviceCandidates) == 1 {
 		return serviceCandidates[0], conn, nil
 	}
@@ -449,7 +443,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		enabledDirectorNames = append(enabledDirectorNames, key)
 	}
 
-	hc.services = make(map[string]*ServiceMap)
+	serviceList := make(map[string]*ServiceMap)
 	// same for proxies
 	for key, s := range hc.config.Services {
 		x := struct {
@@ -489,7 +483,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		}
 
 		service := fn(options...)
-		hc.services[key] = &ServiceMap{
+		serviceList[key] = &ServiceMap{
 			Service: service,
 			Name:    key,
 			Type:    x.Type,
@@ -511,8 +505,8 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		log.Fatalf("Error initializing listener %s: %s", x.Type, err)
 	}
 
-	hc.tcpPorts = make(map[int][]string)
-	hc.udpPorts = make(map[int][]string)
+	hc.tcpPorts = make(map[int][]*ServiceMap)
+	hc.udpPorts = make(map[int][]*ServiceMap)
 	for _, s := range hc.config.Ports {
 		x := struct {
 			Port     string   `toml:"port"`
@@ -538,18 +532,14 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			log.Warningf("Port %d has no services defined", port)
 		}
 
-		// check for the existence of the named services
-		for _, service := range x.Services {
-			found := false
-			for name := range hc.services {
-				if service == name {
-					found = true
-					break
-				}
+		// Get the services from their names
+		var servicePtrs []*ServiceMap
+		for _, serviceName := range x.Services {
+			ptr, ok := serviceList[serviceName]
+			if !ok {
+				log.Error("Unknown service '%s' in ports", serviceName)
 			}
-			if !found {
-				log.Error("Unknown service '%s' in ports", service)
-			}
+			servicePtrs = append(servicePtrs, ptr)
 		}
 		switch proto {
 		case "tcp":
@@ -557,13 +547,13 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 				log.Error("Port tcp/%d was already defined, ignoring the newer definition", port)
 				continue
 			}
-			hc.tcpPorts[port] = x.Services
+			hc.tcpPorts[port] = servicePtrs
 		case "udp":
 			if _, ok := hc.udpPorts[port]; ok {
 				log.Error("Port udp/%d was already defined, ignoring the newer definition", port)
 				continue
 			}
-			hc.udpPorts[port] = x.Services
+			hc.udpPorts[port] = servicePtrs
 		default:
 			log.Errorf("Unknown protocol %s", proto)
 			continue
