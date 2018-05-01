@@ -39,7 +39,7 @@ import (
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
 
-	"github.com/op/go-logging"
+	logging "github.com/op/go-logging"
 )
 
 var log = logging.MustGetLogger("services")

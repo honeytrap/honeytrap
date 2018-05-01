@@ -393,11 +393,9 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 								event.DestinationAddr(conn.LocalAddr()),
 								event.Custom("ssh.sessionid", id.String()),
 								event.Custom("ssh.command", line),
-								// Not sure we want to keep the response in ES, but keeping it for now for clarity
-								event.Custom("ssh.response", line),
 							))
 
-							term.Write([]byte(line))
+							term.Write([]byte(fmt.Sprintf("%s: command not found\n", line)))
 						}
 					} else if req.Type == "exec" {
 						defer channel.Close()
