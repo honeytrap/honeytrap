@@ -18,9 +18,9 @@ func New() *Lua {
 	return &Lua{lua.NewState()}
 }
 
-func (L *Lua) LoadScripts() error {
+func (L *Lua) LoadScripts(script string) error {
 	// Load lua file
-	if err := L.DoFile("lua-scripts/ssh.lua"); err != nil {
+	if err := L.DoFile(script); err != nil {
 		return fmt.Errorf("error loading file: %s", err)
 	}
 
@@ -29,6 +29,11 @@ func (L *Lua) LoadScripts() error {
 
 // Handle incoming message string
 func (L *Lua) Handle(message string) (string, error) {
+	// If lua is not initialized, return default string
+	if L == nil {
+		return message, nil
+	}
+
 	// Call method to handle the message
 	if err := L.CallByParam(lua.P{
 		Fn:      L.GetGlobal("handle"),

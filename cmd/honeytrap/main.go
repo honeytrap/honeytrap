@@ -78,6 +78,11 @@ var globalFlags = []cli.Flag{
 		Usage: "Load configuration from `FILE`",
 	},
 	cli.StringFlag{
+		Name:  "lua, l",
+		Value: "",
+		Usage: "Load lua script from `FILE`",
+	},
+	cli.StringFlag{
 		Name:  "data, d",
 		Value: "~/.honeytrap",
 		Usage: "Store data in `DIR`",
@@ -147,6 +152,14 @@ func serve(c *cli.Context) error {
 	}
 	if !successful {
 		return cli.NewExitError("No configuration file found! Check your config (-c).", 1)
+	}
+
+	if s := c.String("lua"); s == "" {
+	} else if fn, err := server.WithLua(s); err != nil {
+		return cli.NewExitError(err.Error(), 1)
+	} else {
+		log.Debug("Using lua file %s\n", s)
+		options = append(options, fn)
 	}
 
 	if d := c.String("data"); d == "" {
