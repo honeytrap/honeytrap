@@ -46,26 +46,29 @@ func (*fakeTransportEndpoint) Readiness(mask waiter.EventMask) waiter.EventMask 
 	return mask
 }
 
-func (*fakeTransportEndpoint) Read(*tcpip.FullAddress) (buffer.View, *tcpip.Error) {
-	return buffer.View{}, nil
+func (*fakeTransportEndpoint) Read(*tcpip.FullAddress) (buffer.View, tcpip.ControlMessages, *tcpip.Error) {
+	return buffer.View{}, tcpip.ControlMessages{}, nil
 }
 
-func (f *fakeTransportEndpoint) Write(v buffer.View, _ *tcpip.FullAddress) (uintptr, *tcpip.Error) {
+func (f *fakeTransportEndpoint) Write(p tcpip.Payload, opts tcpip.WriteOptions) (uintptr, *tcpip.Error) {
 	if len(f.route.RemoteAddress) == 0 {
 		return 0, tcpip.ErrNoRoute
 	}
 
 	hdr := buffer.NewPrependable(int(f.route.MaxHeaderLength()))
-	err := f.route.WritePacket(&hdr, v, fakeTransNumber)
+	v, err := p.Get(p.Size())
 	if err != nil {
+		return 0, err
+	}
+	if err := f.route.WritePacket(&hdr, v, fakeTransNumber); err != nil {
 		return 0, err
 	}
 
 	return uintptr(len(v)), nil
 }
 
-func (f *fakeTransportEndpoint) Peek([][]byte) (uintptr, *tcpip.Error) {
-	return 0, nil
+func (f *fakeTransportEndpoint) Peek([][]byte) (uintptr, tcpip.ControlMessages, *tcpip.Error) {
+	return 0, tcpip.ControlMessages{}, nil
 }
 
 // SetSockOpt sets a socket option. Currently not supported.
@@ -140,6 +143,11 @@ func (f *fakeTransportEndpoint) HandlePacket(*stack.Route, stack.TransportEndpoi
 	f.proto.packetCount++
 }
 
+func (f *fakeTransportEndpoint) HandleControlPacket(stack.TransportEndpointID, stack.ControlType, uint32, *buffer.VectorisedView) {
+	// Increment the number of received control packets.
+	f.proto.controlCount++
+}
+
 type fakeTransportGoodOption bool
 
 type fakeTransportBadOption bool
@@ -153,8 +161,9 @@ type fakeTransportProtocolOptions struct {
 // fakeTransportProtocol is a transport-layer protocol descriptor. It
 // aggregates the number of packets received via endpoints of this protocol.
 type fakeTransportProtocol struct {
-	packetCount int
-	opts        fakeTransportProtocolOptions
+	packetCount  int
+	controlCount int
+	opts         fakeTransportProtocolOptions
 }
 
 func (*fakeTransportProtocol) Number() tcpip.TransportProtocolNumber {
@@ -189,9 +198,19 @@ func (f *fakeTransportProtocol) SetOption(option interface{}) *tcpip.Error {
 	}
 }
 
+func (f *fakeTransportProtocol) Option(option interface{}) *tcpip.Error {
+	switch v := option.(type) {
+	case *fakeTransportGoodOption:
+		*v = fakeTransportGoodOption(f.opts.good)
+		return nil
+	default:
+		return tcpip.ErrUnknownProtocolOption
+	}
+}
+
 func TestTransportReceive(t *testing.T) {
 	id, linkEP := channel.New(10, defaultMTU, "")
-	s := stack.New([]string{"fakeNet"}, []string{"fakeTrans"})
+	s := stack.New(&tcpip.StdClock{}, []string{"fakeNet"}, []string{"fakeTrans"})
 	if err := s.CreateNIC(1, id); err != nil {
 		t.Fatalf("CreateNIC failed: %v", err)
 	}
@@ -249,9 +268,75 @@ func TestTransportReceive(t *testing.T) {
 	}
 }
 
+func TestTransportControlReceive(t *testing.T) {
+	id, linkEP := channel.New(10, defaultMTU, "")
+	s := stack.New(&tcpip.StdClock{}, []string{"fakeNet"}, []string{"fakeTrans"})
+	if err := s.CreateNIC(1, id); err != nil {
+		t.Fatalf("CreateNIC failed: %v", err)
+	}
+
+	s.SetRouteTable([]tcpip.Route{{"\x00", "\x00", "\x00", 1}})
+
+	if err := s.AddAddress(1, fakeNetNumber, "\x01"); err != nil {
+		t.Fatalf("AddAddress failed: %v", err)
+	}
+
+	// Create endpoint and connect to remote address.
+	wq := waiter.Queue{}
+	ep, err := s.NewEndpoint(fakeTransNumber, fakeNetNumber, &wq)
+	if err != nil {
+		t.Fatalf("NewEndpoint failed: %v", err)
+	}
+
+	if err := ep.Connect(tcpip.FullAddress{0, "\x02", 0}); err != nil {
+		t.Fatalf("Connect failed: %v", err)
+	}
+
+	fakeTrans := s.TransportProtocolInstance(fakeTransNumber).(*fakeTransportProtocol)
+
+	var views [1]buffer.View
+	// Create buffer that will hold the control packet.
+	buf := buffer.NewView(2*fakeNetHeaderLen + 30)
+
+	// Outer packet contains the control protocol number.
+	buf[0] = 1
+	buf[1] = 0xfe
+	buf[2] = uint8(fakeControlProtocol)
+
+	// Make sure packet with wrong protocol is not delivered.
+	buf[fakeNetHeaderLen+0] = 0
+	buf[fakeNetHeaderLen+1] = 1
+	buf[fakeNetHeaderLen+2] = 0
+	vv := buf.ToVectorisedView(views)
+	linkEP.Inject(fakeNetNumber, &vv)
+	if fakeTrans.controlCount != 0 {
+		t.Errorf("controlCount = %d, want %d", fakeTrans.controlCount, 0)
+	}
+
+	// Make sure packet from the wrong source is not delivered.
+	buf[fakeNetHeaderLen+0] = 3
+	buf[fakeNetHeaderLen+1] = 1
+	buf[fakeNetHeaderLen+2] = byte(fakeTransNumber)
+	vv = buf.ToVectorisedView(views)
+	linkEP.Inject(fakeNetNumber, &vv)
+	if fakeTrans.controlCount != 0 {
+		t.Errorf("controlCount = %d, want %d", fakeTrans.controlCount, 0)
+	}
+
+	// Make sure packet is delivered.
+	buf[fakeNetHeaderLen+0] = 2
+	buf[fakeNetHeaderLen+1] = 1
+	buf[fakeNetHeaderLen+2] = byte(fakeTransNumber)
+	vv = buf.ToVectorisedView(views)
+	linkEP.Inject(fakeNetNumber, &vv)
+	if fakeTrans.controlCount != 1 {
+		t.Errorf("controlCount = %d, want %d", fakeTrans.controlCount, 1)
+	}
+}
+
 func TestTransportSend(t *testing.T) {
 	id, _ := channel.New(10, defaultMTU, "")
-	s := stack.New([]string{"fakeNet"}, []string{"fakeTrans"})
+	s := stack.New(&tcpip.StdClock{}, []string{"fakeNet"}, []string{"fakeTrans"})
 	if err := s.CreateNIC(1, id); err != nil {
 		t.Fatalf("CreateNIC failed: %v", err)
 	}
@@ -275,7 +360,7 @@ func TestTransportSend(t *testing.T) {
 
 	// Create buffer that will hold the payload.
 	view := buffer.NewView(30)
-	_, err = ep.Write(view, nil)
+	_, err = ep.Write(tcpip.SlicePayload(view), tcpip.WriteOptions{})
 	if err != nil {
 		t.Fatalf("write failed: %v", err)
 	}
@@ -287,8 +372,8 @@ func TestTransportSend(t *testing.T) {
 	}
 }
 
-func TestTransportSetOption(t *testing.T) {
-	s := stack.New([]string{"fakeNet"}, []string{"fakeTrans"})
+func TestTransportOptions(t *testing.T) {
+	s := stack.New(&tcpip.StdClock{}, []string{"fakeNet"}, []string{"fakeTrans"})
 
 	// Try an unsupported transport protocol.
 	if err := s.SetTransportProtocolOption(tcpip.TransportProtocolNumber(99999), fakeTransportGoodOption(false)); err != tcpip.ErrUnknownProtocol {
@@ -297,21 +382,30 @@ func TestTransportSetOption(t *testing.T) {
 
 	testCases := []struct {
 		option   interface{}
-		want     *tcpip.Error
+		wantErr  *tcpip.Error
 		verifier func(t *testing.T, p stack.TransportProtocol)
 	}{
 		{fakeTransportGoodOption(true), nil, func(t *testing.T, p stack.TransportProtocol) {
+			t.Helper()
 			fakeTrans := p.(*fakeTransportProtocol)
 			if fakeTrans.opts.good != true {
 				t.Fatalf("fakeTrans.opts.good = false, want = true")
 			}
+			var v fakeTransportGoodOption
+			if err := s.TransportProtocolOption(fakeTransNumber, &v); err != nil {
+				t.Fatalf("s.TransportProtocolOption(fakeTransNumber, &v) = %v, want = nil, where v is option %T", v, err)
+			}
+			if v != true {
+				t.Fatalf("s.TransportProtocolOption(fakeTransNumber, &v) returned v = %v, want = true", v)
+			}
+
 		}},
 		{fakeTransportBadOption(true), tcpip.ErrUnknownProtocolOption, nil},
 		{fakeTransportInvalidValueOption(1), tcpip.ErrInvalidOptionValue, nil},
 	}
 	for _, tc := range testCases {
-		if got := s.SetTransportProtocolOption(fakeTransNumber, tc.option); tc.want != got {
-			t.Errorf("s.SetOption(fakeTrans, %v) = %v, want = %v", tc.option, got, tc.want)
+		if got := s.SetTransportProtocolOption(fakeTransNumber, tc.option); got != tc.wantErr {
+			t.Errorf("s.SetTransportProtocolOption(fakeTrans, %v) = %v, want = %v", tc.option, got, tc.wantErr)
 		}
 		if tc.verifier != nil {
 			tc.verifier(t, s.TransportProtocolInstance(fakeTransNumber))

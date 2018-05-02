@@ -19,21 +19,24 @@ import (
 type NIC struct {
 	stack  *Stack
 	id     tcpip.NICID
+	name   string
 	linkEP LinkEndpoint
 
 	demux *transportDemuxer
 
 	mu          sync.RWMutex
+	spoofing    bool
 	promiscuous bool
 	primary     map[tcpip.NetworkProtocolNumber]*ilist.List
 	endpoints   map[NetworkEndpointID]*referencedNetworkEndpoint
 	subnets     []tcpip.Subnet
 }
 
-func newNIC(stack *Stack, id tcpip.NICID, ep LinkEndpoint) *NIC {
+func newNIC(stack *Stack, id tcpip.NICID, name string, ep LinkEndpoint) *NIC {
 	return &NIC{
 		stack:     stack,
 		id:        id,
+		name:      name,
 		linkEP:    ep,
 		demux:     newTransportDemuxer(stack),
 		primary:   make(map[tcpip.NetworkProtocolNumber]*ilist.List),
@@ -51,6 +54,13 @@ func (n *NIC) attachLinkEndpoint() {
 func (n *NIC) setPromiscuousMode(enable bool) {
 	n.mu.Lock()
 	n.promiscuous = enable
+	n.mu.Unlock()
+}
+
+// setSpoofing enables or disables address spoofing.
+func (n *NIC) setSpoofing(enable bool) {
+	n.mu.Lock()
+	n.spoofing = enable
 	n.mu.Unlock()
 }
 
@@ -76,15 +86,33 @@ func (n *NIC) primaryEndpoint(protocol tcpip.NetworkProtocolNumber) *referencedN
 }
 
 // findEndpoint finds the endpoint, if any, with the given address.
-func (n *NIC) findEndpoint(address tcpip.Address) *referencedNetworkEndpoint {
-	n.mu.RLock()
-	defer n.mu.RUnlock()
+func (n *NIC) findEndpoint(protocol tcpip.NetworkProtocolNumber, address tcpip.Address) *referencedNetworkEndpoint {
+	id := NetworkEndpointID{address}
 
-	ref := n.endpoints[NetworkEndpointID{address}]
-	if ref == nil || !ref.tryIncRef() {
-		return nil
+	n.mu.RLock()
+	ref := n.endpoints[id]
+	if ref != nil && !ref.tryIncRef() {
+		ref = nil
+	}
+	spoofing := n.spoofing
+	n.mu.RUnlock()
+
+	if ref != nil || !spoofing {
+		return ref
 	}
 
+	// Try again with the lock in exclusive mode. If we still can't get the
+	// endpoint, create a new "temporary" endpoint. It will only exist while
+	// there's a route through it.
+	n.mu.Lock()
+	ref = n.endpoints[id]
+	if ref == nil || !ref.tryIncRef() {
+		ref, _ = n.addAddressLocked(protocol, address, true)
+		if ref != nil {
+			ref.holdsInsertRef = false
+		}
+	}
+	n.mu.Unlock()
 	return ref
 }
 
@@ -109,7 +137,20 @@ func (n *NIC) addAddressLocked(protocol tcpip.NetworkProtocolNumber, addr tcpip.
 		n.removeEndpointLocked(ref)
 	}
 
-	ref := newReferencedNetworkEndpoint(ep, protocol, n)
+	ref := &referencedNetworkEndpoint{
+		refs:           1,
+		ep:             ep,
+		nic:            n,
+		protocol:       protocol,
+		holdsInsertRef: true,
+	}
+
+	// Set up cache if link address resolution exists for this protocol.
+	if n.linkEP.Capabilities()&CapabilityResolutionRequired != 0 {
+		if linkRes := n.stack.linkAddrResolvers[protocol]; linkRes != nil {
+			ref.linkCache = n.stack
+		}
+	}
 
 	n.endpoints[id] = ref
 
@@ -133,6 +174,20 @@ func (n *NIC) AddAddress(protocol tcpip.NetworkProtocolNumber, addr tcpip.Addres
 	n.mu.Unlock()
 
 	return err
+}
+
+// Addresses returns the addresses associated with this NIC.
+func (n *NIC) Addresses() []tcpip.ProtocolAddress {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	addrs := make([]tcpip.ProtocolAddress, 0, len(n.endpoints))
+	for nid, ep := range n.endpoints {
+		addrs = append(addrs, tcpip.ProtocolAddress{
+			Protocol: ep.protocol,
+			Address:  nid.LocalAddress,
+		})
+	}
+	return addrs
 }
 
 // AddSubnet adds a new subnet to n, so that it starts accepting packets
@@ -312,6 +367,37 @@ func (n *NIC) DeliverTransportPacket(r *Route, protocol tcpip.TransportProtocolN
 	}
 }
 
+// DeliverTransportControlPacket delivers control packets to the appropriate
+// transport protocol endpoint.
+func (n *NIC) DeliverTransportControlPacket(local, remote tcpip.Address, net tcpip.NetworkProtocolNumber, trans tcpip.TransportProtocolNumber, typ ControlType, extra uint32, vv *buffer.VectorisedView) {
+	state, ok := n.stack.transportProtocols[trans]
+	if !ok {
+		return
+	}
+
+	transProto := state.proto
+
+	// ICMPv4 only guarantees that 8 bytes of the transport protocol will
+	// be present in the payload. We know that the ports are within the
+	// first 8 bytes for all known transport protocols.
+	if len(vv.First()) < 8 {
+		return
+	}
+
+	srcPort, dstPort, err := transProto.ParsePorts(vv.First())
+	if err != nil {
+		return
+	}
+
+	id := TransportEndpointID{srcPort, local, dstPort, remote}
+	if n.demux.deliverControlPacket(net, trans, typ, extra, vv, id) {
+		return
+	}
+	if n.stack.demux.deliverControlPacket(net, trans, typ, extra, vv, id) {
+		return
+	}
+}
+
 // ID returns the identifier of n.
 func (n *NIC) ID() tcpip.NICID {
 	return n.id
@@ -324,21 +410,15 @@ type referencedNetworkEndpoint struct {
 	nic      *NIC
 	protocol tcpip.NetworkProtocolNumber
 
+	// linkCache is set if link address resolution is enabled for this
+	// protocol. Set to nil otherwise.
+	linkCache LinkAddressCache
+
 	// holdsInsertRef is protected by the NIC's mutex. It indicates whether
 	// the reference count is biased by 1 due to the insertion of the
 	// endpoint. It is reset to false when RemoveAddress is called on the
 	// NIC.
 	holdsInsertRef bool
-}
-
-func newReferencedNetworkEndpoint(ep NetworkEndpoint, protocol tcpip.NetworkProtocolNumber, nic *NIC) *referencedNetworkEndpoint {
-	return &referencedNetworkEndpoint{
-		refs:           1,
-		ep:             ep,
-		nic:            nic,
-		protocol:       protocol,
-		holdsInsertRef: true,
-	}
 }
 
 // decRef decrements the ref count and cleans up the endpoint once it reaches

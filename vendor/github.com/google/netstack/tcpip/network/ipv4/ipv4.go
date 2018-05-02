@@ -45,7 +45,7 @@ type endpoint struct {
 	linkEP        stack.LinkEndpoint
 	dispatcher    stack.TransportDispatcher
 	echoRequests  chan echoRequest
-	fragmentation fragmentation.Fragmentation
+	fragmentation *fragmentation.Fragmentation
 }
 
 func newEndpoint(nicid tcpip.NICID, addr tcpip.Address, dispatcher stack.TransportDispatcher, linkEP stack.LinkEndpoint) *endpoint {
@@ -54,7 +54,7 @@ func newEndpoint(nicid tcpip.NICID, addr tcpip.Address, dispatcher stack.Transpo
 		linkEP:        linkEP,
 		dispatcher:    dispatcher,
 		echoRequests:  make(chan echoRequest, 10),
-		fragmentation: fragmentation.NewFragmentation(fragmentation.MemoryLimit, fragmentation.DefaultReassembleTimeout),
+		fragmentation: fragmentation.NewFragmentation(fragmentation.HighFragThreshold, fragmentation.LowFragThreshold, fragmentation.DefaultReassembleTimeout),
 	}
 	copy(e.address[:], addr)
 	e.id = stack.NetworkEndpointID{tcpip.Address(e.address[:])}
@@ -67,11 +67,12 @@ func newEndpoint(nicid tcpip.NICID, addr tcpip.Address, dispatcher stack.Transpo
 // MTU implements stack.NetworkEndpoint.MTU. It returns the link-layer MTU minus
 // the network layer max header length.
 func (e *endpoint) MTU() uint32 {
-	lmtu := e.linkEP.MTU()
-	if lmtu > maxTotalSize {
-		lmtu = maxTotalSize
-	}
-	return lmtu - uint32(e.MaxHeaderLength())
+	return calculateMTU(e.linkEP.MTU())
+}
+
+// Capabilities implements stack.NetworkEndpoint.Capabilities.
+func (e *endpoint) Capabilities() stack.LinkEndpointCapabilities {
+	return e.linkEP.Capabilities()
 }
 
 // NICID returns the ID of the NIC this endpoint belongs to.
@@ -137,7 +138,7 @@ func (e *endpoint) HandlePacket(r *stack.Route, vv *buffer.VectorisedView) {
 		}
 		vv = &tt
 	}
-	p := tcpip.TransportProtocolNumber(h.Protocol())
+	p := h.TransportProtocol()
 	if p == header.ICMPv4ProtocolNumber {
 		e.handleICMP(r, vv)
 		return
@@ -184,6 +185,20 @@ func (p *protocol) NewEndpoint(nicid tcpip.NICID, addr tcpip.Address, linkAddrCa
 // SetOption implements NetworkProtocol.SetOption.
 func (p *protocol) SetOption(option interface{}) *tcpip.Error {
 	return tcpip.ErrUnknownProtocolOption
+}
+
+// Option implements NetworkProtocol.Option.
+func (p *protocol) Option(option interface{}) *tcpip.Error {
+	return tcpip.ErrUnknownProtocolOption
+}
+
+// calculateMTU calculates the network-layer payload MTU based on the link-layer
+// payload mtu.
+func calculateMTU(mtu uint32) uint32 {
+	if mtu > maxTotalSize {
+		mtu = maxTotalSize
+	}
+	return mtu - header.IPv4MinimumSize
 }
 
 // hashRoute calculates a hash value for the given route. It uses the source &

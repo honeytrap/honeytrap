@@ -68,7 +68,7 @@ func writer(ch chan struct{}, ep tcpip.Endpoint) {
 
 		v.CapLength(n)
 		for len(v) > 0 {
-			n, err := ep.Write(v, nil)
+			n, err := ep.Write(tcpip.SlicePayload(v), tcpip.WriteOptions{})
 			if err != nil {
 				fmt.Println("Write failed:", err)
 				return
@@ -113,7 +113,7 @@ func main() {
 
 	// Create the stack with ipv4 and tcp protocols, then add a tun-based
 	// NIC and ipv4 address.
-	s := stack.New([]string{ipv4.ProtocolName}, []string{tcp.ProtocolName})
+	s := stack.New(&tcpip.StdClock{}, []string{ipv4.ProtocolName}, []string{tcp.ProtocolName})
 
 	mtu, err := rawfile.GetMTU(tunName)
 	if err != nil {
@@ -125,7 +125,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	linkID := fdbased.New(fd, mtu, nil)
+	linkID := fdbased.New(&fdbased.Options{FD: fd, MTU: mtu})
 	if err := s.CreateNIC(1, sniffer.New(linkID)); err != nil {
 		log.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func main() {
 	// connection from its side.
 	wq.EventRegister(&waitEntry, waiter.EventIn)
 	for {
-		v, err := ep.Read(nil)
+		v, _, err := ep.Read(nil)
 		if err != nil {
 			if err == tcpip.ErrClosedForReceive {
 				break

@@ -7,6 +7,7 @@ package udp
 import (
 	"sync"
 
+	"github.com/google/netstack/sleep"
 	"github.com/google/netstack/tcpip"
 	"github.com/google/netstack/tcpip/buffer"
 	"github.com/google/netstack/tcpip/header"
@@ -18,6 +19,8 @@ type udpPacket struct {
 	udpPacketEntry
 	senderAddress tcpip.FullAddress
 	data          buffer.VectorisedView
+	timestamp     int64
+	hasTimestamp  bool
 	// views is used as buffer for data when its length is large
 	// enough to store a VectorisedView.
 	views [8]buffer.View
@@ -51,6 +54,7 @@ type endpoint struct {
 	rcvBufSizeMax int
 	rcvBufSize    int
 	rcvClosed     bool
+	rcvTimestamp  bool
 
 	// The following fields are protected by the mu mutex.
 	mu         sync.RWMutex
@@ -74,7 +78,6 @@ type endpoint struct {
 }
 
 func newEndpoint(stack *stack.Stack, netProto tcpip.NetworkProtocolNumber, waiterQueue *waiter.Queue) *endpoint {
-	// TODO: Use the send buffer size initialized here.
 	return &endpoint{
 		stack:         stack,
 		netProto:      netProto,
@@ -134,7 +137,7 @@ func (e *endpoint) Close() {
 
 // Read reads data from the endpoint. This method does not block if
 // there is no data pending.
-func (e *endpoint) Read(addr *tcpip.FullAddress) (buffer.View, *tcpip.Error) {
+func (e *endpoint) Read(addr *tcpip.FullAddress) (buffer.View, tcpip.ControlMessages, *tcpip.Error) {
 	e.rcvMu.Lock()
 
 	if e.rcvList.Empty() {
@@ -143,12 +146,13 @@ func (e *endpoint) Read(addr *tcpip.FullAddress) (buffer.View, *tcpip.Error) {
 			err = tcpip.ErrClosedForReceive
 		}
 		e.rcvMu.Unlock()
-		return buffer.View{}, err
+		return buffer.View{}, tcpip.ControlMessages{}, err
 	}
 
 	p := e.rcvList.Front()
 	e.rcvList.Remove(p)
 	e.rcvBufSize -= p.data.Size()
+	ts := e.rcvTimestamp
 
 	e.rcvMu.Unlock()
 
@@ -156,7 +160,12 @@ func (e *endpoint) Read(addr *tcpip.FullAddress) (buffer.View, *tcpip.Error) {
 		*addr = p.senderAddress
 	}
 
-	return p.data.ToView(), nil
+	if ts && !p.hasTimestamp {
+		// Linux uses the current time.
+		p.timestamp = e.stack.NowNanoseconds()
+	}
+
+	return p.data.ToView(), tcpip.ControlMessages{HasTimestamp: ts, Timestamp: p.timestamp}, nil
 }
 
 // prepareForWrite prepares the endpoint for sending data. In particular, it
@@ -201,7 +210,14 @@ func (e *endpoint) prepareForWrite(to *tcpip.FullAddress) (retry bool, err *tcpi
 
 // Write writes data to the endpoint's peer. This method does not block
 // if the data cannot be written.
-func (e *endpoint) Write(v buffer.View, to *tcpip.FullAddress) (uintptr, *tcpip.Error) {
+func (e *endpoint) Write(p tcpip.Payload, opts tcpip.WriteOptions) (uintptr, *tcpip.Error) {
+	// MSG_MORE is unimplemented. (This also means that MSG_EOR is a no-op.)
+	if opts.More {
+		return 0, tcpip.ErrInvalidOptionValue
+	}
+
+	to := opts.To
+
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
@@ -217,9 +233,27 @@ func (e *endpoint) Write(v buffer.View, to *tcpip.FullAddress) (uintptr, *tcpip.
 		}
 	}
 
-	route := &e.route
-	dstPort := e.dstPort
-	if to != nil {
+	var route *stack.Route
+	var dstPort uint16
+	if to == nil {
+		route = &e.route
+		dstPort = e.dstPort
+
+		if route.IsResolutionRequired() {
+			// Promote lock to exclusive if using a shared route, given that it may need to
+			// change in Route.Resolve() call below.
+			e.mu.RUnlock()
+			defer e.mu.RLock()
+
+			e.mu.Lock()
+			defer e.mu.Unlock()
+
+			// Recheck state after lock was re-acquired.
+			if e.state != stateConnected {
+				return 0, tcpip.ErrInvalidEndpointState
+			}
+		}
+	} else {
 		// Reject destination address if it goes through a different
 		// NIC than the endpoint was bound to.
 		nicid := to.NIC
@@ -249,13 +283,33 @@ func (e *endpoint) Write(v buffer.View, to *tcpip.FullAddress) (uintptr, *tcpip.
 		dstPort = to.Port
 	}
 
+	if route.IsResolutionRequired() {
+		waker := &sleep.Waker{}
+		if err := route.Resolve(waker); err != nil {
+			if err == tcpip.ErrWouldBlock {
+				// Link address needs to be resolved. Resolution was triggered the background.
+				// Better luck next time.
+				//
+				// TODO: queue up the request and send after link address
+				// is resolved.
+				route.RemoveWaker(waker)
+				return 0, tcpip.ErrNoLinkAddress
+			}
+			return 0, err
+		}
+	}
+
+	v, err := p.Get(p.Size())
+	if err != nil {
+		return 0, err
+	}
 	sendUDP(route, v, e.id.LocalPort, dstPort)
 	return uintptr(len(v)), nil
 }
 
 // Peek only returns data from a single datagram, so do nothing here.
-func (e *endpoint) Peek([][]byte) (uintptr, *tcpip.Error) {
-	return 0, nil
+func (e *endpoint) Peek([][]byte) (uintptr, tcpip.ControlMessages, *tcpip.Error) {
+	return 0, tcpip.ControlMessages{}, nil
 }
 
 // SetSockOpt sets a socket option. Currently not supported.
@@ -277,6 +331,11 @@ func (e *endpoint) SetSockOpt(opt interface{}) *tcpip.Error {
 		}
 
 		e.v6only = v != 0
+
+	case tcpip.TimestampOption:
+		e.rcvMu.Lock()
+		e.rcvTimestamp = v != 0
+		e.rcvMu.Unlock()
 	}
 	return nil
 }
@@ -325,6 +384,14 @@ func (e *endpoint) GetSockOpt(opt interface{}) *tcpip.Error {
 		}
 		e.rcvMu.Unlock()
 		return nil
+
+	case *tcpip.TimestampOption:
+		e.rcvMu.Lock()
+		*o = 0
+		if e.rcvTimestamp {
+			*o = 1
+		}
+		e.rcvMu.Unlock()
 	}
 
 	return tcpip.ErrUnknownProtocolOption
@@ -339,20 +406,22 @@ func sendUDP(r *stack.Route, data buffer.View, localPort, remotePort uint16) *tc
 	// Initialize the header.
 	udp := header.UDP(hdr.Prepend(header.UDPMinimumSize))
 
-	length := uint16(hdr.UsedLength())
-	xsum := r.PseudoHeaderChecksum(ProtocolNumber)
-	if data != nil {
-		length += uint16(len(data))
-		xsum = header.Checksum(data, xsum)
-	}
-
+	length := uint16(hdr.UsedLength()) + uint16(len(data))
 	udp.Encode(&header.UDPFields{
 		SrcPort: localPort,
 		DstPort: remotePort,
 		Length:  length,
 	})
 
-	udp.SetChecksum(^udp.CalculateChecksum(xsum, length))
+	// Only calculate the checksum if offloading isn't supported.
+	if r.Capabilities()&stack.CapabilityChecksumOffload == 0 {
+		xsum := r.PseudoHeaderChecksum(ProtocolNumber)
+		if data != nil {
+			xsum = header.Checksum(data, xsum)
+		}
+
+		udp.SetChecksum(^udp.CalculateChecksum(xsum, length))
+	}
 
 	return r.WritePacket(&hdr, data, ProtocolNumber)
 }
@@ -426,7 +495,7 @@ func (e *endpoint) Connect(addr tcpip.FullAddress) *tcpip.Error {
 		LocalAddress:  r.LocalAddress,
 		LocalPort:     localPort,
 		RemotePort:    addr.Port,
-		RemoteAddress: addr.Addr,
+		RemoteAddress: r.RemoteAddress,
 	}
 
 	// Even if we're connected, this endpoint can still be used to send
@@ -554,7 +623,7 @@ func (e *endpoint) bindLocked(addr tcpip.FullAddress, commit func() *tcpip.Error
 
 	if len(addr.Addr) != 0 {
 		// A local address was specified, verify that it's valid.
-		if e.stack.CheckLocalAddress(addr.NIC, addr.Addr) == 0 {
+		if e.stack.CheckLocalAddress(addr.NIC, netProto, addr.Addr) == 0 {
 			return tcpip.ErrBadLocalAddress
 		}
 	}
@@ -686,10 +755,19 @@ func (e *endpoint) HandlePacket(r *stack.Route, id stack.TransportEndpointID, vv
 	e.rcvList.PushBack(pkt)
 	e.rcvBufSize += vv.Size()
 
+	if e.rcvTimestamp {
+		pkt.timestamp = e.stack.NowNanoseconds()
+		pkt.hasTimestamp = true
+	}
+
 	e.rcvMu.Unlock()
 
 	// Notify any waiters that there's data to be read now.
 	if wasEmpty {
 		e.waiterQueue.Notify(waiter.EventIn)
 	}
+}
+
+// HandleControlPacket implements stack.TransportEndpoint.HandleControlPacket.
+func (e *endpoint) HandleControlPacket(id stack.TransportEndpointID, typ stack.ControlType, extra uint32, vv *buffer.VectorisedView) {
 }

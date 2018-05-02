@@ -16,11 +16,11 @@ import (
 )
 
 const (
-	// minRTO is the minimium allowed value for the retransmit timeout.
+	// minRTO is the minimum allowed value for the retransmit timeout.
 	minRTO = 200 * time.Millisecond
 
-	// initalCwnd is the initial congestion window.
-	initialCwnd = 10
+	// InitialCwnd is the initial congestion window.
+	InitialCwnd = 10
 )
 
 // sender holds the state necessary to send TCP segments.
@@ -120,7 +120,7 @@ type fastRecovery struct {
 func newSender(ep *endpoint, iss, irs seqnum.Value, sndWnd seqnum.Size, mss uint16, sndWndScale int) *sender {
 	s := &sender{
 		ep:               ep,
-		sndCwnd:          initialCwnd,
+		sndCwnd:          InitialCwnd,
 		sndSsthresh:      math.MaxInt64,
 		sndWnd:           sndWnd,
 		sndUna:           iss + 1,
@@ -131,6 +131,10 @@ func newSender(ep *endpoint, iss, irs seqnum.Value, sndWnd seqnum.Size, mss uint
 		lastSendTime:     time.Now(),
 		maxPayloadSize:   int(mss),
 		maxSentAck:       irs + 1,
+		fr: fastRecovery{
+			// See: https://tools.ietf.org/html/rfc6582#section-3.2 Step 1.
+			last: iss,
+		},
 	}
 
 	// A negative sndWndScale means that no scaling is in use, otherwise we
@@ -139,18 +143,63 @@ func newSender(ep *endpoint, iss, irs seqnum.Value, sndWnd seqnum.Size, mss uint
 		s.sndWndScale = uint8(sndWndScale)
 	}
 
-	m := int(ep.route.MTU()) - header.TCPMinimumSize
-	// Adjust the maxPayloadsize to account for the timestamp option.
-	if ep.sendTSOk {
-		m -= header.TCPTimeStampOptionSize
-	}
-	if m < s.maxPayloadSize {
-		s.maxPayloadSize = m
-	}
+	s.updateMaxPayloadSize(int(ep.route.MTU()), 0)
 
 	s.resendTimer.init(&s.resendWaker)
 
 	return s
+}
+
+// updateMaxPayloadSize updates the maximum payload size based on the given
+// MTU. If this is in response to "packet too big" control packets (indicated
+// by the count argument), it also reduces the number of oustanding packets and
+// attempts to retransmit the first packet above the MTU size.
+func (s *sender) updateMaxPayloadSize(mtu, count int) {
+	m := mtu - header.TCPMinimumSize
+
+	// Calculate the maximum option size.
+	var maxSackBlocks [header.TCPMaxSACKBlocks]header.SACKBlock
+	options := s.ep.makeOptions(maxSackBlocks[:])
+	m -= len(options)
+	putOptions(options)
+
+	// We don't adjust up for now.
+	if m >= s.maxPayloadSize {
+		return
+	}
+
+	// Make sure we can transmit at least one byte.
+	if m <= 0 {
+		m = 1
+	}
+
+	s.maxPayloadSize = m
+
+	s.outstanding -= count
+	if s.outstanding < 0 {
+		s.outstanding = 0
+	}
+
+	// Rewind writeNext to the first segment exceeding the MTU. Do nothing
+	// if it is already before such a packet.
+	for seg := s.writeList.Front(); seg != nil; seg = seg.Next() {
+		if seg == s.writeNext {
+			// We got to writeNext before we could find a segment
+			// exceeding the MTU.
+			break
+		}
+
+		if seg.data.Size() > m {
+			// We found a segment exceeding the MTU. Rewind
+			// writeNext and try to retransmit it.
+			s.writeNext = seg
+			break
+		}
+	}
+
+	// Since we likely reduced the number of outstanding packets, we may be
+	// ready to send some more.
+	s.sendData()
 }
 
 // sendAck sends an ACK segment.
@@ -222,16 +271,23 @@ func (s *sender) retransmitTimerExpired() bool {
 	s.rto *= 2
 
 	if s.fr.active {
-		// We were attempting fast recovery but were not successfull.
+		// We were attempting fast recovery but were not successful.
 		// Leave the state. We don't need to update ssthresh because it
 		// has already been updated when entered fast-recovery.
 		s.leaveFastRecovery()
-	} else {
-		// We lost a packet, so reduce ssthresh.
-		s.reduceSlowStartThreshold()
 	}
 
-	// Reduce the congestion window to 1, i.e., enter slow-start.
+	// See: https://tools.ietf.org/html/rfc6582#section-3.2 Step 4.
+	// We store the highest sequence number transmitted in cases where
+	// we were not in fast recovery.
+	s.fr.last = s.sndNxt - 1
+
+	// We lost a packet, so reduce ssthresh.
+	s.reduceSlowStartThreshold()
+
+	// Reduce the congestion window to 1, i.e., enter slow-start. Per
+	// RFC 5681, page 7, we must use 1 regardless of the value of the
+	// initial congestion window.
 	s.sndCwnd = 1
 
 	// Mark the next segment to be sent as the first unacknowledged one and
@@ -257,8 +313,8 @@ func (s *sender) sendData() {
 	// transmission if the TCP has not sent data in the interval exceeding
 	// the retrasmission timeout."
 	if !s.fr.active && time.Now().Sub(s.lastSendTime) > s.rto {
-		if s.sndCwnd > initialCwnd {
-			s.sndCwnd = initialCwnd
+		if s.sndCwnd > InitialCwnd {
+			s.sndCwnd = InitialCwnd
 		}
 	}
 
@@ -277,8 +333,23 @@ func (s *sender) sendData() {
 
 		var segEnd seqnum.Value
 		if seg.data.Size() == 0 {
-			// We're sending a FIN.
-			seg.flags = flagAck | flagFin
+			seg.flags = flagAck
+
+			s.ep.rcvListMu.Lock()
+			rcvBufUsed := s.ep.rcvBufUsed
+			s.ep.rcvListMu.Unlock()
+
+			s.ep.mu.Lock()
+			// We're sending a FIN by default
+			fl := flagFin
+			if (s.ep.shutdownFlags&tcpip.ShutdownRead) != 0 && rcvBufUsed > 0 {
+				// If there is unread data we must send a RST.
+				// For more information see RFC 2525 section 2.17.
+				fl = flagRst
+			}
+			s.ep.mu.Unlock()
+			seg.flags |= uint8(fl)
+
 			segEnd = seg.sequenceNumber.Add(1)
 		} else {
 			// We're sending a non-FIN segment.
@@ -325,7 +396,11 @@ func (s *sender) sendData() {
 func (s *sender) enterFastRecovery() {
 	// Save state to reflect we're now in fast recovery.
 	s.reduceSlowStartThreshold()
-	s.sndCwnd = s.sndSsthresh
+	// Save state to reflect we're now in fast recovery.
+	// See : https://tools.ietf.org/html/rfc5681#section-3.2 Step 3.
+	// We inflat the cwnd by 3 to account for the 3 packets which triggered
+	// the 3 duplicate ACKs and are now not in flight.
+	s.sndCwnd = s.sndSsthresh + 3
 	s.fr.first = s.sndUna
 	s.fr.last = s.sndNxt - 1
 	s.fr.maxCwnd = s.sndCwnd + s.outstanding
@@ -334,8 +409,12 @@ func (s *sender) enterFastRecovery() {
 
 func (s *sender) leaveFastRecovery() {
 	s.fr.active = false
+	s.fr.first = 0
+	s.fr.last = s.sndNxt - 1
+	s.fr.maxCwnd = 0
+	s.dupAckCount = 0
 
-	// Deflate cwnd. It had been artifically inflated when new dups arrived.
+	// Deflate cwnd. It had been artificially inflated when new dups arrived.
 	s.sndCwnd = s.sndSsthresh
 }
 
@@ -351,7 +430,7 @@ func (s *sender) checkDuplicateAck(seg *segment) bool {
 			return false
 		}
 
-		// Leave fast recovery if it acknowleges all the data covered by
+		// Leave fast recovery if it acknowledges all the data covered by
 		// this fast recovery session.
 		if s.fr.last.LessThan(ack) {
 			s.leaveFastRecovery()
@@ -400,6 +479,15 @@ func (s *sender) checkDuplicateAck(seg *segment) bool {
 		return false
 	}
 
+	// See: https://tools.ietf.org/html/rfc6582#section-3.2 Step 2
+	//
+	// We only do the check here, the incrementing of last to the highest
+	// sequence number transmitted till now is done when enterFastRecovery
+	// is invoked.
+	if !s.fr.last.LessThan(seg.ackNumber) {
+		s.dupAckCount = 0
+		return false
+	}
 	s.enterFastRecovery()
 	s.dupAckCount = 0
 	return true
@@ -463,7 +551,7 @@ func (s *sender) handleRcvdSegment(seg *segment) {
 		s.sndUna = ack
 
 		ackLeft := acked
-		originalOutsanding := s.outstanding
+		originalOutstanding := s.outstanding
 		for ackLeft > 0 {
 			// We use logicalLen here because we can have FIN
 			// segments (which are always at the end of list) that
@@ -488,9 +576,11 @@ func (s *sender) handleRcvdSegment(seg *segment) {
 		// Update the send buffer usage and notify potential waiters.
 		s.ep.updateSndBufferUsage(int(acked))
 
-		// Update the congestion window based on the number of
-		// acknowledged packets.
-		s.updateCwnd(originalOutsanding - s.outstanding)
+		// If we are not in fast recovery then update the congestion
+		// window based on the number of acknowledged packets.
+		if !s.fr.active {
+			s.updateCwnd(originalOutstanding - s.outstanding)
+		}
 
 		// It is possible for s.outstanding to drop below zero if we get
 		// a retransmit timeout, reset outstanding to zero but later
