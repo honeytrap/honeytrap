@@ -93,6 +93,27 @@ func Headers(headers map[string][]string) event.Option {
 }
 
 var ethereumMethods = map[string]func(map[string]interface{}) map[string]interface{}{
+	"eth_getBalance": func(m map[string]interface{}) map[string]interface{} {
+		return map[string]interface{}{
+			"id":      m["id"],
+			"jsonrpc": m["jsonrpc"],
+			"result":  "0x0234c8a3397aab58", // 158972490234375000
+		}
+	},
+	"net_version": func(m map[string]interface{}) map[string]interface{} {
+		return map[string]interface{}{
+			"id":      m["id"],
+			"jsonrpc": m["jsonrpc"],
+			"result":  "1",
+		}
+	},
+	"miner_setEtherbase": func(m map[string]interface{}) map[string]interface{} {
+		return map[string]interface{}{
+			"id":      m["id"],
+			"jsonrpc": m["jsonrpc"],
+			"result":  true,
+		}
+	},
 	"eth_mining": func(m map[string]interface{}) map[string]interface{} {
 		return map[string]interface{}{
 			"id":      m["id"],
