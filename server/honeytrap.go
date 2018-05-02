@@ -512,6 +512,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 	for _, s := range hc.config.Ports {
 		x := struct {
 			Port     string   `toml:"port"`
+			Ports    []string `toml:"ports"`
 			Services []string `toml:"services"`
 		}{}
 
@@ -520,56 +521,72 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			continue
 		}
 
-		addr, proto, port, err := ToAddr(x.Port)
-		if err != nil {
-			log.Error("Error parsing port string: %s", err.Error())
-			continue
+		var ports []string
+		if x.Ports != nil {
+			ports = x.Ports
 		}
-		if addr == nil {
-			log.Error("Failed to bind: addr is nil")
+		if x.Port != "" {
+			ports = append(ports, x.Port)
+		}
+		if x.Port != "" && x.Ports != nil {
+			log.Warning("Both \"port\" and \"ports\" were defined, this can be confusing")
+		} else if x.Port == "" && x.Ports == nil {
+			log.Error("Neither \"port\" nor \"ports\" were defined")
 			continue
 		}
 
 		if len(x.Services) == 0 {
-			log.Warningf("Port %d has no services defined", port)
+			log.Warning("No services defined for port(s) " + strings.Join(ports, ", "))
 		}
 
-		// Get the services from their names
-		var servicePtrs []*ServiceMap
-		for _, serviceName := range x.Services {
-			ptr, ok := serviceList[serviceName]
+		for _, portStr := range ports {
+			addr, proto, port, err := ToAddr(portStr)
+			if err != nil {
+				log.Error("Error parsing port string: %s", err.Error())
+				continue
+			}
+			if addr == nil {
+				log.Error("Failed to bind: addr is nil")
+				continue
+			}
+
+			// Get the services from their names
+			var servicePtrs []*ServiceMap
+			for _, serviceName := range x.Services {
+				ptr, ok := serviceList[serviceName]
+				if !ok {
+					log.Error("Unknown service '%s' in ports", serviceName)
+				}
+				servicePtrs = append(servicePtrs, ptr)
+				isServiceUsed[serviceName] = true
+			}
+			switch proto {
+			case "tcp":
+				if _, ok := hc.tcpPorts[port]; ok {
+					log.Error("Port tcp/%d was already defined, ignoring the newer definition", port)
+					continue
+				}
+				hc.tcpPorts[port] = servicePtrs
+			case "udp":
+				if _, ok := hc.udpPorts[port]; ok {
+					log.Error("Port udp/%d was already defined, ignoring the newer definition", port)
+					continue
+				}
+				hc.udpPorts[port] = servicePtrs
+			default:
+				log.Errorf("Unknown protocol %s", proto)
+				continue
+			}
+
+			a, ok := l.(listener.AddAddresser)
 			if !ok {
-				log.Error("Unknown service '%s' in ports", serviceName)
-			}
-			servicePtrs = append(servicePtrs, ptr)
-			isServiceUsed[serviceName] = true
-		}
-		switch proto {
-		case "tcp":
-			if _, ok := hc.tcpPorts[port]; ok {
-				log.Error("Port tcp/%d was already defined, ignoring the newer definition", port)
+				log.Error("Listener error")
 				continue
 			}
-			hc.tcpPorts[port] = servicePtrs
-		case "udp":
-			if _, ok := hc.udpPorts[port]; ok {
-				log.Error("Port udp/%d was already defined, ignoring the newer definition", port)
-				continue
-			}
-			hc.udpPorts[port] = servicePtrs
-		default:
-			log.Errorf("Unknown protocol %s", proto)
-			continue
-		}
+			a.AddAddress(addr)
 
-		a, ok := l.(listener.AddAddresser)
-		if !ok {
-			log.Error("Listener error")
-			continue
+			log.Infof("Configured port %s/%s", addr.Network(), addr.String())
 		}
-		a.AddAddress(addr)
-
-		log.Infof("Configured port %s/%s", addr.Network(), addr.String())
 	}
 
 	for name, isUsed := range isServiceUsed {
