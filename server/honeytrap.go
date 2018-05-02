@@ -186,6 +186,10 @@ type ServiceMap struct {
  *           data to CanHandle. If it returns true, pick it
  */
 func (hc *Honeytrap) findService(conn net.Conn) (*ServiceMap, net.Conn, error) {
+	//
+	// Implement Lua checking for canHandler
+	//
+
 	localAddr := conn.LocalAddr()
 	var port int
 	var serviceCandidates []*ServiceMap
@@ -712,6 +716,9 @@ func (hc *Honeytrap) handle(conn net.Conn) {
 
 	log.Debug("Handling connection for %s => %s %s(%s)", conn.RemoteAddr(), conn.LocalAddr(), sm.Name, sm.Type)
 
+	//
+	// Call suitable Lua handling methods
+	//
 	ctx := context.Background()
 	if err := sm.Service.Handle(ctx, newConn); err != nil {
 		log.Errorf(color.RedString("Error handling service: %s: %s", sm.Name, err.Error()))
