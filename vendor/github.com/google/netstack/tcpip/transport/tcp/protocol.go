@@ -11,6 +11,8 @@
 package tcp
 
 import (
+	"sync"
+
 	"github.com/google/netstack/tcpip"
 	"github.com/google/netstack/tcpip/buffer"
 	"github.com/google/netstack/tcpip/header"
@@ -25,9 +27,43 @@ const (
 
 	// ProtocolNumber is the tcp protocol number.
 	ProtocolNumber = header.TCPProtocolNumber
+
+	// MinBufferSize is the smallest size of a receive or send buffer.
+	minBufferSize = 4 << 10 // 4096 bytes.
+
+	// DefaultBufferSize is the default size of the receive and send buffers.
+	DefaultBufferSize = 1 << 20 // 1MB
+
+	// MaxBufferSize is the largest size a receive and send buffer can grow to.
+	maxBufferSize = 4 << 20 // 4MB
 )
 
-type protocol struct{}
+// SACKEnabled option can be used to enable SACK support in the TCP
+// protocol. See: https://tools.ietf.org/html/rfc2018.
+type SACKEnabled bool
+
+// SendBufferSizeOption allows the default, min and max send buffer sizes for
+// TCP endpoints to be queried or configured.
+type SendBufferSizeOption struct {
+	Min     int
+	Default int
+	Max     int
+}
+
+// ReceiveBufferSizeOption allows the default, min and max receive buffer size
+// for TCP endpoints to be queried or configured.
+type ReceiveBufferSizeOption struct {
+	Min     int
+	Default int
+	Max     int
+}
+
+type protocol struct {
+	mu             sync.Mutex
+	sackEnabled    bool
+	sendBufferSize SendBufferSizeOption
+	recvBufferSize ReceiveBufferSizeOption
+}
 
 // Number returns the tcp protocol number.
 func (*protocol) Number() tcpip.TransportProtocolNumber {
@@ -90,11 +126,67 @@ func replyWithReset(s *segment) {
 
 // SetOption implements TransportProtocol.SetOption.
 func (p *protocol) SetOption(option interface{}) *tcpip.Error {
-	return tcpip.ErrUnknownProtocolOption
+	switch v := option.(type) {
+	case SACKEnabled:
+		p.mu.Lock()
+		p.sackEnabled = bool(v)
+		p.mu.Unlock()
+		return nil
+
+	case SendBufferSizeOption:
+		if v.Min <= 0 || v.Default < v.Min || v.Default > v.Max {
+			return tcpip.ErrInvalidOptionValue
+		}
+		p.mu.Lock()
+		p.sendBufferSize = v
+		p.mu.Unlock()
+		return nil
+
+	case ReceiveBufferSizeOption:
+		if v.Min <= 0 || v.Default < v.Min || v.Default > v.Max {
+			return tcpip.ErrInvalidOptionValue
+		}
+		p.mu.Lock()
+		p.recvBufferSize = v
+		p.mu.Unlock()
+		return nil
+
+	default:
+		return tcpip.ErrUnknownProtocolOption
+	}
+}
+
+// Option implements TransportProtocol.Option.
+func (p *protocol) Option(option interface{}) *tcpip.Error {
+	switch v := option.(type) {
+	case *SACKEnabled:
+		p.mu.Lock()
+		*v = SACKEnabled(p.sackEnabled)
+		p.mu.Unlock()
+		return nil
+
+	case *SendBufferSizeOption:
+		p.mu.Lock()
+		*v = p.sendBufferSize
+		p.mu.Unlock()
+		return nil
+
+	case *ReceiveBufferSizeOption:
+		p.mu.Lock()
+		*v = p.recvBufferSize
+		p.mu.Unlock()
+		return nil
+
+	default:
+		return tcpip.ErrUnknownProtocolOption
+	}
 }
 
 func init() {
 	stack.RegisterTransportProtocolFactory(ProtocolName, func() stack.TransportProtocol {
-		return &protocol{}
+		return &protocol{
+			sendBufferSize: SendBufferSizeOption{minBufferSize, DefaultBufferSize, maxBufferSize},
+			recvBufferSize: ReceiveBufferSizeOption{minBufferSize, DefaultBufferSize, maxBufferSize},
+		}
 	})
 }

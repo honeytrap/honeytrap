@@ -34,7 +34,7 @@ type transportDemuxer struct {
 func newTransportDemuxer(stack *Stack) *transportDemuxer {
 	d := &transportDemuxer{protocol: make(map[protocolIDs]*transportEndpoints)}
 
-	// Add each network and and transport pair to the demuxer.
+	// Add each network and transport pair to the demuxer.
 	for netProto := range stack.networkProtocols {
 		for proto := range stack.transportProtocols {
 			d.protocol[protocolIDs{netProto, proto}] = &transportEndpoints{endpoints: make(map[TransportEndpointID]TransportEndpoint)}
@@ -96,17 +96,48 @@ func (d *transportDemuxer) deliverPacket(r *Route, protocol tcpip.TransportProto
 	}
 
 	eps.mu.RLock()
-	b := d.deliverPacketLocked(r, eps, vv, id)
+	ep := d.findEndpointLocked(eps, vv, id)
 	eps.mu.RUnlock()
 
-	return b
+	// Fail if we didn't find one.
+	if ep == nil {
+		return false
+	}
+
+	// Deliver the packet.
+	ep.HandlePacket(r, id, vv)
+
+	return true
 }
 
-func (d *transportDemuxer) deliverPacketLocked(r *Route, eps *transportEndpoints, vv *buffer.VectorisedView, id TransportEndpointID) bool {
+// deliverControlPacket attempts to deliver the given control packet. Returns
+// true if it found an endpoint, false otherwise.
+func (d *transportDemuxer) deliverControlPacket(net tcpip.NetworkProtocolNumber, trans tcpip.TransportProtocolNumber, typ ControlType, extra uint32, vv *buffer.VectorisedView, id TransportEndpointID) bool {
+	eps, ok := d.protocol[protocolIDs{net, trans}]
+	if !ok {
+		return false
+	}
+
+	// Try to find the endpoint.
+	eps.mu.RLock()
+	ep := d.findEndpointLocked(eps, vv, id)
+	eps.mu.RUnlock()
+
+	// Fail if we didn't find one.
+	if ep == nil {
+		return false
+	}
+
+	// Deliver the packet.
+	ep.HandleControlPacket(id, typ, extra, vv)
+
+	return true
+}
+
+func (d *transportDemuxer) findEndpointLocked(eps *transportEndpoints, vv *buffer.VectorisedView, id TransportEndpointID) TransportEndpoint {
 	// Try to find a match with the id as provided.
 	if ep := eps.endpoints[id]; ep != nil {
-		ep.HandlePacket(r, id, vv)
-		return true
+		return ep
 	}
 
 	// Try to find a match with the id minus the local address.
@@ -114,8 +145,7 @@ func (d *transportDemuxer) deliverPacketLocked(r *Route, eps *transportEndpoints
 
 	nid.LocalAddress = ""
 	if ep := eps.endpoints[nid]; ep != nil {
-		ep.HandlePacket(r, id, vv)
-		return true
+		return ep
 	}
 
 	// Try to find a match with the id minus the remote part.
@@ -123,16 +153,14 @@ func (d *transportDemuxer) deliverPacketLocked(r *Route, eps *transportEndpoints
 	nid.RemoteAddress = ""
 	nid.RemotePort = 0
 	if ep := eps.endpoints[nid]; ep != nil {
-		ep.HandlePacket(r, id, vv)
-		return true
+		return ep
 	}
 
 	// Try to find a match with only the local port.
 	nid.LocalAddress = ""
 	if ep := eps.endpoints[nid]; ep != nil {
-		ep.HandlePacket(r, id, vv)
-		return true
+		return ep
 	}
 
-	return false
+	return nil
 }

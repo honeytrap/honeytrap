@@ -113,7 +113,7 @@
   branch = "master"
   name = "github.com/google/netstack"
   packages = ["ilist","sleep","tcpip","tcpip/buffer","tcpip/header","tcpip/link/fdbased","tcpip/link/rawfile","tcpip/link/tun","tcpip/network/fragmentation","tcpip/network/hash","tcpip/network/ipv4","tcpip/network/ipv6","tcpip/ports","tcpip/seqnum","tcpip/stack","tcpip/transport/tcp","tmutex","waiter"]
-  revision = "edcfca33ca347f59a1393986a5d216a5f183ae28"
+  revision = "0f8a5131d0aa6648f0b49e42cf308366e764e7cd"
 
 [[projects]]
   name = "github.com/gorilla/websocket"
@@ -286,6 +286,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "45cce0dc8135ec03e0e87f2d7fdf547e9519bff8bbeadaccbfa4e3e0e0260995"
+  inputs-digest = "84bcadc55231be8b0903d73572326915703737b43ef9173b497ffdf0fc292c47"
   solver-name = "gps-cdcl"
   solver-version = 1

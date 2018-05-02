@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/google/netstack/tcpip"
-	"github.com/google/netstack/tcpip/buffer"
 	"github.com/google/netstack/tcpip/network/ipv4"
 	"github.com/google/netstack/tcpip/stack"
 	"github.com/google/netstack/tcpip/transport/udp"
@@ -105,7 +104,7 @@ func (s *Server) reader(ctx context.Context) {
 
 	for {
 		var addr tcpip.FullAddress
-		v, err := s.ep.Read(&addr)
+		v, _, err := s.ep.Read(&addr)
 		if err == tcpip.ErrWouldBlock {
 			select {
 			case <-ch:
@@ -148,7 +147,7 @@ func (s *Server) handler(ctx context.Context, ch chan header) {
 			if err != nil {
 				continue
 			}
-			// TODO(crawshaw): Handle DHCPRELEASE and DHCPDECLINE.
+			// TODO: Handle DHCPRELEASE and DHCPDECLINE.
 			msgtype, err := opts.dhcpMsgType()
 			if err != nil {
 				continue
@@ -175,7 +174,7 @@ func (s *Server) handleDiscover(hreq header, opts options) {
 	case leaseNew:
 		if len(s.leases) < len(s.addrs) {
 			// Find an unused address.
-			// TODO(crawshaw): avoid building this state on each request.
+			// TODO: avoid building this state on each request.
 			alloced := make(map[tcpip.Address]bool)
 			for _, lease := range s.leases {
 				alloced[lease.addr] = true
@@ -233,7 +232,7 @@ func (s *Server) handleDiscover(hreq header, opts options) {
 	copy(h.siaddr(), s.cfg.ServerAddress)
 	copy(h.chaddr(), hreq.chaddr())
 	h.setOptions(opts)
-	s.ep.Write(buffer.View(h), &s.broadcast)
+	s.ep.Write(tcpip.SlicePayload(h), tcpip.WriteOptions{To: &s.broadcast})
 }
 
 func (s *Server) handleRequest(hreq header, opts options) {
@@ -255,7 +254,7 @@ func (s *Server) handleRequest(hreq header, opts options) {
 	s.mu.Unlock()
 
 	if lease.state == leaseNew {
-		// TODO(crawshaw): NACK or accept request
+		// TODO: NACK or accept request
 		return
 	}
 
@@ -270,7 +269,7 @@ func (s *Server) handleRequest(hreq header, opts options) {
 	copy(h.siaddr(), s.cfg.ServerAddress)
 	copy(h.chaddr(), hreq.chaddr())
 	h.setOptions(opts)
-	s.ep.Write(buffer.View(h), &s.broadcast)
+	s.ep.Write(tcpip.SlicePayload(h), tcpip.WriteOptions{To: &s.broadcast})
 }
 
 type leaseState int

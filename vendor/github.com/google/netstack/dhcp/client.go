@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/google/netstack/tcpip"
-	"github.com/google/netstack/tcpip/buffer"
 	"github.com/google/netstack/tcpip/network/ipv4"
 	"github.com/google/netstack/tcpip/stack"
 	"github.com/google/netstack/tcpip/transport/udp"
@@ -36,7 +35,7 @@ type Client struct {
 
 // NewClient creates a DHCP client.
 //
-// TODO(crawshaw): add s.LinkAddr(nicid) to *stack.Stack.
+// TODO: add s.LinkAddr(nicid) to *stack.Stack.
 func NewClient(s *stack.Stack, nicid tcpip.NICID, linkAddr tcpip.LinkAddress) *Client {
 	return &Client{
 		stack:    s,
@@ -149,7 +148,10 @@ func (c *Client) Request(ctx context.Context, requestedAddr tcpip.Address) error
 		Addr: "\xff\xff\xff\xff",
 		Port: serverPort,
 	}
-	if _, err := ep.Write(buffer.View(h), serverAddr); err != nil {
+	wopts := tcpip.WriteOptions{
+		To: serverAddr,
+	}
+	if _, err := ep.Write(tcpip.SlicePayload(h), wopts); err != nil {
 		return fmt.Errorf("dhcp discovery write: %v", err)
 	}
 
@@ -160,7 +162,7 @@ func (c *Client) Request(ctx context.Context, requestedAddr tcpip.Address) error
 	// DHCPOFFER
 	for {
 		var addr tcpip.FullAddress
-		v, err := epin.Read(&addr)
+		v, _, err := epin.Read(&addr)
 		if err == tcpip.ErrWouldBlock {
 			select {
 			case <-ch:
@@ -207,14 +209,14 @@ func (c *Client) Request(ctx context.Context, requestedAddr tcpip.Address) error
 		{optReqIPAddr, []byte(addr)},
 		{optDHCPServer, h.siaddr()},
 	})
-	if _, err := ep.Write([]byte(h), serverAddr); err != nil {
+	if _, err := ep.Write(tcpip.SlicePayload(h), wopts); err != nil {
 		return fmt.Errorf("dhcp discovery write: %v", err)
 	}
 
 	// DHCPACK
 	for {
 		var addr tcpip.FullAddress
-		v, err := epin.Read(&addr)
+		v, _, err := epin.Read(&addr)
 		if err == tcpip.ErrWouldBlock {
 			select {
 			case <-ch:

@@ -50,6 +50,10 @@ func (e *endpoint) NICID() tcpip.NICID {
 	return e.nicid
 }
 
+func (e *endpoint) Capabilities() stack.LinkEndpointCapabilities {
+	return e.linkEP.Capabilities()
+}
+
 func (e *endpoint) ID() *stack.NetworkEndpointID {
 	return &stack.NetworkEndpointID{ProtocolAddress}
 }
@@ -74,7 +78,7 @@ func (e *endpoint) HandlePacket(r *stack.Route, vv *buffer.VectorisedView) {
 	switch h.Op() {
 	case header.ARPRequest:
 		localAddr := tcpip.Address(h.ProtocolAddressTarget())
-		if e.linkAddrCache.CheckLocalAddress(e.nicid, localAddr) == 0 {
+		if e.linkAddrCache.CheckLocalAddress(e.nicid, header.IPv4ProtocolNumber, localAddr) == 0 {
 			return // we have no useful answer, ignore the request
 		}
 		hdr := buffer.NewPrependable(int(e.linkEP.MaxHeaderLength()) + header.ARPSize)
@@ -117,10 +121,12 @@ func (p *protocol) NewEndpoint(nicid tcpip.NICID, addr tcpip.Address, linkAddrCa
 	}, nil
 }
 
+// LinkAddressProtocol implements stack.LinkAddressResolver.
 func (*protocol) LinkAddressProtocol() tcpip.NetworkProtocolNumber {
 	return header.IPv4ProtocolNumber
 }
 
+// LinkAddressRequest implements stack.LinkAddressResolver.
 func (*protocol) LinkAddressRequest(addr, localAddr tcpip.Address, linkEP stack.LinkEndpoint) *tcpip.Error {
 	r := &stack.Route{
 		RemoteLinkAddress: broadcastMAC,
@@ -137,8 +143,21 @@ func (*protocol) LinkAddressRequest(addr, localAddr tcpip.Address, linkEP stack.
 	return linkEP.WritePacket(r, &hdr, nil, ProtocolNumber)
 }
 
-// SetOption implements NetworkProtocol.SetOption.
+// ResolveStaticAddress implements stack.LinkAddressResolver.
+func (*protocol) ResolveStaticAddress(addr tcpip.Address) (tcpip.LinkAddress, bool) {
+	if addr == "\xff\xff\xff\xff" {
+		return broadcastMAC, true
+	}
+	return "", false
+}
+
+// SetOption implements NetworkProtocol.
 func (p *protocol) SetOption(option interface{}) *tcpip.Error {
+	return tcpip.ErrUnknownProtocolOption
+}
+
+// Option implements NetworkProtocol.
+func (p *protocol) Option(option interface{}) *tcpip.Error {
 	return tcpip.ErrUnknownProtocolOption
 }
 

@@ -7,6 +7,7 @@ package stack
 import (
 	"sync"
 
+	"github.com/google/netstack/sleep"
 	"github.com/google/netstack/tcpip"
 	"github.com/google/netstack/tcpip/buffer"
 	"github.com/google/netstack/waiter"
@@ -36,12 +37,26 @@ type TransportEndpointID struct {
 	RemoteAddress tcpip.Address
 }
 
+// ControlType is the type of network control message.
+type ControlType int
+
+// The following are the allowed values for ControlType values.
+const (
+	ControlPacketTooBig ControlType = iota
+	ControlPortUnreachable
+	ControlUnknown
+)
+
 // TransportEndpoint is the interface that needs to be implemented by transport
 // protocol (e.g., tcp, udp) endpoints that can handle packets.
 type TransportEndpoint interface {
 	// HandlePacket is called by the stack when new packets arrive to
 	// this transport endpoint.
 	HandlePacket(r *Route, id TransportEndpointID, vv *buffer.VectorisedView)
+
+	// HandleControlPacket is called by the stack when new control (e.g.,
+	// ICMP) packets arrive to this transport endpoint.
+	HandleControlPacket(id TransportEndpointID, typ ControlType, extra uint32, vv *buffer.VectorisedView)
 }
 
 // TransportProtocol is the interface that needs to be implemented by transport
@@ -74,15 +89,24 @@ type TransportProtocol interface {
 	// SetOption returns an error if the option is not supported or the
 	// provided option value is invalid.
 	SetOption(option interface{}) *tcpip.Error
+
+	// Option allows retrieving protocol specific option values.
+	// Option returns an error if the option is not supported or the
+	// provided option value is invalid.
+	Option(option interface{}) *tcpip.Error
 }
 
 // TransportDispatcher contains the methods used by the network stack to deliver
 // packets to the appropriate transport endpoint after it has been handled by
 // the network layer.
 type TransportDispatcher interface {
-	// DeliverTransportPacket delivers the packets to the appropriate
+	// DeliverTransportPacket delivers packets to the appropriate
 	// transport protocol endpoint.
 	DeliverTransportPacket(r *Route, protocol tcpip.TransportProtocolNumber, vv *buffer.VectorisedView)
+
+	// DeliverTransportControlPacket delivers control packets to the
+	// appropriate transport protocol endpoint.
+	DeliverTransportControlPacket(local, remote tcpip.Address, net tcpip.NetworkProtocolNumber, trans tcpip.TransportProtocolNumber, typ ControlType, extra uint32, vv *buffer.VectorisedView)
 }
 
 // NetworkEndpoint is the interface that needs to be implemented by endpoints
@@ -92,6 +116,10 @@ type NetworkEndpoint interface {
 	// generally calculated as the MTU of the underlying data link endpoint
 	// minus the network endpoint max header length.
 	MTU() uint32
+
+	// Capabilities returns the set of capabilities supported by the
+	// underlying link-layer endpoint.
+	Capabilities() LinkEndpointCapabilities
 
 	// MaxHeaderLength returns the maximum size the network (and lower
 	// level layers combined) headers can have. Higher levels use this
@@ -139,6 +167,11 @@ type NetworkProtocol interface {
 	// SetOption returns an error if the option is not supported or the
 	// provided option value is invalid.
 	SetOption(option interface{}) *tcpip.Error
+
+	// Option allows retrieving protocol specific option values.
+	// Option returns an error if the option is not supported or the
+	// provided option value is invalid.
+	Option(option interface{}) *tcpip.Error
 }
 
 // NetworkDispatcher contains the methods used by the network stack to deliver
@@ -150,6 +183,16 @@ type NetworkDispatcher interface {
 	DeliverNetworkPacket(linkEP LinkEndpoint, remoteLinkAddr tcpip.LinkAddress, protocol tcpip.NetworkProtocolNumber, vv *buffer.VectorisedView)
 }
 
+// LinkEndpointCapabilities is the type associated with the capabilities
+// supported by a link-layer endpoint. It is a set of bitfields.
+type LinkEndpointCapabilities uint
+
+// The following are the supported link endpoint capabilities.
+const (
+	CapabilityChecksumOffload LinkEndpointCapabilities = 1 << iota
+	CapabilityResolutionRequired
+)
+
 // LinkEndpoint is the interface implemented by data link layer protocols (e.g.,
 // ethernet, loopback, raw) and used by network layer protocols to send packets
 // out through the implementer's data link endpoint.
@@ -159,6 +202,10 @@ type LinkEndpoint interface {
 	// physical network doesn't exist, the limit is generally 64k, which
 	// includes the maximum size of an IP packet.
 	MTU() uint32
+
+	// Capabilities returns the set of capabilities supported by the
+	// endpoint.
+	Capabilities() LinkEndpointCapabilities
 
 	// MaxHeaderLength returns the maximum size the data link (and
 	// lower level layers combined) headers can have. Higher levels use this
@@ -189,6 +236,13 @@ type LinkAddressResolver interface {
 	// endpoint to call AddLinkAddress.
 	LinkAddressRequest(addr, localAddr tcpip.Address, linkEP LinkEndpoint) *tcpip.Error
 
+	// ResolveStaticAddress attempts to resolve address without sending
+	// requests. It either resolves the name immediately or returns the
+	// empty LinkAddress.
+	//
+	// It can be used to resolve broadcast addresses for example.
+	ResolveStaticAddress(addr tcpip.Address) (tcpip.LinkAddress, bool)
+
 	// LinkAddressProtocol returns the network protocol of the
 	// addresses this this resolver can resolve.
 	LinkAddressProtocol() tcpip.NetworkProtocolNumber
@@ -197,12 +251,21 @@ type LinkAddressResolver interface {
 // A LinkAddressCache caches link addresses.
 type LinkAddressCache interface {
 	// CheckLocalAddress determines if the given local address exists, and if it
-	// does, returns the id of the NIC it's bound to. Returns 0 if the address
 	// does not exist.
-	CheckLocalAddress(nicid tcpip.NICID, addr tcpip.Address) tcpip.NICID
+	CheckLocalAddress(nicid tcpip.NICID, protocol tcpip.NetworkProtocolNumber, addr tcpip.Address) tcpip.NICID
 
 	// AddLinkAddress adds a link address to the cache.
 	AddLinkAddress(nicid tcpip.NICID, addr tcpip.Address, linkAddr tcpip.LinkAddress)
+
+	// GetLinkAddress looks up the cache to translate address to link address (e.g. IP -> MAC).
+	// If the LinkEndpoint requests address resolution and there is a LinkAddressResolver
+	// registered with the network protocol, the cache attempts to resolve the address
+	// and returns ErrWouldBlock. Waker is notified when address resolution is
+	// complete (success or not).
+	GetLinkAddress(nicid tcpip.NICID, addr, localAddr tcpip.Address, protocol tcpip.NetworkProtocolNumber, w *sleep.Waker) (tcpip.LinkAddress, *tcpip.Error)
+
+	// RemoveWaker removes a waker that has been added in GetLinkAddress().
+	RemoveWaker(nicid tcpip.NICID, addr tcpip.Address, waker *sleep.Waker)
 }
 
 // TransportProtocolFactory functions are used by the stack to instantiate

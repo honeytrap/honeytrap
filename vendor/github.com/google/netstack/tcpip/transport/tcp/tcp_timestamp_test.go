@@ -1,3 +1,7 @@
+// Copyright 2016 The Netstack Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package tcp_test
 
 import (
@@ -6,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/netstack/tcpip"
 	"github.com/google/netstack/tcpip/buffer"
 	"github.com/google/netstack/tcpip/checker"
 	"github.com/google/netstack/tcpip/header"
@@ -90,7 +95,7 @@ func TestTimeStampEnabledConnect(t *testing.T) {
 	// There should be 5 views to read and each of them should
 	// contain the same data.
 	for i := 0; i < 5; i++ {
-		got, err := c.EP.Read(nil)
+		got, _, err := c.EP.Read(nil)
 		if err != nil {
 			t.Fatalf("Unexpected error from Read: %v", err)
 		}
@@ -132,7 +137,7 @@ func timeStampEnabledAccept(t *testing.T, cookieEnabled bool, wndScale int, wndS
 	view := buffer.NewView(len(data))
 	copy(view, data)
 
-	if _, err := c.EP.Write(view, nil); err != nil {
+	if _, err := c.EP.Write(tcpip.SlicePayload(view), tcpip.WriteOptions{}); err != nil {
 		t.Fatalf("Unexpected error from Write: %v", err)
 	}
 
@@ -167,7 +172,7 @@ func TestTimeStampEnabledAccept(t *testing.T) {
 		wndSize       uint16
 	}{
 		{true, -1, 0xffff}, // When cookie is used window scaling is disabled.
-		{false, 2, 0xd000},
+		{false, 5, 0x8000}, // 0x8000 * 2^5 = 1<<20 = 1MB window (the default).
 	}
 	for _, tc := range testCases {
 		timeStampEnabledAccept(t, tc.cookieEnabled, tc.wndScale, tc.wndSize)
@@ -195,7 +200,7 @@ func timeStampDisabledAccept(t *testing.T, cookieEnabled bool, wndScale int, wnd
 	view := buffer.NewView(len(data))
 	copy(view, data)
 
-	if _, err := c.EP.Write(view, nil); err != nil {
+	if _, err := c.EP.Write(tcpip.SlicePayload(view), tcpip.WriteOptions{}); err != nil {
 		t.Fatalf("Unexpected error from Write: %v", err)
 	}
 
@@ -224,7 +229,7 @@ func TestTimeStampDisabledAccept(t *testing.T) {
 		wndSize       uint16
 	}{
 		{true, -1, 0xffff}, // When cookie is used window scaling is disabled.
-		{false, 2, 0xd000},
+		{false, 5, 0x8000}, // 0x8000 * 2^5 = 1<<20 = 1MB window (the default).
 	}
 	for _, tc := range testCases {
 		timeStampDisabledAccept(t, tc.cookieEnabled, tc.wndScale, tc.wndSize)
@@ -291,7 +296,7 @@ func TestSegmentDropWhenTimestampMissing(t *testing.T) {
 	}
 
 	// Issue a read and we should data.
-	got, err := c.EP.Read(nil)
+	got, _, err := c.EP.Read(nil)
 	if err != nil {
 		t.Fatalf("Unexpected error from Read: %v", err)
 	}
