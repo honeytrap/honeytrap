@@ -97,6 +97,7 @@ import (
 
 	"github.com/honeytrap/honeytrap/transforms"
 	"github.com/honeytrap/honeytrap/transforms/filters"
+	"github.com/honeytrap/honeytrap/transforms/group"
 	"github.com/op/go-logging"
 )
 
@@ -374,6 +375,8 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			Services   []string `toml:"services"`
 			Categories []string `toml:"categories"`
 			Plugin     string   `toml:"plugin"`
+			GroupBy    []string `toml:"groupby"`
+			Period     int      `toml:"period"` // in seconds
 		}{}
 
 		err := hc.config.PrimitiveDecode(s, &x)
@@ -406,6 +409,19 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 					log.Errorf("Couldn't load plugin %s: %s", x.Plugin, err.Error())
 				}
 				channel = transforms.Transform(channel, t)
+			}
+
+			if len(x.GroupBy) != 0 {
+				if x.Period == 0 {
+					log.Error("Filter has \"groupby\" but no \"period\", ignoring filter")
+					continue
+				}
+				if x.Period < 0 {
+					log.Error("Negative period, ignoring filter")
+					continue
+				}
+				period := time.Duration(x.Period) * time.Second
+				channel = transforms.Transform(channel, group.GroupBy(x.GroupBy, period))
 			}
 
 			if err := hc.bus.Subscribe(channel); err != nil {
