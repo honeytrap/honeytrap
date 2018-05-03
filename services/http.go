@@ -43,6 +43,7 @@ import (
 
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
+	"github.com/honeytrap/honeytrap/scripter"
 )
 
 var (
@@ -71,6 +72,7 @@ type httpServiceConfig struct {
 type httpService struct {
 	httpServiceConfig
 
+	scr scripter.Scripter
 	c pushers.Channel
 }
 
@@ -96,6 +98,10 @@ func (s *httpService) CanHandle(payload []byte) bool {
 	}
 
 	return false
+}
+
+func (s *httpService) SetScripter(scr scripter.Scripter) {
+	s.scr = scr
 }
 
 func (s *httpService) SetChannel(c pushers.Channel) {
@@ -138,6 +144,8 @@ func (s *httpService) Handle(ctx context.Context, conn net.Conn) error {
 		} else if err != nil {
 			return err
 		}
+
+		//responseString, err := s.scr.Handle("")
 
 		body = body[:n]
 
