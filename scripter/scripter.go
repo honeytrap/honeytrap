@@ -30,7 +30,10 @@ func GetAvailableScripterNames() []string {
 }
 
 type Scripter interface {
+	InitScripts(service string)
+	Handle(service string, message string) (string, error)
 }
+
 
 func WithConfig(c toml.Primitive) func(Scripter) error {
 	return func(scr Scripter) error {

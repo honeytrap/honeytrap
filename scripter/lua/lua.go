@@ -4,8 +4,12 @@ import (
 	"fmt"
 	"github.com/honeytrap/honeytrap/scripter"
 	"github.com/yuin/gopher-lua"
-	"log"
+	"io/ioutil"
+	"github.com/op/go-logging"
+	"sync"
 )
+
+var log = logging.MustGetLogger("scripter/lua")
 
 var (
 	_ = scripter.Register("lua", New)
@@ -18,36 +22,46 @@ func New(options ...func(scripter.Scripter) error) (scripter.Scripter, error) {
 		optionFn(s)
 	}
 
-	log.Printf("Using folder: %s", s.Folder)
+	log.Infof("Using folder: %s", s.Folder)
+	s.scripts = &sync.Map{} // map[string]*lua.LState{}
 
 	return s, nil
 }
 
 // The scripter state to which scripter functions are attached
 type luaScripter struct {
-	*lua.LState
 	Folder string `toml:"folder"`
+
+	scripts *sync.Map
 }
 
-func (L *luaScripter) LoadScripts(script string) error {
-	// Load scripter file
-	if err := L.DoFile(script); err != nil {
-		return fmt.Errorf("error loading file: %s", err)
+func (l *luaScripter) InitScripts(service string) {
+	files, err := ioutil.ReadDir(fmt.Sprintf("%s/%s", l.Folder, service))
+	if err != nil {
+		log.Errorf(err.Error())
 	}
 
-	return nil
+	ls := lua.NewState()
+	//Todo: Load basic lua functions
+
+	for _, f := range files {
+		ls.DoFile(fmt.Sprintf("%s/%s/%s", l.Folder, service, f.Name()))
+	}
+
+	l.scripts.Store(service, ls)
 }
 
 // Handle incoming message string
-func (L *luaScripter) Handle(message string) (string, error) {
-	// If scripter is not initialized, return default string
-	if L == nil {
+func (l *luaScripter) Handle(service string, message string) (string, error) {
+	lState, ok := l.scripts.Load(service)
+	if !ok {
 		return message, nil
 	}
+	ls := lState.(*lua.LState)
 
 	// Call method to handle the message
-	if err := L.CallByParam(lua.P{
-		Fn:      L.GetGlobal("handle"),
+	if err := ls.CallByParam(lua.P{
+		Fn:      ls.GetGlobal("handle"),
 		NRet:    1,
 		Protect: true,
 	}, lua.LString(message)); err != nil {
@@ -55,13 +69,13 @@ func (L *luaScripter) Handle(message string) (string, error) {
 	}
 
 	// Get result of the function
-	result := L.Get(-1).String()
-	L.Pop(1)
+	result := ls.Get(-1).String()
+	ls.Pop(1)
 
 	return result, nil
 }
 
 // Closes the scripter state
-func (L *luaScripter) Close() {
-	L.Close()
+func (l *luaScripter) Close() {
+	l.Close()
 }

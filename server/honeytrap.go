@@ -112,8 +112,6 @@ type Honeytrap struct {
 
 	director director.Director
 
-	scripter scripter.Scripter
-
 	token string
 
 	dataDir string
@@ -134,7 +132,6 @@ func New(options ...OptionFn) (*Honeytrap, error) {
 	h := &Honeytrap{
 		config:   conf,
 		director: director.MustDummy(),
-		scripter: scripter.MustDummy(),
 		bus:      bus,
 		profiler: profiler.Dummy(),
 	}

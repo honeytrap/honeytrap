@@ -62,6 +62,8 @@ func HTTP(options ...ServicerFunc) Servicer {
 		o(s)
 	}
 
+	s.scr.InitScripts("http")
+
 	return s
 }
 
@@ -75,6 +77,12 @@ type httpService struct {
 	scr scripter.Scripter
 	c pushers.Channel
 }
+
+//type httpScripter struct {
+//	conn net.Conn
+//	req *Request
+//	body []byte
+//}
 
 func (s *httpService) CanHandle(payload []byte) bool {
 	if bytes.HasPrefix(payload, []byte("GET")) {
@@ -144,10 +152,13 @@ func (s *httpService) Handle(ctx context.Context, conn net.Conn) error {
 		} else if err != nil {
 			return err
 		}
-
-		//responseString, err := s.scr.Handle("")
+		//
+		////conn, req, body :=
+		//s.scr.PreFilter("http", httpScripter {conn, req, n })
 
 		body = body[:n]
+
+		responseString, err := s.scr.Handle("http", string(body))
 
 		io.Copy(ioutil.Discard, req.Body)
 
@@ -176,10 +187,16 @@ func (s *httpService) Handle(ctx context.Context, conn net.Conn) error {
 			Header: http.Header{
 				"Server": []string{s.Server},
 			},
+			Body:          ioutil.NopCloser(bytes.NewBufferString(responseString)),
+			ContentLength: int64(len(responseString)),
 		}
 
 		if err := resp.Write(conn); err != nil {
 			return err
 		}
 	}
+}
+
+func getRequestURL(r http.Request) string {
+	return r.URL.String()
 }
