@@ -110,8 +110,6 @@ type Honeytrap struct {
 	// TODO(nl5887): rename to bus, should we encapsulate this?
 	bus *eventbus.EventBus
 
-	director director.Director
-
 	token string
 
 	dataDir string
@@ -131,7 +129,6 @@ func New(options ...OptionFn) (*Honeytrap, error) {
 
 	h := &Honeytrap{
 		config:   conf,
-		director: director.MustDummy(),
 		bus:      bus,
 		profiler: profiler.Dummy(),
 	}
