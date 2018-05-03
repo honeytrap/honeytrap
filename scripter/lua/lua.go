@@ -53,11 +53,10 @@ func (l *luaScripter) InitScripts(service string) {
 
 // Handle incoming message string
 func (l *luaScripter) Handle(service string, message string) (string, error) {
-	lState, ok := l.scripts.Load(service)
-	if !ok {
-		return message, nil
+	ls, err := l.loadScript(service)
+	if err != nil {
+		return message, err
 	}
-	ls := lState.(*lua.LState)
 
 	// Call method to handle the message
 	if err := ls.CallByParam(lua.P{
@@ -73,6 +72,25 @@ func (l *luaScripter) Handle(service string, message string) (string, error) {
 	ls.Pop(1)
 
 	return result, nil
+}
+
+func (l *luaScripter) SetVariable(service string, name string, value string) error {
+	ls, err := l.loadScript(service)
+	if err != nil {
+		return err
+	}
+
+	ls.SetGlobal(name, lua.LString(value))
+
+	return nil
+}
+
+func (l *luaScripter) loadScript(service string) (*lua.LState, error) {
+	lState, ok := l.scripts.Load(service)
+	if !ok {
+		return nil, fmt.Errorf("could not retrieve lua state for service %s", service)
+	}
+	return lState.(*lua.LState), nil
 }
 
 // Closes the scripter state
