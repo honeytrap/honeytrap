@@ -61,7 +61,7 @@ var (
 	EventCategorySSDP = event.Category("ssdp")
 )
 
-// DecodeSSDP will decode NTP packets
+// DecodeSSDP will decode SSDP packets
 func (c *Canary) DecodeSSDP(iph *ipv4.Header, udph *udp.Header) error {
 	request, err := http.ReadRequest(
 		bufio.NewReader(
@@ -103,7 +103,7 @@ var (
 	EventCategorySIP = event.Category("sip")
 )
 
-// DecodeSIP will decode NTP packets
+// DecodeSIP will decode SIP packets
 func (c *Canary) DecodeSIP(iph *ipv4.Header, udph *udp.Header) error {
 	request, err := http.ReadRequest(
 		bufio.NewReader(
@@ -146,7 +146,7 @@ var (
 	EventCategorySNMPTrap = event.Category("snmp-trap")
 )
 
-// DecodeSNMPTrap will decode NTP packets
+// DecodeSNMPTrap will decode SNMP Trap packets
 func (c *Canary) DecodeSNMPTrap(iph *ipv4.Header, udph *udp.Header) error {
 	// add specific detections, reflection attack detection etc
 	c.events.Send(event.New(
@@ -168,7 +168,7 @@ var (
 	EventCategorySNMP = event.Category("snmp")
 )
 
-// DecodeSNMP will decode NTP packets
+// DecodeSNMP will decode SNMP packets
 func (c *Canary) DecodeSNMP(iph *ipv4.Header, udph *udp.Header) error {
 	// add specific detections, reflection attack detection etc
 	c.events.Send(event.New(
