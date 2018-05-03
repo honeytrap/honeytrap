@@ -46,7 +46,6 @@ import (
 	"github.com/rs/xid"
 
 	"github.com/honeytrap/honeytrap/server/profiler"
-	"github.com/honeytrap/honeytrap/lua"
 )
 
 type OptionFn func(*Honeytrap) error
@@ -73,13 +72,6 @@ func WithConfig(s string) (OptionFn, error) {
 
 	return func(b *Honeytrap) error {
 		return b.config.Load(bytes.NewBuffer(data))
-	}, nil
-}
-
-func WithLua(script string) (OptionFn, error) {
-	return func (b *Honeytrap) error {
-		b.lua = lua.New()
-		return b.lua.LoadScripts(script)
 	}, nil
 }
 
