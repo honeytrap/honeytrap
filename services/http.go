@@ -43,6 +43,7 @@ import (
 
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
+	"github.com/honeytrap/honeytrap/scripter"
 )
 
 var (
@@ -61,6 +62,8 @@ func HTTP(options ...ServicerFunc) Servicer {
 		o(s)
 	}
 
+	s.scr.InitScripts("http")
+
 	return s
 }
 
@@ -71,8 +74,15 @@ type httpServiceConfig struct {
 type httpService struct {
 	httpServiceConfig
 
+	scr scripter.Scripter
 	c pushers.Channel
 }
+
+//type httpScripter struct {
+//	conn net.Conn
+//	req *Request
+//	body []byte
+//}
 
 func (s *httpService) CanHandle(payload []byte) bool {
 	if bytes.HasPrefix(payload, []byte("GET")) {
@@ -96,6 +106,10 @@ func (s *httpService) CanHandle(payload []byte) bool {
 	}
 
 	return false
+}
+
+func (s *httpService) SetScripter(scr scripter.Scripter) {
+	s.scr = scr
 }
 
 func (s *httpService) SetChannel(c pushers.Channel) {
@@ -139,7 +153,14 @@ func (s *httpService) Handle(ctx context.Context, conn net.Conn) error {
 			return err
 		}
 
+		s.scr.SetVariable("http", "RequestURL", req.URL.String())
+		s.scr.SetVariable("http", "RequestMethod", req.Method)
+		s.scr.SetVariable("http", "RemoteAddr", conn.RemoteAddr().String())
+		s.scr.SetVariable("http", "LocalAddr", conn.LocalAddr().String())
+
 		body = body[:n]
+
+		responseString, err := s.scr.Handle("http", string(body))
 
 		io.Copy(ioutil.Discard, req.Body)
 
@@ -153,6 +174,7 @@ func (s *httpService) Handle(ctx context.Context, conn net.Conn) error {
 			event.Custom("http.proto", req.Proto),
 			event.Custom("http.host", req.Host),
 			event.Custom("http.url", req.URL.String()),
+			// event.Custom("http.response", bodyResp),
 			event.Payload(body),
 			Headers(req.Header),
 			Cookies(req.Cookies()),
@@ -168,6 +190,8 @@ func (s *httpService) Handle(ctx context.Context, conn net.Conn) error {
 			Header: http.Header{
 				"Server": []string{s.Server},
 			},
+			Body:          ioutil.NopCloser(bytes.NewBufferString(responseString)),
+			ContentLength: int64(len(responseString)),
 		}
 
 		if err := resp.Write(conn); err != nil {

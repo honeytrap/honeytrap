@@ -57,6 +57,7 @@ type Config struct {
 	Services  map[string]toml.Primitive `toml:"service"`
 	Ports     []toml.Primitive          `toml:"port"`
 	Directors map[string]toml.Primitive `toml:"director"`
+	Scripters map[string]toml.Primitive `toml:"scripter"`
 	Channels  map[string]toml.Primitive `toml:"channel"`
 
 	Filters []toml.Primitive `toml:"filter"`
