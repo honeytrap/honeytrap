@@ -40,17 +40,33 @@ import (
 type transformChannel struct {
 	destination pushers.Channel
 	fn          TransformFunc
+	connState   map[string]State // Map<IP, Map<Key, Value>>
+	// todo(capacitorset): implement an expiration policy for old data
 }
 
 func (c transformChannel) Send(input event.Event) {
-	c.fn(input, c.destination.Send)
+	var state State
+	if input.Has("source-ip") {
+		ip := input.Get("source-ip")
+		if _, ok := c.connState[ip]; !ok {
+			c.connState[ip] = make(State)
+		}
+		state = c.connState[ip]
+	} else {
+		// There's no connection state if there's no connection, so pass an empty state
+		// Plugins shouldn't use the state for non-connection events anyway.
+		state = make(State)
+	}
+	c.fn(state, input, c.destination.Send)
 }
 
 func Transform(dest pushers.Channel, fn TransformFunc) pushers.Channel {
-	return transformChannel{destination: dest, fn: fn}
+	return transformChannel{destination: dest, fn: fn, connState: make(map[string]State)}
 }
 
-type TransformFunc func(e event.Event, send func(event.Event))
+type State map[string]interface{}
+
+type TransformFunc func(state State, e event.Event, send func(event.Event))
 
 var staticTransforms = make(map[string]TransformFunc)
 

@@ -44,7 +44,7 @@ func FieldRegex(field string, expressions []string) transforms.TransformFunc {
 		matchers[i] = regexp.MustCompile(match)
 	}
 
-	return func(e event.Event, send func(event.Event)) {
+	return func(state transforms.State, e event.Event, send func(event.Event)) {
 		for _, rx := range matchers {
 			val := e.Get(field)
 			if rx.MatchString(val) {
