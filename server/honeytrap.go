@@ -47,14 +47,17 @@ import (
 
 	"github.com/honeytrap/honeytrap/cmd"
 	"github.com/honeytrap/honeytrap/config"
-	"github.com/honeytrap/honeytrap/lua"
+	"github.com/honeytrap/honeytrap/scripter"
 	"github.com/honeytrap/honeytrap/web"
 
 	"github.com/honeytrap/honeytrap/director"
+	// Import your directors here.
 	_ "github.com/honeytrap/honeytrap/director/forward"
 	_ "github.com/honeytrap/honeytrap/director/lxc"
 	// _ "github.com/honeytrap/honeytrap/director/qemu"
-	// Import your directors here.
+
+	// Import your scripters here.
+	_ "github.com/honeytrap/honeytrap/scripter/lua"
 
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/pushers/eventbus"
@@ -109,7 +112,7 @@ type Honeytrap struct {
 
 	director director.Director
 
-	lua *lua.Lua
+	scripter scripter.Scripter
 
 	token string
 
@@ -128,13 +131,10 @@ func New(options ...OptionFn) (*Honeytrap, error) {
 	// Initialize all channels within the provided config.
 	conf := &config.Default
 
-	// Lua state without anything loaded
-	lua := &lua.Default
-
 	h := &Honeytrap{
 		config:   conf,
 		director: director.MustDummy(),
-		lua:      lua,
+		scripter: scripter.MustDummy(),
 		bus:      bus,
 		profiler: profiler.Dummy(),
 	}
@@ -185,10 +185,6 @@ type ServiceMap struct {
  *           data to CanHandle. If it returns true, pick it
  */
 func (hc *Honeytrap) findService(conn net.Conn) (*ServiceMap, net.Conn, error) {
-	//
-	// Implement Lua checking for canHandler
-	//
-
 	localAddr := conn.LocalAddr()
 	var port int
 	var serviceCandidates []*ServiceMap
@@ -419,7 +415,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		}
 
 		if x.Type == "" {
-			log.Error("Error parsing configuration of service %s: type not set", key)
+			log.Error("Error parsing configuration of director %s: type not set", key)
 			continue
 		}
 
@@ -432,6 +428,37 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			log.Fatalf("Error initializing director %s(%s): %s", key, x.Type, err)
 		} else {
 			directors[key] = d
+		}
+	}
+
+	// initialize scripters
+	scripters := map[string]scripter.Scripter{}
+	availableScripterNames := scripter.GetAvailableScripterNames()
+
+	for key, s := range hc.config.Scripters {
+		x := struct {
+			Type string `toml:"type"`
+		}{}
+
+		err := toml.PrimitiveDecode(s, &x)
+		if err != nil {
+			log.Error("Error parsing configuration of scripter: %s", err.Error())
+			continue
+		}
+
+		if x.Type == "" {
+			log.Error("Error parsing configuration of scripter %s: type not set", key)
+			continue
+		}
+
+		if scripterFunc, ok := scripter.Get(x.Type); !ok {
+			log.Error("Scripter type=%s not supported on platform (scripter=%s). Available scripters: %s", x.Type, key, strings.Join(availableScripterNames, ", "))
+		} else if scr, err := scripterFunc(
+			scripter.WithConfig(s),
+		); err != nil {
+			log.Fatalf("Error initializing scripter %s(%s): %s", key, x.Type, err)
+		} else {
+			scripters[key] = scr
 		}
 	}
 
@@ -454,11 +481,9 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		enabledDirectorNames = append(enabledDirectorNames, key)
 	}
 
-	// Loading lua scripts
-	hc.lua = lua.New()
-	if err := hc.lua.LoadScripts(); err != nil {
-		fmt.Println(color.RedString("Error loading Lua scripts: %s", err.Error()))
-		return
+	var enabledScripterNames []string
+	for key := range scripters {
+		enabledScripterNames = append(enabledScripterNames, key)
 	}
 
 	serviceList := make(map[string]*ServiceMap)
@@ -468,6 +493,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		x := struct {
 			Type     string `toml:"type"`
 			Director string `toml:"director"`
+			Scripter string `toml:"scripter"`
 			Port     string `toml:"port"`
 		}{}
 
@@ -492,6 +518,14 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			options = append(options, services.WithDirector(d))
 		} else {
 			log.Error(color.RedString("Could not find director=%s for service=%s. Enabled directors: %s", x.Director, key, strings.Join(enabledDirectorNames, ", ")))
+			continue
+		}
+
+		if x.Scripter == "" {
+		} else if scr, ok := scripters[x.Scripter]; ok {
+			options = append(options, services.WithScripter(scr))
+		} else {
+			log.Error(color.RedString("Could not find scripter=%s for service=%s. Enabled scripters: %s", x.Scripter, key, strings.Join(enabledScripterNames, ", ")))
 			continue
 		}
 
