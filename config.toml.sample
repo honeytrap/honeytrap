@@ -179,6 +179,18 @@ snapshot="20170101"
 
 # ####################### DIRECTORS END ###################################### #
 
+# ####################### SCRIPTERS BEGIN ##################################### #
+# Enable scripters. The scripters are defined by starting with a [[scripter]] field.
+# Each scripter requires that the "name" a "type" value are set. The name can be
+# freely chosen and is referred by in the channel output.
+# A complete list of available scripters and their specific configuration options
+# can be found in <.....>.
+
+[scripter.lua]
+type="lua"
+folder="lua-scripts"
+
+# ####################### SCRIPTERS BEGIN ##################################### #
 
 # ####################### CHANNELS BEGIN ##################################### #
 # The listener and every proxy, director and service generate events, alters and 

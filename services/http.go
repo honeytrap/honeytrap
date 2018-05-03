@@ -152,9 +152,11 @@ func (s *httpService) Handle(ctx context.Context, conn net.Conn) error {
 		} else if err != nil {
 			return err
 		}
-		//
-		////conn, req, body :=
-		//s.scr.PreFilter("http", httpScripter {conn, req, n })
+
+		s.scr.SetVariable("http", "RequestURL", req.URL.String())
+		s.scr.SetVariable("http", "RequestMethod", req.Method)
+		s.scr.SetVariable("http", "RemoteAddr", conn.RemoteAddr().String())
+		s.scr.SetVariable("http", "LocalAddr", conn.LocalAddr().String())
 
 		body = body[:n]
 
@@ -172,6 +174,7 @@ func (s *httpService) Handle(ctx context.Context, conn net.Conn) error {
 			event.Custom("http.proto", req.Proto),
 			event.Custom("http.host", req.Host),
 			event.Custom("http.url", req.URL.String()),
+			// event.Custom("http.response", bodyResp),
 			event.Payload(body),
 			Headers(req.Header),
 			Cookies(req.Cookies()),
@@ -195,8 +198,4 @@ func (s *httpService) Handle(ctx context.Context, conn net.Conn) error {
 			return err
 		}
 	}
-}
-
-func getRequestURL(r http.Request) string {
-	return r.URL.String()
 }
