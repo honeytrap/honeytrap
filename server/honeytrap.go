@@ -408,7 +408,6 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 
 	// initialize directors
 	directors := map[string]director.Director{}
-	availableDirectorNames := director.GetAvailableDirectorNames()
 
 	for key, s := range hc.config.Directors {
 		x := struct {
@@ -427,7 +426,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		}
 
 		if directorFunc, ok := director.Get(x.Type); !ok {
-			log.Error("Director type=%s not supported on platform (director=%s). Available directors: %s", x.Type, key, strings.Join(availableDirectorNames, ", "))
+			log.Error("Director type=%s not supported on platform (director=%s) (use --list-directors to see available directors)", x.Type, key)
 		} else if d, err := directorFunc(
 			director.WithChannel(hc.bus),
 			director.WithConfig(s),
@@ -452,13 +451,8 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		fmt.Println(color.RedString("Listener not set"))
 	}
 
-	var enabledDirectorNames []string
-	for key := range directors {
-		enabledDirectorNames = append(enabledDirectorNames, key)
-	}
-
-	serviceList := make(map[string]*ServiceMap)
 	isServiceUsed := make(map[string]bool) // Used to check that every service is used by a port
+	serviceList := make(map[string]*ServiceMap)
 	// same for proxies
 	for key, s := range hc.config.Services {
 		x := struct {
@@ -487,13 +481,13 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		} else if d, ok := directors[x.Director]; ok {
 			options = append(options, services.WithDirector(d))
 		} else {
-			log.Error(color.RedString("Could not find director=%s for service=%s. Enabled directors: %s", x.Director, key, strings.Join(enabledDirectorNames, ", ")))
+			log.Error("Could not find director=%s for service=%s (use --list-directors to see available directors)", x.Director, key)
 			continue
 		}
 
 		fn, ok := services.Get(x.Type)
 		if !ok {
-			log.Error(color.RedString("Could not find type %s for service %s", x.Type, key))
+			log.Error("Could not find type %s for service %s", x.Type, key)
 			continue
 		}
 
@@ -509,8 +503,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 
 	listenerFunc, ok := listener.Get(x.Type)
 	if !ok {
-		fmt.Println(color.RedString("Listener %s not support on platform", x.Type))
-		return
+		log.Fatalf("Listener %s not support on platform", x.Type)
 	}
 
 	l, err := listenerFunc(
@@ -614,8 +607,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 	}
 
 	if err := l.Start(ctx); err != nil {
-		fmt.Println(color.RedString("Error starting listener: %s", err.Error()))
-		return
+		log.Fatalf("Error starting listener: %s", err.Error())
 	}
 
 	incoming := make(chan net.Conn)
@@ -717,7 +709,7 @@ func (hc *Honeytrap) handle(conn net.Conn) {
 
 	ctx := context.Background()
 	if err := sm.Service.Handle(ctx, newConn); err != nil {
-		log.Errorf(color.RedString("Error handling service: %s: %s", sm.Name, err.Error()))
+		log.Errorf("Error handling service: %s: %s", sm.Name, err.Error())
 	}
 }
 
