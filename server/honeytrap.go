@@ -42,7 +42,6 @@ import (
 
 	"github.com/mattn/go-isatty"
 
-	"github.com/BurntSushi/toml"
 	"github.com/fatih/color"
 
 	"github.com/honeytrap/honeytrap/cmd"
@@ -334,7 +333,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			Type string `toml:"type"`
 		}{}
 
-		err := toml.PrimitiveDecode(s, &x)
+		err := hc.config.PrimitiveDecode(s, &x)
 		if err != nil {
 			log.Error("Error parsing configuration of channel: %s", err.Error())
 			continue
@@ -363,7 +362,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			Categories []string `toml:"categories"`
 		}{}
 
-		err := toml.PrimitiveDecode(s, &x)
+		err := hc.config.PrimitiveDecode(s, &x)
 		if err != nil {
 			log.Error("Error parsing configuration of filter: %s", err.Error())
 			continue
@@ -401,7 +400,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			Type string `toml:"type"`
 		}{}
 
-		err := toml.PrimitiveDecode(s, &x)
+		err := hc.config.PrimitiveDecode(s, &x)
 		if err != nil {
 			log.Error("Error parsing configuration of director: %s", err.Error())
 			continue
@@ -429,7 +428,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		Type string `toml:"type"`
 	}{}
 
-	if err := toml.PrimitiveDecode(hc.config.Listener, &x); err != nil {
+	if err := hc.config.PrimitiveDecode(hc.config.Listener, &x); err != nil {
 		log.Error("Error parsing configuration of listener: %s", err.Error())
 		return
 	}
@@ -453,7 +452,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			Port     string `toml:"port"`
 		}{}
 
-		if err := toml.PrimitiveDecode(s, &x); err != nil {
+		if err := hc.config.PrimitiveDecode(s, &x); err != nil {
 			log.Error("Error parsing configuration of service %s: %s", key, err.Error())
 			continue
 		}
@@ -516,7 +515,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			Services []string `toml:"services"`
 		}{}
 
-		if err := toml.PrimitiveDecode(s, &x); err != nil {
+		if err := hc.config.PrimitiveDecode(s, &x); err != nil {
 			log.Error("Error parsing configuration of generic ports: %s", err.Error())
 			continue
 		}
@@ -593,6 +592,10 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		if !isUsed {
 			log.Warningf("Service %s is defined but not used", name)
 		}
+	}
+
+	if len(hc.config.Undecoded()) != 0 {
+		log.Warningf("Unrecognized keys in configuration: %v", hc.config.Undecoded())
 	}
 
 	if err := l.Start(ctx); err != nil {
