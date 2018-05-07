@@ -5,15 +5,15 @@ import (
 )
 
 var (
-	scripters = map[string]func(...func(Scripter) error) (Scripter, error) {}
+	scripters = map[string]func(string, ...func(Scripter) error) (Scripter, error){}
 )
 
-func Register(key string, fn func(...func(Scripter) error) (Scripter, error)) func(...func(Scripter) error) (Scripter, error) {
+func Register(key string, fn func(string, ...func(Scripter) error) (Scripter, error)) func(string, ...func(Scripter) error) (Scripter, error) {
 	scripters[key] = fn
 	return fn
 }
 
-func Get(key string) (func(...func(Scripter) error) (Scripter, error), bool) {
+func Get(key string) (func(string, ...func(Scripter) error) (Scripter, error), bool) {
 	if fn, ok := scripters[key]; ok {
 		return fn, true
 	}
@@ -30,11 +30,12 @@ func GetAvailableScripterNames() []string {
 }
 
 type Scripter interface {
-	InitScripts(service string)
-	Handle(service string, message string) (string, error)
-	SetVariable(service string, name string, value string) error
+	InitScripts(string) error
+	Handle(message string) (string, error)
+	SetGlobalFn(name string, fn func() string) error
+	SetVariable(name string, value string) error
+	SetStringFunction(name string, getString func() string) error
 }
-
 
 func WithConfig(c toml.Primitive) func(Scripter) error {
 	return func(scr Scripter) error {

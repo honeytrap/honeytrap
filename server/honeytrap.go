@@ -451,6 +451,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		if scripterFunc, ok := scripter.Get(x.Type); !ok {
 			log.Error("Scripter type=%s not supported on platform (scripter=%s). Available scripters: %s", x.Type, key, strings.Join(availableScripterNames, ", "))
 		} else if scr, err := scripterFunc(
+			key,
 			scripter.WithConfig(s),
 		); err != nil {
 			log.Fatalf("Error initializing scripter %s(%s): %s", key, x.Type, err)
