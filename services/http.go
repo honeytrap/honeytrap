@@ -156,12 +156,12 @@ func (s *httpService) Handle(ctx context.Context, conn net.Conn) error {
 			return err
 		}
 
-		s.scr.SetVariable("RequestURL", req.URL.String())
-		s.scr.SetVariable("RequestMethod", req.Method)
+		s.scr.SetStringFunction("getRequestURL", func() string { return req.URL.String() })
+		s.scr.SetStringFunction("getRequestMethod", func() string { return req.Method })
+		s.scr.SetStringFunction("getRemoteAddr", func() string { return conn.RemoteAddr().String() })
+		s.scr.SetStringFunction("getLocalAddr", func() string { return conn.LocalAddr().String() })
 
-		s.scr.SetStringFunction( "LocalAddr", func() string { return conn.LocalAddr().String() })
-		s.scr.SetStringFunction( "getRemoteAddr", func() string { return conn.RemoteAddr().String() })
-		s.scr.SetStringFunction( "getDatetime", func() string {
+		s.scr.SetStringFunction("getDatetime", func() string {
 			t := time.Now()
 			return fmt.Sprintf("%d-%02d-%02dT%02d:%02d:%02d-00:00\n",
 				t.Year(), t.Month(), t.Day(),
