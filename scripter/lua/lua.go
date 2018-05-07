@@ -106,14 +106,6 @@ func handleScript(ls *lua.LState, message string) (string, error) {
 	return result, nil
 }
 
-// Set a variable that is available in all scripts for a service
-func (l *luaScripter) SetVariable(name string, value string) error {
-	for _, ls := range l.scripts[l.name] {
-		ls.SetGlobal(name, lua.LString(value))
-	}
-	return nil
-}
-
 // Set a function that is available in all scripts for a service
 func (l *luaScripter) SetStringFunction(name string, getString func() string) error {
 	for _, ls := range l.scripts[l.name] {
