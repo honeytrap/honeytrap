@@ -44,6 +44,7 @@ import (
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/scripter"
+	"time"
 )
 
 var (
@@ -62,7 +63,9 @@ func HTTP(options ...ServicerFunc) Servicer {
 		o(s)
 	}
 
-	s.scr.InitScripts("http")
+	if err := s.scr.InitScripts("http"); err != nil {
+		log.Errorf("error initializing http scripts: %s", err)
+	}
 
 	return s
 }
@@ -153,14 +156,24 @@ func (s *httpService) Handle(ctx context.Context, conn net.Conn) error {
 			return err
 		}
 
-		s.scr.SetVariable("http", "RequestURL", req.URL.String())
-		s.scr.SetVariable("http", "RequestMethod", req.Method)
-		s.scr.SetVariable("http", "RemoteAddr", conn.RemoteAddr().String())
-		s.scr.SetVariable("http", "LocalAddr", conn.LocalAddr().String())
+		s.scr.SetVariable("RequestURL", req.URL.String())
+		s.scr.SetVariable("RequestMethod", req.Method)
+
+		s.scr.SetStringFunction( "LocalAddr", func() string { return conn.LocalAddr().String() })
+		s.scr.SetStringFunction( "getRemoteAddr", func() string { return conn.RemoteAddr().String() })
+		s.scr.SetStringFunction( "getDatetime", func() string {
+			t := time.Now()
+			return fmt.Sprintf("%d-%02d-%02dT%02d:%02d:%02d-00:00\n",
+				t.Year(), t.Month(), t.Day(),
+				t.Hour(), t.Minute(), t.Second())
+		})
 
 		body = body[:n]
 
-		responseString, err := s.scr.Handle("http", string(body))
+		responseString, err := s.scr.Handle(string(body))
+		if err != nil {
+			return err
+		}
 
 		io.Copy(ioutil.Discard, req.Body)
 
