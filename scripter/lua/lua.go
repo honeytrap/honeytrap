@@ -6,7 +6,6 @@ import (
 	"github.com/yuin/gopher-lua"
 	"io/ioutil"
 	"github.com/op/go-logging"
-	"sync"
 )
 
 var log = logging.MustGetLogger("scripter/lua")
@@ -15,6 +14,8 @@ var (
 	_ = scripter.Register("lua", New)
 )
 
+// Create a lua scripter instance that handles the connection to all lua-scripts
+// A list where all scripts are stored in is generated
 func New(options ...func(scripter.Scripter) error) (scripter.Scripter, error) {
 	s := &luaScripter{}
 
@@ -23,7 +24,7 @@ func New(options ...func(scripter.Scripter) error) (scripter.Scripter, error) {
 	}
 
 	log.Infof("Using folder: %s", s.Folder)
-	s.scripts = &sync.Map{} // map[string]*lua.LState{}
+	s.scripts = map[string]map[string]*lua.LState{} // map[string]*lua.LState{}
 
 	return s, nil
 }
@@ -32,35 +33,48 @@ func New(options ...func(scripter.Scripter) error) (scripter.Scripter, error) {
 type luaScripter struct {
 	Folder string `toml:"folder"`
 
-	scripts *sync.Map
+	scripts map[string]map[string]*lua.LState
 }
 
+// Initialize the scripts from a specific service
+// The service name is given and the method will loop over all files in the lua-scripts folder with the given service name
+// All of these scripts are then loaded and stored in the scripts map
 func (l *luaScripter) InitScripts(service string) {
 	files, err := ioutil.ReadDir(fmt.Sprintf("%s/%s", l.Folder, service))
 	if err != nil {
 		log.Errorf(err.Error())
 	}
 
-	ls := lua.NewState()
 	//Todo: Load basic lua functions
+	l.scripts[service] = map[string]*lua.LState{}
 
 	for _, f := range files {
+		ls := lua.NewState()
 		ls.DoFile(fmt.Sprintf("%s/%s/%s", l.Folder, service, f.Name()))
-	}
 
-	l.scripts.Store(service, ls)
+		l.scripts[service][f.Name()] = ls
+	}
 }
 
 // Handle incoming message string
+// Get all scripts for a given service and pass the string to each script
 func (l *luaScripter) Handle(service string, message string) (string, error) {
-	ls, err := l.loadScript(service)
-	if err != nil {
-		return message, err
+	result := message
+	var retError error
+
+	for _, v := range l.scripts[service] {
+		result, retError = handleScript(*v, result)
 	}
 
+	return result, retError
+}
+
+// Run the given script on a given message
+// Return the value that come out of function(message)
+func handleScript(script lua.LState, message string) (string, error) {
 	// Call method to handle the message
-	if err := ls.CallByParam(lua.P{
-		Fn:      ls.GetGlobal("handle"),
+	if err := script.CallByParam(lua.P{
+		Fn:      script.GetGlobal("handle"),
 		NRet:    1,
 		Protect: true,
 	}, lua.LString(message)); err != nil {
@@ -68,29 +82,18 @@ func (l *luaScripter) Handle(service string, message string) (string, error) {
 	}
 
 	// Get result of the function
-	result := ls.Get(-1).String()
-	ls.Pop(1)
+	result := script.Get(-1).String()
+	script.Pop(1)
 
 	return result, nil
 }
 
+// Set a variable that is available in all scripts for a given service
 func (l *luaScripter) SetVariable(service string, name string, value string) error {
-	ls, err := l.loadScript(service)
-	if err != nil {
-		return err
+	for _, v := range l.scripts[service] {
+		v.SetGlobal(name, lua.LString(value))
 	}
-
-	ls.SetGlobal(name, lua.LString(value))
-
 	return nil
-}
-
-func (l *luaScripter) loadScript(service string) (*lua.LState, error) {
-	lState, ok := l.scripts.Load(service)
-	if !ok {
-		return nil, fmt.Errorf("could not retrieve lua state for service %s", service)
-	}
-	return lState.(*lua.LState), nil
 }
 
 // Closes the scripter state
