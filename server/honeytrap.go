@@ -326,6 +326,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 	w.Start()
 
 	channels := map[string]pushers.Channel{}
+	isChannelUsed := make(map[string]bool)
 	// sane defaults!
 
 	for key, s := range hc.config.Channels {
@@ -352,6 +353,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			log.Fatalf("Error initializing channel %s(%s): %s", key, x.Type, err)
 		} else {
 			channels[key] = d
+			isChannelUsed[key] = false
 		}
 	}
 
@@ -375,6 +377,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 				continue
 			}
 
+			isChannelUsed[name] = true
 			channel = pushers.TokenChannel(channel, hc.token)
 
 			if len(x.Categories) != 0 {
@@ -388,6 +391,12 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			if err := hc.bus.Subscribe(channel); err != nil {
 				log.Error("Could not add channel %s to bus: %s", name, err.Error())
 			}
+		}
+	}
+
+	for name, isUsed := range isChannelUsed {
+		if !isUsed {
+			log.Warningf("Channel %s is unused. Did you forget to add a filter?", name)
 		}
 	}
 
