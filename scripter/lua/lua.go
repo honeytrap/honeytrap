@@ -148,6 +148,11 @@ func (w *ConnectionStruct) SetStringFunction(name string, getString func() strin
 	return w.conn.SetStringFunction(name, getString, w.service)
 }
 
+//Set a string function for a connection
+func (w *ConnectionStruct) SetFloatFunction(name string, getFloat func() float64) error {
+	return w.conn.SetFloatFunction(name, getFloat, w.service)
+}
+
 
 
 // Scripter Connection struct
@@ -163,6 +168,18 @@ func (c *scripterConn) SetStringFunction(name string, getString func() string, s
 	for _, script := range c.scripts[service] {
 		script.Register(name, func(state *lua.LState) int {
 			state.Push(lua.LString(getString()))
+			return 1
+		})
+	}
+
+	return nil
+}
+
+// Set a function that is available in all scripts for a service
+func (c *scripterConn) SetFloatFunction(name string, getFloat func() float64, service string) error {
+	for _, script := range c.scripts[service] {
+		script.Register(name, func(state *lua.LState) int {
+			state.Push(lua.LNumber(getFloat()))
 			return 1
 		})
 	}
