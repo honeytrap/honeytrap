@@ -63,7 +63,7 @@ func HTTP(options ...ServicerFunc) Servicer {
 		o(s)
 	}
 
-	if err := s.scr.InitScripts("http"); err != nil {
+	if err := s.scr.Init("http"); err != nil {
 		log.Errorf("error initializing http scripts: %s", err)
 	}
 
@@ -136,6 +136,7 @@ func Cookies(cookies []*http.Cookie) event.Option {
 }
 
 func (s *httpService) Handle(ctx context.Context, conn net.Conn) error {
+	scr := s.scr.GetConnection("http", conn)
 	for {
 		br := bufio.NewReader(conn)
 
@@ -156,12 +157,12 @@ func (s *httpService) Handle(ctx context.Context, conn net.Conn) error {
 			return err
 		}
 
-		s.scr.SetStringFunction("getRequestURL", func() string { return req.URL.String() })
-		s.scr.SetStringFunction("getRequestMethod", func() string { return req.Method })
-		s.scr.SetStringFunction("getRemoteAddr", func() string { return conn.RemoteAddr().String() })
-		s.scr.SetStringFunction("getLocalAddr", func() string { return conn.LocalAddr().String() })
+		scr.SetStringFunction("getRequestURL", func() string { return req.URL.String() })
+		scr.SetStringFunction("getRequestMethod", func() string { return req.Method })
+		scr.SetStringFunction("getRemoteAddr", func() string { return conn.RemoteAddr().String() })
+		scr.SetStringFunction("getLocalAddr", func() string { return conn.LocalAddr().String() })
 
-		s.scr.SetStringFunction("getDatetime", func() string {
+		scr.SetStringFunction("getDatetime", func() string {
 			t := time.Now()
 			return fmt.Sprintf("%d-%02d-%02dT%02d:%02d:%02d-00:00\n",
 				t.Year(), t.Month(), t.Day(),
@@ -170,7 +171,7 @@ func (s *httpService) Handle(ctx context.Context, conn net.Conn) error {
 
 		body = body[:n]
 
-		responseString, err := s.scr.Handle(string(body))
+		responseString, err := scr.Handle(string(body))
 		if err != nil {
 			return err
 		}
