@@ -15,7 +15,7 @@
 * Create high interaction honeypots using the LXC or remote hosts directors, traffic will be man-in-the-middle proxied, while information will be extracted
 * Extend honeytrap with existing honeypots (like cowrie or glutton), while using the logging and listening framework of Honeytrap
 * Advanced logging system with filtering and logging to Elasticsearch, Kafka, Splunk, Raven, File or Console
-* Services are easy extensible and will extract as much information as possible
+* Services are easily extensible and will extract as much information as possible
 * Low- to high interaction Honeypots, where connections will be upgraded seamless to high interaction
 
 ## To start using Honeytrap
