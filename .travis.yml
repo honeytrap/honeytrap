@@ -1,5 +1,8 @@
 language: go
 
+git:
+  submodules: false
+
 go:
   - master
   - tip
@@ -30,7 +33,7 @@ install:
   - sudo apt-get update -qq
   - sudo apt-get install -y software-properties-common python-software-properties lxc-dev
   - go get -u -v gopkg.in/alecthomas/gometalinter.v2
-  - go get -u -v github.com/honeytrap/honeytrap
+  - go get -v github.com/honeytrap/honeytrap
   - gometalinter.v2 --install
 
 script:
