@@ -1,0 +1,3 @@
+[submodule "lua-scripts/lua"]
+	path = lua-scripts/lua
+	url = git@github.com:HoneyBEP/lua-scripts.git
