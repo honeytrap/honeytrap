@@ -9,6 +9,8 @@ import (
 	"errors"
 	"net"
 	"strings"
+	"github.com/honeytrap/honeytrap/utils/files"
+	"time"
 )
 
 var log = logging.MustGetLogger("scripter/lua")
@@ -211,6 +213,29 @@ func (c *scripterConn) hasScripts(service string) bool {
 	return ok
 }
 
+func (c *scripterConn) setBasicMethods(service string) {
+	c.SetStringFunction("getRemoteAddr", func() string { return c.conn.RemoteAddr().String() }, service)
+	c.SetStringFunction("getLocalAddr", func() string { return c.conn.LocalAddr().String() }, service)
+
+	c.SetStringFunction("getDatetime", func() string {
+		t := time.Now()
+		return fmt.Sprintf("%d-%02d-%02dT%02d:%02d:%02d-00:00\n",
+			t.Year(), t.Month(), t.Day(),
+			t.Hour(), t.Minute(), t.Second())
+	}, service)
+
+	c.SetStringFunction("getFileDownload", func() string {
+		url, _ := c.GetParameter(-1, service)
+		path, _ := c.GetParameter(0, service)
+
+		if err := files.Download(url, path); err != nil {
+			log.Errorf("error downloading file: %s", err)
+			return "no"
+		}
+		return "yes"
+	}, service)
+}
+
 //Add scripts to a connection for a given service
 func (c *scripterConn) addScripts(service string, scripts map[string]string) {
 	_, ok := c.scripts[service]; if !ok {
@@ -225,4 +250,6 @@ func (c *scripterConn) addScripts(service string, scripts map[string]string) {
 		}
 		c.scripts[service][name] = ls
 	}
+
+	c.setBasicMethods(service)
 }
