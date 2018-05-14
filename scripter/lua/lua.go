@@ -153,6 +153,11 @@ func (w *ConnectionStruct) SetFloatFunction(name string, getFloat func() float64
 	return w.conn.SetFloatFunction(name, getFloat, w.service)
 }
 
+//Get a parameter from a connection
+func (w *ConnectionStruct) GetParameter(index int) (string, error) {
+	return w.conn.GetParameter(index, w.service)
+}
+
 
 
 // Scripter Connection struct
@@ -185,6 +190,19 @@ func (c *scripterConn) SetFloatFunction(name string, getFloat func() float64, se
 	}
 
 	return nil
+}
+
+// Get the stack parameter from lua to be used in Go functions
+func (c *scripterConn) GetParameter(index int, service string) (string, error) {
+	for _, script := range c.scripts[service] {
+		if script.GetTop() >= 2 {
+			if parameter := script.CheckString(script.GetTop() + index); parameter != "" {
+				return parameter, nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("%s", "Could not find parameter")
 }
 
 //Returns if the scripts for a given service are loaded already
