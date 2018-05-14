@@ -44,8 +44,6 @@ import (
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/scripter"
-	"time"
-	"github.com/honeytrap/honeytrap/utils/files"
 )
 
 var (
@@ -137,7 +135,7 @@ func Cookies(cookies []*http.Cookie) event.Option {
 }
 
 func (s *httpService) Handle(ctx context.Context, conn net.Conn) error {
-	scr := s.scr.GetConnection("http", conn)
+	sConn := s.scr.GetConnection("http", conn)
 	for {
 		br := bufio.NewReader(conn)
 
@@ -158,32 +156,12 @@ func (s *httpService) Handle(ctx context.Context, conn net.Conn) error {
 			return err
 		}
 
-		scr.SetStringFunction("getRequestURL", func() string { return req.URL.String() })
-		scr.SetStringFunction("getRequestMethod", func() string { return req.Method })
-		scr.SetStringFunction("getRemoteAddr", func() string { return conn.RemoteAddr().String() })
-		scr.SetStringFunction("getLocalAddr", func() string { return conn.LocalAddr().String() })
-
-		scr.SetStringFunction("getFileDownload", func() string {
-			url, _ := scr.GetParameter(-1)
-			path, _ := scr.GetParameter(0)
-
-			if err := files.Download(url, path); err != nil {
-				log.Errorf("error downloading file: %s", err)
-				return "no"
-			}
-			return "yes"
-		})
-
-		scr.SetStringFunction("getDatetime", func() string {
-			t := time.Now()
-			return fmt.Sprintf("%d-%02d-%02dT%02d:%02d:%02d-00:00\n",
-				t.Year(), t.Month(), t.Day(),
-				t.Hour(), t.Minute(), t.Second())
-		})
+		sConn.SetStringFunction("getRequestURL", func() string { return req.URL.String() })
+		sConn.SetStringFunction("getRequestMethod", func() string { return req.Method })
 
 		body = body[:n]
 
-		responseString, err := scr.Handle(string(body))
+		responseString, err := sConn.Handle(string(body))
 		if err != nil {
 			return err
 		}
