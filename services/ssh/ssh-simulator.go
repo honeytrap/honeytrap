@@ -49,6 +49,7 @@ import (
 	"github.com/rs/xid"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/terminal"
+	"github.com/honeytrap/honeytrap/scripter"
 )
 
 var (
@@ -93,6 +94,10 @@ func Simulator(options ...services.ServicerFunc) services.Servicer {
 		o(service)
 	}
 
+	if err := service.scr.Init("ssh"); err != nil {
+		log.Errorf("error initializing ssh scripts: %s", err)
+	}
+
 	return service
 }
 
@@ -106,10 +111,16 @@ type sshSimulatorService struct {
 
 	Credentials []string    `toml:"credentials"`
 	key         *privateKey `toml:"private-key"`
+
+	scr scripter.Scripter
 }
 
 func (s *sshSimulatorService) CanHandle(payload []byte) bool {
 	return bytes.HasPrefix(payload, []byte("SSH"))
+}
+
+func (s *sshSimulatorService) SetScripter(scr scripter.Scripter) {
+	s.scr = scr
 }
 
 func (s *sshSimulatorService) SetChannel(c pushers.Channel) {
@@ -133,6 +144,7 @@ func PayloadDecoder(payload []byte) *payloadDecoder {
 }
 
 func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
+	sConn := s.scr.GetConnection("ssh", conn)
 	id := xid.New()
 
 	config := ssh.ServerConfig{
@@ -395,12 +407,41 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 								event.Custom("ssh.command", line),
 							))
 
+							resp, err := sConn.Handle(line)
+							if err != nil {
+								log.Errorf("Error running scripter: %s", err.Error())
+							} else {
+								term.Write([]byte(resp))
+								continue
+							}
+
 							term.Write([]byte(fmt.Sprintf("%s: command not found\n", line)))
 						}
 					} else if req.Type == "exec" {
 						defer channel.Close()
 
-						channel.Write([]byte(fmt.Sprintf("%s: command not found\n", "ls")))
+						decoder := PayloadDecoder(req.Payload)
+
+						for {
+							if decoder.Available() == 0 {
+								break
+							}
+
+							payload := decoder.String()
+
+							resp, err := sConn.Handle(payload)
+							channel.Write([]byte(fmt.Sprintf("%s", resp)))
+
+							if err != nil {
+								log.Errorf("Error running scripter: %s", err.Error())
+								channel.Write([]byte(fmt.Sprintf("%s: command not found\n", payload)))
+								break
+							} else {
+								channel.Write([]byte(fmt.Sprintf("%s", resp)))
+								continue
+							}
+						}
+
 						channel.SendRequest("exit-status", false, []byte{0, 0, 0, 0})
 						return
 					} else {
