@@ -1,0 +1,14 @@
+{
+  "ssh": {
+    "ls": [
+      "home",
+      "music",
+      "passwords.txt"
+    ],
+    "uname": [
+      "windows",
+      "linux",
+      ""
+    ]
+  }
+}
