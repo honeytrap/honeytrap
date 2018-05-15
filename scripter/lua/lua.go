@@ -11,6 +11,7 @@ import (
 	"strings"
 	"github.com/honeytrap/honeytrap/utils/files"
 	"time"
+	"github.com/honeytrap/honeytrap/abtester"
 )
 
 var log = logging.MustGetLogger("scripter/lua")
@@ -33,6 +34,9 @@ func New(name string, options ...func(scripter.Scripter) error) (scripter.Script
 	log.Infof("Using folder: %s", l.Folder)
 	l.scripts = map[string]map[string]string{}
 	l.connections = map[string]scripterConn{}
+	l.abTester, _ = abtester.Namespace("lua")
+
+	l.abTester.LoadFromFile("scripter/abtests.json")
 
 	return l, nil
 }
@@ -47,13 +51,15 @@ type luaScripter struct {
 	scripts map[string]map[string]string
 	//List of connections keyed by 'ip'
 	connections map[string]scripterConn
+
+	abTester abtester.Abtester
 }
 
 // Initialize the scripts from a specific service
 // The service name is given and the method will loop over all files in the lua-scripts folder with the given service name
 // All of these scripts are then loaded and stored in the scripts map
 func (l *luaScripter) Init(service string) error {
-	files, err := ioutil.ReadDir(fmt.Sprintf("%s/%s/%s", l.Folder, l.name, service))
+	fileNames, err := ioutil.ReadDir(fmt.Sprintf("%s/%s/%s", l.Folder, l.name, service))
 	if err != nil {
 		return err
 	}
@@ -61,7 +67,7 @@ func (l *luaScripter) Init(service string) error {
 	// TODO: Load basic lua functions from shared context
 	l.scripts[service] = map[string]string{}
 
-	for _, f := range files {
+	for _, f := range fileNames {
 		l.scripts[service][f.Name()] = fmt.Sprintf("%s/%s/%s/%s", l.Folder, l.name, service, f.Name())
 	}
 
@@ -85,6 +91,7 @@ func (l *luaScripter) GetConnection(service string, conn net.Conn) scripter.Conn
 		sConn = scripterConn{}
 		sConn.conn = conn
 		sConn.scripts = map[string]map[string]*lua.LState{}
+		sConn.abTester = l.abTester
 		l.connections[ip] = sConn
 	}
 
@@ -168,6 +175,8 @@ type scripterConn struct {
 
 	//List of lua scripts running for this connection: directory/scriptname
 	scripts map[string]map[string]*lua.LState
+
+	abTester abtester.Abtester
 }
 
 // Set a function that is available in all scripts for a service
@@ -197,7 +206,7 @@ func (c *scripterConn) SetFloatFunction(name string, getFloat func() float64, se
 // Get the stack parameter from lua to be used in Go functions
 func (c *scripterConn) GetParameter(index int, service string) (string, error) {
 	for _, script := range c.scripts[service] {
-		if script.GetTop() >= 2 {
+		if script.GetTop() >= 1 {
 			if parameter := script.CheckString(script.GetTop() + index); parameter != "" {
 				return parameter, nil
 			}
@@ -213,6 +222,7 @@ func (c *scripterConn) hasScripts(service string) bool {
 	return ok
 }
 
+//Set methods that can be called by each lua script, returning basic functionality
 func (c *scripterConn) setBasicMethods(service string) {
 	c.SetStringFunction("getRemoteAddr", func() string { return c.conn.RemoteAddr().String() }, service)
 	c.SetStringFunction("getLocalAddr", func() string { return c.conn.LocalAddr().String() }, service)
@@ -233,6 +243,17 @@ func (c *scripterConn) setBasicMethods(service string) {
 			return "no"
 		}
 		return "yes"
+	}, service)
+
+	c.SetStringFunction("getAbTest", func() string {
+		key, _ := c.GetParameter(0, service)
+
+		val, err := c.abTester.GetForGroup(service, key, -1)
+		if err != nil {
+			return "_" //No response, _ so lua knows it has no ab-test
+		}
+
+		return val
 	}, service)
 }
 

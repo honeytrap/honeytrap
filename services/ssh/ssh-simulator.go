@@ -144,7 +144,7 @@ func PayloadDecoder(payload []byte) *payloadDecoder {
 }
 
 func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
-	sConn := s.scr.GetConnection("ssh", conn)
+	scrConn := s.scr.GetConnection("ssh", conn)
 	id := xid.New()
 
 	config := ssh.ServerConfig{
@@ -407,7 +407,7 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 								event.Custom("ssh.command", line),
 							))
 
-							resp, err := sConn.Handle(line)
+							resp, err := scrConn.Handle(line)
 							if err != nil {
 								log.Errorf("Error running scripter: %s", err.Error())
 							} else {
@@ -429,7 +429,8 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 
 							payload := decoder.String()
 
-							resp, err := sConn.Handle(payload)
+							resp, err := scrConn.Handle(payload)
+
 							channel.Write([]byte(fmt.Sprintf("%s", resp)))
 
 							if err != nil {
