@@ -6,11 +6,8 @@ import (
 	"github.com/op/go-logging"
 	"github.com/yuin/gopher-lua"
 	"io/ioutil"
-	"errors"
 	"net"
 	"strings"
-	"github.com/honeytrap/honeytrap/utils/files"
-	"time"
 	"github.com/honeytrap/honeytrap/abtester"
 )
 
@@ -33,7 +30,7 @@ func New(name string, options ...func(scripter.Scripter) error) (scripter.Script
 
 	log.Infof("Using folder: %s", l.Folder)
 	l.scripts = map[string]map[string]string{}
-	l.connections = map[string]scripterConn{}
+	l.connections = map[string]*luaConn{}
 	l.abTester, _ = abtester.Namespace("lua")
 
 	if err := l.abTester.LoadFromFile("scripter/abtests.json"); err != nil {
@@ -52,7 +49,7 @@ type luaScripter struct {
 	//Source of the states, initialized per connection: directory/scriptname
 	scripts map[string]map[string]string
 	//List of connections keyed by 'ip'
-	connections map[string]scripterConn
+	connections map[string]*luaConn
 
 	abTester abtester.Abtester
 }
@@ -86,193 +83,21 @@ func (l *luaScripter) GetConnection(service string, conn net.Conn) scripter.Conn
 	s := strings.Split(conn.RemoteAddr().String(), ":")
 	s = s[:len(s)-1]
 	ip := strings.Join(s, ":")
-	var sConn scripterConn
+	var sConn *luaConn
 	var ok bool
 
 	if sConn, ok = l.connections[ip]; !ok {
-		sConn = scripterConn{}
+		sConn = &luaConn{}
 		sConn.conn = conn
 		sConn.scripts = map[string]map[string]*lua.LState{}
 		sConn.abTester = l.abTester
 		l.connections[ip] = sConn
 	}
 
-	if !sConn.hasScripts(service) {
-		sConn.addScripts(service, l.scripts[service])
+	if !sConn.HasScripts(service) {
+		sConn.AddScripts(service, l.scripts[service])
 	}
 
-	return &ConnectionStruct{service, sConn}
+	return &scripter.ConnectionStruct{Service: service, MyConn: sConn}
 }
 
-//func (l *luaScripter) SetGlobalFn(name string, fn func() string) error {
-//	//for _, script := range l.scripts {
-//	//	return l.SetStringFunction(name, fn)
-//	//}
-//}
-
-// Run the given script on a given message
-// Return the value that come out of function(message)
-func handleScript(ls *lua.LState, message string) (string, error) {
-	// Call method to handle the message
-	if err := ls.CallByParam(lua.P{
-		Fn:      ls.GetGlobal("handle"),
-		NRet:    1,
-		Protect: true,
-	}, lua.LString(message)); err != nil {
-		return "", errors.New(fmt.Sprintf("error calling handle method:%s", err))
-	}
-
-	// Get result of the function
-	result := ls.Get(-1).String()
-	ls.Pop(1)
-
-	return result, nil
-}
-
-
-
-// Connection Wrapper struct
-type ConnectionStruct struct {
-	service string
-	conn scripterConn
-}
-
-// Handle incoming message string
-// Get all scripts for a given service and pass the string to each script
-func (w *ConnectionStruct) Handle(message string) (string, error) {
-	result := message
-	var err error
-
-	// TODO: Figure out the correct way to call all handle methods
-	for _, script := range w.conn.scripts[w.service] {
-		result, err = handleScript(script, result)
-		if err != nil {
-			return "", err
-		}
-	}
-
-	return result, nil
-}
-
-//Set a string function for a connection
-func (w *ConnectionStruct) SetStringFunction(name string, getString func() string) error {
-	return w.conn.SetStringFunction(name, getString, w.service)
-}
-
-//Set a string function for a connection
-func (w *ConnectionStruct) SetFloatFunction(name string, getFloat func() float64) error {
-	return w.conn.SetFloatFunction(name, getFloat, w.service)
-}
-
-//Get a parameter from a connection
-func (w *ConnectionStruct) GetParameter(index int) (string, error) {
-	return w.conn.GetParameter(index, w.service)
-}
-
-
-
-// Scripter Connection struct
-type scripterConn struct {
-	conn net.Conn
-
-	//List of lua scripts running for this connection: directory/scriptname
-	scripts map[string]map[string]*lua.LState
-
-	abTester abtester.Abtester
-}
-
-// Set a function that is available in all scripts for a service
-func (c *scripterConn) SetStringFunction(name string, getString func() string, service string) error {
-	for _, script := range c.scripts[service] {
-		script.Register(name, func(state *lua.LState) int {
-			state.Push(lua.LString(getString()))
-			return 1
-		})
-	}
-
-	return nil
-}
-
-// Set a function that is available in all scripts for a service
-func (c *scripterConn) SetFloatFunction(name string, getFloat func() float64, service string) error {
-	for _, script := range c.scripts[service] {
-		script.Register(name, func(state *lua.LState) int {
-			state.Push(lua.LNumber(getFloat()))
-			return 1
-		})
-	}
-
-	return nil
-}
-
-// Get the stack parameter from lua to be used in Go functions
-func (c *scripterConn) GetParameter(index int, service string) (string, error) {
-	for _, script := range c.scripts[service] {
-		if script.GetTop() >= 1 {
-			if parameter := script.CheckString(script.GetTop() + index); parameter != "" {
-				return parameter, nil
-			}
-		}
-	}
-
-	return "", fmt.Errorf("%s", "Could not find parameter")
-}
-
-//Returns if the scripts for a given service are loaded already
-func (c *scripterConn) hasScripts(service string) bool {
-	_, ok := c.scripts[service]
-	return ok
-}
-
-//Set methods that can be called by each lua script, returning basic functionality
-func (c *scripterConn) setBasicMethods(service string) {
-	c.SetStringFunction("getRemoteAddr", func() string { return c.conn.RemoteAddr().String() }, service)
-	c.SetStringFunction("getLocalAddr", func() string { return c.conn.LocalAddr().String() }, service)
-
-	c.SetStringFunction("getDatetime", func() string {
-		t := time.Now()
-		return fmt.Sprintf("%d-%02d-%02dT%02d:%02d:%02d-00:00\n",
-			t.Year(), t.Month(), t.Day(),
-			t.Hour(), t.Minute(), t.Second())
-	}, service)
-
-	c.SetStringFunction("getFileDownload", func() string {
-		url, _ := c.GetParameter(-1, service)
-		path, _ := c.GetParameter(0, service)
-
-		if err := files.Download(url, path); err != nil {
-			log.Errorf("error downloading file: %s", err)
-			return "no"
-		}
-		return "yes"
-	}, service)
-
-	c.SetStringFunction("getAbTest", func() string {
-		key, _ := c.GetParameter(0, service)
-
-		val, err := c.abTester.GetForGroup(service, key, -1)
-		if err != nil {
-			return "_" //No response, _ so lua knows it has no ab-test
-		}
-
-		return val
-	}, service)
-}
-
-//Add scripts to a connection for a given service
-func (c *scripterConn) addScripts(service string, scripts map[string]string) {
-	_, ok := c.scripts[service]; if !ok {
-		c.scripts[service] = map[string]*lua.LState{}
-	}
-
-	for name, script := range scripts {
-		ls := lua.NewState()
-		if err := ls.DoFile(script); err != nil {
-			log.Errorf("Unable to load lua script: %s", err)
-			continue
-		}
-		c.scripts[service][name] = ls
-	}
-
-	c.setBasicMethods(service)
-}
