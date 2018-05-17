@@ -6,9 +6,8 @@
       "passwords.txt"
     ],
     "uname": [
-      "windows",
-      "linux",
-      ""
+      "Windows_NT##MS/Windows##i686##unknown##unknown##unknown##9200##6.2",
+      "Windows_NT##MS/Windows##x86_64##unknown##unknown##unknown##3790##5.2"
     ]
   }
 }

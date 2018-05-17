@@ -142,7 +142,8 @@ func getItem(options []string, item int) (string, error) {
 	if item > 0 && item < len(options) {
 		result = options[item]
 	} else {
-		result = options[rand.Intn(len(options)-1)]
+		key := rand.Intn(len(options))
+		result = options[key]
 	}
 	return result, nil
 }

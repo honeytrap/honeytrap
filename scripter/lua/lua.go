@@ -36,7 +36,9 @@ func New(name string, options ...func(scripter.Scripter) error) (scripter.Script
 	l.connections = map[string]scripterConn{}
 	l.abTester, _ = abtester.Namespace("lua")
 
-	l.abTester.LoadFromFile("scripter/abtests.json")
+	if err := l.abTester.LoadFromFile("scripter/abtests.json"); err != nil {
+		return nil, err
+	}
 
 	return l, nil
 }
