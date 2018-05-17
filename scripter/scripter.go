@@ -50,7 +50,7 @@ type ConnectionWrapper interface {
 	SetStringFunction(name string, getString func() string) error
 	SetFloatFunction(name string, getFloat func() float64) error
 	SetVoidFunction(name string, doVoid func()) error
-	GetParameter(index int) (string, error)
+	GetParameters(params []string) (map[string]string, error)
 }
 
 type ScrConn interface {
@@ -58,10 +58,15 @@ type ScrConn interface {
 	SetStringFunction(name string, getString func() string, service string) error
 	SetFloatFunction(name string, getFloat func() float64, service string) error
 	SetVoidFunction(name string, doVoid func(), service string) error
-	GetParameter(index int, service string) (string, error)
+	GetParameters(params []string, service string) (map[string]string, error)
 	HasScripts(service string) bool
 	AddScripts(service string, scripts map[string]string)
-	HandleScripts(service string, message string) (string, error)
+	HandleScripts(service string, message string) (*Result, error)
+}
+
+// String result struct
+type Result struct {
+	Content string
 }
 
 type ScrAbTester interface {
@@ -87,10 +92,9 @@ func SetBasicMethods(c ScrConn, service string) {
 	}, service)
 
 	c.SetStringFunction("getFileDownload", func() string {
-		url, _ := c.GetParameter(-1, service)
-		path, _ := c.GetParameter(0, service)
+		params, _ := c.GetParameters([]string{"url", "path"}, service)
 
-		if err := files.Download(url, path); err != nil {
+		if err := files.Download(params["url"], params["path"]); err != nil {
 			log.Errorf("error downloading file: %s", err)
 			return "no"
 		}
@@ -100,9 +104,9 @@ func SetBasicMethods(c ScrConn, service string) {
 	if ab, ok := c.(ScrAbTester); ok {
 		//In the script the function 'getAbTest(key)' can be called, returning a random result for the given key
 		c.SetStringFunction("getAbTest", func() string {
-			key, _ := c.GetParameter(0, service)
+			params, _ := c.GetParameters([]string{"key"}, service)
 
-			val, err := ab.GetAbTester().GetForGroup(service, key, -1)
+			val, err := ab.GetAbTester().GetForGroup(service, params["key"], -1)
 			if err != nil {
 				return "_" //No response, _ so lua knows it has no ab-test
 			}
@@ -113,8 +117,9 @@ func SetBasicMethods(c ScrConn, service string) {
 
 	//In the script the function 'doLog(type, message)' can be called, with type = logging type and message the message
 	c.SetVoidFunction("doLog", func() {
-		logType, _ := c.GetParameter(-1, service)
-		message, _ := c.GetParameter(0, service)
+		params, _ := c.GetParameters([]string{"logType", "message"}, service)
+		logType := params["logType"]
+		message := params["message"]
 
 		if logType == "critical" {
 			log.Critical(message)

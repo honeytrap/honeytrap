@@ -63,17 +63,19 @@ func (c *luaConn) SetVoidFunction(name string, doVoid func(), service string) er
 	return nil
 }
 
-// Get the stack parameter from lua to be used in Go functions
-func (c *luaConn) GetParameter(index int, service string) (string, error) {
+// Get the stack parameters from lua to be used in Go functions
+func (c *luaConn) GetParameters(params []string, service string) (map[string]string, error) {
 	for _, script := range c.scripts[service] {
-		if script.GetTop() >= 1 {
-			if parameter := script.CheckString(script.GetTop() + index); parameter != "" {
-				return parameter, nil
+		if script.GetTop() >= len(params) {
+			m := make(map[string]string)
+			for index, param := range params {
+				m[param] = script.CheckString(script.GetTop() - len(params) + (index + 1))
 			}
+			return m, nil
 		}
 	}
 
-	return "", fmt.Errorf("%s", "Could not find parameter")
+	return nil, fmt.Errorf("%s", "Could not find parameters")
 }
 
 //Returns if the scripts for a given service are loaded already
@@ -102,33 +104,37 @@ func (c *luaConn) AddScripts(service string, scripts map[string]string) {
 
 // Run the given script on a given message
 // Return the value that come out of function(message)
-func handleScript(ls *lua.LState, message string) (string, error) {
+func handleScript(ls *lua.LState, message string) (*scripter.Result, error) {
 	// Call method to handle the message
 	if err := ls.CallByParam(lua.P{
 		Fn:      ls.GetGlobal("handle"),
 		NRet:    1,
 		Protect: true,
 	}, lua.LString(message)); err != nil {
-		return "", errors.New(fmt.Sprintf("error calling handle method:%s", err))
+		return nil, errors.New(fmt.Sprintf("error calling handle method:%s", err))
 	}
 
 	// Get result of the function
-	result := ls.Get(-1).String()
+	result := &scripter.Result{
+		Content: ls.Get(-1).String(),
+	}
+
 	ls.Pop(1)
 
 	return result, nil
 }
 
-func (c *luaConn) HandleScripts(service string, message string) (string, error) {
-	var result string
-	var err error
-
+func (c *luaConn) HandleScripts(service string, message string) (*scripter.Result, error) {
 	for _, script := range c.scripts[service] {
-		result, err = handleScript(script, result)
+		result, err := handleScript(script, message)
 		if err != nil {
-			return "", err
+			return nil, err
+		}
+
+		if result != nil {
+			return result, nil
 		}
 	}
 
-	return result, err
+	return nil, nil
 }
