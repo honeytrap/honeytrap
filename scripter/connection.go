@@ -31,6 +31,11 @@ func (w *ConnectionStruct) SetFloatFunction(name string, getFloat func() float64
 	return w.MyConn.SetFloatFunction(name, getFloat, w.Service)
 }
 
+//Set a string function for a connection
+func (w *ConnectionStruct) SetVoidFunction(name string, doVoid func()) error {
+	return w.MyConn.SetVoidFunction(name, doVoid, w.Service)
+}
+
 //Get a parameter from a connection
 func (w *ConnectionStruct) GetParameter(index int) (string, error) {
 	return w.MyConn.GetParameter(index, w.Service)
