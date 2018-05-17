@@ -3,11 +3,13 @@ package scripter
 import (
 	"github.com/BurntSushi/toml"
 	"net"
+	"github.com/op/go-logging"
 )
 
 var (
 	scripters = map[string]func(string, ...func(Scripter) error) (Scripter, error){}
 )
+var log = logging.MustGetLogger("scripter")
 
 func Register(key string, fn func(string, ...func(Scripter) error) (Scripter, error)) func(string, ...func(Scripter) error) (Scripter, error) {
 	scripters[key] = fn
@@ -44,6 +46,16 @@ type ConnectionWrapper interface {
 	SetStringFunction(name string, getString func() string) error
 	SetFloatFunction(name string, getFloat func() float64) error
 	GetParameter(index int) (string, error)
+}
+
+type ScrConn interface {
+	SetStringFunction(name string, getString func() string, service string) error
+	SetFloatFunction(name string, getFloat func() float64, service string) error
+	GetParameter(index int, service string) (string, error)
+	HasScripts(service string) bool
+	SetBasicMethods(service string)
+	AddScripts(service string, scripts map[string]string)
+	HandleScripts(service string, message string) (string, error)
 }
 
 func WithConfig(c toml.Primitive) func(Scripter) error {
