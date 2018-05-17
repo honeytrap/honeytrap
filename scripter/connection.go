@@ -9,16 +9,17 @@ type ConnectionStruct struct {
 // Handle incoming message string
 // Get all scripts for a given service and pass the string to each script
 func (w *ConnectionStruct) Handle(message string) (string, error) {
-	result := message
-	var err error
-
-	result, err = w.MyConn.HandleScripts(w.Service, result)
+	result, err := w.MyConn.HandleScripts(w.Service, message)
 
 	if err != nil {
 		log.Errorf("Error while handling scripts: %s", err)
 	}
 
-	return result, nil
+	if result != nil {
+		return result.Content, nil
+	}
+
+	return "", nil
 }
 
 //Set a string function for a connection
@@ -37,6 +38,6 @@ func (w *ConnectionStruct) SetVoidFunction(name string, doVoid func()) error {
 }
 
 //Get a parameter from a connection
-func (w *ConnectionStruct) GetParameter(index int) (string, error) {
-	return w.MyConn.GetParameter(index, w.Service)
+func (w *ConnectionStruct) GetParameters(params []string) (map[string]string, error) {
+	return w.MyConn.GetParameters(params, w.Service)
 }

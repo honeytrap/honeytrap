@@ -54,6 +54,10 @@ func Download(url string, path string) error {
 
 	text := fmt.Sprintf("%s\n\n%s\n", url, body[:n])
 
+	if _, err := os.Stat(fmt.Sprintf("%s/", path)); os.IsNotExist(err) {
+		os.MkdirAll(fmt.Sprintf("%s/", path), os.ModePerm)
+	}
+
 	f, err := os.OpenFile(fmt.Sprintf("%s/%s.txt", path, filename), os.O_APPEND|os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		return err
