@@ -3,14 +3,20 @@ type="socket"
 
 [service.ssh-simulator]
 type="ssh-simulator"
-port="tcp/8022"
 credentials=["root:root", "root:password"]
 
-[service.vnc]
-type="vnc"
-port="tcp/5900"
+[[port]]
+ports=["tcp/8022", "tcp/8023"]
+services=["ssh-simulator"]
+
+[service.telnet]
+type="telnet"
 image="/data/screenshot-20171030174349.png"
 server-name="WS-3244"
+
+[[port]]
+port="tcp/5900"
+services=["telnet"]
 
 [channel.console]
 type="console"
