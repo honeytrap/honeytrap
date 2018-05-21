@@ -123,9 +123,9 @@ func (s *Service) Handle(ctx context.Context, conn net.Conn) error {
 					event.Type("email"),
 					event.SourceAddr(conn.RemoteAddr()),
 					event.DestinationAddr(conn.LocalAddr()),
-					event.Custom("smtp.From", message.From),
-					event.Custom("smtp.To", message.To),
-					event.Custom("smtp.Body", message.Body.String()),
+					event.Custom("smtp.from", message.From),
+					event.Custom("smtp.to", message.To),
+					event.Custom("smtp.body", message.Body.String()),
 				))
 			case line := <-rcvLine:
 				s.ch.Send(event.New(
@@ -134,7 +134,7 @@ func (s *Service) Handle(ctx context.Context, conn net.Conn) error {
 					event.Type("input"),
 					event.SourceAddr(conn.RemoteAddr()),
 					event.DestinationAddr(conn.LocalAddr()),
-					event.Custom("smtp.Line", line),
+					event.Custom("smtp.line", line),
 				))
 			}
 		}
