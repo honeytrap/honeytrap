@@ -267,7 +267,7 @@ func ToAddr(input string) (net.Addr, string, int, error) {
 
 	proto := parts[0]
 	portStr := parts[1]
-	portInt16, err := strconv.ParseInt(portStr, 10, 16)
+	portInt16, err := strconv.ParseUint(portStr, 10, 16)
 	if err != nil {
 		return nil, "", 0, fmt.Errorf("error parsing port value: %s", err.Error())
 	}
