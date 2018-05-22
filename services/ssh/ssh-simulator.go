@@ -46,10 +46,10 @@ import (
 
 	"bytes"
 
+	"github.com/honeytrap/honeytrap/scripter"
 	"github.com/rs/xid"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/terminal"
-	"github.com/honeytrap/honeytrap/scripter"
 )
 
 var (
@@ -92,10 +92,6 @@ func Simulator(options ...services.ServicerFunc) services.Servicer {
 
 	for _, o := range options {
 		o(service)
-	}
-
-	if err := service.scr.Init("ssh"); err != nil {
-		log.Errorf("error initializing ssh scripts: %s", err)
 	}
 
 	return service

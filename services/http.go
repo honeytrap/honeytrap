@@ -62,10 +62,6 @@ func HTTP(options ...ServicerFunc) Servicer {
 		o(s)
 	}
 
-	if err := s.scr.Init("http"); err != nil {
-		log.Errorf("error initializing http scripts: %s", err)
-	}
-
 	return s
 }
 

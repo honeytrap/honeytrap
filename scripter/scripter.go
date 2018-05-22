@@ -1,13 +1,13 @@
 package scripter
 
 import (
-	"github.com/BurntSushi/toml"
-	"net"
-	"github.com/op/go-logging"
-	"time"
 	"fmt"
-	"github.com/honeytrap/honeytrap/utils/files"
+	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/abtester"
+	"github.com/honeytrap/honeytrap/utils/files"
+	"github.com/op/go-logging"
+	"net"
+	"time"
 )
 
 var (
@@ -15,11 +15,13 @@ var (
 )
 var log = logging.MustGetLogger("scripter")
 
+//Register the scripter instance
 func Register(key string, fn func(string, ...func(Scripter) error) (Scripter, error)) func(string, ...func(Scripter) error) (Scripter, error) {
 	scripters[key] = fn
 	return fn
 }
 
+//Get a scripter instance
 func Get(key string) (func(string, ...func(Scripter) error) (Scripter, error), bool) {
 	if fn, ok := scripters[key]; ok {
 		return fn, true
@@ -28,6 +30,7 @@ func Get(key string) (func(string, ...func(Scripter) error) (Scripter, error), b
 	return nil, false
 }
 
+//GetAvailableScripterNames gets all scripters that are registered
 func GetAvailableScripterNames() []string {
 	var out []string
 	for key := range scripters {
@@ -36,15 +39,15 @@ func GetAvailableScripterNames() []string {
 	return out
 }
 
-//The scripter interface that implements basic scripter methods
+//Scripter interface that implements basic scripter methods
 type Scripter interface {
 	Init(string) error
 	//SetGlobalFn(name string, fn func() string) error
 	GetConnection(service string, conn net.Conn) ConnectionWrapper
-	Close()
+	CanHandle(service string, message string) bool
 }
 
-//The connectionWrapper interface that implements the basic method that a connection should have
+//ConnectionWrapper interface that implements the basic method that a connection should have
 type ConnectionWrapper interface {
 	Handle(message string) (string, error)
 	SetStringFunction(name string, getString func() string) error
@@ -53,6 +56,7 @@ type ConnectionWrapper interface {
 	GetParameters(params []string) (map[string]string, error)
 }
 
+//ScrConn wraps a connection and exposes methods to interact with the connection and scripter
 type ScrConn interface {
 	GetConn() net.Conn
 	SetStringFunction(name string, getString func() string, service string) error
@@ -61,25 +65,28 @@ type ScrConn interface {
 	GetParameters(params []string, service string) (map[string]string, error)
 	HasScripts(service string) bool
 	AddScripts(service string, scripts map[string]string)
-	HandleScripts(service string, message string) (*Result, error)
+	Handle(service string, message string) (*Result, error)
 }
 
-// String result struct
+//Result struct which allows the result to be a string, an empty string and a nil value
+//The nil value can be used to indicate that lua has no value to return
 type Result struct {
 	Content string
 }
 
+//ScrAbTester exposes methods to interact with the AbTester
 type ScrAbTester interface {
 	GetAbTester() abtester.Abtester
 }
 
+//WithConfig returns a function to attach the config to the scripter
 func WithConfig(c toml.Primitive) func(Scripter) error {
 	return func(scr Scripter) error {
 		return toml.PrimitiveDecode(c, scr)
 	}
 }
 
-//Set methods that can be called by each script, returning basic functionality
+//SetBasicMethods sets methods that can be called by each script, returning basic functionality
 func SetBasicMethods(c ScrConn, service string) {
 	c.SetStringFunction("getRemoteAddr", func() string { return c.GetConn().RemoteAddr().String() }, service)
 	c.SetStringFunction("getLocalAddr", func() string { return c.GetConn().LocalAddr().String() }, service)
@@ -146,5 +153,4 @@ func SetBasicMethods(c ScrConn, service string) {
 			log.Warning(message)
 		}
 	}, service)
-
 }
