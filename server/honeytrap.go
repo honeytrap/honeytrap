@@ -521,7 +521,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 
 		if x.Scripter == "" {
 		} else if scr, ok := scripters[x.Scripter]; ok {
-			options = append(options, services.WithScripter(scr))
+			options = append(options, services.WithScripter(key, scr))
 		} else {
 			log.Error(color.RedString("Could not find scripter=%s for service=%s. Enabled scripters: %s", x.Scripter, key, strings.Join(enabledScripterNames, ", ")))
 			continue

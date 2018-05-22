@@ -113,12 +113,12 @@ func WithConfig(c toml.Primitive) ServicerFunc {
 	}
 }
 
-func WithScripter(scr scripter.Scripter) ServicerFunc {
+func WithScripter(service string, scr scripter.Scripter) ServicerFunc {
 	return func(s Servicer) error {
 		if sc, ok := s.(Scripter); ok {
 			sc.SetScripter(scr)
 		}
-		return nil
+		return scr.Init(service)
 	}
 }
 

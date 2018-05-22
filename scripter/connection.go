@@ -1,15 +1,15 @@
 package scripter
 
-// Connection Wrapper struct
+//ConnectionStruct
 type ConnectionStruct struct {
 	Service string
-	MyConn  ScrConn
+	Conn    ScrConn
 }
 
 // Handle incoming message string
 // Get all scripts for a given service and pass the string to each script
 func (w *ConnectionStruct) Handle(message string) (string, error) {
-	result, err := w.MyConn.HandleScripts(w.Service, message)
+	result, err := w.Conn.Handle(w.Service, message)
 
 	if err != nil {
 		log.Errorf("Error while handling scripts: %s", err)
@@ -22,22 +22,22 @@ func (w *ConnectionStruct) Handle(message string) (string, error) {
 	return "", nil
 }
 
-//Set a string function for a connection
+//SetStringFunction sets a string function for a connection
 func (w *ConnectionStruct) SetStringFunction(name string, getString func() string) error {
-	return w.MyConn.SetStringFunction(name, getString, w.Service)
+	return w.Conn.SetStringFunction(name, getString, w.Service)
 }
 
-//Set a string function for a connection
+//SetFloatFunction sets a string function for a connection
 func (w *ConnectionStruct) SetFloatFunction(name string, getFloat func() float64) error {
-	return w.MyConn.SetFloatFunction(name, getFloat, w.Service)
+	return w.Conn.SetFloatFunction(name, getFloat, w.Service)
 }
 
-//Set a string function for a connection
+//SetVoidFunction sets a string function for a connection
 func (w *ConnectionStruct) SetVoidFunction(name string, doVoid func()) error {
-	return w.MyConn.SetVoidFunction(name, doVoid, w.Service)
+	return w.Conn.SetVoidFunction(name, doVoid, w.Service)
 }
 
-//Get a parameter from a connection
+//GetParameters gets a parameter from a connection
 func (w *ConnectionStruct) GetParameters(params []string) (map[string]string, error) {
-	return w.MyConn.GetParameters(params, w.Service)
+	return w.Conn.GetParameters(params, w.Service)
 }
