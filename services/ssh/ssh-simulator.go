@@ -361,12 +361,71 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 						twrc := NewTypeWriterReadCloser(channel)
 						var wrappedChannel io.ReadWriteCloser = twrc
 
+						cterm := terminal.NewTerminal(wrappedChannel, "")
+
+						cterm.Write([]byte(`**** GDPR COMPLIANCY ****
+
+Due to the General Data Protection Regulation in the EU, we need to ask you a few questions before entering the DutchSec honeypot:
+
+`))
+
+						questions := []string{
+							"I consent that all information entered will be stored [YES]: ",
+							"I consent that all uploads will be stored [YES]: ",
+							"I consent that all your complete session will be recorded [YES]: ",
+							"I consent that information will be shared with others [YES]: ",
+							"I consent that information will be shared with research institutes [YES]: ",
+							"I consent that information will stored for eternity [YES]: ",
+						}
+
+						i := 0
+						cterm.Write([]byte(questions[i]))
+
+						for {
+
+							line, err := cterm.ReadLine()
+							if line == "YES" {
+								s.c.Send(event.New(
+									services.EventOptions,
+									event.Category("ssh"),
+									event.Type("gdpr-consent"),
+									event.SourceAddr(conn.RemoteAddr()),
+									event.DestinationAddr(conn.LocalAddr()),
+									event.Custom("gdpr-question", questions[i]),
+									event.Custom("gdpr-consent", line),
+								))
+
+								i++
+								if i >= len(questions) {
+									cterm.Write([]byte(fmt.Sprintf(`
+Thank you, welcome to Honeytrap%c
+`, 127855)))
+									break
+								}
+
+								cterm.Write([]byte(questions[i]))
+								continue
+							}
+
+							if err == io.EOF {
+								return
+							} else if err != nil {
+								log.Errorf("Error reading from connection: %s", err.Error())
+								return
+							}
+
+							if line == "exit" {
+								channel.SendRequest("exit-status", false, []byte{0, 0, 0, 0})
+								return
+							}
+
+							cterm.Write([]byte(`Please enter [YES] or disconnect: `))
+
+						}
+
 						prompt := "root@host:~$ "
 
 						term := terminal.NewTerminal(wrappedChannel, prompt)
-
-						term.Write([]byte(s.MOTD))
-
 						for {
 							line, err := term.ReadLine()
 							if err == io.EOF {
