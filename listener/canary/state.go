@@ -36,6 +36,7 @@ import (
 	"math/rand"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/honeytrap/honeytrap/listener/canary/tcp"
 )
@@ -92,6 +93,8 @@ type State struct {
 
 	// IRS     - initial receive sequence number
 	InitialReceiveSequenceNumber uint32
+
+	t time.Time
 }
 
 func (s *State) write(data []byte) {
@@ -137,6 +140,21 @@ func (st *StateTable) Add(state *State) {
 		return
 	}
 
+	now := time.Now()
+
+	for i := range *st {
+		if now.Sub((*st)[i].t) > 30*time.Second {
+			// inactive
+		} else {
+			continue
+		}
+
+		(*st)[i] = state
+		return
+	}
+
+	// we don't have enough space in the state table, and
+	// there are no inactive entries
 	panic("Statetable full")
 }
 
@@ -198,6 +216,8 @@ func (c *Canary) NewState(src net.IP, srcPort uint16, dest net.IP, dstPort uint1
 
 		RecvNext:                  0,
 		InitialSendSequenceNumber: rand.Uint32(),
+
+		t: time.Now(),
 
 		m: sync.Mutex{},
 	}
