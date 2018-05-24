@@ -235,6 +235,10 @@ type ICMPv4 struct {
 }
 
 func Parse(data []byte) (*ICMPv4, error) {
+	if len(data) < 8 {
+		return nil, fmt.Errorf("Incorrect ICMP header size: %d", len(data))
+	}
+
 	i := ICMPv4{}
 	i.TypeCode = CreateICMPv4TypeCode(data[0], data[1])
 	i.Checksum = binary.BigEndian.Uint16(data[2:4])
