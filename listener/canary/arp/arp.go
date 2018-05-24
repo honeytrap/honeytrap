@@ -60,6 +60,10 @@ func Parse(data []byte) (*Frame, error) {
 }
 
 func (f *Frame) Unmarshal(data []byte) error {
+	if len(data) < 28 {
+		return fmt.Errorf("Incorrect ARP header size: %d", len(data))
+	}
+
 	f.HardwareType = binary.BigEndian.Uint16(data[0:2])
 	f.ProtocolType = binary.BigEndian.Uint16(data[2:4])
 	f.HardwareSize = data[4]
