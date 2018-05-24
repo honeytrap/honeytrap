@@ -359,6 +359,8 @@ func (c *Canary) handleTCP(eh *ethernet.Frame, iph *ipv4.Header, data []byte) er
 	state.m.Lock()
 	defer state.m.Unlock()
 
+	state.t = time.Now()
+
 	// https://tools.ietf.org/html/rfc793
 	// page 65
 
