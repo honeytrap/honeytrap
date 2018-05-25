@@ -110,8 +110,9 @@ func WithDataDir(s string) (OptionFn, error) {
 			if err != nil {
 				return nil, err
 			}
+		} else {
+			return nil, err
 		}
-		return nil, err
 	}
 
 	return func(b *Honeytrap) error {
