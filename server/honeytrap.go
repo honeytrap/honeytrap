@@ -66,6 +66,7 @@ import (
 	_ "github.com/honeytrap/honeytrap/services/elasticsearch"
 	_ "github.com/honeytrap/honeytrap/services/ethereum"
 	_ "github.com/honeytrap/honeytrap/services/ftp"
+	_ "github.com/honeytrap/honeytrap/services/generic"
 	_ "github.com/honeytrap/honeytrap/services/ipp"
 	_ "github.com/honeytrap/honeytrap/services/redis"
 	_ "github.com/honeytrap/honeytrap/services/smtp"
@@ -96,6 +97,7 @@ import (
 	_ "github.com/honeytrap/honeytrap/pushers/splunk"
 
 	"github.com/op/go-logging"
+	"github.com/honeytrap/honeytrap/utils"
 )
 
 var log = logging.MustGetLogger("honeytrap/server")
@@ -211,7 +213,7 @@ func (hc *Honeytrap) findService(conn net.Conn) (*ServiceMap, net.Conn, error) {
 
 	peekUninitialized := true
 	var tConn net.Conn
-	var pConn *peekConnection
+	var pConn *utils.PeekConn
 	var n int
 	buffer := make([]byte, 1024)
 	for _, service := range serviceCandidates {
@@ -224,7 +226,7 @@ func (hc *Honeytrap) findService(conn net.Conn) (*ServiceMap, net.Conn, error) {
 		if peekUninitialized {
 			// wrap connection in a connection with deadlines
 			tConn = TimeoutConn(conn, time.Second*30)
-			pConn = PeekConnection(tConn)
+			pConn = utils.PeekConnection(tConn)
 			log.Debug("Peeking connection %s => %s", conn.RemoteAddr(), conn.LocalAddr())
 			_n, err := pConn.Peek(buffer)
 			n = _n // avoid silly "variable not used" warning
@@ -270,7 +272,7 @@ func ToAddr(input string) (net.Addr, string, int, error) {
 
 	proto := parts[0]
 	portStr := parts[1]
-	portInt16, err := strconv.ParseInt(portStr, 10, 16)
+	portInt16, err := strconv.ParseUint(portStr, 10, 16)
 	if err != nil {
 		return nil, "", 0, fmt.Errorf("error parsing port value: %s", err.Error())
 	}
@@ -453,6 +455,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		} else if scr, err := scripterFunc(
 			key,
 			scripter.WithConfig(s),
+			scripter.WithChannel(hc.bus),
 		); err != nil {
 			log.Fatalf("Error initializing scripter %s(%s): %s", key, x.Type, err)
 		} else {

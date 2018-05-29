@@ -6,6 +6,7 @@ import (
 	"github.com/honeytrap/honeytrap/scripter"
 	"github.com/yuin/gopher-lua"
 	"net"
+	"bytes"
 )
 
 // Scripter Connection struct
@@ -16,6 +17,8 @@ type luaConn struct {
 	scripts map[string]map[string]*lua.LState
 
 	abTester abtester.Abtester
+
+	connectionBuffer bytes.Buffer
 }
 
 //GetConn returns the connection for the srcConn
@@ -98,8 +101,11 @@ func (c *luaConn) AddScripts(service string, scripts map[string]string) {
 		}
 		c.scripts[service][name] = ls
 	}
+}
 
-	scripter.SetBasicMethods(c, service)
+// GetConnectionBuffer returns the buffer of the connection
+func (c *luaConn) GetConnectionBuffer() *bytes.Buffer {
+	return &c.connectionBuffer
 }
 
 //Call canHandle Method in Lua state
