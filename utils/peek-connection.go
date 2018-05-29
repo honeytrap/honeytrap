@@ -28,67 +28,51 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package services
+package utils
 
 import (
-	"context"
-	"github.com/honeytrap/honeytrap/pushers"
-	"github.com/honeytrap/honeytrap/scripter"
 	"net"
+	"sync"
 )
 
-var (
-	_ = Register("generic", generic)
-)
+func PeekConnection(conn net.Conn) *PeekConn {
+	return &PeekConn{
+		conn,
+		[]byte{},
+		sync.Mutex{},
+	}
+}
 
-func generic(options ...ServicerFunc) Servicer {
-	s := &genericService{}
+// PeekConn struct, allows peeking a connection by writing peeked content to a buffer. Returning this content first when reading
+type PeekConn struct {
+	net.Conn
 
-	for _, o := range options {
-		o(s)
+	buffer []byte
+	m      sync.Mutex
+}
+
+// Peek writes the buffer from the connection, returning the amount of bytes written
+func (pc *PeekConn) Peek(p []byte) (int, error) {
+	pc.m.Lock()
+	defer pc.m.Unlock()
+
+	n, err := pc.Conn.Read(p)
+
+	pc.buffer = append(pc.buffer, p[:n]...)
+	return n, err
+}
+
+// Read writes the buffer from the connection, first writing bytes that have been peeked
+func (pc *PeekConn) Read(p []byte) (n int, err error) {
+	pc.m.Lock()
+	defer pc.m.Unlock()
+
+	// first serve from peek buffer
+	if len(pc.buffer) > 0 {
+		bn := copy(p, pc.buffer)
+		pc.buffer = pc.buffer[bn:]
+		return bn, nil
 	}
 
-	return s
-}
-
-type genericService struct {
-	scr scripter.Scripter
-	c   pushers.Channel
-}
-
-func (s *genericService) CanHandle(payload []byte) bool {
-	return s.scr.CanHandle("generic", string(payload))
-}
-
-func (s *genericService) SetScripter(scr scripter.Scripter) {
-	s.scr = scr
-}
-
-func (s *genericService) SetChannel(c pushers.Channel) {
-	s.c = c
-}
-
-func (s *genericService) Handle(ctx context.Context, conn net.Conn) error {
-	connW := s.scr.GetConnection("generic", conn)
-
-	for {
-		//Read message from connection to buffer
-		buf := make([]byte, 4096)
-		n, err := conn.Read(buf)
-		if err != nil {
-			return err
-		}
-
-		//Handle incoming message with the scripter
-		response, err := connW.Handle(string(buf[:n]))
-		if err != nil {
-			return err
-		}
-
-		//Write message to the connection
-		if _, err := conn.Write([]byte(response)); err != nil {
-			return err
-		}
-	}
-	return nil
+	return pc.Conn.Read(p)
 }

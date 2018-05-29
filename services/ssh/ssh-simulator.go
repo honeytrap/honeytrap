@@ -140,7 +140,7 @@ func PayloadDecoder(payload []byte) *payloadDecoder {
 }
 
 func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
-	scrConn := s.scr.GetConnection("ssh", conn)
+	scrConn := s.scr.GetConnection("ssh-simulator", conn)
 	id := xid.New()
 
 	config := ssh.ServerConfig{

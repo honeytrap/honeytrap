@@ -28,48 +28,74 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package server
+package generic
 
 import (
+	"context"
+	"github.com/honeytrap/honeytrap/pushers"
+	"github.com/honeytrap/honeytrap/scripter"
+	"github.com/honeytrap/honeytrap/services"
+	"github.com/honeytrap/honeytrap/utils"
+	"github.com/op/go-logging"
 	"net"
-	"sync"
 )
 
-func PeekConnection(conn net.Conn) *peekConnection {
-	return &peekConnection{
-		conn,
-		[]byte{},
-		sync.Mutex{},
-	}
-}
+var (
+	_   = services.Register("generic", Generic)
+	log = logging.MustGetLogger("services/generic")
+)
 
-type peekConnection struct {
-	net.Conn
+func Generic(options ...services.ServicerFunc) services.Servicer {
+	s := &genericService{}
 
-	buffer []byte
-	m      sync.Mutex
-}
-
-func (pc *peekConnection) Peek(p []byte) (int, error) {
-	pc.m.Lock()
-	defer pc.m.Unlock()
-
-	n, err := pc.Conn.Read(p)
-
-	pc.buffer = append(pc.buffer, p[:n]...)
-	return n, err
-}
-
-func (pc *peekConnection) Read(p []byte) (n int, err error) {
-	pc.m.Lock()
-	defer pc.m.Unlock()
-
-	// first serve from peek buffer
-	if len(pc.buffer) > 0 {
-		bn := copy(p, pc.buffer)
-		pc.buffer = pc.buffer[bn:]
-		return bn, nil
+	for _, o := range options {
+		o(s)
 	}
 
-	return pc.Conn.Read(p)
+	return s
+}
+
+type genericService struct {
+	scr scripter.Scripter
+	c   pushers.Channel
+}
+
+func (s *genericService) CanHandle(payload []byte) bool {
+	return s.scr.CanHandle("generic", string(payload))
+}
+
+func (s *genericService) SetScripter(scr scripter.Scripter) {
+	s.scr = scr
+}
+
+func (s *genericService) SetChannel(c pushers.Channel) {
+	s.c = c
+}
+
+func (s *genericService) Handle(ctx context.Context, conn net.Conn) error {
+	buffer := make([]byte, 4096)
+	pConn := utils.PeekConnection(conn)
+	n, _ := pConn.Peek(buffer)
+
+	// Add the go methods that have to be exposed to the scripts
+	connW := s.scr.GetConnection("generic", pConn)
+
+	s.setMethods(connW)
+
+	for {
+		//Handle incoming message with the scripter
+		response, err := connW.Handle(string(buffer[:n]))
+		if err != nil {
+			return err
+		} else if response == "_return" {
+			// Return called from script
+			return nil
+		}
+
+		//Write message to the connection
+		if _, err := conn.Write([]byte(response)); err != nil {
+			return err
+		}
+	}
+	return nil
 }

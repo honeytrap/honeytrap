@@ -6,6 +6,11 @@ type ConnectionStruct struct {
 	Conn    ScrConn
 }
 
+// GetScrConn returns the ScrConn
+func (w *ConnectionStruct) GetScrConn() ScrConn {
+	return w.Conn
+}
+
 // Handle incoming message string
 // Get all scripts for a given service and pass the string to each script
 func (w *ConnectionStruct) Handle(message string) (string, error) {
