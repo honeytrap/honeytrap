@@ -150,9 +150,9 @@ func (p *producer) run() {
 			done := make(chan struct{})
 
 			go func(c *websocket.Conn) {
-				for {
-					defer close(done)
+				defer close(done)
 
+				for {
 					ack := producerAckMessage{}
 					if err := ws.ReadJSON(&ack); err == io.EOF {
 						break
