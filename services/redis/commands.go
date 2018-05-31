@@ -42,6 +42,7 @@ var mapCmds = map[string]cmd{
 	"save":     (*redisService).saveCmd,
 	"set":      (*redisService).setCmd,
 	"config":   (*redisService).configCmd,
+	"auth":     (*redisService).authCmd,
 	// ...
 }
 
@@ -93,29 +94,30 @@ func (s *redisService) infoCmd(args []interface{}) (string, bool) {
 }
 
 func (s *redisService) authCmd(args []interface{}) (string, bool) {
-	switch len(args) {
-	case 1:
-		if s.Auth {
-			_word := args[0].(redisDatum)
-			word, success := _word.ToString()
-			if !success {
-				return "Expected string argument, got something else", false
-			}
-			if word == s.Password {
-				s.Logged = true
-				return "+OK\r\n", false
-			} else {
-				s.Logged = false
-				return errorMsg("invalidpass"), false
-			}
-		} else {
-			return errorMsg("noneed"), false
-		}
 
-	default:
+	if len(args) != 1 {
 		return fmt.Sprintf(errorMsg("wgnumber"), "auth"), false
-
 	}
+
+	if !s.Auth {
+		return errorMsg("noneed"), false
+	}
+
+	_word := args[0].(redisDatum)
+	word, success := _word.ToString()
+
+	if !success {
+		return "Expected string argument, got something else", false
+	}
+
+	if word != s.Password {
+		s.Logged = false
+		return errorMsg("invalidpass"), false
+	}
+
+	s.Logged = true
+	return "+OK\r\n", false
+
 }
 
 func (s *redisService) flushallCmd(args []interface{}) (string, bool) {
@@ -139,12 +141,10 @@ func (s *redisService) flushallCmd(args []interface{}) (string, bool) {
 }
 
 func (s *redisService) saveCmd(args []interface{}) (string, bool) {
-	switch len(args) {
-	case 0:
-		return "+OK\r\n", false
-	default:
+	if len(args) != 0 {
 		return fmt.Sprintf(errorMsg("wgnumber"), "save"), false
 	}
+	return "+OK\r\n", false
 }
 
 func (s *redisService) setCmd(args []interface{}) (string, bool) {
@@ -164,13 +164,11 @@ func (s *redisService) configCmd(args []interface{}) (string, bool) {
 	if len(args) == 0 {
 		return fmt.Sprintf(errorMsg("wgnumber"), "config"), false
 	}
-
 	_word := args[0].(redisDatum)
 	word, success := _word.ToString()
 	if !success {
 		return "Expected string argument, got something else", false
 	}
-
 	switch word {
 	case "get":
 		return s.configGetCmd(args)
@@ -186,41 +184,38 @@ func (s *redisService) configCmd(args []interface{}) (string, bool) {
 }
 
 func (s *redisService) configGetCmd(args []interface{}) (string, bool) {
-	switch len(args) {
-	case 2:
-		// [...]
-		return "*0\r\n", false
-	default:
+	if len(args) != 2 {
 		return fmt.Sprintf(errorConfig("wgnumber"), "get"), false
 	}
+	// TODO [linked to config: need to implement struct with all the configuration parameters]
+	return "*0\r\n", false
 }
 
 func (s *redisService) configSetCmd(args []interface{}) (string, bool) {
-	switch len(args) {
-
-	case 3:
-		// [check parameters]
-		return "+OK\r\n", false
-	default:
+	if len(args) != 3 {
 		return fmt.Sprintf(errorConfig("wgnumber"), "set"), false
 	}
+	// TODO [linked to config ? => need to save the parameters' changes so we can give them back]
+	// "All the configuration parameters set using CONFIG SET are immediately loaded by Redis
+	// and will take effect starting with the next command executed."
+	return "+OK\r\n", false
 }
 
 func (s *redisService) configResetstatCmd(args []interface{}) (string, bool) {
-	switch len(args) {
-	case 0:
-		// [linked to INFO]
-		return "+OK\r\n", false
-	default:
+	if len(args) != 0 {
 		return fmt.Sprintf(errorConfig("wgnumber"), "resetstat"), false
 	}
+	// TODO [linked to INFO: need to change info message]
+	return "+OK\r\n", false
 }
 
 func (s *redisService) configRewriteCmd(args []interface{}) (string, bool) {
-	switch len(args) {
-	case 0:
-		return "+OK\r\n", false
-	default:
+	if len(args) != 0 {
 		return fmt.Sprintf(errorConfig("wgnumber"), "rewrite"), false
 	}
+	// TODO [linked to config + linked to INFO]
+	// if config_file field is empty, need to return: (error) ERR The server is running without a config file]
+	// "If the server was started without a configuration file at all, the CONFIG REWRITE will just return an error."
+	// check the "conservative way"
+	return "+OK\r\n", false
 }
