@@ -164,3 +164,35 @@ func TarWalker(rootpath string, w io.Writer) error {
 
 	return nil
 }
+
+// Walker walks a path and returns files into array
+func Walker(rootpath string) ([]string, error) {
+	var files []string
+	walkFn := func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			log.Errorf("Error while walking path %s: %s", path, err.Error())
+			return err
+		}
+
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+
+		np, err := filepath.Rel(rootpath, path)
+		if err != nil {
+			return err
+		}
+
+		files = append(files, np)
+
+		return nil
+	}
+
+	err := filepath.Walk(rootpath, walkFn)
+	if err != nil {
+		log.Errorf("Error occurred walking dir %s with Error: (%+s)", rootpath, err.Error())
+		return nil, err
+	}
+
+	return files, nil
+}

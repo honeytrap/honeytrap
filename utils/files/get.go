@@ -35,6 +35,7 @@ import (
 	"fmt"
 	"os"
 	"crypto/sha256"
+	"path/filepath"
 )
 
 // Download tries to download a file from a URL and places the content inside a file in the defined path.
@@ -66,6 +67,40 @@ func Download(url string, path string) error {
 
 	_, err = f.WriteString(text)
 	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Put puts content on the place of the path
+func Put(path string, content string) error {
+	dir := filepath.Dir(path)
+	if _, err := os.Stat(fmt.Sprintf("%s", dir)); os.IsNotExist(err) {
+		os.MkdirAll(fmt.Sprintf("%s", dir), os.ModePerm)
+	}
+
+	f, err := os.OpenFile(fmt.Sprintf("%s", path), os.O_APPEND|os.O_RDWR|os.O_CREATE, 0666)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	_, err = f.WriteString(content)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Delete deletes the file at the place of the path
+func Delete(path string) error {
+	if _, err := os.Stat(fmt.Sprintf("%s", path)); !os.IsNotExist(err) {
+		if err := os.Remove(fmt.Sprintf("%s", path)); err != nil {
+			return err
+		}
+	} else {
 		return err
 	}
 

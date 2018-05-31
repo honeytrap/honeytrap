@@ -90,7 +90,7 @@ func download(url string, dest string) error {
 
 const geoLiteURL = "http://geolite.maxmind.com/download/geoip/database/GeoLite2-City.mmdb.gz"
 
-type web struct {
+type Web struct {
 	config *config.Config
 
 	dataDir string
@@ -116,10 +116,12 @@ type web struct {
 
 	hotCountries *SafeArray
 	events       *SafeArray
+
+	handleRequest func(message []byte) ([]byte, error)
 }
 
-func New(options ...func(*web) error) (*web, error) {
-	hc := web{
+func New(options ...func(*Web) error) (*Web, error) {
+	hc := Web{
 		eb: nil,
 
 		start: time.Now(),
@@ -133,6 +135,8 @@ func New(options ...func(*web) error) (*web, error) {
 
 		eventCh:   nil,
 		messageCh: make(chan json.Marshaler),
+
+		handleRequest: nil,
 
 		hotCountries: NewSafeArray(),
 		events:       NewLimitedSafeArray(1000),
@@ -155,11 +159,11 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-func (web *web) SetEventBus(eb *eventbus.EventBus) {
+func (web *Web) SetEventBus(eb *eventbus.EventBus) {
 	eb.Subscribe(web)
 }
 
-func (web *web) Start() {
+func (web *Web) Start() {
 	if !web.Enabled {
 		return
 	}
@@ -236,7 +240,7 @@ func (web *web) Start() {
 	}()
 }
 
-func (web *web) run() {
+func (web *Web) run() {
 	for {
 		select {
 		case c := <-web.register:
@@ -344,11 +348,11 @@ func resolver(dataDir string, outCh chan event.Event) chan event.Event {
 	return ch
 }
 
-func (web *web) Send(evt event.Event) {
+func (web *Web) Send(evt event.Event) {
 	web.eventCh <- evt
 }
 
-func (web *web) ServeWS(w http.ResponseWriter, r *http.Request) {
+func (web *Web) ServeWS(w http.ResponseWriter, r *http.Request) {
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Errorf("Could not upgrade connection: %s", err.Error())
@@ -363,8 +367,8 @@ func (web *web) ServeWS(w http.ResponseWriter, r *http.Request) {
 
 	log.Info("Connection upgraded.")
 	defer func() {
-		c.web.unregister <- c
-		c.ws.Close()
+		web.unregister <- c
+		ws.Close()
 
 		log.Info("Connection closed")
 	}()
@@ -384,4 +388,8 @@ func (web *web) ServeWS(w http.ResponseWriter, r *http.Request) {
 
 	go c.writePump()
 	c.readPump()
+}
+
+func (web *Web) RegisterHandleRequest(HandleRequest func(message []byte) ([]byte, error)) {
+	web.handleRequest = HandleRequest
 }
