@@ -66,9 +66,9 @@ uptime_in_days:0
 hz:10
 lru_clock:5820570
 executable:/data/redis-server
-config_file:
+config_file:%s
 
-`, s.Version, s.Os)
+`, s.Version, s.Os, s.ConfigFile)
 }
 
 func (s *redisService) infoClientsMsg() string {

@@ -53,11 +53,12 @@ var (
 func REDIS(options ...services.ServicerFunc) services.Servicer {
 	s := &redisService{
 		redisServiceConfig: redisServiceConfig{
-			Version:  "4.0.6",
-			Os:       "Linux 4.9.49-moby x86_64",
-			Auth:     false,
-			Password: "example",
-			Logged:   false,
+			Version:    "4.0.6",
+			Os:         "Linux 4.9.49-moby x86_64",
+			Auth:       false,
+			Password:   "example",
+			Logged:     false,
+			ConfigFile: "/etc/redis/redis.conf",
 		},
 	}
 	for _, o := range options {
@@ -74,8 +75,9 @@ type redisServiceConfig struct {
 	Auth bool `toml:"auth"`
 	//delay int `toml:"delay"`
 
-	Password string `toml:"password"`
-	Logged   bool
+	Password   string `toml:"password"`
+	Logged     bool
+	ConfigFile string `toml:"config-file"`
 }
 
 type redisService struct {
