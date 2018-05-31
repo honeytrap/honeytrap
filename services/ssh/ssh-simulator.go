@@ -357,9 +357,11 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 					log.Errorf("wantreply: ", err)
 				}
 
-				s.c.Send(event.New(
-					options...,
-				))
+				if req.Type != "exec" {
+					s.c.Send(event.New(
+						options...,
+					))
+				}
 
 				func() {
 					if req.Type == "shell" {
@@ -393,6 +395,14 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 								continue
 							}
 
+							resp, err := scrConn.Handle(line)
+							if err != nil {
+								resp = fmt.Sprintf("%s: command not found\n", line)
+								log.Errorf("Error running scripter: %s", err.Error())
+							} else {
+								term.Write([]byte(resp))
+							}
+
 							s.c.Send(event.New(
 								services.EventOptions,
 								event.Category("ssh"),
@@ -401,17 +411,10 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 								event.DestinationAddr(conn.LocalAddr()),
 								event.Custom("ssh.sessionid", id.String()),
 								event.Custom("ssh.command", line),
+								event.Custom("response", resp),
 							))
 
-							resp, err := scrConn.Handle(line)
-							if err != nil {
-								log.Errorf("Error running scripter: %s", err.Error())
-							} else {
-								term.Write([]byte(resp))
-								continue
-							}
-
-							term.Write([]byte(fmt.Sprintf("%s: command not found\n", line)))
+							term.Write([]byte(resp))
 						}
 					} else if req.Type == "exec" {
 						defer channel.Close()
@@ -427,16 +430,18 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 
 							resp, err := scrConn.Handle(payload)
 
-							channel.Write([]byte(fmt.Sprintf("%s", resp)))
-
 							if err != nil {
+								resp = fmt.Sprintf("%s: command not found\n", payload)
 								log.Errorf("Error running scripter: %s", err.Error())
-								channel.Write([]byte(fmt.Sprintf("%s: command not found\n", payload)))
 								break
-							} else {
-								channel.Write([]byte(fmt.Sprintf("%s", resp)))
-								continue
 							}
+
+							options = append(options, event.Custom("response", resp))
+							s.c.Send(event.New(
+								options...,
+							))
+
+							channel.Write([]byte(resp))
 						}
 
 						channel.SendRequest("exit-status", false, []byte{0, 0, 0, 0})
