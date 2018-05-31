@@ -119,7 +119,7 @@ func (l *luaScripter) GetConnection(service string, conn net.Conn) scripter.Conn
 	}
 
 	if !sConn.HasScripts(service) {
-		sConn.AddScripts(service, l.scripts[service])
+		sConn.AddScripts(service, l.scripts[service], l.Folder)
 		scripter.SetBasicMethods(l, sConn, service)
 	}
 

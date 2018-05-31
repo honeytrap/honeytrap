@@ -88,13 +88,14 @@ func (c *luaConn) HasScripts(service string) bool {
 }
 
 //AddScripts adds scripts to a connection for a given service
-func (c *luaConn) AddScripts(service string, scripts map[string]string) {
+func (c *luaConn) AddScripts(service string, scripts map[string]string, folder string) {
 	if _, ok := c.scripts[service]; !ok {
 		c.scripts[service] = map[string]*lua.LState{}
 	}
 
 	for name, script := range scripts {
 		ls := lua.NewState()
+		ls.DoString(fmt.Sprintf("package.path = './%s/lua/?.lua;' .. package.path", folder))
 		if err := ls.DoFile(script); err != nil {
 			log.Errorf("Unable to load lua script: %s", err)
 			continue

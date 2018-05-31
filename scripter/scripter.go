@@ -106,7 +106,7 @@ type ScrConn interface {
 	SetVoidFunction(name string, doVoid func(), service string) error
 	GetParameters(params []string, service string) (map[string]string, error)
 	HasScripts(service string) bool
-	AddScripts(service string, scripts map[string]string)
+	AddScripts(service string, scripts map[string]string, folder string)
 	Handle(service string, message string) (*Result, error)
 	GetConnectionBuffer() *bytes.Buffer
 }
