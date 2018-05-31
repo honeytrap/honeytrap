@@ -174,6 +174,7 @@ func (s *httpService) Handle(ctx context.Context, conn net.Conn) error {
 			event.Custom("http.proto", req.Proto),
 			event.Custom("http.host", req.Host),
 			event.Custom("http.url", req.URL.String()),
+			event.Custom("response", responseString),
 			// event.Custom("http.response", bodyResp),
 			event.Payload(body),
 			Headers(req.Header),
