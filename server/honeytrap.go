@@ -99,6 +99,7 @@ import (
 
 	"github.com/op/go-logging"
 	"github.com/honeytrap/honeytrap/utils"
+	"encoding/json"
 )
 
 var log = logging.MustGetLogger("honeytrap/server")
@@ -112,6 +113,7 @@ type Honeytrap struct {
 
 	// TODO(nl5887): rename to bus, should we encapsulate this?
 	bus *eventbus.EventBus
+	web *web.Web
 
 	director director.Director
 
@@ -122,6 +124,8 @@ type Honeytrap struct {
 	// Maps a port and a protocol to an array of pointers to services
 	tcpPorts map[int][]*ServiceMap
 	udpPorts map[int][]*ServiceMap
+
+	scripters map[string] scripter.Scripter
 }
 
 // New returns a new instance of a Honeytrap struct.
@@ -132,12 +136,27 @@ func New(options ...OptionFn) (*Honeytrap, error) {
 	// Initialize all channels within the provided config.
 	conf := &config.Default
 
+
+
 	h := &Honeytrap{
 		config:   conf,
 		director: director.MustDummy(),
 		bus:      bus,
 		profiler: profiler.Dummy(),
+		web: nil,
 	}
+
+	web, err := web.New(
+		web.WithEventBus(h.bus),
+		web.WithDataDir(h.dataDir),
+		web.WithConfig(h.config.Web),
+	)
+
+	if err != nil {
+		log.Error("Error parsing configuration of web: %s", err.Error())
+	}
+
+	h.web = web
 
 	for _, fn := range options {
 		if err := fn(h); err != nil {
@@ -300,6 +319,17 @@ func IsTerminal(f *os.File) bool {
 	return false
 }
 
+func (hc *Honeytrap) HandleRequests(message []byte) ([]byte, error) {
+	var js map[string]interface{}
+	json.Unmarshal(message, &js)
+
+	if sType, ok := js["type"]; ok && sType == "scripter" {
+		return scripter.HandleRequests(hc.scripters, message)
+	}
+
+	return nil, nil
+}
+
 // Run will start honeytrap
 func (hc *Honeytrap) Run(ctx context.Context) {
 	if IsTerminal(os.Stdout) {
@@ -322,16 +352,8 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 
 	hc.profiler.Start()
 
-	w, err := web.New(
-		web.WithEventBus(hc.bus),
-		web.WithDataDir(hc.dataDir),
-		web.WithConfig(hc.config.Web),
-	)
-	if err != nil {
-		log.Error("Error parsing configuration of web: %s", err.Error())
-	}
-
-	w.Start()
+	hc.web.RegisterHandleRequest(hc.HandleRequests)
+	hc.web.Start()
 
 	channels := map[string]pushers.Channel{}
 	// sane defaults!
@@ -463,6 +485,8 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			scripters[key] = scr
 		}
 	}
+
+	hc.scripters = scripters
 
 	// initialize listener
 	x := struct {

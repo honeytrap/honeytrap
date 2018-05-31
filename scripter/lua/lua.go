@@ -18,7 +18,7 @@ var (
 	_ = scripter.Register("lua", New)
 )
 
-// New creates a lua scripter instance that handles the connection to all lua-scripts
+// New creates a lua scripter instance that handles the connection to all scripts
 // A list where all scripts are stored in is generated
 func New(name string, options ...scripter.ScripterFunc) (scripter.Scripter, error) {
 	l := &luaScripter{
@@ -60,13 +60,18 @@ type luaScripter struct {
 	c pushers.Channel
 }
 
-//Set the channel over which messages to the log and elasticsearch can be set
+// SetChannel sets the channel over which messages to the log and elasticsearch can be set
 func (l *luaScripter) SetChannel(c pushers.Channel) {
 	l.c = c
 }
 
+// GetChannel gets the channel over which messages to the log and elasticsearch can be set
+func (l *luaScripter) GetChannel() pushers.Channel {
+	return l.c
+}
+
 // Init initializes the scripts from a specific service
-// The service name is given and the method will loop over all files in the lua-scripts folder with the given service name
+// The service name is given and the method will loop over all files in the scripts folder with the given service name
 // All of these scripts are then loaded and stored in the scripts map
 func (l *luaScripter) Init(service string) error {
 	fileNames, err := ioutil.ReadDir(fmt.Sprintf("%s/%s/%s", l.Folder, l.name, service))
@@ -75,10 +80,15 @@ func (l *luaScripter) Init(service string) error {
 	}
 
 	// TODO: Load basic lua functions from shared context
+	l.connections = map[string]*luaConn{}
 	l.scripts[service] = map[string]string{}
 	l.canHandleStates[service] = map[string]*lua.LState{}
 
 	for _, f := range fileNames {
+		if f.IsDir() {
+			continue
+		}
+
 		sf := fmt.Sprintf("%s/%s/%s/%s", l.Folder, l.name, service, f.Name())
 		l.scripts[service][f.Name()] = sf
 
@@ -131,11 +141,17 @@ func (l *luaScripter) CanHandle(service string, message string) bool {
 	return false
 }
 
-// Get the channel object
-func (l *luaScripter) GetChannel() pushers.Channel {
-	return l.c
+// GetScripts return the scripts for this scripter
+func (l *luaScripter) GetScripts() map[string]map[string]string {
+	return l.scripts
 }
 
+// GetScriptFolder return the folder where the scripts are located for this scripter
+func (l *luaScripter) GetScriptFolder() string {
+	return fmt.Sprintf("%s/%s", l.Folder, l.name)
+}
+
+// getConnIP retrieves the IP from a connection's remote address
 func getConnIP(conn net.Conn) string {
 	s := strings.Split(conn.RemoteAddr().String(), ":")
 	s = s[:len(s)-1]

@@ -38,15 +38,15 @@ import (
 	"github.com/honeytrap/honeytrap/pushers/eventbus"
 )
 
-func WithEventBus(bus *eventbus.EventBus) func(*web) error {
-	return func(w *web) error {
+func WithEventBus(bus *eventbus.EventBus) func(*Web) error {
+	return func(w *Web) error {
 		w.SetEventBus(bus)
 		return nil
 	}
 }
 
-func WithDataDir(dataDir string) func(*web) error {
-	return func(w *web) error {
+func WithDataDir(dataDir string) func(*Web) error {
+	return func(w *Web) error {
 		w.dataDir = dataDir
 
 		if filepath.IsAbs(dataDir) {
@@ -59,8 +59,8 @@ func WithDataDir(dataDir string) func(*web) error {
 	}
 }
 
-func WithConfig(c toml.Primitive) func(*web) error {
-	return func(d *web) error {
+func WithConfig(c toml.Primitive) func(*Web) error {
+	return func(d *Web) error {
 		err := toml.PrimitiveDecode(c, d)
 		return err
 	}
