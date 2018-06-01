@@ -31,39 +31,52 @@
 package abtester
 
 import (
-	"github.com/honeytrap/honeytrap/storage"
-	"fmt"
-	"strings"
-	"math/rand"
 	"encoding/json"
+	"fmt"
+	"github.com/BurntSushi/toml"
+	"github.com/honeytrap/honeytrap/storage"
 	"io/ioutil"
+	"math/rand"
+	"strings"
 )
 
 //Interface that gives methods to get and set ab-tests
-type Abtester interface {
+type AbTester interface {
 	Get(key string, item int) (string, error)
 	GetForGroup(group string, key string, item int) (string, error)
 	Set(key string, value string) error
 	SetForGroup(group string, key string, value string) error
-	LoadFromFile(fileName string) error
 }
 
 //Get an ab-tester for a specific name, creating a storage for it
 //When you wish to use an ab-tester, get it by using abtester.Namespace(%your abtestername%)
-func Namespace(namespace string) (*abTester, error) {
+func New(namespace string, config toml.Primitive) (*abTester, error) {
 	st, err := storage.Namespace(fmt.Sprintf("abtester_%s", namespace))
-
 	if err != nil {
 		return nil, err
 	}
-	return &abTester{
+
+	ab := &abTester{
 		st: st,
-	}, err
+	}
+
+	err = toml.PrimitiveDecode(config, ab)
+	if err != nil {
+		return nil, fmt.Errorf("unable to decode abtester config: %s", err)
+	}
+
+	if err := ab.loadFromFile(ab.File); err != nil {
+		return nil, err
+	}
+
+	return ab, nil
 }
 
 //Struct that stores the storage that is used by each tester
 type abTester struct {
 	st storage.Storage
+
+	File string `toml:"file"`
 }
 
 //Return the ith = (item) value for a specific key, when item = -1, return a random value.
@@ -104,10 +117,14 @@ func (s *abTester) SetForGroup(group string, key string, value string) error {
 }
 
 //Load all groups/keys/values from a given json file
-func (s *abTester) LoadFromFile(fileName string) error {
-	file, _ := ioutil.ReadFile(fileName)
+func (s *abTester) loadFromFile(fileName string) error {
+	file, err := ioutil.ReadFile(fileName)
+	if err != nil {
+		return err
+	}
+
 	var objmap map[string]map[string][]string
-	err := json.Unmarshal(file, &objmap)
+	err = json.Unmarshal(file, &objmap)
 
 	for groupName, group := range objmap {
 		for key, values := range group {

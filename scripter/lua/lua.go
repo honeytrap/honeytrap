@@ -33,11 +33,6 @@ func New(name string, options ...scripter.ScripterFunc) (scripter.Scripter, erro
 	l.scripts = map[string]map[string]string{}
 	l.connections = map[string]*luaConn{}
 	l.canHandleStates = map[string]map[string]*lua.LState{}
-	l.abTester, _ = abtester.Namespace("lua")
-
-	if err := l.abTester.LoadFromFile("scripter/abtests.json"); err != nil {
-		return nil, err
-	}
 
 	return l, nil
 }
@@ -55,7 +50,7 @@ type luaScripter struct {
 	//Lua states to check whether the connection can be handled with the script
 	canHandleStates map[string]map[string]*lua.LState
 
-	abTester abtester.Abtester
+	ab abtester.AbTester
 
 	c pushers.Channel
 }
@@ -68,6 +63,11 @@ func (l *luaScripter) SetChannel(c pushers.Channel) {
 // GetChannel gets the channel over which messages to the log and elasticsearch can be set
 func (l *luaScripter) GetChannel() pushers.Channel {
 	return l.c
+}
+
+//Set the abTester from which differential responses can be retrieved
+func (l *luaScripter) SetAbTester(ab abtester.AbTester) {
+	l.ab = ab
 }
 
 // Init initializes the scripts from a specific service
@@ -112,7 +112,7 @@ func (l *luaScripter) GetConnection(service string, conn net.Conn) scripter.Conn
 		sConn = &luaConn{
 			conn: conn,
 			scripts: map[string]map[string]*lua.LState{},
-			abTester: l.abTester,
+			abTester: l.ab,
 		}
 		l.connections[ip] = sConn
 	} else {

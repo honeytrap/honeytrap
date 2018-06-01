@@ -77,6 +77,13 @@ func WithChannel(eb pushers.Channel) ScripterFunc {
 	}
 }
 
+func WithAbTester(ab abtester.AbTester) ScripterFunc {
+	return func(s Scripter) error {
+		s.SetAbTester(ab)
+		return nil
+	}
+}
+
 //Scripter interface that implements basic scripter methods
 type Scripter interface {
 	Init(string) error
@@ -86,6 +93,7 @@ type Scripter interface {
 	GetChannel() pushers.Channel
 	GetScripts() map[string]map[string]string
 	GetScriptFolder() string
+	SetAbTester(ab abtester.AbTester)
 }
 
 //ConnectionWrapper interface that implements the basic method that a connection should have
@@ -119,7 +127,7 @@ type Result struct {
 
 //ScrAbTester exposes methods to interact with the AbTester
 type ScrAbTester interface {
-	GetAbTester() abtester.Abtester
+	GetAbTester() abtester.AbTester
 }
 
 //WithConfig returns a function to attach the config to the scripter

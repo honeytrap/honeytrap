@@ -16,7 +16,7 @@ type luaConn struct {
 	//List of lua scripts running for this connection: directory/scriptname
 	scripts map[string]map[string]*lua.LState
 
-	abTester abtester.Abtester
+	abTester abtester.AbTester
 
 	connectionBuffer bytes.Buffer
 }
@@ -26,7 +26,7 @@ func (c *luaConn) GetConn() net.Conn {
 	return c.conn
 }
 
-func (c *luaConn) GetAbTester() abtester.Abtester {
+func (c *luaConn) GetAbTester() abtester.AbTester {
 	return c.abTester
 }
 
