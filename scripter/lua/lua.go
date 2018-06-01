@@ -93,6 +93,7 @@ func (l *luaScripter) Init(service string) error {
 		l.scripts[service][f.Name()] = sf
 
 		ls := lua.NewState()
+		ls.DoString(fmt.Sprintf("package.path = './%s/lua/?.lua;' .. package.path", l.Folder))
 		if err := ls.DoFile(sf); err != nil {
 			return err
 		}

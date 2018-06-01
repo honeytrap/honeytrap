@@ -55,7 +55,7 @@ const (
 type connection struct {
 	ws *websocket.Conn
 
-	web *Web
+	web *web
 
 	send chan json.Marshaler
 }

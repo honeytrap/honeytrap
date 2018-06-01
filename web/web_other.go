@@ -90,7 +90,7 @@ func download(url string, dest string) error {
 
 const geoLiteURL = "http://geolite.maxmind.com/download/geoip/database/GeoLite2-City.mmdb.gz"
 
-type Web struct {
+type web struct {
 	config *config.Config
 
 	dataDir string
@@ -120,8 +120,8 @@ type Web struct {
 	handleRequest func(message []byte) ([]byte, error)
 }
 
-func New(options ...func(*Web) error) (*Web, error) {
-	hc := Web{
+func New(options ...func(*web) error) (*web, error) {
+	hc := web{
 		eb: nil,
 
 		start: time.Now(),
@@ -159,11 +159,11 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-func (web *Web) SetEventBus(eb *eventbus.EventBus) {
+func (web *web) SetEventBus(eb *eventbus.EventBus) {
 	eb.Subscribe(web)
 }
 
-func (web *Web) Start() {
+func (web *web) Start() {
 	if !web.Enabled {
 		return
 	}
@@ -240,7 +240,7 @@ func (web *Web) Start() {
 	}()
 }
 
-func (web *Web) run() {
+func (web *web) run() {
 	for {
 		select {
 		case c := <-web.register:
@@ -348,11 +348,11 @@ func resolver(dataDir string, outCh chan event.Event) chan event.Event {
 	return ch
 }
 
-func (web *Web) Send(evt event.Event) {
+func (web *web) Send(evt event.Event) {
 	web.eventCh <- evt
 }
 
-func (web *Web) ServeWS(w http.ResponseWriter, r *http.Request) {
+func (web *web) ServeWS(w http.ResponseWriter, r *http.Request) {
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Errorf("Could not upgrade connection: %s", err.Error())
@@ -390,6 +390,6 @@ func (web *Web) ServeWS(w http.ResponseWriter, r *http.Request) {
 	c.readPump()
 }
 
-func (web *Web) RegisterHandleRequest(HandleRequest func(message []byte) ([]byte, error)) {
+func (web *web) RegisterHandleRequest(HandleRequest func(message []byte) ([]byte, error)) {
 	web.handleRequest = HandleRequest
 }
