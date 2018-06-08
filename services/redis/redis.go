@@ -37,6 +37,7 @@ import (
 	"strconv"
 
 	"bufio"
+	"bytes"
 
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
@@ -49,6 +50,8 @@ var log = logging.MustGetLogger("services/redis")
 var (
 	_ = services.Register("redis", REDIS)
 )
+
+var p [][]byte
 
 func REDIS(options ...services.ServicerFunc) services.Servicer {
 	s := &redisService{
@@ -98,6 +101,7 @@ func (d *redisDatum) ToString() (value string, success bool) {
 func parseRedisData(scanner *bufio.Scanner) (redisDatum, error) {
 	scanner.Scan()
 	cmd := scanner.Text()
+	p = append(p, []byte(cmd+"\r\n"))
 	if len(cmd) == 0 {
 		return redisDatum{}, nil
 	}
@@ -126,9 +130,11 @@ func parseRedisData(scanner *bufio.Scanner) (redisDatum, error) {
 		}
 		scanner.Scan()
 		str := scanner.Text()
+		p = append(p, []byte(str+"\r\n"))
 		return redisDatum{DataType: dataType, Content: str}, nil
 	} else if dataType == 0x3a { // 0x3a = ':', introduces an integer
 		n, err := strconv.ParseUint(cmd[1:], 10, 64)
+		p = append(p, []byte(string(n)+"\r\n"))
 		return redisDatum{DataType: dataType, Content: n}, err
 	} else {
 		return redisDatum{}, fmt.Errorf("Unexpected data type: %q", dataType)
@@ -142,6 +148,7 @@ func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
 	scanner := bufio.NewScanner(conn)
 
 	for {
+		p = [][]byte{}
 		datum, err := parseRedisData(scanner)
 
 		if err != nil {
@@ -165,6 +172,7 @@ func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
 			continue
 		}
 		answer, closeConn := s.REDISHandler(command, items[1:])
+		payload := bytes.Join(p, []byte(""))
 
 		s.ch.Send(event.New(
 			services.EventOptions,
@@ -173,6 +181,7 @@ func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
 			event.SourceAddr(conn.RemoteAddr()),
 			event.DestinationAddr(conn.LocalAddr()),
 			event.Custom("redis.command", command),
+			event.Payload(payload),
 		))
 
 		if closeConn {
