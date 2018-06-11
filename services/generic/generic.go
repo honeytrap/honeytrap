@@ -72,6 +72,7 @@ func (s *genericService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
+// Handle handles the request
 func (s *genericService) Handle(ctx context.Context, conn net.Conn) error {
 	buffer := make([]byte, 4096)
 	pConn := utils.PeekConnection(conn)
