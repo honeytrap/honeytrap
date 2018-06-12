@@ -492,6 +492,9 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 
 	hc.scripters = scripters
 
+	//Set an interval that checks for script-connections that haven't been used for a long time and can be garbage collected.
+	scripter.SetConnectionChecker(scripters)
+
 	// initialize listener
 	x := struct {
 		Type string `toml:"type"`

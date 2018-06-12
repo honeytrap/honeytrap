@@ -10,6 +10,7 @@ import (
 	"net"
 	"strings"
 	"github.com/honeytrap/honeytrap/pushers"
+	"time"
 )
 
 var log = logging.MustGetLogger("scripter/lua")
@@ -17,6 +18,8 @@ var log = logging.MustGetLogger("scripter/lua")
 var (
 	_ = scripter.Register("lua", New)
 )
+
+const cleanupTimer = 60
 
 // New creates a lua scripter instance that handles the connection to all scripts
 // A list where all scripts are stored in is generated
@@ -119,6 +122,8 @@ func (l *luaScripter) GetConnection(service string, conn net.Conn) scripter.Conn
 		sConn.conn = conn
 	}
 
+	sConn.lastUsed = time.Now()
+
 	if !sConn.HasScripts(service) {
 		sConn.AddScripts(service, l.scripts[service], l.Folder)
 		scripter.SetBasicMethods(l, sConn, service)
@@ -150,6 +155,16 @@ func (l *luaScripter) GetScripts() map[string]map[string]string {
 // GetScriptFolder return the folder where the scripts are located for this scripter
 func (l *luaScripter) GetScriptFolder() string {
 	return fmt.Sprintf("%s/%s", l.Folder, l.name)
+}
+
+// CleanConnections Check all connections removing all that haven't been used for more than 60 minutes to open up memory
+func (l *luaScripter) CleanConnections() {
+	for key, connection := range l.connections {
+		log.Infof("Checking...")
+		if time.Since(connection.GetLastUsed()) > cleanupTimer * time.Minute { //The connection hasn't been used for more than 60 minutes
+			delete(l.connections, key)
+		}
+	}
 }
 
 // getConnIP retrieves the IP from a connection's remote address
