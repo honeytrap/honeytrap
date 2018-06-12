@@ -40,6 +40,7 @@ import (
 	"github.com/honeytrap/honeytrap/pushers"
 
 	logging "github.com/op/go-logging"
+	"github.com/honeytrap/honeytrap/scripter"
 )
 
 var log = logging.MustGetLogger("services")
@@ -92,6 +93,10 @@ type Proxier interface {
 	SetDirector(director.Director)
 }
 
+type Scripter interface {
+	SetScripter(scripter.Scripter)
+}
+
 func WithDirector(d director.Director) ServicerFunc {
 	return func(s Servicer) error {
 		if p, ok := s.(Proxier); ok {
@@ -105,6 +110,15 @@ func WithConfig(c toml.Primitive) ServicerFunc {
 	return func(s Servicer) error {
 		err := toml.PrimitiveDecode(c, s)
 		return err
+	}
+}
+
+func WithScripter(service string, scr scripter.Scripter) ServicerFunc {
+	return func(s Servicer) error {
+		if sc, ok := s.(Scripter); ok {
+			sc.SetScripter(scr)
+		}
+		return scr.Init(service)
 	}
 }
 

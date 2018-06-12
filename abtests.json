@@ -1,0 +1,23 @@
+{
+  "ssh-simulator": {
+    "ls": [
+      "home",
+      "music",
+      "passwords.txt"
+    ],
+    "uname": [
+      "Windows_NT##MS/Windows##i686##unknown##unknown##unknown##9200##6.2",
+      "Windows_NT##MS/Windows##x86_64##unknown##unknown##unknown##3790##5.2",
+      "Linux##GNU/Linux##x86_64##x86_64##x86_64##x86_64###46-Ubuntu SMP Tue Jun 28 15:07:17 UTC 2011##2.6.38-10-generic",
+      "Linux##GNU/Linux##i686##i686##i386##i386###1 SMP Fri Nov 22 00:26:36 UTC 2013##2.6.32-431.el6.i686",
+      "MINGW64_NT-10.0##Msys##x86_64##unknown##unknown##unknown##2017-04-02 13:38##2.8.0(0.310/5/3)",
+      "Darwin##unknown##x86_64##i386##unknown##unknown##Darwin Kernel Version 17.5.0: Fri Apr 13 19:32:32 PDT 2018; root:xnu-4570.51.2~1/RELEASE_X86_64##17.5.0",
+      "Darwin##unknown##x86_64##i386##unknown##unknown##Darwin Kernel Version 14.5.0: Sun Jun  4 21:40:08 PDT 2017; root:xnu-2782.70.3~1/RELEASE_X86_64##14.5.0",
+      "Linux##GNU/Linux##x86_64##x86_64##x86_64##x86_64###148-Ubuntu SMP Wed May 2 13:00:18 UTC 2018##4.4.0-124-generic",
+      "Linux##GNU/Linux##x86_64##x86_64##unknown##unknown###1 SMP PREEMPT Thu May 17 02:10:09 UTC 2018##4.16.9-1-ARCH",
+      "Linux##GNU/Linux##armv7l##armv7l##unknown##unknown###1014 SMP Fri Jun 30 14:47:43 BST 2017##4.9.35-v7+",
+      "FreeBSD##FreeBSD##amd64##amd64##amd64##GENERIC##FreeBSD 9.0-RELEASE #0: Tue Jan 3 07:46:30 UTC 2012##9.0-RELEASE",
+      "Linux##GNU/Linux##armv6l##armv6l##unknown##unknown###1110 Mon Apr 16 14:51:42 BST 2018##4.14.34+"
+    ]
+  }
+}
