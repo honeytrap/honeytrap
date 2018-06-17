@@ -157,7 +157,7 @@ func (s *rdpService) Handle(ctx context.Context, conn net.Conn) error {
 		}
 
 		// COTP
-		b, err = rdr.Peek(1)
+		b, err := rdr.Peek(1)
 		if err != nil {
 			return err
 		}
