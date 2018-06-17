@@ -31,6 +31,7 @@
 package rdp
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"net"
@@ -40,6 +41,31 @@ import (
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/services"
+)
+
+const (
+	TDPUConnectionRequest uint8 = 0xe0
+	TPDUConnectionConfirm       = 0xd0
+	TDPUData                    = 0xf0
+	TPDUReject                  = 0x50
+	TPDUDataAck                 = 0x60
+
+	TypeRDPNegReq  uint8 = 1
+	ProtocolRDP          = 0
+	ProtocolSSL          = 1
+	ProtocolHybrid       = 2
+
+	TypeRDPNegResponse          uint8 = 2
+	ExtendedClientDataSupported       = 1
+	DynVCGFXProtocolSupported         = 2
+
+	TypeRDPNegFailure               uint8 = 3
+	SSLRequiredByServer                   = 1
+	SSLNotAllowedByServer                 = 2
+	SSLCertNotOnServer                    = 3
+	InconsistentFlags                     = 4
+	HybridRequiredByServer                = 5
+	SSLWithUserAuthRequiredByServer       = 6
 )
 
 // https://github.com/citronneur/rdpy
@@ -83,7 +109,7 @@ func (v *TPKT) UnmarshalBinary(data []byte) error {
 
 	v.Version = uint8(data[0])
 	v.Reserved = uint8(data[1])
-	v.Length = uint16(data[2]>>8) + uint16(data[3])
+	v.Length = uint16(data[2])>>8 + uint16(data[3])
 
 	return nil
 }
@@ -107,8 +133,8 @@ func (v *COTP) UnmarshalBinary(data []byte) error {
 
 	v.Length = uint8(data[0])
 	v.PDUType = uint8(data[1])
-	v.DestinationReference = uint16(data[2]>>8) + uint16(data[3])
-	v.SourceReference = uint16(data[4]>>8) + uint16(data[5])
+	v.DestinationReference = uint16(data[2])>>8 + uint16(data[3])
+	v.SourceReference = uint16(data[4])>>8 + uint16(data[5])
 
 	return nil
 }
@@ -116,10 +142,12 @@ func (v *COTP) UnmarshalBinary(data []byte) error {
 func (s *rdpService) Handle(ctx context.Context, conn net.Conn) error {
 	defer conn.Close()
 
+	rdr := bufio.NewReader(conn)
+
 	for {
 		// TPKT
 		b := make([]byte, 4)
-		if _, err := conn.Read(b); err != nil {
+		if _, err := rdr.Read(b); err != nil {
 			return err
 		}
 
@@ -129,8 +157,15 @@ func (s *rdpService) Handle(ctx context.Context, conn net.Conn) error {
 		}
 
 		// COTP
-		b = make([]byte, 7)
-		if _, err := conn.Read(b); err != nil {
+		b, err = rdr.Peek(1)
+		if err != nil {
+			return err
+		}
+
+		len := b[0]
+
+		b = make([]byte, len)
+		if _, err := rdr.Read(b); err != nil {
 			return err
 		}
 
@@ -139,16 +174,15 @@ func (s *rdpService) Handle(ctx context.Context, conn net.Conn) error {
 			return err
 		}
 
-		// RDP
-		b = make([]byte, 255)
-		n, err := conn.Read(b)
-		if err != nil {
-			return err
-		}
-
-		b = b[:n]
-
 		if cotp.PDUType == 0xe0 {
+			b = make([]byte, 2048)
+			n, err := rdr.Read(b)
+			if err != nil {
+				return err
+			}
+
+			b = b[:n]
+
 			cookie := string(b)
 
 			s.c.Send(event.New(
@@ -162,6 +196,16 @@ func (s *rdpService) Handle(ctx context.Context, conn net.Conn) error {
 			))
 
 			conn.Write([]byte{0x03, 0x00, 0x00, 0x0b, 0x06, 0xd0, 0x00, 0x00, 0x12, 0x34, 0x00})
+		} else if cotp.PDUType == 0xf0 /* DT Data */ {
+			b = make([]byte, 2048)
+			n, err := conn.Read(b)
+			if err != nil {
+				return err
+			}
+
+			b = b[:n]
+
+			fmt.Printf("%x\n", b)
 		} else {
 			return nil
 		}
