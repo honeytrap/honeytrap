@@ -37,7 +37,7 @@ import (
 	"os"
 
 	"github.com/BurntSushi/toml"
-	logging "github.com/op/go-logging"
+	"github.com/op/go-logging"
 )
 
 var log = logging.MustGetLogger("honeytrap:config")
@@ -50,6 +50,8 @@ var format = logging.MustStringFormatter(
 
 // Config defines the central type where all configuration is umarhsalled to.
 type Config struct {
+	toml.MetaData
+
 	Listener toml.Primitive `toml:"listener"`
 
 	Web toml.Primitive `toml:"web"`
@@ -72,10 +74,11 @@ var Default = Config{}
 
 // Load attempts to load the giving toml configuration file.
 func (c *Config) Load(r io.Reader) error {
-	_, err := toml.DecodeReader(r, c)
+	md, err := toml.DecodeReader(r, c)
 	if err != nil {
 		return err
 	}
+	c.MetaData = md
 
 	logBackends := []logging.Backend{}
 	for _, log := range c.Logging {
