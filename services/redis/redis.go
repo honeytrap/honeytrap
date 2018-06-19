@@ -37,7 +37,6 @@ import (
 	"strconv"
 
 	"bufio"
-	"bytes"
 
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
@@ -50,8 +49,6 @@ var log = logging.MustGetLogger("services/redis")
 var (
 	_ = services.Register("redis", REDIS)
 )
-
-var p [][]byte
 
 func REDIS(options ...services.ServicerFunc) services.Servicer {
 	s := &redisService{
@@ -98,46 +95,48 @@ func (d *redisDatum) ToString() (value string, success bool) {
 	}
 }
 
-func parseRedisData(scanner *bufio.Scanner) (redisDatum, error) {
+func parseRedisData(scanner *bufio.Scanner, p []byte) (redisDatum, error, []byte) {
 	scanner.Scan()
 	cmd := scanner.Text()
-	p = append(p, []byte(cmd+"\r\n"))
+	p = append(p, cmd+"\r\n"...)
 	if len(cmd) == 0 {
-		return redisDatum{}, nil
+		return redisDatum{}, nil, p
 	}
 	dataType := cmd[0]
 	if dataType == 0x2a { // 0x2a = '*', introduces an array
 		n, err := strconv.ParseUint(cmd[1:], 10, 64)
 		if err != nil {
-			return redisDatum{}, fmt.Errorf("Error parsing command array size: %s", err.Error())
+			return redisDatum{}, fmt.Errorf("Error parsing command array size: %s", err.Error()), nil
 		}
 		var items []interface{}
 		for i := uint64(0); i < n; i++ {
-			item, err := parseRedisData(scanner)
+			pp := []byte{}
+			item, err, pp := parseRedisData(scanner, pp)
 			if err != nil {
-				return redisDatum{}, err
+				return redisDatum{}, err, nil
 			}
+			p = append(p, pp...)
 			items = append(items, item)
 		}
-		return redisDatum{DataType: dataType, Content: items}, nil
+		return redisDatum{DataType: dataType, Content: items}, nil, p
 	} else if dataType == 0x2b { // 0x2a = '+', introduces a simple string
-		return redisDatum{DataType: dataType, Content: cmd[1:]}, nil
+		return redisDatum{DataType: dataType, Content: cmd[1:]}, nil, p
 	} else if dataType == 0x24 { // 0x24 = '$', introduces a bulk string
 		// Read (and ignore) string length
 		_, err := strconv.ParseUint(cmd[1:], 10, 64)
 		if err != nil {
-			return redisDatum{}, err
+			return redisDatum{}, err, nil
 		}
 		scanner.Scan()
 		str := scanner.Text()
-		p = append(p, []byte(str+"\r\n"))
-		return redisDatum{DataType: dataType, Content: str}, nil
+		p = append(p, str+"\r\n"...)
+		return redisDatum{DataType: dataType, Content: str}, nil, p
 	} else if dataType == 0x3a { // 0x3a = ':', introduces an integer
 		n, err := strconv.ParseUint(cmd[1:], 10, 64)
-		p = append(p, []byte(string(n)+"\r\n"))
-		return redisDatum{DataType: dataType, Content: n}, err
+		p = append(p, string(n)+"\r\n"...)
+		return redisDatum{DataType: dataType, Content: n}, err, p
 	} else {
-		return redisDatum{}, fmt.Errorf("Unexpected data type: %q", dataType)
+		return redisDatum{}, fmt.Errorf("Unexpected data type: %q", dataType), nil
 	}
 }
 
@@ -148,8 +147,8 @@ func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
 	scanner := bufio.NewScanner(conn)
 
 	for {
-		p = [][]byte{}
-		datum, err := parseRedisData(scanner)
+		payload := []byte{}
+		datum, err, payload := parseRedisData(scanner, payload)
 
 		if err != nil {
 			log.Error(err.Error())
@@ -172,7 +171,6 @@ func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
 			continue
 		}
 		answer, closeConn := s.REDISHandler(command, items[1:])
-		payload := bytes.Join(p, []byte(""))
 
 		s.ch.Send(event.New(
 			services.EventOptions,
