@@ -338,9 +338,8 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 	w.Start()
 
 	channels := map[string]pushers.Channel{}
+	channels["web"] = w
 	isChannelUsed := make(map[string]bool)
-	// sane defaults!
-
 	for key, s := range hc.config.Channels {
 		x := struct {
 			Type string `toml:"type"`
