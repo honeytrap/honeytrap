@@ -31,6 +31,9 @@ import (
 
 // Error represents an error in the netstack error space. Using a special type
 // ensures that errors outside of this space are not accidentally introduced.
+//
+// Note: to support save / restore, it is important that all tcpip errors have
+// distinct error messages.
 type Error struct {
 	string
 }
@@ -73,6 +76,7 @@ var (
 	ErrInvalidOptionValue    = &Error{"invalid option value specified"}
 	ErrNoLinkAddress         = &Error{"no remote link address"}
 	ErrBadAddress            = &Error{"bad address"}
+	ErrNetworkUnreachable    = &Error{"network is unreachable"}
 )
 
 // Errors related to Subnet
@@ -80,6 +84,17 @@ var (
 	errSubnetLengthMismatch = errors.New("subnet length of address and mask differ")
 	errSubnetAddressMasked  = errors.New("subnet address has bits set outside the mask")
 )
+
+// ErrSaveRejection indicates a failed save due to unsupported networking state.
+// This type of errors is only used for save logic.
+type ErrSaveRejection struct {
+	Err error
+}
+
+// Error returns a sensible description of the save rejection error.
+func (e ErrSaveRejection) Error() string {
+	return "save rejected due to unsupported networking state: " + e.Err.Error()
+}
 
 // A Clock provides the current time.
 //
@@ -367,6 +382,10 @@ type ReceiveQueueSizeOption int
 // V6OnlyOption is used by SetSockOpt/GetSockOpt to specify whether an IPv6
 // socket is to be restricted to sending and receiving IPv6 packets only.
 type V6OnlyOption int
+
+// NoResetOption is used by SetSockOpt/GetSockOpt to specify if invalid packets
+// should be replied to with an RST.
+type NoResetOption int
 
 // NoDelayOption is used by SetSockOpt/GetSockOpt to specify if data should be
 // sent out immediately by the transport protocol. For TCP, it determines if the
