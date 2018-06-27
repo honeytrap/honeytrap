@@ -72,6 +72,7 @@ import (
 	_ "github.com/honeytrap/honeytrap/listener/agent"
 	_ "github.com/honeytrap/honeytrap/listener/canary"
 	_ "github.com/honeytrap/honeytrap/listener/netstack"
+	_ "github.com/honeytrap/honeytrap/listener/netstack-experimental"
 	_ "github.com/honeytrap/honeytrap/listener/socket"
 	_ "github.com/honeytrap/honeytrap/listener/tap"
 	_ "github.com/honeytrap/honeytrap/listener/tun"
@@ -168,6 +169,10 @@ type ServiceMap struct {
 	Type string
 }
 
+var (
+	ErrNoServicesGivenPort = fmt.Errorf("no services for the given ports")
+)
+
 /* Finds a service that can handle the given connection.
  * The service is picked (among those configured for the given port) as follows:
  *
@@ -188,14 +193,14 @@ func (hc *Honeytrap) findService(conn net.Conn) (*ServiceMap, net.Conn, error) {
 		port = a.Port
 		tmp, ok := hc.tcpPorts[port]
 		if !ok {
-			return nil, nil, fmt.Errorf("no services for the given port")
+			return nil, nil, ErrNoServicesGivenPort
 		}
 		serviceCandidates = tmp // prevent variable shadowing and "unused variable" error
 	case *net.UDPAddr:
 		port = a.Port
 		tmp, ok := hc.udpPorts[port]
 		if !ok {
-			return nil, nil, fmt.Errorf("no services for the given port")
+			return nil, nil, ErrNoServicesGivenPort
 		}
 		serviceCandidates = tmp
 	default:

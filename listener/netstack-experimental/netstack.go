@@ -1,5 +1,4 @@
 // +build linux
-// +build arm
 
 /*
 * Honeytrap
@@ -34,11 +33,22 @@
 package netstack
 
 import (
-	"fmt"
-
+	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/listener"
+	logging "github.com/op/go-logging"
 )
 
-func New(options ...func(listener.Listener) error) (listener.Listener, error) {
-	return nil, fmt.Errorf("Netstack is not supported on ARM")
-}
+// todo
+// port /whitelist filtering (8022)
+// custom (rst, irs )
+// arm
+
+var (
+	SensorNetstack = event.Sensor("netstack")
+)
+
+var log = logging.MustGetLogger("listener/netstack")
+
+var (
+	_ = listener.Register("netstack-experimental", New)
+)

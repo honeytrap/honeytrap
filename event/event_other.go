@@ -1,3 +1,5 @@
+// +build linux,!amd64 !linux
+
 /*
 * Honeytrap
 * Copyright (C) 2016-2017 DutchSec (https://dutchsec.com/)
@@ -28,86 +30,11 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package services
+package event
 
-import (
-	"context"
-	"fmt"
-	"io"
-	"net"
+import "net"
 
-	"golang.org/x/crypto/ssh/terminal"
-
-	"github.com/honeytrap/honeytrap/event"
-	"github.com/honeytrap/honeytrap/pushers"
-	"github.com/rs/xid"
-)
-
-var (
-	_ = Register("telnet", Telnet)
-)
-
-var (
-	motd = `Welcome to Microsoft Telnet Service 
-
-
-login:`
-	prompt = `C:\DOCUME~1\Doug> `
-)
-
-// Telnet is a placeholder
-func Telnet(options ...ServicerFunc) Servicer {
-	s := &telnetService{
-		MOTD:   motd,
-		Prompt: prompt,
-	}
-
-	for _, o := range options {
-		o(s)
-	}
-
-	return s
-}
-
-type telnetService struct {
-	c pushers.Channel
-
-	Prompt string `toml:"prompt"`
-	MOTD   string `toml:"motd"`
-}
-
-func (s *telnetService) SetChannel(c pushers.Channel) {
-	s.c = c
-}
-
-func (s *telnetService) Handle(ctx context.Context, conn net.Conn) error {
-	id := xid.New()
-
-	defer conn.Close()
-
-	term := terminal.NewTerminal(conn, prompt)
-
-	term.Write([]byte(s.MOTD))
-
-	for {
-		line, err := term.ReadLine()
-		if err == io.EOF {
-			return nil
-		} else if err != nil {
-			return err
-		}
-
-		s.c.Send(event.New(
-			EventOptions,
-			event.Category("telnet"),
-			event.Type("session"),
-			event.Conn(conn),
-			event.SourceAddr(conn.RemoteAddr()),
-			event.DestinationAddr(conn.LocalAddr()),
-			event.Custom("telnet.sessionid", id.String()),
-			event.Custom("telnet.command", line),
-		))
-
-		term.Write([]byte(fmt.Sprintf("%s: command not found\n", line)))
+func Conn(conn net.Conn) Option {
+	return func(m Event) {
 	}
 }
