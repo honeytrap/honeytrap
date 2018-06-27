@@ -140,12 +140,14 @@ func (hc Backend) run() {
 						if category == "heartbeat" {
 							continue
 						}
-						data, err := json.Marshal(evt);
+
+						data, err := json.Marshal(evt)
 						if err != nil {
 							// handle errors
 							log.Errorf("Error occurred while marshalling: %s", err.Error())
 							continue
 						}
+
 						err = c.WriteMessage(websocket.BinaryMessage, data)
 						if err != nil {
 							log.Errorf("Could not write: %s", err.Error())
@@ -164,5 +166,9 @@ func (hc Backend) run() {
 
 // Send delivers the giving push messages into the internal elastic search endpoint.
 func (hc Backend) Send(message event.Event) {
-	hc.ch <- message
+	select {
+	case hc.ch <- message:
+	default:
+		log.Errorf("Could not send more messages, channel full")
+	}
 }
