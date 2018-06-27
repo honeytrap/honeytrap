@@ -7,6 +7,7 @@ package gonet
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/google/netstack/tcpip"
 	"github.com/google/netstack/tcpip/buffer"
+	"github.com/google/netstack/tcpip/seqnum"
 	"github.com/google/netstack/tcpip/stack"
 	"github.com/google/netstack/tcpip/transport/tcp"
 	"github.com/google/netstack/tcpip/transport/udp"
@@ -212,6 +214,14 @@ type Conn struct {
 	// read contains bytes that have been read from the endpoint,
 	// but haven't yet been returned.
 	read buffer.View
+}
+
+func (c *Conn) IRS() (seqnum.Value, error) {
+	if i, ok := c.ep.(tcp.Metadata); ok {
+		return i.IRS(), nil
+	}
+
+	return seqnum.Value(0), fmt.Errorf("Not supported")
 }
 
 // NewConn creates a new Conn.

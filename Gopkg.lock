@@ -112,8 +112,9 @@
 [[projects]]
   branch = "master"
   name = "github.com/google/netstack"
-  packages = ["ilist","sleep","tcpip","tcpip/buffer","tcpip/header","tcpip/link/fdbased","tcpip/link/rawfile","tcpip/link/tun","tcpip/network/fragmentation","tcpip/network/hash","tcpip/network/ipv4","tcpip/network/ipv6","tcpip/ports","tcpip/seqnum","tcpip/stack","tcpip/transport/tcp","tmutex","waiter"]
-  revision = "0f8a5131d0aa6648f0b49e42cf308366e764e7cd"
+  packages = ["ilist","rand","sleep","tcpip","tcpip/adapters/gonet","tcpip/buffer","tcpip/header","tcpip/link/fdbased","tcpip/link/rawfile","tcpip/link/sniffer","tcpip/network/fragmentation","tcpip/network/hash","tcpip/network/ipv4","tcpip/network/ipv6","tcpip/ports","tcpip/seqnum","tcpip/stack","tcpip/transport/tcp","tcpip/transport/udp","tmutex","waiter"]
+  revision = "c0f57501d9567f2b3325e5a21263259164100766"
+  source = "github.com/honeytrap/netstack"
 
 [[projects]]
   name = "github.com/gorilla/websocket"
@@ -248,6 +249,18 @@
   revision = "8e4aba63da9fc5571e01c6a45dc809a58cbc5a68"
 
 [[projects]]
+  name = "github.com/vishvananda/netlink"
+  packages = [".","nl"]
+  revision = "a2ad57a690f3caf3015351d2d6e1c0b95c349752"
+  version = "v1.0.0"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/vishvananda/netns"
+  packages = ["."]
+  revision = "be1fbeda19366dea804f00efff2dd73a1642fdcc"
+
+[[projects]]
   branch = "master"
   name = "golang.org/x/crypto"
   packages = ["curve25519","ed25519","ed25519/internal/edwards25519","internal/chacha20","poly1305","ssh","ssh/terminal"]
@@ -286,6 +299,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "84bcadc55231be8b0903d73572326915703737b43ef9173b497ffdf0fc292c47"
+  inputs-digest = "fcd37204b9530443b25b05c25a4b7a4e42aba9e191ac87514c8add24ea768545"
   solver-name = "gps-cdcl"
   solver-version = 1

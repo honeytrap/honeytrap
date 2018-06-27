@@ -5,12 +5,12 @@
 package tcp
 
 import (
-	"crypto/rand"
 	"math"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/google/netstack/rand"
 	"github.com/google/netstack/sleep"
 	"github.com/google/netstack/tcpip"
 	"github.com/google/netstack/tcpip/buffer"
@@ -144,6 +144,9 @@ type endpoint struct {
 	// sack holds TCP SACK related information for this endpoint.
 	sack SACKInfo
 
+	// noReset disables sending RST packets for unknown destination packets
+	noReset bool
+
 	// The options below aren't implemented, but we remember the user
 	// settings because applications expect to be able to set/query these
 	// options.
@@ -203,9 +206,22 @@ type endpoint struct {
 	// The goroutine drain completion notification channel.
 	drainDone chan struct{}
 
+	// The goroutine undrain notification channel.
+	undrain chan struct{}
+
 	// probe if not nil is invoked on every received segment. It is passed
 	// a copy of the current state of the endpoint.
 	probe stack.TCPProbeFunc
+
+	// The following are only used to assist the restore run to re-connect.
+	connectingAddress tcpip.Address
+
+	irs seqnum.Value
+	iss seqnum.Value
+}
+
+func (e *endpoint) IRS() seqnum.Value {
+	return e.irs
 }
 
 func newEndpoint(stack *stack.Stack, netProto tcpip.NetworkProtocolNumber, waiterQueue *waiter.Queue) *endpoint {
@@ -320,13 +336,7 @@ func (e *endpoint) Close() {
 	// if we're connected, or stop accepting if we're listening.
 	e.Shutdown(tcpip.ShutdownWrite | tcpip.ShutdownRead)
 
-	// While we hold the lock, determine if the cleanup should happen
-	// inline or if we should tell the worker (if any) to do the cleanup.
 	e.mu.Lock()
-	worker := e.workerRunning
-	if worker {
-		e.workerCleanup = true
-	}
 
 	// We always release ports inline so that they are immediately available
 	// for reuse after Close() is called. If also registered, it means this
@@ -342,29 +352,32 @@ func (e *endpoint) Close() {
 		}
 	}
 
-	e.mu.Unlock()
-
-	// Now that we don't hold the lock anymore, either perform the local
-	// cleanup or kick the worker to make sure it knows it needs to cleanup.
-	if !worker {
-		e.cleanup()
+	// Either perform the local cleanup or kick the worker to make sure it
+	// knows it needs to cleanup.
+	if !e.workerRunning {
+		e.cleanupLocked()
 	} else {
+		e.workerCleanup = true
 		e.notifyProtocolGoroutine(notifyClose)
 	}
+
+	e.mu.Unlock()
 }
 
-// cleanup frees all resources associated with the endpoint. It is called after
-// Close() is called and the worker goroutine (if any) is done with its work.
-func (e *endpoint) cleanup() {
+// cleanupLocked frees all resources associated with the endpoint. It is called
+// after Close() is called and the worker goroutine (if any) is done with its
+// work.
+func (e *endpoint) cleanupLocked() {
 	// Close all endpoints that might have been accepted by TCP but not by
 	// the client.
 	if e.acceptedChan != nil {
 		close(e.acceptedChan)
 		for n := range e.acceptedChan {
-			n.resetConnection(tcpip.ErrConnectionAborted)
+			n.resetConnectionLocked(tcpip.ErrConnectionAborted)
 			n.Close()
 		}
 	}
+	e.workerCleanup = false
 
 	if e.isRegistered {
 		e.stack.UnregisterTransportEndpoint(e.boundNICID, e.effectiveNetProtos, ProtocolNumber, e.id)
@@ -572,7 +585,6 @@ func (e *endpoint) SetSockOpt(opt interface{}) *tcpip.Error {
 		e.noDelay = v != 0
 		e.mu.Unlock()
 		return nil
-
 	case tcpip.ReuseAddressOption:
 		e.mu.Lock()
 		e.reuseAddr = v != 0
@@ -786,6 +798,8 @@ func (e *endpoint) Connect(addr tcpip.FullAddress) *tcpip.Error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
+	connectingAddr := addr.Addr
+
 	netProto, err := e.checkV4Mapped(&addr)
 	if err != nil {
 		return err
@@ -891,6 +905,7 @@ func (e *endpoint) Connect(addr tcpip.FullAddress) *tcpip.Error {
 	e.route = r.Clone()
 	e.boundNICID = nicid
 	e.effectiveNetProtos = netProtos
+	e.connectingAddress = connectingAddr
 	e.workerRunning = true
 
 	go e.protocolMainLoop(false)
