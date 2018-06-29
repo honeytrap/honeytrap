@@ -147,6 +147,7 @@ func (s *httpService) Handle(ctx context.Context, conn net.Conn) error {
 			EventOptions,
 			event.Category("http"),
 			event.Type("request"),
+			event.Conn(conn),
 			event.SourceAddr(conn.RemoteAddr()),
 			event.DestinationAddr(conn.LocalAddr()),
 			event.Custom("http.method", req.Method),

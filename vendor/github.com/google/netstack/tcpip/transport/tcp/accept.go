@@ -5,7 +5,6 @@
 package tcp
 
 import (
-	"crypto/rand"
 	"crypto/sha1"
 	"encoding/binary"
 	"hash"
@@ -13,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/netstack/rand"
 	"github.com/google/netstack/sleep"
 	"github.com/google/netstack/tcpip"
 	"github.com/google/netstack/tcpip/header"
@@ -210,6 +210,9 @@ func (l *listenContext) createConnectedEndpoint(s *segment, iss seqnum.Value, ir
 	n.isRegistered = true
 	n.state = stateConnected
 
+	n.iss = iss
+	n.irs = irs
+
 	// Create sender and receiver.
 	//
 	// The receiver at least temporarily has a zero receive window scale,
@@ -349,13 +352,19 @@ func (e *endpoint) protocolListenLoop(rcvWnd seqnum.Size) *tcpip.Error {
 		// to the endpoint.
 		e.mu.Lock()
 		e.state = stateClosed
-		e.mu.Unlock()
 
 		// Notify waiters that the endpoint is shutdown.
+		e.mu.Unlock()
 		e.waiterQueue.Notify(waiter.EventIn | waiter.EventOut)
+		e.mu.Lock()
 
 		// Do cleanup if needed.
-		e.completeWorker()
+		e.completeWorkerLocked()
+
+		if e.drainDone != nil {
+			close(e.drainDone)
+		}
+		e.mu.Unlock()
 	}()
 
 	e.mu.Lock()
@@ -379,8 +388,8 @@ func (e *endpoint) protocolListenLoop(rcvWnd seqnum.Size) *tcpip.Error {
 					e.handleListenSegment(ctx, s)
 					s.decRef()
 				}
-				e.drainDone <- struct{}{}
-				return nil
+				close(e.drainDone)
+				<-e.undrain
 			}
 
 		case wakerForNewSegment:

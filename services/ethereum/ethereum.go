@@ -183,6 +183,13 @@ var ethereumMethods = map[string]func(map[string]interface{}) map[string]interfa
 			"result":  "0xe670ec64341771606e55d6b4ca35a1a6b75ee3d5145a99d05921026d1527331",
 		}
 	},
+	"personal_unlockAccount": func(m map[string]interface{}) map[string]interface{} {
+		return map[string]interface{}{
+			"id":      m["id"],
+			"jsonrpc": m["jsonrpc"],
+			"result":  true,
+		}
+	},
 }
 
 // Todo: implement CanHandle

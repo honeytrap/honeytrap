@@ -34,7 +34,6 @@ package canary
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -62,6 +61,11 @@ var log = logging.MustGetLogger("listeners/raw")
 
 var (
 	_ = listener.Register("raw", New)
+)
+
+var (
+	// EventCategoryARP
+	EventCategoryARP = event.Category("arp")
 )
 
 // first dns
@@ -271,25 +275,27 @@ func (c *Canary) handleARP(data []byte) error {
 		return err
 	}
 
-	_ = arp
-
-	// check if it is my hardware address or broadcast
-	if bytes.Compare(arp.TargetMAC[:], []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}) == 0 {
-		if arp.Opcode == 0x01 {
-			// fmt.Printf("ARP: Who has %s? tell %s.", net.IPv4(arp.TargetIP[0], arp.TargetIP[1], arp.TargetIP[2], arp.TargetIP[3]).String(), net.IPv4(arp.SenderIP[0], arp.SenderIP[1], arp.SenderIP[2], arp.SenderIP[3]).String())
-		}
-		return nil
-	}
-
-	for _, networkInterface := range c.networkInterfaces {
-		if bytes.Equal(arp.TargetMAC[:], networkInterface.HardwareAddr) {
-			if arp.Opcode == 0x01 {
-				// fmt.Printf("ARP: Who has %s? tell %s.", net.IPv4(arp.TargetIP[0], arp.TargetIP[1], arp.TargetIP[2], arp.TargetIP[3]).String(), net.IPv4(arp.SenderIP[0], arp.SenderIP[1], arp.SenderIP[2], arp.SenderIP[3]).String())
-			}
-		} else {
-			// 			fmt.Println("ARP: not for me")
-		}
-	}
+	c.events.Send(event.New(
+		CanaryOptions,
+		EventCategoryARP,
+		event.DestinationHardwareAddr(arp.TargetMAC),
+		event.SourceIP(arp.SenderIP),
+		event.DestinationIP(arp.TargetIP),
+		event.SourceHardwareAddr(arp.SenderMAC),
+		event.DestinationHardwareAddr(arp.TargetMAC),
+		event.SourceIP(arp.SenderIP),
+		event.DestinationIP(arp.TargetIP),
+		event.Custom("arp-sender-hardware-address", arp.SenderHardwareAddress),
+		event.Custom("arp-target-hardware-address", arp.TargetHardwareAddress),
+		event.Custom("arp-sender-protocol-address", arp.SenderProtocolAddress),
+		event.Custom("arp-target-protocol-address", arp.TargetProtocolAddress),
+		event.Custom("arp-opcode", arp.Opcode),
+		event.Custom("arp-hardware-type", arp.HardwareType),
+		event.Custom("arp-hardware-size", arp.HardwareSize),
+		event.Custom("arp-protocol-type", arp.ProtocolType),
+		event.Custom("arp-protocol-size", arp.ProtocolSize),
+		event.Payload(data),
+	))
 
 	return nil
 }

@@ -1,6 +1,3 @@
-// +build linux
-// +build arm
-
 /*
 * Honeytrap
 * Copyright (C) 2016-2017 DutchSec (https://dutchsec.com/)
@@ -31,14 +28,81 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package netstack
+package eos
 
 import (
-	"fmt"
+	"bufio"
+	"context"
+	"io/ioutil"
+	"net"
+	"net/http/httptest"
+	"reflect"
+	"strings"
+	"testing"
 
-	"github.com/honeytrap/honeytrap/listener"
+	"net/http"
+
+	"encoding/json"
+
+	"github.com/honeytrap/honeytrap/pushers"
 )
 
-func New(options ...func(listener.Listener) error) (listener.Listener, error) {
-	return nil, fmt.Errorf("Netstack is not supported on ARM")
+type Test struct {
+	Name     string
+	Method   string
+	Path     string
+	Req      string
+	Expected string
+}
+
+var tests = []Test{
+	Test{
+		Name:     "list_keys",
+		Method:   "GET",
+		Path:     "/v1/wallet/list_keys",
+		Req:      ``,
+		Expected: `[["EOS6MRyAjQq8ud7hVNYcfnVPJqcVpscN5So8BhtHuGYqET5GDW5CV","5KQwrPbwdL6PhXujxW37FSSQZ1JiwsST4cqQzDeyXtP79zkvFD3"]]`,
+	},
+}
+
+func TestEOS(t *testing.T) {
+	c := EOS()
+	c.SetChannel(pushers.MustDummy())
+
+	for _, tst := range tests {
+		server, client := net.Pipe()
+		defer server.Close()
+		defer client.Close()
+
+		go c.Handle(context.TODO(), server)
+
+		req := httptest.NewRequest(tst.Method, tst.Path, strings.NewReader(tst.Req))
+		if err := req.Write(client); err != nil {
+			t.Error(err)
+		}
+
+		rdr := bufio.NewReader(client)
+
+		resp, err := http.ReadResponse(rdr, req)
+		if err != nil {
+			t.Error(err)
+		}
+
+		body, _ := ioutil.ReadAll(resp.Body)
+
+		var got interface{}
+		if err := json.Unmarshal(body, &got); err != nil {
+			t.Error(err)
+		}
+
+		var expected interface{}
+		if err := json.Unmarshal([]byte(tst.Expected), &expected); err != nil {
+			t.Error(err)
+		}
+
+		if !reflect.DeepEqual(got, expected) {
+			t.Errorf("Test %s failed: got %+#v, expected %+#v", tst.Name, got, expected)
+			return
+		}
+	}
 }

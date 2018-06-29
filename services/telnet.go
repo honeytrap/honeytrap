@@ -101,6 +101,7 @@ func (s *telnetService) Handle(ctx context.Context, conn net.Conn) error {
 			EventOptions,
 			event.Category("telnet"),
 			event.Type("session"),
+			event.Conn(conn),
 			event.SourceAddr(conn.RemoteAddr()),
 			event.DestinationAddr(conn.LocalAddr()),
 			event.Custom("telnet.sessionid", id.String()),

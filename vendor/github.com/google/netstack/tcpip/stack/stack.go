@@ -165,7 +165,7 @@ type TCPSenderState struct {
 	// window size from a segment.
 	SndWndScale uint8
 
-	// MaxSentAck is the highest acknowledgemnt number sent till now.
+	// MaxSentAck is the highest acknowledgement number sent till now.
 	MaxSentAck seqnum.Value
 
 	// FastRecovery holds the fast recovery state for the endpoint.
@@ -539,6 +539,39 @@ func (s *Stack) NICInfo() map[tcpip.NICID]NICInfo {
 		}
 	}
 	return nics
+}
+
+// NICStateFlags holds information about the state of an NIC.
+type NICStateFlags struct {
+	// Up indicates whether the interface is running.
+	Up bool
+
+	// Running indicates whether resources are allocated.
+	Running bool
+
+	// Promiscuous indicates whether the interface is in promiscuous mode.
+	Promiscuous bool
+}
+
+// NICFlags returns flags about the state of the NIC. It returns an error if
+// the NIC corresponding to id cannot be found.
+func (s *Stack) NICFlags(id tcpip.NICID) (NICStateFlags, *tcpip.Error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	nic := s.nics[id]
+	if nic == nil {
+		return NICStateFlags{}, tcpip.ErrUnknownNICID
+	}
+
+	ret := NICStateFlags{
+		// Netstack interfaces are always up.
+		Up: true,
+
+		Running:     nic.linkEP.IsAttached(),
+		Promiscuous: nic.promiscuous,
+	}
+	return ret, nil
 }
 
 // AddAddress adds a new network-layer address to the specified NIC.
