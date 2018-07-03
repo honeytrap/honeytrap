@@ -7,7 +7,6 @@
 package rawfile
 
 import (
-	"fmt"
 	"syscall"
 	"unsafe"
 
@@ -51,7 +50,6 @@ func NonBlockingWrite(fd int, buf []byte) *tcpip.Error {
 
 	_, _, e := syscall.RawSyscall(syscall.SYS_WRITE, uintptr(fd), uintptr(ptr), uintptr(len(buf)))
 	if e != 0 {
-		panic(fmt.Sprintf("NonBlockingWrite %#+v", e))
 		return TranslateErrno(e)
 	}
 
@@ -81,7 +79,6 @@ func NonBlockingWrite2(fd int, b1, b2 []byte) *tcpip.Error {
 
 	_, _, e := syscall.RawSyscall(syscall.SYS_WRITEV, uintptr(fd), uintptr(unsafe.Pointer(&iovec[0])), uintptr(len(iovec)))
 	if e != 0 {
-		panic(fmt.Sprintf("NonBlockingWrite2 %#+v", e))
 		return TranslateErrno(e)
 	}
 
@@ -105,7 +102,6 @@ func NonBlockingWriteN(fd int, bs ...[]byte) *tcpip.Error {
 
 	_, _, e := syscall.RawSyscall(syscall.SYS_WRITEV, uintptr(fd), uintptr(unsafe.Pointer(&iovec[0])), uintptr(len(iovec)))
 	if e != 0 {
-		panic(fmt.Sprintf("NonBlockingWriteN %#+v", e))
 		return TranslateErrno(e)
 	}
 

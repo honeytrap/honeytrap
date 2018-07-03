@@ -198,6 +198,10 @@ type endpoint struct {
 	// read by Accept() calls.
 	acceptedChan chan *endpoint
 
+	// acceptedEndpoints is only used to save / restore the channel buffer.
+	// FIXME
+	acceptedEndpoints []*endpoint
+
 	// The following are only used from the protocol goroutine, and
 	// therefore don't need locks to protect them.
 	rcv *receiver
@@ -214,6 +218,7 @@ type endpoint struct {
 	probe stack.TCPProbeFunc
 
 	// The following are only used to assist the restore run to re-connect.
+	bindAddress       tcpip.Address
 	connectingAddress tcpip.Address
 
 	irs seqnum.Value
@@ -354,6 +359,7 @@ func (e *endpoint) Close() {
 
 	// Either perform the local cleanup or kick the worker to make sure it
 	// knows it needs to cleanup.
+	tcpip.AddDanglingEndpoint(e)
 	if !e.workerRunning {
 		e.cleanupLocked()
 	} else {
@@ -373,9 +379,12 @@ func (e *endpoint) cleanupLocked() {
 	if e.acceptedChan != nil {
 		close(e.acceptedChan)
 		for n := range e.acceptedChan {
+			n.mu.Lock()
 			n.resetConnectionLocked(tcpip.ErrConnectionAborted)
+			n.mu.Unlock()
 			n.Close()
 		}
+		e.acceptedChan = nil
 	}
 	e.workerCleanup = false
 
@@ -384,6 +393,7 @@ func (e *endpoint) cleanupLocked() {
 	}
 
 	e.route.Release()
+	tcpip.DeleteDanglingEndpoint(e)
 }
 
 // Read reads data from the endpoint.
@@ -585,6 +595,7 @@ func (e *endpoint) SetSockOpt(opt interface{}) *tcpip.Error {
 		e.noDelay = v != 0
 		e.mu.Unlock()
 		return nil
+
 	case tcpip.ReuseAddressOption:
 		e.mu.Lock()
 		e.reuseAddr = v != 0
@@ -795,6 +806,16 @@ func (e *endpoint) checkV4Mapped(addr *tcpip.FullAddress) (tcpip.NetworkProtocol
 
 // Connect connects the endpoint to its peer.
 func (e *endpoint) Connect(addr tcpip.FullAddress) *tcpip.Error {
+	return e.connect(addr, true, true)
+}
+
+// connect connects the endpoint to its peer. In the normal non-S/R case, the
+// new connection is expected to run the main goroutine and perform handshake.
+// In restore of previously connected endpoints, both ends will be passively
+// created (so no new handshaking is done); for stack-accepted connections not
+// yet accepted by the app, they are restored without running the main goroutine
+// here.
+func (e *endpoint) connect(addr tcpip.FullAddress, handshake bool, run bool) *tcpip.Error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -906,9 +927,27 @@ func (e *endpoint) Connect(addr tcpip.FullAddress) *tcpip.Error {
 	e.boundNICID = nicid
 	e.effectiveNetProtos = netProtos
 	e.connectingAddress = connectingAddr
-	e.workerRunning = true
 
-	go e.protocolMainLoop(false)
+	// Connect in the restore phase does not perform handshake. Restore its
+	// connection setting here.
+	if !handshake {
+		e.segmentQueue.mu.Lock()
+		for _, l := range []segmentList{e.segmentQueue.list, e.sndQueue, e.snd.writeList} {
+			for s := l.Front(); s != nil; s = s.Next() {
+				s.id = e.id
+				s.route = r.Clone()
+				e.sndWaker.Assert()
+			}
+		}
+		e.segmentQueue.mu.Unlock()
+		e.snd.updateMaxPayloadSize(int(e.route.MTU()), 0)
+		e.state = stateConnected
+	}
+
+	if run {
+		e.workerRunning = true
+		go e.protocolMainLoop(handshake)
+	}
 
 	return tcpip.ErrConnectStarted
 }
@@ -980,6 +1019,9 @@ func (e *endpoint) Listen(backlog int) *tcpip.Error {
 		if len(e.acceptedChan) > backlog {
 			return tcpip.ErrInvalidEndpointState
 		}
+		if cap(e.acceptedChan) == backlog {
+			return nil
+		}
 		origChan := e.acceptedChan
 		e.acceptedChan = make(chan *endpoint, backlog)
 		close(origChan)
@@ -1017,7 +1059,7 @@ func (e *endpoint) Listen(backlog int) *tcpip.Error {
 func (e *endpoint) startAcceptedLoop(waiterQueue *waiter.Queue) {
 	e.waiterQueue = waiterQueue
 	e.workerRunning = true
-	go e.protocolMainLoop(true)
+	go e.protocolMainLoop(false)
 }
 
 // Accept returns a new endpoint if a peer has established a connection
@@ -1058,6 +1100,7 @@ func (e *endpoint) Bind(addr tcpip.FullAddress, commit func() *tcpip.Error) (ret
 		return tcpip.ErrAlreadyBound
 	}
 
+	e.bindAddress = addr.Addr
 	netProto, err := e.checkV4Mapped(&addr)
 	if err != nil {
 		return err
