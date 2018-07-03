@@ -34,14 +34,11 @@ func (e *countedEndpoint) Attach(dispatcher stack.NetworkDispatcher) {
 	e.dispatcher = dispatcher
 }
 
-<<<<<<< HEAD
 // IsAttached implements stack.LinkEndpoint.IsAttached.
 func (e *countedEndpoint) IsAttached() bool {
 	return e.dispatcher != nil
 }
 
-=======
->>>>>>> f63d074... services/ldap: merge upstream master
 func (e *countedEndpoint) MTU() uint32 {
 	return e.mtu
 }
