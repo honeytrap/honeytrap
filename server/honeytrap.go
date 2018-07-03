@@ -482,7 +482,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		// individual configuration per service
 		options := []services.ServicerFunc{
 			services.WithChannel(hc.bus),
-			services.WithConfig(s),
+			services.WithConfig(s, hc.config),
 		}
 
 		if x.Director == "" {
