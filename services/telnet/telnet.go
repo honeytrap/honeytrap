@@ -28,7 +28,7 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package services
+package telnet
 
 import (
 	"context"
@@ -36,15 +36,14 @@ import (
 	"io"
 	"net"
 
-	"golang.org/x/crypto/ssh/terminal"
-
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
+	"github.com/honeytrap/honeytrap/services"
 	"github.com/rs/xid"
 )
 
 var (
-	_ = Register("telnet", Telnet)
+	_ = services.Register("telnet", Telnet)
 )
 
 var (
@@ -56,7 +55,7 @@ login:`
 )
 
 // Telnet is a placeholder
-func Telnet(options ...ServicerFunc) Servicer {
+func Telnet(options ...services.ServicerFunc) services.Servicer {
 	s := &telnetService{
 		MOTD:   motd,
 		Prompt: prompt,
@@ -85,7 +84,7 @@ func (s *telnetService) Handle(ctx context.Context, conn net.Conn) error {
 
 	defer conn.Close()
 
-	term := terminal.NewTerminal(conn, prompt)
+	term := NewTerminal(conn, s.Prompt)
 
 	term.Write([]byte(s.MOTD))
 
@@ -98,7 +97,7 @@ func (s *telnetService) Handle(ctx context.Context, conn net.Conn) error {
 		}
 
 		s.c.Send(event.New(
-			EventOptions,
+			services.EventOptions,
 			event.Category("telnet"),
 			event.Type("session"),
 			event.Conn(conn),
@@ -108,6 +107,10 @@ func (s *telnetService) Handle(ctx context.Context, conn net.Conn) error {
 			event.Custom("telnet.command", line),
 		))
 
-		term.Write([]byte(fmt.Sprintf("%s: command not found\n", line)))
+		if line == "" {
+			continue
+		}
+
+		term.Write([]byte(fmt.Sprintf("sh: %s: command not found\n", line)))
 	}
 }
