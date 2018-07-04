@@ -33,6 +33,7 @@ package redis
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"strconv"
 
@@ -95,48 +96,43 @@ func (d *redisDatum) ToString() (value string, success bool) {
 	}
 }
 
-func parseRedisData(scanner *bufio.Scanner, p []byte) (redisDatum, error, []byte) {
+func parseRedisData(scanner *bufio.Scanner) (redisDatum, error) {
 	scanner.Scan()
 	cmd := scanner.Text()
-	p = append(p, cmd+"\r\n"...)
 	if len(cmd) == 0 {
-		return redisDatum{}, nil, p
+		return redisDatum{}, nil
 	}
 	dataType := cmd[0]
 	if dataType == 0x2a { // 0x2a = '*', introduces an array
 		n, err := strconv.ParseUint(cmd[1:], 10, 64)
 		if err != nil {
-			return redisDatum{}, fmt.Errorf("Error parsing command array size: %s", err.Error()), nil
+			return redisDatum{}, fmt.Errorf("Error parsing command array size: %s", err.Error())
 		}
 		var items []interface{}
 		for i := uint64(0); i < n; i++ {
-			pp := []byte{}
-			item, err, pp := parseRedisData(scanner, pp)
+			item, err := parseRedisData(scanner)
 			if err != nil {
-				return redisDatum{}, err, nil
+				return redisDatum{}, err
 			}
-			p = append(p, pp...)
 			items = append(items, item)
 		}
-		return redisDatum{DataType: dataType, Content: items}, nil, p
+		return redisDatum{DataType: dataType, Content: items}, nil
 	} else if dataType == 0x2b { // 0x2a = '+', introduces a simple string
-		return redisDatum{DataType: dataType, Content: cmd[1:]}, nil, p
+		return redisDatum{DataType: dataType, Content: cmd[1:]}, nil
 	} else if dataType == 0x24 { // 0x24 = '$', introduces a bulk string
 		// Read (and ignore) string length
 		_, err := strconv.ParseUint(cmd[1:], 10, 64)
 		if err != nil {
-			return redisDatum{}, err, nil
+			return redisDatum{}, err
 		}
 		scanner.Scan()
 		str := scanner.Text()
-		p = append(p, str+"\r\n"...)
-		return redisDatum{DataType: dataType, Content: str}, nil, p
+		return redisDatum{DataType: dataType, Content: str}, nil
 	} else if dataType == 0x3a { // 0x3a = ':', introduces an integer
 		n, err := strconv.ParseUint(cmd[1:], 10, 64)
-		p = append(p, string(n)+"\r\n"...)
-		return redisDatum{DataType: dataType, Content: n}, err, p
+		return redisDatum{DataType: dataType, Content: n}, err
 	} else {
-		return redisDatum{}, fmt.Errorf("Unexpected data type: %q", dataType), nil
+		return redisDatum{}, fmt.Errorf("Unexpected data type: %q", dataType)
 	}
 }
 
@@ -145,15 +141,16 @@ func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
 	defer conn.Close()
 
 	scanner := bufio.NewScanner(conn)
-
 	for {
-		payload := []byte{}
-		datum, err, payload := parseRedisData(scanner, payload)
+		datum, err := parseRedisData(scanner)
 
-		if err != nil {
-			log.Error(err.Error())
-			continue
+		if err == io.EOF {
+			return nil
+		} else if err != nil {
+			log.Error("Error parsing Redis data: %s", err.Error())
+			return err
 		}
+
 		// Dirty hack to ignore "empty" packets (\r\n with no Redis content)
 		if datum.DataType == 0x00 {
 			continue
@@ -164,31 +161,37 @@ func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
 			continue
 		}
 		items := datum.Content.([]interface{})
-		firstItem := items[0].(redisDatum)
-		command, success := firstItem.ToString()
-		if !success {
-			log.Error("Expected a command string, got something else (type=%q)", firstItem.DataType)
-			continue
+
+		payload := []byte{}
+		cmd := ""
+		for i := 0; i < len(items); i++ {
+			Item := items[i].(redisDatum)
+			command, success := Item.ToString()
+			if !success {
+				log.Error("Expected a command string, got something else (type=%q)", Item.DataType)
+				continue
+			}
+			if i == 0 {
+				cmd = command
+			}
+			payload = append(payload, command+" "...)
 		}
-		answer, closeConn := s.REDISHandler(command, items[1:])
+
+		answer := s.REDISHandler(cmd, items[1:])
 
 		s.ch.Send(event.New(
 			services.EventOptions,
 			event.Category("redis"),
-			event.Type("redis-command"),
+			event.Type(cmd),
 			event.SourceAddr(conn.RemoteAddr()),
 			event.DestinationAddr(conn.LocalAddr()),
-			event.Custom("redis.command", command),
+			event.Custom("redis.command", cmd),
 			event.Payload(payload),
 		))
-
-		if closeConn {
-			break
-		} else {
-			_, err := conn.Write([]byte(answer))
-			if err != nil {
-				log.Error("error writing response: %s", err.Error())
-			}
+		_, err = conn.Write([]byte(answer))
+		if err != nil {
+			log.Error("Error writing response: %s", err.Error())
+			return err
 		}
 	}
 
