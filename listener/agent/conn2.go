@@ -33,7 +33,9 @@ package agent
 import (
 	"encoding"
 	"encoding/binary"
+	"fmt"
 	"net"
+	"reflect"
 )
 
 func Conn2(c net.Conn) *conn2 {
@@ -74,6 +76,8 @@ func (c *conn2) receive() (interface{}, error) {
 		o = &Ping{}
 	case TypeEOF:
 		o = &EOF{}
+	default:
+		return nil, fmt.Errorf("Unsupported message receive type %d", msgType)
 	}
 
 	buff = make([]byte, 2)
@@ -114,6 +118,8 @@ func (c conn2) send(o encoding.BinaryMarshaler) error {
 		c.Conn.Write([]byte{uint8(TypeReadWriteUDP)})
 	case EOF:
 		c.Conn.Write([]byte{uint8(TypeEOF)})
+	default:
+		return fmt.Errorf("Unsupported message type send %s", reflect.TypeOf(o))
 	}
 
 	data, err := o.MarshalBinary()
