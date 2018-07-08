@@ -14,6 +14,12 @@
   version = "v0.3.0"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/Logicalis/asn1"
+  packages = ["."]
+  revision = "c9c836c1a3cd4b4696c1adf57ab887c36fc06fae"
+
+[[projects]]
   name = "github.com/Shopify/sarama"
   packages = ["."]
   revision = "f7be6aa2bc7b2e38edf816b08b582782194a1c02"
@@ -34,7 +40,14 @@
 [[projects]]
   branch = "master"
   name = "github.com/dgraph-io/badger"
-  packages = [".","options","protos","skl","table","y"]
+  packages = [
+    ".",
+    "options",
+    "protos",
+    "skl",
+    "table",
+    "y"
+  ]
   revision = "94594b20babfa448fdf604b6b58b94b14b2650d9"
 
 [[projects]]
@@ -111,14 +124,42 @@
 
 [[projects]]
   name = "github.com/google/gopacket"
-  packages = [".","layers","pcap","pcapgo"]
+  packages = [
+    ".",
+    "layers",
+    "pcap",
+    "pcapgo"
+  ]
   revision = "11c65f1ca9081dfea43b4f9643f5c155583b73ba"
   version = "v1.1.14"
 
 [[projects]]
   branch = "master"
   name = "github.com/google/netstack"
-  packages = ["ilist","rand","sleep","tcpip","tcpip/adapters/gonet","tcpip/buffer","tcpip/header","tcpip/link/fdbased","tcpip/link/rawfile","tcpip/link/sniffer","tcpip/link/tun","tcpip/network/fragmentation","tcpip/network/hash","tcpip/network/ipv4","tcpip/network/ipv6","tcpip/ports","tcpip/seqnum","tcpip/stack","tcpip/transport/tcp","tcpip/transport/udp","tmutex","waiter"]
+  packages = [
+    "ilist",
+    "rand",
+    "sleep",
+    "tcpip",
+    "tcpip/adapters/gonet",
+    "tcpip/buffer",
+    "tcpip/header",
+    "tcpip/link/fdbased",
+    "tcpip/link/rawfile",
+    "tcpip/link/sniffer",
+    "tcpip/link/tun",
+    "tcpip/network/fragmentation",
+    "tcpip/network/hash",
+    "tcpip/network/ipv4",
+    "tcpip/network/ipv6",
+    "tcpip/ports",
+    "tcpip/seqnum",
+    "tcpip/stack",
+    "tcpip/transport/tcp",
+    "tcpip/transport/udp",
+    "tmutex",
+    "waiter"
+  ]
   revision = "0f7ffd73c70e651a4aee318e3abcda1f855557bb"
   source = "github.com/honeytrap/netstack"
 
@@ -149,7 +190,12 @@
 [[projects]]
   branch = "master"
   name = "github.com/mailru/easyjson"
-  packages = [".","buffer","jlexer","jwriter"]
+  packages = [
+    ".",
+    "buffer",
+    "jlexer",
+    "jwriter"
+  ]
   revision = "32fa128f234d041f196a9f3e0fea5ac9772c08e1"
 
 [[projects]]
@@ -256,7 +302,10 @@
 
 [[projects]]
   name = "github.com/vishvananda/netlink"
-  packages = [".","nl"]
+  packages = [
+    ".",
+    "nl"
+  ]
   revision = "a2ad57a690f3caf3015351d2d6e1c0b95c349752"
   version = "v1.0.0"
 
@@ -269,19 +318,43 @@
 [[projects]]
   branch = "master"
   name = "golang.org/x/crypto"
-  packages = ["chacha20poly1305","curve25519","ed25519","ed25519/internal/edwards25519","internal/chacha20","internal/subtle","poly1305","ssh","ssh/terminal"]
+  packages = [
+    "chacha20poly1305",
+    "curve25519",
+    "ed25519",
+    "ed25519/internal/edwards25519",
+    "internal/chacha20",
+    "internal/subtle",
+    "poly1305",
+    "ssh",
+    "ssh/terminal"
+  ]
   revision = "a49355c7e3f8fe157a85be2f77e6e269a0f89602"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/net"
-  packages = ["bpf","context","internal/iana","internal/socket","internal/timeseries","ipv4","ipv6","trace"]
+  packages = [
+    "bpf",
+    "context",
+    "internal/iana",
+    "internal/socket",
+    "internal/timeseries",
+    "ipv4",
+    "ipv6",
+    "trace"
+  ]
   revision = "cbe0f9307d0156177f9dd5dc85da1a31abc5f2fb"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/sys"
-  packages = ["cpu","unix","windows","windows/registry"]
+  packages = [
+    "cpu",
+    "unix",
+    "windows",
+    "windows/registry"
+  ]
   revision = "1b2967e3c290b7c545b3db0deeda16e9be4f98a2"
 
 [[projects]]
@@ -292,7 +365,11 @@
 
 [[projects]]
   name = "gopkg.in/olivere/elastic.v5"
-  packages = [".","config","uritemplates"]
+  packages = [
+    ".",
+    "config",
+    "uritemplates"
+  ]
   revision = "02f6a01dc7f7fd2d65e89121e881aae3ba577a9a"
   version = "v5.0.65"
 
@@ -305,6 +382,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "daf78dbaaa8a16187be64e23034fb8d7207584d9c3186f1c3540d49ed69fcc90"
+  inputs-digest = "ef5e1d2181a782d60e3c1059e776bec5685155d9f2e009ab4c1a72937b30363b"
   solver-name = "gps-cdcl"
   solver-version = 1
