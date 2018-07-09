@@ -135,6 +135,12 @@ func PayloadDecoder(payload []byte) *payloadDecoder {
 func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 	id := xid.New()
 
+	var connOptions event.Option = nil
+
+	if ec, ok := conn.(*event.Conn); ok {
+		connOptions = ec.Options()
+	}
+
 	config := ssh.ServerConfig{
 		ServerVersion: s.Banner,
 		MaxAuthTries:  s.MaxAuthTries,
@@ -143,7 +149,7 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 				services.EventOptions,
 				event.Category("ssh"),
 				event.Type("publickey-authentication"),
-				event.Conn(conn),
+				connOptions,
 				event.SourceAddr(cm.RemoteAddr()),
 				event.DestinationAddr(cm.LocalAddr()),
 				event.Custom("ssh.sessionid", id.String()),
@@ -159,7 +165,7 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 				services.EventOptions,
 				event.Category("ssh"),
 				event.Type("password-authentication"),
-				event.Conn(conn),
+				connOptions,
 				event.SourceAddr(cm.RemoteAddr()),
 				event.DestinationAddr(cm.LocalAddr()),
 				event.Custom("ssh.sessionid", id.String()),
@@ -217,7 +223,7 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 				services.EventOptions,
 				event.Category("ssh"),
 				event.Type("ssh-channel"),
-				event.Conn(conn),
+				connOptions,
 				event.SourceAddr(conn.RemoteAddr()),
 				event.DestinationAddr(conn.LocalAddr()),
 				event.Custom("ssh.sessionid", id.String()),
@@ -238,7 +244,7 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 				services.EventOptions,
 				event.Category("ssh"),
 				event.Type("ssh-channel"),
-				event.Conn(conn),
+				connOptions,
 				event.SourceAddr(conn.RemoteAddr()),
 				event.DestinationAddr(conn.LocalAddr()),
 				event.Custom("ssh.sessionid", id.String()),
@@ -257,7 +263,7 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 				services.EventOptions,
 				event.Category("ssh"),
 				event.Type("ssh-channel"),
-				event.Conn(conn),
+				connOptions,
 				event.SourceAddr(conn.RemoteAddr()),
 				event.DestinationAddr(conn.LocalAddr()),
 				event.Custom("ssh.sessionid", id.String()),
@@ -286,7 +292,7 @@ func (s *sshSimulatorService) Handle(ctx context.Context, conn net.Conn) error {
 					services.EventOptions,
 					event.Category("ssh"),
 					event.Type("ssh-request"),
-					event.Conn(conn),
+					connOptions,
 					event.SourceAddr(conn.RemoteAddr()),
 					event.DestinationAddr(conn.LocalAddr()),
 					event.Custom("ssh.sessionid", id.String()),
