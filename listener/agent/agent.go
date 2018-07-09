@@ -185,7 +185,7 @@ func (al *agentListener) serv(c *conn2) {
 			conns.Add(ac)
 
 			al.ch <- ac
-		case *ReadWrite:
+		case *ReadWriteTCP:
 			conn := conns.Get(v.Laddr, v.Raddr)
 			if conn == nil {
 				continue
