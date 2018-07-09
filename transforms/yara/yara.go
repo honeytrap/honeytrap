@@ -145,7 +145,9 @@ func NewMatcherFrom(rules string) (Matcher, error) {
 
 func (m Matcher) GetMatches(e event.Event) ([]goyara.MatchRule, error) {
 	for _, name := range m.allowedVariables {
-		err := m.rules.DefineVariable(name, e.Get(strings.Replace(name, "__", ".", -1)))
+		key := strings.Replace(name, "__", ".", -1)
+		key = strings.Replace(name, "___", "-", -1)
+		err := m.rules.DefineVariable(name, e.Get(key))
 		if err != nil {
 			return nil, err
 		}
