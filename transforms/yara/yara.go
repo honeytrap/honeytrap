@@ -32,14 +32,10 @@ func LoadRules(source string) ([]byte, error) {
 		return nil, err
 	}
 	switch u.Scheme {
-	case "":
-		fallthrough
-	case "file":
+	case "", "file":
 		content, err := ioutil.ReadFile(u.Path)
 		return []byte(content), err
-	case "http":
-		fallthrough
-	case "https":
+	case "http", "https":
 		resp, err := http.Get(source)
 		if err != nil {
 			return nil, err
@@ -62,7 +58,7 @@ func helper(node interface{}) []string {
 		return findUnknownIdentifiers(node.(data.Expression))
 	case string:
 		return []string{node.(string)}
-	case data.Keyword, data.StringCount, int64, bool, nil:
+	case data.RegexPair, data.Keyword, data.StringCount, int64, bool, nil:
 		return []string{}
 	default:
 		log.Errorf("Unknown AST type %#v\n", t)
