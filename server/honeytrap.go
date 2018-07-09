@@ -394,9 +394,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 				channel = pushers.FilterChannel(channel, pushers.RegexFilterFunc("service", x.Services))
 			}
 
-			if err := hc.bus.Subscribe(channel); err != nil {
-				log.Error("Could not add channel %s to bus: %s", name, err.Error())
-			}
+			hc.bus.Subscribe(channel)
 		}
 	}
 
