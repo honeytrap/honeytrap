@@ -36,6 +36,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -98,29 +99,14 @@ func printify(s string) string {
 }
 
 func (b Console) run() {
-	for {
-		e := <-b.ch
-
-		params := []string{}
+	for e := range b.ch {
+		var params []string
 		for k, v := range e {
 			switch x := v.(type) {
 			case net.IP:
 				params = append(params, fmt.Sprintf("%s=%s", k, x.String()))
-			case uint32:
-				params = append(params, fmt.Sprintf("%s=%d", k, v))
-			case uint16:
-				params = append(params, fmt.Sprintf("%s=%d", k, v))
-			case uint8:
-				params = append(params, fmt.Sprintf("%s=%d", k, v))
-			case uint:
-				params = append(params, fmt.Sprintf("%s=%d", k, v))
-			case int32:
-				params = append(params, fmt.Sprintf("%s=%d", k, v))
-			case int16:
-				params = append(params, fmt.Sprintf("%s=%d", k, v))
-			case int8:
-				params = append(params, fmt.Sprintf("%s=%d", k, v))
-			case int:
+			case uint32, uint16, uint8, uint,
+				int32, int16, int8, int:
 				params = append(params, fmt.Sprintf("%s=%d", k, v))
 			case time.Time:
 				params = append(params, fmt.Sprintf("%s=%s", k, x.String()))
@@ -130,7 +116,7 @@ func (b Console) run() {
 				params = append(params, fmt.Sprintf("%s=%#v", k, v))
 			}
 		}
-
+		sort.Strings(params)
 		fmt.Fprintf(b.Writer, "%s > %s > %s\n", e["sensor"], e["category"], strings.Join(params, ", "))
 	}
 }
