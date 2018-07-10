@@ -84,6 +84,12 @@ func (s *telnetService) Handle(ctx context.Context, conn net.Conn) error {
 
 	defer conn.Close()
 
+	var connOptions event.Option = nil
+
+	if ec, ok := conn.(*event.Conn); ok {
+		connOptions = ec.Options()
+	}
+
 	term := NewTerminal(conn, s.Prompt)
 
 	term.Write([]byte(s.MOTD))
@@ -100,7 +106,7 @@ func (s *telnetService) Handle(ctx context.Context, conn net.Conn) error {
 			services.EventOptions,
 			event.Category("telnet"),
 			event.Type("session"),
-			event.Conn(conn),
+			connOptions,
 			event.SourceAddr(conn.RemoteAddr()),
 			event.DestinationAddr(conn.LocalAddr()),
 			event.Custom("telnet.sessionid", id.String()),
