@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/honeytrap/honeytrap/services/jax3/crypto/internal/cipherhw"
+	"github.com/honeytrap/honeytrap/services/ja3/crypto/internal/cipherhw"
 )
 
 const (
@@ -289,7 +289,7 @@ type ClientHelloInfo struct {
 	Conn net.Conn
 }
 
-func (c *ClientHelloInfo) JAX3() string {
+func (c *ClientHelloInfo) JA3() string {
 	greaseTable := map[uint16]bool{
 		0x0a0a: true, 0x1a1a: true, 0x2a2a: true, 0x3a3a: true,
 		0x4a4a: true, 0x5a5a: true, 0x6a6a: true, 0x7a7a: true,
@@ -337,9 +337,9 @@ func (c *ClientHelloInfo) JAX3() string {
 	return s
 }
 
-func (c *ClientHelloInfo) JAX3Digest() string {
+func (c *ClientHelloInfo) JA3Digest() string {
 	hasher := md5.New()
-	hasher.Write([]byte(c.JAX3()))
+	hasher.Write([]byte(c.JA3()))
 	return hex.EncodeToString(hasher.Sum(nil))
 }
 
