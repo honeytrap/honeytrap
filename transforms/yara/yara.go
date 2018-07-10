@@ -53,15 +53,15 @@ func LoadRules(source string) ([]byte, error) {
 }
 
 func helper(node interface{}) []string {
-	switch t := node.(type) {
+	switch v := node.(type) {
 	case data.Expression:
-		return findUnknownIdentifiers(node.(data.Expression))
+		return findUnknownIdentifiers(v)
 	case string:
-		return []string{node.(string)}
+		return []string{v}
 	case data.RegexPair, data.Keyword, data.StringCount, int64, bool, nil:
 		return []string{}
 	default:
-		log.Errorf("Unknown AST type %#v\n", t)
+		log.Errorf("Unknown AST type %#v\n", v)
 		return []string{}
 	}
 }
