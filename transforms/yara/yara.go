@@ -18,7 +18,7 @@ import (
 	"github.com/op/go-logging"
 )
 
-var log = logging.MustGetLogger("filters/yarautils")
+var log = logging.MustGetLogger("filters/yara")
 
 // Fetches and loads rules from a specification, a file, or an URL
 func LoadRules(source string) ([]byte, error) {
@@ -52,30 +52,46 @@ func LoadRules(source string) ([]byte, error) {
 	}
 }
 
-func helper(node interface{}) []string {
+// Crude set implementation (workaround for issue VirusTotal/yara#908)
+type stringSet map[string]struct{}
+
+func helper(node interface{}) stringSet {
 	switch v := node.(type) {
 	case data.Expression:
 		return findUnknownIdentifiers(v)
 	case string:
-		return []string{v}
-	case data.RegexPair, data.Keyword, data.StringCount, int64, bool, nil:
-		return []string{}
+		ret := make(stringSet)
+		ret[v] = struct{}{}
+		return ret
+	case data.RegexPair, data.RawString, data.Keyword, data.StringCount, int64, bool, nil:
+		return make(stringSet)
 	default:
 		log.Errorf("Unknown AST type %#v\n", v)
-		return []string{}
+		return make(stringSet)
 	}
 }
 
-func findUnknownIdentifiers(tree data.Expression) []string {
-	return append(helper(tree.Left), helper(tree.Right)...)
+func stringSetMerge(a, b stringSet) stringSet {
+	setOut := make(map[string]struct{})
+	for key := range a {
+		setOut[key] = struct{}{}
+	}
+	for key := range b {
+		setOut[key] = struct{}{}
+	}
+	return setOut
 }
 
-var baseVariables []string // Do not add "payload"!
+func findUnknownIdentifiers(tree data.Expression) stringSet {
+	return stringSetMerge(helper(tree.Left), helper(tree.Right))
+}
+
+var baseVariables stringSet // Do not add "payload"!
 
 type Compiler struct {
 	compiler *goyara.Compiler
 
-	allowedVariables []string
+	allowedVariables stringSet
 }
 
 func NewCompiler() (Compiler, error) {
@@ -83,7 +99,7 @@ func NewCompiler() (Compiler, error) {
 	if err != nil {
 		return Compiler{}, err
 	}
-	return Compiler{c, []string{}}, nil
+	return Compiler{c, make(stringSet)}, nil
 }
 
 // Stubs unknown variables
@@ -95,10 +111,10 @@ func (c *Compiler) AddString(rules string) error {
 	c.allowedVariables = baseVariables
 	for _, rule := range ruleset.Rules {
 		unknowns := findUnknownIdentifiers(rule.Condition)
-		c.allowedVariables = append(c.allowedVariables, unknowns...)
-		for _, u := range unknowns {
-			log.Debugf("Patching unknown identifier %s", u)
-			err := c.compiler.DefineVariable(u, "")
+		c.allowedVariables = stringSetMerge(c.allowedVariables, unknowns)
+		for v := range unknowns {
+			log.Debugf("Patching unknown identifier %s", v)
+			err := c.compiler.DefineVariable(v, "")
 			if err != nil {
 				return err
 			}
@@ -120,7 +136,7 @@ func (c *Compiler) AddRulesFrom(source string) error {
 type Matcher struct {
 	rules *goyara.Rules
 
-	allowedVariables []string
+	allowedVariables stringSet
 }
 
 func NewMatcher(c Compiler) (Matcher, error) {
@@ -144,9 +160,11 @@ func NewMatcherFrom(rules string) (Matcher, error) {
 }
 
 func (m Matcher) GetMatches(e event.Event) ([]goyara.MatchRule, error) {
-	for _, name := range m.allowedVariables {
-		key := strings.Replace(name, "__", ".", -1)
-		key = strings.Replace(name, "___", "-", -1)
+	for name := range m.allowedVariables {
+		key := strings.Replace(name, "___", "-", -1)
+		key = strings.Replace(key, "__", ".", -1)
+		if !e.Has(key) { continue }
+		log.Debugf("Define %s = %s", name, e.Get(key))
 		err := m.rules.DefineVariable(name, e.Get(key))
 		if err != nil {
 			return nil, err
@@ -156,7 +174,6 @@ func (m Matcher) GetMatches(e event.Event) ([]goyara.MatchRule, error) {
 	payload := []byte(e.Get("payload"))
 	matches, err := m.rules.ScanMem(payload, 0, 30*time.Second)
 	if err != nil {
-		panic(err)
 		return nil, err
 	}
 	return matches, nil
@@ -192,6 +209,7 @@ func Yara(source string) transforms.TransformFunc {
 	return func(state transforms.State, e event.Event, send func(event.Event)) {
 		matches, err := m.GetMatches(e)
 		if err != nil {
+			panic(err.Error())
 			log.Error(err.Error())
 			return
 		}
