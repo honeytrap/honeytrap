@@ -33,6 +33,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"github.com/honeytrap/honeytrap/transforms/yara"
 	"net"
 	"os"
 	"runtime"
@@ -374,6 +375,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			Services   []string `toml:"services"`
 			Categories []string `toml:"categories"`
 			Plugin     string   `toml:"plugin"`
+			Yara       string   `toml:"yara"`
 		}{}
 
 		err := hc.config.PrimitiveDecode(s, &x)
@@ -406,6 +408,10 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 					log.Errorf("Couldn't load plugin %s: %s", x.Plugin, err.Error())
 				}
 				channel = transforms.Transform(channel, t)
+			}
+
+			if len(x.Yara) != 0 {
+				channel = transforms.Transform(channel, yara.Yara(x.Yara))
 			}
 
 			if err := hc.bus.Subscribe(channel); err != nil {
