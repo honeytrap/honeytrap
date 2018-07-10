@@ -79,11 +79,19 @@ type Servicer interface {
 	Handle(context.Context, net.Conn) error
 
 	SetChannel(pushers.Channel)
+	SetDataDir(string)
 }
 
 func WithChannel(eb pushers.Channel) ServicerFunc {
 	return func(d Servicer) error {
 		d.SetChannel(eb)
+		return nil
+	}
+}
+
+func WithDataDir(dir string) ServicerFunc {
+	return func(d Servicer) error {
+		d.SetDataDir(dir)
 		return nil
 	}
 }

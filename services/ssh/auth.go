@@ -81,6 +81,8 @@ func (s *sshAuthService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
+func (s *sshAuthService) SetDataDir(string) {}
+
 func (s *sshAuthService) Handle(ctx context.Context, conn net.Conn) error {
 	defer conn.Close()
 

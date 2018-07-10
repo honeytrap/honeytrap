@@ -107,8 +107,9 @@ func (s *Service) SetChannel(c pushers.Channel) {
 	s.ch = c
 }
 
-func (s *Service) Handle(ctx context.Context, conn net.Conn) error {
+func (s *Service) SetDataDir(string) {}
 
+func (s *Service) Handle(ctx context.Context, conn net.Conn) error {
 	rcvLine := make(chan string)
 
 	// Wait for a message and send it into the eventbus

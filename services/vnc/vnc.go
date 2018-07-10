@@ -97,6 +97,8 @@ func (s *vncService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
+func (s *vncService) SetDataDir(string) {}
+
 func (s *vncService) Handle(ctx context.Context, conn net.Conn) error {
 	defer conn.Close()
 

@@ -79,6 +79,8 @@ func (s *redisService) SetChannel(c pushers.Channel) {
 	s.ch = c
 }
 
+func (s *redisService) SetDataDir(string) {}
+
 type redisDatum struct {
 	DataType byte
 	Content  interface{}

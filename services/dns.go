@@ -64,6 +64,8 @@ func (s *dnsService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
+func (s *dnsService) SetDataDir(string) {}
+
 func (s *dnsService) Handle(ctx context.Context, conn net.Conn) error {
 	defer conn.Close()
 

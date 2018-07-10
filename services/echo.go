@@ -61,6 +61,8 @@ func (s *echoService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
+func (s *echoService) SetDataDir(string) {}
+
 func (s *echoService) Handle(ctx context.Context, conn net.Conn) error {
 	if _, ok := conn.(*listener.DummyUDPConn); !ok {
 		_, err := io.Copy(conn, conn)

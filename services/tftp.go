@@ -73,6 +73,8 @@ func (s *tftpService) SetChannel(c pushers.Channel) {
 	s.ch = c
 }
 
+func (s *tftpService) SetDataDir(string) {}
+
 func (s *tftpService) Handle(ctx context.Context, conn net.Conn) error {
 	if conn.RemoteAddr().Network() == "udp" {
 		/* Selectively drop packets to prevent amplification attacks. This is a

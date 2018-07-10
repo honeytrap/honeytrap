@@ -181,6 +181,8 @@ func (s *ldapService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
+func (s *ldapService) SetDataDir(string) {}
+
 func (s *ldapService) Handle(ctx context.Context, conn net.Conn) error {
 
 	s.anon = true // start with anonymous authstate

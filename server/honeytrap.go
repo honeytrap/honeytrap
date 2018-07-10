@@ -69,6 +69,7 @@ import (
 	_ "github.com/honeytrap/honeytrap/services/ssh"
 	_ "github.com/honeytrap/honeytrap/services/telnet"
 	_ "github.com/honeytrap/honeytrap/services/vnc"
+	_ "github.com/honeytrap/honeytrap/services/wordpress"
 
 	"github.com/honeytrap/honeytrap/listener"
 	_ "github.com/honeytrap/honeytrap/listener/agent"
@@ -484,6 +485,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		options := []services.ServicerFunc{
 			services.WithChannel(hc.bus),
 			services.WithConfig(s, hc.config),
+			services.WithDataDir(hc.dataDir),
 		}
 
 		if x.Director == "" {

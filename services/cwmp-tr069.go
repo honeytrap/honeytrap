@@ -87,6 +87,8 @@ func (s *cwmpService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
+func (s *cwmpService) SetDataDir(string) {}
+
 type functionCall struct {
 	method       string
 	argumentsXML string

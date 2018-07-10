@@ -116,6 +116,8 @@ func (s *sshSimulatorService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
+func (s *sshSimulatorService) SetDataDir(string) {}
+
 type payloadDecoder struct {
 	decoder.Decoder
 }

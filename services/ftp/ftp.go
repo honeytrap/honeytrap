@@ -100,6 +100,8 @@ func (s *ftpService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
+func (s *ftpService) SetDataDir(string) {}
+
 func (s *ftpService) Handle(ctx context.Context, conn net.Conn) error {
 
 	ftpConn := s.server.newConn(conn, s.driver, s.recv)
