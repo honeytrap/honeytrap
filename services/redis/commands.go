@@ -30,10 +30,6 @@
  */
 package redis
 
-import (
-	"fmt"
-)
-
 type cmd func(*redisService, []interface{}) (string, bool)
 
 var mapCmds = map[string]cmd{
@@ -58,7 +54,7 @@ var mapInfoCmds = map[string]infoSection{
 func (s *redisService) infoCmd(args []interface{}) (string, bool) {
 	switch len(args) {
 	case 0:
-		return fmt.Sprintf(lenMsg(), len(s.infoSectionsMsg()), s.infoSectionsMsg()), false
+		return bulkString(s.infoSectionsMsg(), true), false
 	case 1:
 		_word := args[0].(redisDatum)
 		word, success := _word.ToString()
@@ -67,15 +63,15 @@ func (s *redisService) infoCmd(args []interface{}) (string, bool) {
 		}
 		fn, ok := mapInfoCmds[word]
 		if ok {
-			return fmt.Sprintf(lenMsg(), len(fn(s)), fn(s)), false
+			return bulkString(fn(s), true), false
 		}
 		if word == "default" {
-			return fmt.Sprintf(lenMsg(), len(s.infoSectionsMsg()), s.infoSectionsMsg()), false
+			return bulkString(s.infoSectionsMsg(), true), false
 		}
 		if word == "all" {
-			return fmt.Sprintf(lenMsg(), len(s.allSectionsMsg()), s.allSectionsMsg()), false
+			return bulkString(s.allSectionsMsg(), true), false
 		}
-		return fmt.Sprintf(lenMsg(), len(lineBreakMsg()), lineBreakMsg()), false
+		return bulkString("", false), false
 	default:
 		return errorMsg("syntax"), false
 	}
