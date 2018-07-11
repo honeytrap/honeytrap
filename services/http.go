@@ -43,6 +43,7 @@ import (
 
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
+	"github.com/rs/xid"
 )
 
 var (
@@ -119,6 +120,8 @@ func Cookies(cookies []*http.Cookie) event.Option {
 }
 
 func (s *httpService) Handle(ctx context.Context, conn net.Conn) error {
+	id := xid.New()
+
 	for {
 		br := bufio.NewReader(conn)
 
@@ -143,12 +146,20 @@ func (s *httpService) Handle(ctx context.Context, conn net.Conn) error {
 
 		io.Copy(ioutil.Discard, req.Body)
 
+		var connOptions event.Option = nil
+
+		if ec, ok := conn.(*event.Conn); ok {
+			connOptions = ec.Options()
+		}
+
 		s.c.Send(event.New(
 			EventOptions,
+			connOptions,
 			event.Category("http"),
 			event.Type("request"),
 			event.SourceAddr(conn.RemoteAddr()),
 			event.DestinationAddr(conn.LocalAddr()),
+			event.Custom("http.sessionid", id.String()),
 			event.Custom("http.method", req.Method),
 			event.Custom("http.proto", req.Proto),
 			event.Custom("http.host", req.Host),

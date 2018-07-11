@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/netstack/tcpip/buffer"
@@ -31,6 +32,9 @@ import (
 
 // Error represents an error in the netstack error space. Using a special type
 // ensures that errors outside of this space are not accidentally introduced.
+//
+// Note: to support save / restore, it is important that all tcpip errors have
+// distinct error messages.
 type Error struct {
 	string
 }
@@ -73,6 +77,7 @@ var (
 	ErrInvalidOptionValue    = &Error{"invalid option value specified"}
 	ErrNoLinkAddress         = &Error{"no remote link address"}
 	ErrBadAddress            = &Error{"bad address"}
+	ErrNetworkUnreachable    = &Error{"network is unreachable"}
 )
 
 // Errors related to Subnet
@@ -80,6 +85,17 @@ var (
 	errSubnetLengthMismatch = errors.New("subnet length of address and mask differ")
 	errSubnetAddressMasked  = errors.New("subnet address has bits set outside the mask")
 )
+
+// ErrSaveRejection indicates a failed save due to unsupported networking state.
+// This type of errors is only used for save logic.
+type ErrSaveRejection struct {
+	Err error
+}
+
+// Error returns a sensible description of the save rejection error.
+func (e ErrSaveRejection) Error() string {
+	return "save rejected due to unsupported networking state: " + e.Err.Error()
+}
 
 // A Clock provides the current time.
 //
@@ -537,3 +553,38 @@ type ProtocolAddress struct {
 	// Address is a network address.
 	Address Address
 }
+
+// danglingEndpointsMu protects access to danglingEndpoints.
+var danglingEndpointsMu sync.Mutex
+
+// danglingEndpoints tracks all dangling endpoints no longer owned by the app.
+var danglingEndpoints = make(map[Endpoint]struct{})
+
+// GetDanglingEndpoints returns all dangling endpoints.
+func GetDanglingEndpoints() []Endpoint {
+	es := make([]Endpoint, 0, len(danglingEndpoints))
+	danglingEndpointsMu.Lock()
+	for e, _ := range danglingEndpoints {
+		es = append(es, e)
+	}
+	danglingEndpointsMu.Unlock()
+	return es
+}
+
+// AddDanglingEndpoint adds a dangling endpoint.
+func AddDanglingEndpoint(e Endpoint) {
+	danglingEndpointsMu.Lock()
+	danglingEndpoints[e] = struct{}{}
+	danglingEndpointsMu.Unlock()
+}
+
+// DeleteDanglingEndpoint removes a dangling endpoint.
+func DeleteDanglingEndpoint(e Endpoint) {
+	danglingEndpointsMu.Lock()
+	delete(danglingEndpoints, e)
+	danglingEndpointsMu.Unlock()
+}
+
+// AsyncLoading is the global barrier for asynchronous endpoint loading
+// activities.
+var AsyncLoading sync.WaitGroup

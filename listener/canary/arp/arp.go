@@ -175,17 +175,27 @@ func (f *Frame) Unmarshal(data []byte) error {
 		return fmt.Errorf("Oversized ARP protocol size: %d", f.ProtocolSize)
 	}
 
-	f.SenderHardwareAddress = make([]byte, f.HardwareSize)
-	copy(f.SenderHardwareAddress[:], data[8:8+f.HardwareSize])
+	data = data[8:]
 
-	f.SenderProtocolAddress = make([]byte, f.HardwareSize)
-	copy(f.SenderProtocolAddress[:], data[14:14+f.ProtocolSize])
+	f.SenderHardwareAddress = make([]byte, f.HardwareSize)
+	copy(f.SenderHardwareAddress[:], data[:f.HardwareSize])
+
+	data = data[f.HardwareSize:]
+
+	f.SenderProtocolAddress = make([]byte, f.ProtocolSize)
+	copy(f.SenderProtocolAddress[:], data[:f.ProtocolSize])
+
+	data = data[f.ProtocolSize:]
 
 	f.TargetHardwareAddress = make([]byte, f.HardwareSize)
-	copy(f.TargetHardwareAddress[:], data[18:+f.HardwareSize])
+	copy(f.TargetHardwareAddress[:], data[:f.HardwareSize])
 
-	f.TargetProtocolAddress = make([]byte, f.HardwareSize)
-	copy(f.TargetProtocolAddress[:], data[24:24+f.ProtocolSize])
+	data = data[f.HardwareSize:]
+
+	f.TargetProtocolAddress = make([]byte, f.ProtocolSize)
+	copy(f.TargetProtocolAddress[:], data[:f.ProtocolSize])
+
+	data = data[f.ProtocolSize:]
 
 	if f.HardwareSize == 6 {
 		f.SenderMAC = net.HardwareAddr(f.SenderHardwareAddress)

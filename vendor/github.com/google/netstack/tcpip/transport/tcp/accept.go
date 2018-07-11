@@ -5,7 +5,6 @@
 package tcp
 
 import (
-	"crypto/rand"
 	"crypto/sha1"
 	"encoding/binary"
 	"hash"
@@ -13,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/netstack/rand"
 	"github.com/google/netstack/sleep"
 	"github.com/google/netstack/tcpip"
 	"github.com/google/netstack/tcpip/header"
@@ -68,7 +68,8 @@ func encodeMSS(mss uint16) uint32 {
 // to go above a threshold.
 var synRcvdCount struct {
 	sync.Mutex
-	value uint64
+	value   uint64
+	pending sync.WaitGroup
 }
 
 // listenContext is used by a listening endpoint to store state used while
@@ -102,6 +103,7 @@ func incSynRcvdCount() bool {
 		return false
 	}
 
+	synRcvdCount.pending.Add(1)
 	synRcvdCount.value++
 
 	return true
@@ -115,6 +117,7 @@ func decSynRcvdCount() {
 	defer synRcvdCount.Unlock()
 
 	synRcvdCount.value--
+	synRcvdCount.pending.Done()
 }
 
 // newListenContext creates a new listen context.
@@ -209,6 +212,9 @@ func (l *listenContext) createConnectedEndpoint(s *segment, iss seqnum.Value, ir
 
 	n.isRegistered = true
 	n.state = stateConnected
+
+	n.iss = iss
+	n.irs = irs
 
 	// Create sender and receiver.
 	//
@@ -349,13 +355,19 @@ func (e *endpoint) protocolListenLoop(rcvWnd seqnum.Size) *tcpip.Error {
 		// to the endpoint.
 		e.mu.Lock()
 		e.state = stateClosed
-		e.mu.Unlock()
 
 		// Notify waiters that the endpoint is shutdown.
+		e.mu.Unlock()
 		e.waiterQueue.Notify(waiter.EventIn | waiter.EventOut)
+		e.mu.Lock()
 
 		// Do cleanup if needed.
-		e.completeWorker()
+		e.completeWorkerLocked()
+
+		if e.drainDone != nil {
+			close(e.drainDone)
+		}
+		e.mu.Unlock()
 	}()
 
 	e.mu.Lock()
@@ -375,12 +387,14 @@ func (e *endpoint) protocolListenLoop(rcvWnd seqnum.Size) *tcpip.Error {
 				return nil
 			}
 			if n&notifyDrain != 0 {
-				for s := e.segmentQueue.dequeue(); s != nil; s = e.segmentQueue.dequeue() {
+				for !e.segmentQueue.empty() {
+					s := e.segmentQueue.dequeue()
 					e.handleListenSegment(ctx, s)
 					s.decRef()
 				}
-				e.drainDone <- struct{}{}
-				return nil
+				synRcvdCount.pending.Wait()
+				close(e.drainDone)
+				<-e.undrain
 			}
 
 		case wakerForNewSegment:
