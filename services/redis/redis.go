@@ -41,7 +41,7 @@ import (
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/services"
-	logging "github.com/op/go-logging"
+	"github.com/op/go-logging"
 )
 
 var log = logging.MustGetLogger("services/redis")
@@ -96,7 +96,14 @@ func (d *redisDatum) ToString() (value string, success bool) {
 }
 
 func parseRedisData(scanner *bufio.Scanner) (redisDatum, error) {
-	scanner.Scan()
+	success := scanner.Scan()
+	if !success {
+		err := scanner.Err()
+		if err == nil {
+			err = fmt.Errorf("eof")
+		}
+		return redisDatum{}, err
+	}
 	cmd := scanner.Text()
 	if len(cmd) == 0 {
 		return redisDatum{}, nil
@@ -136,18 +143,19 @@ func parseRedisData(scanner *bufio.Scanner) (redisDatum, error) {
 }
 
 func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
-
 	defer conn.Close()
 
 	scanner := bufio.NewScanner(conn)
 
 	for {
 		datum, err := parseRedisData(scanner)
-
 		if err != nil {
-			log.Error(err.Error())
-			continue
+			if err.Error() != "eof" {
+				log.Error(err.Error())
+			}
+			break
 		}
+
 		// Dirty hack to ignore "empty" packets (\r\n with no Redis content)
 		if datum.DataType == 0x00 {
 			continue
@@ -155,14 +163,14 @@ func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
 		// Redis commands are sent as an array of strings, so expect that
 		if datum.DataType != 0x2a {
 			log.Error("Expected array, got data type %q", datum.DataType)
-			continue
+			break
 		}
 		items := datum.Content.([]interface{})
 		firstItem := items[0].(redisDatum)
 		command, success := firstItem.ToString()
 		if !success {
 			log.Error("Expected a command string, got something else (type=%q)", firstItem.DataType)
-			continue
+			break
 		}
 		answer, closeConn := s.REDISHandler(command, items[1:])
 
@@ -177,11 +185,11 @@ func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
 
 		if closeConn {
 			break
-		} else {
-			_, err := conn.Write([]byte(answer))
-			if err != nil {
-				log.Error("error writing response: %s", err.Error())
-			}
+		}
+		_, err = conn.Write([]byte(answer))
+		if err != nil {
+			log.Error("error writing response: %s", err.Error())
+			break
 		}
 	}
 
