@@ -40,14 +40,14 @@ import (
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/services"
-	logging "github.com/op/go-logging"
+	"github.com/op/go-logging"
 )
 
 /*
 
 [service.mongodb]
 type="mongodb"
-version="2.5.1"
+version="3.4.2"
 dbs=[ {Name="My_DB", SizeOnDisk="8192", Empty="false"},
       {Name="example", SizeOnDisk="32768", Empty="false"}, ]
 
@@ -57,16 +57,16 @@ services=["mongodb"]
 
 */
 
-var log = logging.MustGetLogger("services/mongodb")
-
 var (
-	_ = services.Register("mongodb", Mongodb)
+	log = logging.MustGetLogger("services/mongodb")
+	_   = services.Register("mongodb", Mongodb)
 )
 
 func Mongodb(options ...services.ServicerFunc) services.Servicer {
+
 	s := &mongodbService{
 		mongodbServiceConfig: mongodbServiceConfig{
-			Version: "3.6.3",
+			Version: "3.4.2",
 			Dbs: []Db{
 				{"admin", "32768", "false"},
 				{"config", "12288", "false"},
@@ -74,6 +74,8 @@ func Mongodb(options ...services.ServicerFunc) services.Servicer {
 			},
 		},
 	}
+	// TODO check the config
+
 	for _, o := range options {
 		o(s)
 	}
@@ -115,11 +117,12 @@ func (s *mongodbService) Handle(ctx context.Context, conn net.Conn) error {
 		if err == io.EOF {
 			return nil
 		} else if err != nil {
-			log.Error("Bad request: %s", err.Error())
+			return err
 		}
-		b := bytes.NewBuffer(buff[:n])
+		bb := bytes.NewBuffer(buff[:n])
+		payload := bb.Bytes()
 
-		answer := s.MongoDBHandler(port, b)
+		response, ev := s.reqHandler(bb, port)
 
 		s.ch.Send(event.New(
 			services.EventOptions,
@@ -127,10 +130,11 @@ func (s *mongodbService) Handle(ctx context.Context, conn net.Conn) error {
 			event.Type("mongodb-request"),
 			event.SourceAddr(conn.RemoteAddr()),
 			event.DestinationAddr(conn.LocalAddr()),
-			event.Payload(b.Bytes()),
+			event.Payload(payload),
+			event.CopyFrom(ev),
 		))
-		conn.Write([]byte(answer))
 
+		conn.Write(response)
 		br.Reset(conn)
 	}
 	return nil
