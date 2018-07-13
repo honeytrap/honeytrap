@@ -45,6 +45,14 @@ import (
 )
 
 const readDeadline = 5 // connection deadline in minutes
+/*
+[service.smtp]
+type="smtp"
+
+[[port]]
+port="tcp/25"
+services=["smtp"]
+*/
 
 var (
 	_   = services.Register("smtp", SMTP)
@@ -139,6 +147,8 @@ func (s *Service) Handle(ctx context.Context, conn net.Conn) error {
 
 	rcvLine := make(chan string)
 
+	evntChan := make(chan event.Event)
+
 	// Wait for a message and send it into the eventbus
 	go func() {
 		for {
@@ -177,12 +187,14 @@ func (s *Service) Handle(ctx context.Context, conn net.Conn) error {
 					event.DestinationAddr(conn.LocalAddr()),
 					event.Custom("smtp.line", line),
 				))
+			case evnt := <-evntChan:
+				s.ch.Send(evnt)
 			}
 		}
 	}()
 
 	//Create new smtp server connection
-	c := s.srv.newConn(conn, rcvLine)
+	c := s.srv.newConn(conn, rcvLine, evntChan)
 	// Start server loop
 	c.serve()
 	return nil
