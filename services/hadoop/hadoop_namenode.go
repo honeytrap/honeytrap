@@ -29,105 +29,42 @@
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
 
-package hadoop_namenode
+package hadoop
 
 import (
-	"bufio"
-	"context"
-	"io"
+	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/honeytrap/honeytrap/event"
-	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/services"
 )
 
-/*-------- DOCKER CONFIGURATION
+/*Example config:
 
 [service.hadoop_namenode]
 type="hadoop_namenode"
+version="2.7.1"
+os="Linux"
 
 [[port]]
 port="tcp/50070"
 services=["hadoop_namenode"]
 
------------------*/
+*/
 
 var (
 	_ = services.Register("hadoop_namenode", Hadoop)
 )
 
-func Hadoop(options ...services.ServicerFunc) services.Servicer {
-	s := &hadoopService{
-		hadoopServiceConfig: hadoopServiceConfig{
-			Version: "2.7.1",
-			Os:      "Linux",
-		},
-	}
-	for _, o := range options {
-		o(s)
-	}
-	return s
-}
-
-type hadoopServiceConfig struct {
-	Version string
-	Os      string
-}
-
-type hadoopService struct {
-	hadoopServiceConfig
-
-	ch pushers.Channel
-}
-
-func (s *hadoopService) SetChannel(ch pushers.Channel) {
-	s.ch = ch
-}
-
-func ShowRequest(reqMethod, reqUri string, s *hadoopService, conn net.Conn) {
-	if reqMethod == "GET" {
-		if strings.HasPrefix(reqUri, "/jmx?qry=") {
-			reqUri := strings.SplitAfter(reqUri, "/jmx?qry=")
-			if strings.HasPrefix(reqUri[1], "Hadoop:") {
-				trim_hadoop := strings.SplitAfter(reqUri[1], "Hadoop:")
-				request := strings.Split(trim_hadoop[1], ",")
-				if len(request) == 2 {
-					if request[0] == "service=NameNode" && request[1] == "name=NameNodeInfo" {
-						conn.Write([]byte(s.showNamenode()))
-					} else if request[0] == "service=NameNode" && request[1] == "name=FSNamesystemState" {
-						conn.Write([]byte(s.showFSNamesystemState()))
-					} else {
-						conn.Write([]byte(s.showNothing()))
-					}
-				} else {
-					conn.Write([]byte(s.showNothing()))
-				}
-			} else {
-				conn.Write([]byte(s.showEmpty()))
-			}
-		} else {
-			conn.Write([]byte(s.showWithoutQuerry()))
-		}
-	}
-}
-
-func (s *hadoopService) Handle(ctx context.Context, conn net.Conn) error {
-	defer conn.Close()
-	br := bufio.NewReader(conn)
-	req, err := http.ReadRequest(br)
-	if err == io.EOF {
-		return nil
-	} else if err != nil {
-		return err
-	}
-
-	ShowRequest(req.Method, req.RequestURI, s, conn)
-
+func (s *hadoopService) HandleNameNode(conn net.Conn, req *http.Request) error {
+	hadoopRequest := hadoopRequestNameNode
 	s.ch.Send(event.New(
 		services.EventOptions,
+		event.Service("Hadoop NameNode"),
 		event.Category("hadoop_namenode"),
 		event.SourceAddr(conn.RemoteAddr()),
 		event.DestinationAddr(conn.LocalAddr()),
@@ -136,7 +73,51 @@ func (s *hadoopService) Handle(ctx context.Context, conn net.Conn) error {
 		event.Custom("http.proto", req.Proto),
 		event.Custom("http.host", req.Host),
 		event.Custom("http.url", req.URL.String()),
+		event.Custom("http.request", req.RequestURI),
 	))
 
-	return nil
+	if req.URL.Path != "/jmx" {
+		resp := http.Response{
+			StatusCode: http.StatusNotFound,
+			Status:     http.StatusText(http.StatusNotFound),
+			Proto:      req.Proto,
+			ProtoMajor: req.ProtoMajor,
+			ProtoMinor: req.ProtoMinor,
+			Request:    req,
+			Header: map[string][]string{
+				"Cache-Control":  []string{"must-revalidate,no-cache,no-store"},
+				"Date":           []string{time.Now().Format(http.TimeFormat)},
+				"Pragma":         []string{"no-cache"},
+				"Content-Type":   []string{"text/html; charset=iso-8859-1"},
+				"Content-length": []string{fmt.Sprintf("%d", len(s.htmlErrorPage(req.URL.Path)))},
+				"Server":         []string{"Jetty(6.1.26)"},
+			},
+		}
+		resp.Body = ioutil.NopCloser(strings.NewReader(s.htmlErrorPage(req.URL.Path)))
+		return resp.Write(conn)
+	}
+
+	resp := http.Response{
+		StatusCode: http.StatusOK,
+		Status:     http.StatusText(http.StatusOK),
+		Proto:      req.Proto,
+		ProtoMajor: req.ProtoMajor,
+		ProtoMinor: req.ProtoMinor,
+		Request:    req,
+		Header: map[string][]string{
+			"Cache-Control":                []string{"no-cache"},
+			"Expires":                      []string{time.Now().Format(http.TimeFormat)},
+			"Date":                         []string{time.Now().Format(http.TimeFormat)},
+			"Pragma":                       []string{"no-cache"},
+			"Content-Type":                 []string{"application/json; charset=utf-8"},
+			"Access-Control-Allow-Methods": []string{req.Method},
+			"Access-Control-Allow-Origin":  []string{"*"},
+			"Transfer-Encoding":            []string{"chunked"},
+			"Server":                       []string{"Jetty(6.1.26)"},
+		},
+	}
+
+	resp.Body = ioutil.NopCloser(strings.NewReader(s.ShowRequest(req, hadoopRequest)))
+
+	return resp.Write(conn)
 }
