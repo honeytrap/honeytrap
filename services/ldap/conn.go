@@ -1,5 +1,4 @@
-/*
-* Honeytrap
+/* * Honeytrap
 * Copyright (C) 2016-2018 DutchSec (https://dutchsec.com/)
 *
 * This program is free software; you can redistribute it and/or modify it under
@@ -30,61 +29,45 @@
  */
 package ldap
 
-import ber "github.com/go-asn1-ber/asn1-ber"
+import (
+	"bufio"
+	"crypto/tls"
+	"errors"
+	"net"
+)
 
-// Used to return anonymous authstate
-type catchallFunc func() bool
+type Conn struct {
+	con net.Conn
 
-//CatchAll handles the not implemented LDAP requests
-type CatchAll struct {
-	catchallFunc catchallFunc
+	ConnReader *bufio.Reader
+
+	isTLS bool
 }
 
-func (c *CatchAll) handle(p *ber.Packet, el eventLog) []*ber.Packet {
+func NewConn(c net.Conn) *Conn {
+	return &Conn{
+		con:        c,
+		ConnReader: bufio.NewReader(c),
+		isTLS:      false,
+	}
+}
 
-	if p == nil {
-		return nil
+func (c *Conn) StartTLS(config *tls.Config) error {
+
+	if c.isTLS {
+		return errors.New("TLS already established")
 	}
 
-	el["ldap.payload"] = p.Bytes()
+	tc := tls.Server(c.con, config)
 
-	if len(p.Children) < 2 {
-		// bad request
-		return nil
+	if err := tc.Handshake(); err != nil {
+		return err
 	}
 
-	opcode := int(p.Children[1].Tag)
+	c.con = tc
+	c.ConnReader = bufio.NewReader(tc)
 
-	// This initializes with 0 as resultcode (success)
-	reth := &resultCodeHandler{}
+	c.isTLS = true
 
-	if c.catchallFunc() {
-		// Not authenticated
-		reth.resultCode = 1 // operationsError
-	}
-
-	switch opcode {
-	case AppModifyRequest:
-		el["ldap.request-type"] = "modify"
-		reth.replyTypeID = AppModifyResponse
-	case AppAddRequest:
-		el["ldap.request-type"] = "add"
-		reth.replyTypeID = AppAddResponse
-	case AppDelRequest:
-		el["ldap.request-type"] = "delete"
-		reth.replyTypeID = AppDelResponse
-	case AppModifyDNRequest:
-		el["ldap.request-type"] = "modify-dn"
-		reth.replyTypeID = AppModifyDNResponse
-	case AppCompareRequest:
-		el["ldap.request-type"] = "compare"
-		reth.replyTypeID = AppCompareResponse
-	case AppAbandonRequest:
-		el["ldap.request-type"] = "abandon"
-		return nil // This needs no answer
-	default:
-		//el["ldap.request-type"] = opcode
-		//reth.replyTypeID = 1 // protocolError
-	}
-	return reth.handle(p, el)
+	return nil
 }

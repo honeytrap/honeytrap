@@ -37,22 +37,51 @@ import (
 	ber "github.com/go-asn1-ber/asn1-ber"
 )
 
+const (
+	// LDAP App Codes
+	AppBindRequest           = 0
+	AppBindResponse          = 1
+	AppUnbindRequest         = 2
+	AppSearchRequest         = 3
+	AppSearchResultEntry     = 4
+	AppSearchResultDone      = 5
+	AppModifyRequest         = 6
+	AppModifyResponse        = 7
+	AppAddRequest            = 8
+	AppAddResponse           = 9
+	AppDelRequest            = 10
+	AppDelResponse           = 11
+	AppModifyDNRequest       = 12
+	AppModifyDNResponse      = 13
+	AppCompareRequest        = 14
+	AppCompareResponse       = 15
+	AppAbandonRequest        = 16
+	AppSearchResultReference = 19
+	AppExtendedRequest       = 23
+	AppExtendedResponse      = 24
+
+	// LDAP result codes
+	ResSuccess         = 0
+	ResOperationsError = 1
+	ResProtocolError   = 2
+	ResInvalidCred     = 49
+)
+
 type requestHandler interface {
 	handle(*ber.Packet, eventLog) []*ber.Packet
 }
 
 type resultCodeHandler struct {
-	replyTypeID int64 // the overall type of the response, e.g. 1 is BindResponse
-	resultCode  int64 // the result code, i.e. 0 is success, 49 is invalid credentials, etc.
+	replyTypeID   int64 // the overall type of the response, e.g. 1 is BindResponse
+	resultCode    int64 // the result code, i.e. 0 is success, 49 is invalid credentials, etc.
+	matchedDN     string
+	diagnosticMsg string
 }
 
 //Handle: the message envelope
 func (h *resultCodeHandler) handle(p *ber.Packet, el eventLog) []*ber.Packet {
 
-	id, ok := el["ldap.message-id"].(int64)
-	if !ok {
-		id = -1
-	}
+	id, _ := messageID(p)
 
 	reply := replyEnvelope(id)
 
@@ -62,9 +91,9 @@ func (h *resultCodeHandler) handle(p *ber.Packet, el eventLog) []*ber.Packet {
 		ber.NewInteger(ber.ClassUniversal, ber.TypePrimitive, ber.TagEnumerated, h.resultCode, "Result Code"))
 	// per the spec these are "matchedDN" and "diagnosticMessage", but we don't need them for this
 	bindResult.AppendChild(
-		ber.NewString(ber.ClassUniversal, ber.TypePrimitive, ber.TagOctetString, "", "Unused"))
+		ber.NewString(ber.ClassUniversal, ber.TypePrimitive, ber.TagOctetString, h.matchedDN, "matched DN"))
 	bindResult.AppendChild(
-		ber.NewString(ber.ClassUniversal, ber.TypePrimitive, ber.TagOctetString, "", "Unused"))
+		ber.NewString(ber.ClassUniversal, ber.TypePrimitive, ber.TagOctetString, h.diagnosticMsg, "Diagnostic message"))
 
 	reply.AppendChild(bindResult)
 
@@ -98,17 +127,17 @@ func messageID(p *ber.Packet) (int64, error) {
 	// check overall packet header
 	err := checkPacket(p, ber.ClassUniversal, ber.TypeConstructed, ber.TagSequence)
 	if err != nil {
-		return -1, err
+		return 0, err
 	}
 
 	// check type of message id
 	if len(p.Children) < 1 {
-		return -1, errors.New("ldap: invalid request message")
+		return 0, errors.New("ldap: invalid request message")
 	}
 
 	err = checkPacket(p.Children[0], ber.ClassUniversal, ber.TypePrimitive, ber.TagInteger)
 	if err != nil {
-		return -1, err
+		return 0, err
 	}
 
 	// return the message id

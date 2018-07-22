@@ -34,7 +34,14 @@
 [[projects]]
   branch = "master"
   name = "github.com/dgraph-io/badger"
-  packages = [".","options","protos","skl","table","y"]
+  packages = [
+    ".",
+    "options",
+    "protos",
+    "skl",
+    "table",
+    "y"
+  ]
   revision = "94594b20babfa448fdf604b6b58b94b14b2650d9"
 
 [[projects]]
@@ -111,7 +118,12 @@
 
 [[projects]]
   name = "github.com/google/gopacket"
-  packages = [".","layers","pcap","pcapgo"]
+  packages = [
+    ".",
+    "layers",
+    "pcap",
+    "pcapgo"
+  ]
   revision = "11c65f1ca9081dfea43b4f9643f5c155583b73ba"
   version = "v1.1.14"
 
@@ -149,7 +161,12 @@
 [[projects]]
   branch = "master"
   name = "github.com/mailru/easyjson"
-  packages = [".","buffer","jlexer","jwriter"]
+  packages = [
+    ".",
+    "buffer",
+    "jlexer",
+    "jwriter"
+  ]
   revision = "32fa128f234d041f196a9f3e0fea5ac9772c08e1"
 
 [[projects]]
@@ -275,7 +292,16 @@
 [[projects]]
   branch = "master"
   name = "golang.org/x/net"
-  packages = ["bpf","context","internal/iana","internal/socket","internal/timeseries","ipv4","ipv6","trace"]
+  packages = [
+    "bpf",
+    "context",
+    "internal/iana",
+    "internal/socket",
+    "internal/timeseries",
+    "ipv4",
+    "ipv6",
+    "trace"
+  ]
   revision = "cbe0f9307d0156177f9dd5dc85da1a31abc5f2fb"
 
 [[projects]]
@@ -292,7 +318,11 @@
 
 [[projects]]
   name = "gopkg.in/olivere/elastic.v5"
-  packages = [".","config","uritemplates"]
+  packages = [
+    ".",
+    "config",
+    "uritemplates"
+  ]
   revision = "02f6a01dc7f7fd2d65e89121e881aae3ba577a9a"
   version = "v5.0.65"
 

@@ -31,8 +31,9 @@
 package ldap
 
 import (
-	"bufio"
 	"context"
+	"crypto/tls"
+	"errors"
 	"net"
 	"strings"
 
@@ -57,6 +58,11 @@ services=[ "ldap" ]
 port="udp/389"
 services=[ "ldap" ]
 
+#LDAPS
+[[port]]
+port="tcp/636"
+services=["ldap"]
+
 */
 
 var (
@@ -67,15 +73,34 @@ var (
 // LDAP service setup
 func LDAP(options ...services.ServicerFunc) services.Servicer {
 
+	store, err := getStorage()
+	if err != nil {
+		log.Errorf("LDAP: Could not initialize storage. %s", err.Error())
+	}
+
+	cert, err := store.Certificate()
+	if err != nil {
+		log.Errorf("TLS: %s", err.Error())
+	}
+
 	s := &ldapService{
 		Server: Server{
-			Handlers:    make([]requestHandler, 0, 4),
+			Handlers: make([]requestHandler, 0, 4),
+
 			Credentials: []string{"root:root"},
-			anon:        true,
+
+			anon: true,
+
+			wantTLS: false,
+
+			tlsConfig: &tls.Config{
+				Certificates:       []tls.Certificate{*cert},
+				InsecureSkipVerify: true,
+			},
 		},
 	}
 
-	// Set requestHandlers
+	// Set request handlers
 	s.setHandlers()
 
 	for _, o := range options {
@@ -90,6 +115,8 @@ func LDAP(options ...services.ServicerFunc) services.Servicer {
 type ldapService struct {
 	Server
 
+	*Conn
+
 	c pushers.Channel
 }
 
@@ -100,6 +127,10 @@ type Server struct {
 	Credentials []string `toml:"credentials"`
 
 	anon bool // anonymous authenticated, false: user is logged in
+
+	tlsConfig *tls.Config
+
+	wantTLS bool //flag to see if tls is requested
 }
 
 type eventLog map[string]interface{}
@@ -107,17 +138,29 @@ type eventLog map[string]interface{}
 func (s *ldapService) setHandlers() {
 
 	s.Handlers = append(s.Handlers,
+		&extFuncHandler{
+			tlsFunc: func() error {
+
+				if s.isTLS {
+					return errors.New("TLS already established")
+				}
+
+				if s.tlsConfig != nil {
+					s.wantTLS = true
+					return nil
+				}
+
+				return errors.New("TLS not available")
+			},
+		})
+
+	s.Handlers = append(s.Handlers,
 		&bindFuncHandler{
 			bindFunc: func(binddn string, bindpw []byte) bool {
 
-				// check for anonymous authentication
-				if binddn == "" {
-					s.anon = true // set the anonymous auth flag
-					return true
-				}
-				var cred strings.Builder // build "name:password" string
-				_, err := cred.WriteString(binddn)
-				_, err = cred.WriteRune(':') // separator
+				var cred strings.Builder           // build "name:password" string
+				_, err := cred.WriteString(binddn) // binddn starts with cn=
+				_, err = cred.WriteRune(':')       // separator
 				_, err = cred.Write(bindpw)
 				if err != nil {
 					log.Debug("ldap.bind: couldn't construct bind name")
@@ -173,7 +216,8 @@ func (s *ldapService) setHandlers() {
 			catchallFunc: func() bool {
 				return s.anon
 			},
-		})
+		},
+	)
 }
 
 func (s *ldapService) SetChannel(c pushers.Channel) {
@@ -183,13 +227,11 @@ func (s *ldapService) SetChannel(c pushers.Channel) {
 
 func (s *ldapService) Handle(ctx context.Context, conn net.Conn) error {
 
-	s.anon = true // start with anonymous authstate
-
-	br := bufio.NewReader(conn)
+	s.Conn = NewConn(conn)
 
 	for {
 
-		p, err := ber.ReadPacket(br)
+		p, err := ber.ReadPacket(s.ConnReader)
 		if err != nil {
 			return err
 		}
@@ -227,12 +269,22 @@ func (s *ldapService) Handle(ctx context.Context, conn net.Conn) error {
 
 			if len(plist) > 0 {
 				for _, part := range plist {
-					if _, err := conn.Write(part.Bytes()); err != nil {
+					_, err := s.con.Write(part.Bytes())
+					if err != nil {
 						return err
 					}
 				}
-				// Handled the request, break out of the handling loop
+				// request is handled
 				break
+			}
+		}
+
+		// check if we want to set up tls
+		if s.wantTLS {
+			s.wantTLS = false
+
+			if err := s.Conn.StartTLS(s.tlsConfig); err != nil {
+				return err
 			}
 		}
 
@@ -246,4 +298,5 @@ func (s *ldapService) Handle(ctx context.Context, conn net.Conn) error {
 		))
 
 	}
+	return nil
 }
