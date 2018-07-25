@@ -52,9 +52,6 @@ func LoadRules(source string) ([]byte, error) {
 	}
 }
 
-// Crude set implementation (workaround for issue VirusTotal/yara#908)
-type stringSet map[string]struct{}
-
 func helper(node interface{}) stringSet {
 	switch v := node.(type) {
 	case data.Expression:
@@ -71,19 +68,8 @@ func helper(node interface{}) stringSet {
 	}
 }
 
-func stringSetMerge(a, b stringSet) stringSet {
-	setOut := make(map[string]struct{})
-	for key := range a {
-		setOut[key] = struct{}{}
-	}
-	for key := range b {
-		setOut[key] = struct{}{}
-	}
-	return setOut
-}
-
 func findUnknownIdentifiers(tree data.Expression) stringSet {
-	return stringSetMerge(helper(tree.Left), helper(tree.Right))
+	return helper(tree.Left).Merge(helper(tree.Right))
 }
 
 type Compiler struct {
@@ -109,22 +95,22 @@ func (c *Compiler) AddString(rules string) error {
 	}
 	c.allowedVariables = make(stringSet)
 	for _, rule := range ruleset.Rules {
-		c.ruleNames[rule.Identifier] = struct{}{}
+		c.ruleNames.Add(rule.Identifier)
 	}
 	for _, rule := range ruleset.Rules {
 		unknowns := findUnknownIdentifiers(rule.Condition)
 		for v := range unknowns {
-			if _, ok := c.ruleNames[v]; ok {
+			if c.ruleNames.Has(v) {
 				// Defining a variable with the same name as a rule results in unexpected behaviour.
 				// This can happen when conditions refer to private rules
 				continue
 			}
-			if _, ok := c.allowedVariables[v]; ok {
+			if c.allowedVariables.Has(v) {
 				// Variable was already defined.
 				// (Defining a variable more than once results in unexpected behaviour: VirusTotal/yara#908)
 				continue
 			}
-			c.allowedVariables[v] = struct{}{}
+			c.allowedVariables.Add(v)
 			log.Debugf("Patching unknown identifier %s", v)
 			err := c.compiler.DefineVariable(v, "")
 			if err != nil {
