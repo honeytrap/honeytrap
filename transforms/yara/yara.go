@@ -90,6 +90,7 @@ type Compiler struct {
 	compiler *goyara.Compiler
 
 	allowedVariables stringSet
+	ruleNames        stringSet
 }
 
 func NewCompiler() (Compiler, error) {
@@ -97,7 +98,7 @@ func NewCompiler() (Compiler, error) {
 	if err != nil {
 		return Compiler{}, err
 	}
-	return Compiler{c, make(stringSet)}, nil
+	return Compiler{c, make(stringSet), make(stringSet)}, nil
 }
 
 // Stubs unknown variables
@@ -108,15 +109,26 @@ func (c *Compiler) AddString(rules string) error {
 	}
 	c.allowedVariables = make(stringSet)
 	for _, rule := range ruleset.Rules {
+		c.ruleNames[rule.Identifier] = struct{}{}
+	}
+	for _, rule := range ruleset.Rules {
 		unknowns := findUnknownIdentifiers(rule.Condition)
 		for v := range unknowns {
-			if _, ok := c.allowedVariables[v]; !ok {
-				c.allowedVariables[v] = struct{}{}
-				log.Debugf("Patching unknown identifier %s", v)
-				err := c.compiler.DefineVariable(v, "")
-				if err != nil {
-					return err
-				}
+			if _, ok := c.ruleNames[v]; ok {
+				// Defining a variable with the same name as a rule results in unexpected behaviour.
+				// This can happen when conditions refer to private rules
+				continue
+			}
+			if _, ok := c.allowedVariables[v]; ok {
+				// Variable was already defined.
+				// (Defining a variable more than once results in unexpected behaviour: VirusTotal/yara#908)
+				continue
+			}
+			c.allowedVariables[v] = struct{}{}
+			log.Debugf("Patching unknown identifier %s", v)
+			err := c.compiler.DefineVariable(v, "")
+			if err != nil {
+				return err
 			}
 		}
 	}
@@ -162,7 +174,9 @@ func (m Matcher) GetMatches(e event.Event) ([]goyara.MatchRule, error) {
 	for name := range m.allowedVariables {
 		key := strings.Replace(name, "___", "-", -1)
 		key = strings.Replace(key, "__", ".", -1)
-		if !e.Has(key) { continue }
+		if !e.Has(key) {
+			continue
+		}
 		log.Debugf("Define %s = %s", name, e.Get(key))
 		err := m.rules.DefineVariable(name, e.Get(key))
 		if err != nil {
