@@ -86,8 +86,6 @@ func findUnknownIdentifiers(tree data.Expression) stringSet {
 	return stringSetMerge(helper(tree.Left), helper(tree.Right))
 }
 
-var baseVariables stringSet // Do not add "payload"!
-
 type Compiler struct {
 	compiler *goyara.Compiler
 
@@ -108,18 +106,19 @@ func (c *Compiler) AddString(rules string) error {
 	if err != nil {
 		return err
 	}
-	c.allowedVariables = baseVariables
+	c.allowedVariables = make(stringSet)
 	for _, rule := range ruleset.Rules {
 		unknowns := findUnknownIdentifiers(rule.Condition)
-		c.allowedVariables = stringSetMerge(c.allowedVariables, unknowns)
 		for v := range unknowns {
-			log.Debugf("Patching unknown identifier %s", v)
-			err := c.compiler.DefineVariable(v, "")
-			if err != nil {
-				return err
+			if _, ok := c.allowedVariables[v]; !ok {
+				c.allowedVariables[v] = struct{}{}
+				log.Debugf("Patching unknown identifier %s", v)
+				err := c.compiler.DefineVariable(v, "")
+				if err != nil {
+					return err
+				}
 			}
 		}
-
 	}
 	return c.compiler.AddString(rules, "ht-config")
 }
