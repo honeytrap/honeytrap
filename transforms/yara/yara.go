@@ -12,7 +12,6 @@ import (
 
 	goyara "github.com/hillu/go-yara"
 	"github.com/honeytrap/honeytrap/event"
-	"github.com/honeytrap/yara-parser/data"
 	"github.com/honeytrap/yara-parser/grammar"
 	"github.com/op/go-logging"
 )
@@ -49,26 +48,6 @@ func LoadRules(source string) ([]byte, error) {
 	default:
 		return nil, fmt.Errorf("Unknown path scheme %s", u.Scheme)
 	}
-}
-
-func helper(node interface{}) stringSet {
-	switch v := node.(type) {
-	case data.Expression:
-		return findUnknownIdentifiers(v)
-	case string:
-		ret := make(stringSet)
-		ret[v] = struct{}{}
-		return ret
-	case data.RegexPair, data.RawString, data.Keyword, data.StringCount, int64, bool, nil:
-		return make(stringSet)
-	default:
-		log.Errorf("Unknown AST type %#v\n", v)
-		return make(stringSet)
-	}
-}
-
-func findUnknownIdentifiers(tree data.Expression) stringSet {
-	return helper(tree.Left).Merge(helper(tree.Right))
 }
 
 type Compiler struct {
