@@ -1,5 +1,4 @@
-/*
-* Honeytrap
+/* * Honeytrap
 * Copyright (C) 2016-2018 DutchSec (https://dutchsec.com/)
 *
 * This program is free software; you can redistribute it and/or modify it under
@@ -30,54 +29,63 @@
  */
 package ldap
 
-import ber "github.com/go-asn1-ber/asn1-ber"
+import (
+	ber "github.com/go-asn1-ber/asn1-ber"
+)
 
-//CatchAll handles the not implemented LDAP requests
-type CatchAll struct {
-	isLogin func() bool
+type tlsFunc func() error
+
+type extFuncHandler struct {
+	tlsFunc tlsFunc
 }
 
-func (c *CatchAll) handle(p *ber.Packet, el eventLog) []*ber.Packet {
+var tlsOID = "1.3.6.1.4.1.1466.20037"
 
+func (e *extFuncHandler) handle(p *ber.Packet, el eventLog) []*ber.Packet {
+	reth := &resultCodeHandler{replyTypeID: AppExtendedResponse, resultCode: ResProtocolError}
+
+	// too small to be an extended request
 	if p == nil || len(p.Children) < 2 {
 		return nil
 	}
 
-	el["ldap.payload"] = p.Bytes()
-
-	opcode := int(p.Children[1].Tag)
-
-	reth := &resultCodeHandler{
-		resultCode: ResSuccess,
+	// check if package is an extended request
+	err := checkPacket(p.Children[1], ber.ClassApplication, ber.TypeConstructed, AppExtendedRequest)
+	if err != nil {
+		return nil
 	}
 
-	if !c.isLogin() {
-		// Not authenticated
-		reth.resultCode = ResUnwillingToPerform
+	el["ldap.request-type"] = "extended"
+
+	// is there an OID and optional value
+	if len(p.Children[1].Children) > 0 {
+
+		err = checkPacket(p.Children[1].Children[0], ber.ClassContext, ber.TypePrimitive, 0)
+		if err != nil {
+			// this is not an OID
+			return nil
+		}
+
+		oid := p.Children[1].Children[0].Data.String()
+
+		el["ldap.extended-oid"] = oid
+
+		// catch value if we have one
+		if len(p.Children[1].Children) > 1 {
+			el["ldap.extended-oid-value"] = p.Children[1].Children[1].Bytes()
+		}
+
 	}
 
-	switch opcode {
-	case AppModifyRequest:
-		el["ldap.request-type"] = "modify"
-		reth.replyTypeID = AppModifyResponse
-	case AppAddRequest:
-		el["ldap.request-type"] = "add"
-		reth.replyTypeID = AppAddResponse
-	case AppDelRequest:
-		el["ldap.request-type"] = "delete"
-		reth.replyTypeID = AppDelResponse
-	case AppModifyDNRequest:
-		el["ldap.request-type"] = "modify-dn"
-		reth.replyTypeID = AppModifyDNResponse
-	case AppCompareRequest:
-		el["ldap.request-type"] = "compare"
-		reth.replyTypeID = AppCompareResponse
-	case AppAbandonRequest:
-		el["ldap.request-type"] = "abandon"
-		return nil // This needs no answer
-	default:
-		//el["ldap.request-type"] = opcode
-		//reth.replyTypeID = 1 // protocolError
+	if tlsOID == el["ldap.extended-oid"].(string) {
+		el["ldap.request-type"] = "extended.tls"
+
+		if err := e.tlsFunc(); err == nil {
+			reth.resultCode = ResSuccess
+			reth.matchedDN = ""
+			reth.diagnosticMsg = ""
+		}
 	}
+
 	return reth.handle(p, el)
 }
