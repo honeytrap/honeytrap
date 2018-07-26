@@ -31,8 +31,9 @@
 package ldap
 
 import (
-	"bufio"
 	"context"
+	"crypto/tls"
+	"errors"
 	"net"
 	"strings"
 
@@ -47,7 +48,15 @@ import (
 
 [service.ldap]
 type="ldap"
-credentials=[ "user:password", "admin:admin" ]
+credentials=["admin:admin", "root:root"]
+## rootDSE values, empty values can be omitted
+naming-contexts=[ "dc=example,dc=com", "dc=ad,dc=myserver,dc=com" ]
+supported-ldap-version=[ "3" ]
+#supported-extension=[ "1.3.6.1.4.1.1466.20037" ]
+vendor-name=[ "HT Directory Server" ]
+vendor-version=[ "0.1.0.0" ]
+description=[ "Directory Server" ]
+objectclass=[ "dcObject", "organization" ]
 
 [[port]]
 port="tcp/389"
@@ -67,16 +76,33 @@ var (
 // LDAP service setup
 func LDAP(options ...services.ServicerFunc) services.Servicer {
 
-	s := &ldapService{
-		Server: Server{
-			Handlers:    make([]requestHandler, 0, 4),
-			Credentials: []string{"root:root"},
-			anon:        true,
-		},
+	store, err := getStorage()
+	if err != nil {
+		log.Errorf("LDAP: Could not initialize storage. %s", err.Error())
 	}
 
-	// Set requestHandlers
-	s.setHandlers()
+	cert, err := store.Certificate()
+	if err != nil {
+		log.Errorf("TLS: %s", err.Error())
+	}
+
+	s := &ldapService{
+		Server: Server{
+			Handlers: make([]requestHandler, 0, 4),
+
+			Credentials: []string{"root:root"},
+
+			tlsConfig: &tls.Config{
+				Certificates:       []tls.Certificate{*cert},
+				InsecureSkipVerify: true,
+			},
+
+			DSE: &DSE{
+				SupportedLDAPVersion: []string{"2", "3"},
+				SupportedExtension:   []string{"1.3.6.1.4.1.1466.20037"},
+			},
+		},
+	}
 
 	for _, o := range options {
 		if err := o(s); err != nil {
@@ -84,22 +110,20 @@ func LDAP(options ...services.ServicerFunc) services.Servicer {
 		}
 	}
 
+	// Set request handlers
+	s.setHandlers()
+
 	return s
 }
 
 type ldapService struct {
 	Server
 
+	*Conn
+
+	wantTLS bool
+
 	c pushers.Channel
-}
-
-//Server ldap server data
-type Server struct {
-	Handlers []requestHandler
-
-	Credentials []string `toml:"credentials"`
-
-	anon bool // anonymous authenticated, false: user is logged in
 }
 
 type eventLog map[string]interface{}
@@ -107,14 +131,24 @@ type eventLog map[string]interface{}
 func (s *ldapService) setHandlers() {
 
 	s.Handlers = append(s.Handlers,
+		&extFuncHandler{
+			tlsFunc: func() error {
+				if s.isTLS {
+					return errors.New("TLS already established")
+				}
+
+				if s.tlsConfig != nil {
+					s.wantTLS = true
+					return nil
+				}
+				return errors.New("TLS not available")
+			},
+		})
+
+	s.Handlers = append(s.Handlers,
 		&bindFuncHandler{
 			bindFunc: func(binddn string, bindpw []byte) bool {
 
-				// check for anonymous authentication
-				if binddn == "" {
-					s.anon = true // set the anonymous auth flag
-					return true
-				}
 				var cred strings.Builder // build "name:password" string
 				_, err := cred.WriteString(binddn)
 				_, err = cred.WriteRune(':') // separator
@@ -124,9 +158,15 @@ func (s *ldapService) setHandlers() {
 					return false
 				}
 
+				// anonymous bind is ok
+				if cred.Len() == 1 { // empty credentials (":")
+					s.login = ""
+					return true
+				}
+
 				for _, u := range s.Credentials {
 					if u == cred.String() {
-						s.anon = false
+						s.login = binddn
 						return true
 					}
 				}
@@ -140,20 +180,23 @@ func (s *ldapService) setHandlers() {
 
 				ret := make([]*SearchResultEntry, 0, 1)
 
-				// if anonymous auth send only rootDSE
-				if s.anon {
+				// if not authenticated send only rootDSE else nothing
+				if req.FilterAttr == "" && req.FilterValue == "*" && !s.isLogin() {
+					ret = append(ret, s.DSE.Get())
+					return ret
 				}
 
 				// produce a single search result that matches whatever
 				// they are searching for
-				if req.FilterAttr == "uid" {
+				if req.FilterAttr == "uid" || req.FilterAttr == "givenName" {
 					ret = append(ret, &SearchResultEntry{
 						DN: "cn=" + req.FilterValue + "," + req.BaseDN,
-						Attrs: map[string]interface{}{
-							"sn":            req.FilterValue,
-							"cn":            req.FilterValue,
-							"uid":           req.FilterValue,
-							"homeDirectory": "/home/" + req.FilterValue,
+						Attrs: AttributeMap{
+							"sn":            []string{req.FilterValue},
+							"cn":            []string{req.FilterValue},
+							"uid":           []string{req.FilterValue},
+							"givenName":     []string{req.FilterValue},
+							"homeDirectory": []string{"/home/" + req.FilterValue},
 							"objectClass": []string{
 								"top",
 								"posixAccount",
@@ -161,19 +204,20 @@ func (s *ldapService) setHandlers() {
 							},
 						},
 					})
+					return ret
 				}
-				return ret
+				return nil
 			},
-		},
-	)
+		})
 
 	// CatchAll should be the last handler
 	s.Handlers = append(s.Handlers,
 		&CatchAll{
-			catchallFunc: func() bool {
-				return s.anon
+			isLogin: func() bool {
+				return s.isLogin()
 			},
-		})
+		},
+	)
 }
 
 func (s *ldapService) SetChannel(c pushers.Channel) {
@@ -182,17 +226,20 @@ func (s *ldapService) SetChannel(c pushers.Channel) {
 }
 
 func (s *ldapService) Handle(ctx context.Context, conn net.Conn) error {
+	s.wantTLS = false
 
-	s.anon = true // start with anonymous authstate
+	s.login = "" // set the anonymous authstate
 
-	br := bufio.NewReader(conn)
+	s.Conn = NewConn(conn)
 
 	for {
 
-		p, err := ber.ReadPacket(br)
+		p, err := ber.ReadPacket(s.ConnReader)
 		if err != nil {
 			return err
 		}
+
+		//ber.PrintPacket(p)
 
 		// check if packet is readable
 		id, err := messageID(p)
@@ -227,12 +274,19 @@ func (s *ldapService) Handle(ctx context.Context, conn net.Conn) error {
 
 			if len(plist) > 0 {
 				for _, part := range plist {
-					if _, err := conn.Write(part.Bytes()); err != nil {
+					if _, err := s.con.Write(part.Bytes()); err != nil {
 						return err
 					}
 				}
-				// Handled the request, break out of the handling loop
+				// request is handled
 				break
+			}
+		}
+
+		if s.wantTLS {
+			s.wantTLS = false
+			if err := s.StartTLS(s.tlsConfig); err != nil {
+				return err
 			}
 		}
 
@@ -246,4 +300,5 @@ func (s *ldapService) Handle(ctx context.Context, conn net.Conn) error {
 		))
 
 	}
+	return nil
 }
