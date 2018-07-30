@@ -85,6 +85,7 @@ import (
 	"github.com/honeytrap/honeytrap/server/profiler"
 
 	_ "github.com/honeytrap/honeytrap/pushers/console"
+	_ "github.com/honeytrap/honeytrap/pushers/dshield"
 	_ "github.com/honeytrap/honeytrap/pushers/elasticsearch"
 	_ "github.com/honeytrap/honeytrap/pushers/file"
 	_ "github.com/honeytrap/honeytrap/pushers/kafka"
