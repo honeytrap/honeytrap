@@ -19,5 +19,18 @@
 		"unparam",
 		"unused",
 		"varcheck"
-	]
+	],
+
+	"Exclude": [
+		"blank import",
+		"should have comment",
+		"should be of the form",
+		"can be annoying to use"
+	],
+
+	"Sort": [ "linter" ],
+	"Fast": true,
+	"Vendor": true,
+	"Errors": true,
+	"Deadline": "10m"
 }

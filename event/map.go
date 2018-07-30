@@ -63,6 +63,10 @@ func New(opts ...Option) Event {
 	e.sm.Store("date", time.Now())
 
 	for _, opt := range opts {
+		if opt == nil {
+			continue
+		}
+
 		opt(e)
 	}
 

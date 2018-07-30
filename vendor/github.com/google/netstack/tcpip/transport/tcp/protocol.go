@@ -11,7 +11,6 @@
 package tcp
 
 import (
-	"fmt"
 	"strings"
 	"sync"
 
@@ -125,7 +124,6 @@ func (p *protocol) HandleUnknownDestinationPacket(r *stack.Route, id stack.Trans
 	}
 
 	if !p.rstDisabled {
-		fmt.Println("RESET")
 		replyWithReset(s)
 	}
 

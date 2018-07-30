@@ -32,6 +32,7 @@ package redis
 
 import (
 	"fmt"
+	"strings"
 )
 
 func (s *redisService) sectionsMsg() string {
@@ -73,7 +74,7 @@ config_file:
 
 func (s *redisService) infoClientsMsg() string {
 	return `# Clients
-connected_clients:0
+connected_clients:1
 client_longest_output_list:0
 client_biggest_input_buf:0
 blocked_clients:0
@@ -206,14 +207,6 @@ func (s *redisService) infoKeyspaceMsg() string {
 `
 }
 
-func lenMsg() string {
-	return "$%d\r\n%s\r\n"
-}
-
-func lineBreakMsg() string {
-	return ""
-}
-
 func errorMsg(errType string) string {
 	switch errType {
 	case "syntax":
@@ -221,4 +214,11 @@ func errorMsg(errType string) string {
 	default:
 		return "-ERR unknown command '%s'\r\n"
 	}
+}
+
+func bulkString(text string, convertToCRLF bool) string {
+	if convertToCRLF {
+		text = strings.Replace(text, "\n", "\r\n", -1)
+	}
+	return fmt.Sprintf("$%d\r\n%s\r\n", len(text), text)
 }

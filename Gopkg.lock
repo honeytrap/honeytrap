@@ -92,6 +92,12 @@
   revision = "54320fe9f6f340f8fbe3f34306e3c32589d97dc4"
 
 [[projects]]
+  name = "github.com/go-asn1-ber/asn1-ber"
+  packages = ["."]
+  revision = "379148ca0225df7a432012b8df0355c2a2063ac0"
+  version = "v1.2"
+
+[[projects]]
   branch = "master"
   name = "github.com/golang/protobuf"
   packages = ["proto"]
@@ -112,8 +118,8 @@
 [[projects]]
   branch = "master"
   name = "github.com/google/netstack"
-  packages = ["ilist","rand","sleep","tcpip","tcpip/adapters/gonet","tcpip/buffer","tcpip/header","tcpip/link/fdbased","tcpip/link/rawfile","tcpip/link/sniffer","tcpip/network/fragmentation","tcpip/network/hash","tcpip/network/ipv4","tcpip/network/ipv6","tcpip/ports","tcpip/seqnum","tcpip/stack","tcpip/transport/tcp","tcpip/transport/udp","tmutex","waiter"]
-  revision = "c0f57501d9567f2b3325e5a21263259164100766"
+  packages = ["ilist","rand","sleep","tcpip","tcpip/adapters/gonet","tcpip/buffer","tcpip/header","tcpip/link/fdbased","tcpip/link/rawfile","tcpip/link/sniffer","tcpip/link/tun","tcpip/network/fragmentation","tcpip/network/hash","tcpip/network/ipv4","tcpip/network/ipv6","tcpip/ports","tcpip/seqnum","tcpip/stack","tcpip/transport/tcp","tcpip/transport/udp","tmutex","waiter"]
+  revision = "0f7ffd73c70e651a4aee318e3abcda1f855557bb"
   source = "github.com/honeytrap/netstack"
 
 [[projects]]
@@ -263,8 +269,8 @@
 [[projects]]
   branch = "master"
   name = "golang.org/x/crypto"
-  packages = ["curve25519","ed25519","ed25519/internal/edwards25519","internal/chacha20","poly1305","ssh","ssh/terminal"]
-  revision = "8c653846df49742c4c85ec37e5d9f8d3ba657895"
+  packages = ["chacha20poly1305","curve25519","ed25519","ed25519/internal/edwards25519","internal/chacha20","internal/subtle","poly1305","ssh","ssh/terminal"]
+  revision = "a49355c7e3f8fe157a85be2f77e6e269a0f89602"
 
 [[projects]]
   branch = "master"
@@ -275,8 +281,8 @@
 [[projects]]
   branch = "master"
   name = "golang.org/x/sys"
-  packages = ["unix","windows","windows/registry"]
-  revision = "f6cff0780e542efa0c8e864dc8fa522808f6a598"
+  packages = ["cpu","unix","windows","windows/registry"]
+  revision = "1b2967e3c290b7c545b3db0deeda16e9be4f98a2"
 
 [[projects]]
   branch = "master"
@@ -299,6 +305,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "fcd37204b9530443b25b05c25a4b7a4e42aba9e191ac87514c8add24ea768545"
+  inputs-digest = "daf78dbaaa8a16187be64e23034fb8d7207584d9c3186f1c3540d49ed69fcc90"
   solver-name = "gps-cdcl"
   solver-version = 1

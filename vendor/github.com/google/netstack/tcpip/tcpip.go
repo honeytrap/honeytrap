@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/netstack/tcpip/buffer"
@@ -383,10 +384,6 @@ type ReceiveQueueSizeOption int
 // socket is to be restricted to sending and receiving IPv6 packets only.
 type V6OnlyOption int
 
-// NoResetOption is used by SetSockOpt/GetSockOpt to specify if invalid packets
-// should be replied to with an RST.
-type NoResetOption int
-
 // NoDelayOption is used by SetSockOpt/GetSockOpt to specify if data should be
 // sent out immediately by the transport protocol. For TCP, it determines if the
 // Nagle algorithm is on or off.
@@ -556,3 +553,38 @@ type ProtocolAddress struct {
 	// Address is a network address.
 	Address Address
 }
+
+// danglingEndpointsMu protects access to danglingEndpoints.
+var danglingEndpointsMu sync.Mutex
+
+// danglingEndpoints tracks all dangling endpoints no longer owned by the app.
+var danglingEndpoints = make(map[Endpoint]struct{})
+
+// GetDanglingEndpoints returns all dangling endpoints.
+func GetDanglingEndpoints() []Endpoint {
+	es := make([]Endpoint, 0, len(danglingEndpoints))
+	danglingEndpointsMu.Lock()
+	for e, _ := range danglingEndpoints {
+		es = append(es, e)
+	}
+	danglingEndpointsMu.Unlock()
+	return es
+}
+
+// AddDanglingEndpoint adds a dangling endpoint.
+func AddDanglingEndpoint(e Endpoint) {
+	danglingEndpointsMu.Lock()
+	danglingEndpoints[e] = struct{}{}
+	danglingEndpointsMu.Unlock()
+}
+
+// DeleteDanglingEndpoint removes a dangling endpoint.
+func DeleteDanglingEndpoint(e Endpoint) {
+	danglingEndpointsMu.Lock()
+	delete(danglingEndpoints, e)
+	danglingEndpointsMu.Unlock()
+}
+
+// AsyncLoading is the global barrier for asynchronous endpoint loading
+// activities.
+var AsyncLoading sync.WaitGroup

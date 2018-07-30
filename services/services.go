@@ -101,9 +101,13 @@ func WithDirector(d director.Director) ServicerFunc {
 	}
 }
 
-func WithConfig(c toml.Primitive) ServicerFunc {
+type TomlDecoder interface {
+	PrimitiveDecode(primValue toml.Primitive, v interface{}) error
+}
+
+func WithConfig(c toml.Primitive, decoder TomlDecoder) ServicerFunc {
 	return func(s Servicer) error {
-		err := toml.PrimitiveDecode(c, s)
+		err := decoder.PrimitiveDecode(c, s)
 		return err
 	}
 }
