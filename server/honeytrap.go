@@ -63,15 +63,18 @@ import (
 	_ "github.com/honeytrap/honeytrap/services/ethereum"
 	_ "github.com/honeytrap/honeytrap/services/ftp"
 	_ "github.com/honeytrap/honeytrap/services/ipp"
+	_ "github.com/honeytrap/honeytrap/services/ldap"
 	_ "github.com/honeytrap/honeytrap/services/redis"
 	_ "github.com/honeytrap/honeytrap/services/smtp"
 	_ "github.com/honeytrap/honeytrap/services/ssh"
+	_ "github.com/honeytrap/honeytrap/services/telnet"
 	_ "github.com/honeytrap/honeytrap/services/vnc"
 
 	"github.com/honeytrap/honeytrap/listener"
 	_ "github.com/honeytrap/honeytrap/listener/agent"
 	_ "github.com/honeytrap/honeytrap/listener/canary"
 	_ "github.com/honeytrap/honeytrap/listener/netstack"
+	_ "github.com/honeytrap/honeytrap/listener/netstack-experimental"
 	_ "github.com/honeytrap/honeytrap/listener/socket"
 	_ "github.com/honeytrap/honeytrap/listener/tap"
 	_ "github.com/honeytrap/honeytrap/listener/tun"
@@ -168,6 +171,10 @@ type ServiceMap struct {
 	Type string
 }
 
+var (
+	ErrNoServicesGivenPort = fmt.Errorf("no services for the given ports")
+)
+
 /* Finds a service that can handle the given connection.
  * The service is picked (among those configured for the given port) as follows:
  *
@@ -188,14 +195,14 @@ func (hc *Honeytrap) findService(conn net.Conn) (*ServiceMap, net.Conn, error) {
 		port = a.Port
 		tmp, ok := hc.tcpPorts[port]
 		if !ok {
-			return nil, nil, fmt.Errorf("no services for the given port")
+			return nil, nil, ErrNoServicesGivenPort
 		}
 		serviceCandidates = tmp // prevent variable shadowing and "unused variable" error
 	case *net.UDPAddr:
 		port = a.Port
 		tmp, ok := hc.udpPorts[port]
 		if !ok {
-			return nil, nil, fmt.Errorf("no services for the given port")
+			return nil, nil, ErrNoServicesGivenPort
 		}
 		serviceCandidates = tmp
 	default:
@@ -476,7 +483,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		// individual configuration per service
 		options := []services.ServicerFunc{
 			services.WithChannel(hc.bus),
-			services.WithConfig(s),
+			services.WithConfig(s, hc.config),
 		}
 
 		if x.Director == "" {

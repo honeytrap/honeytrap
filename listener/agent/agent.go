@@ -39,6 +39,7 @@ import (
 	"runtime"
 
 	"github.com/fatih/color"
+	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/listener"
 	"github.com/mimoo/disco/libdisco"
 
@@ -184,8 +185,9 @@ func (al *agentListener) serv(c *conn2) {
 
 			conns.Add(ac)
 
-			al.ch <- ac
-		case *ReadWrite:
+			conn := event.WithConn(ac, event.Custom("agent", token))
+			al.ch <- conn
+		case *ReadWriteTCP:
 			conn := conns.Get(v.Laddr, v.Raddr)
 			if conn == nil {
 				continue

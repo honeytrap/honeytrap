@@ -33,7 +33,6 @@ package redis
 import (
 	"context"
 	"fmt"
-	"io"
 	"net"
 	"strconv"
 
@@ -42,8 +41,20 @@ import (
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/services"
-	logging "github.com/op/go-logging"
+	"github.com/op/go-logging"
 )
+
+/*
+
+[service.redis]
+type="redis"
+version="2.8.4"
+
+[[port]]
+port="tcp/6379"
+services=["redis"]
+
+*/
 
 var log = logging.MustGetLogger("services/redis")
 
@@ -97,7 +108,14 @@ func (d *redisDatum) ToString() (value string, success bool) {
 }
 
 func parseRedisData(scanner *bufio.Scanner) (redisDatum, error) {
-	scanner.Scan()
+	success := scanner.Scan()
+	if !success {
+		err := scanner.Err()
+		if err == nil {
+			err = fmt.Errorf("eof")
+		}
+		return redisDatum{}, err
+	}
 	cmd := scanner.Text()
 	if len(cmd) == 0 {
 		return redisDatum{}, nil
@@ -137,18 +155,16 @@ func parseRedisData(scanner *bufio.Scanner) (redisDatum, error) {
 }
 
 func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
-
 	defer conn.Close()
 
 	scanner := bufio.NewScanner(conn)
 	for {
 		datum, err := parseRedisData(scanner)
-
-		if err == io.EOF {
-			return nil
-		} else if err != nil {
-			log.Error("Error parsing Redis data: %s", err.Error())
-			return err
+		if err != nil {
+			if err.Error() != "eof" {
+				log.Error(err.Error())
+			}
+			break
 		}
 
 		// Dirty hack to ignore "empty" packets (\r\n with no Redis content)
@@ -158,7 +174,7 @@ func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
 		// Redis commands are sent as an array of strings, so expect that
 		if datum.DataType != 0x2a {
 			log.Error("Expected array, got data type %q", datum.DataType)
-			continue
+			break
 		}
 		items := datum.Content.([]interface{})
 
@@ -169,7 +185,7 @@ func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
 			command, success := Item.ToString()
 			if !success {
 				log.Error("Expected a command string, got something else (type=%q)", Item.DataType)
-				continue
+				break
 			}
 			if i == 0 {
 				cmd = command

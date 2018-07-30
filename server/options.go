@@ -103,14 +103,14 @@ func WithDataDir(s string) (OptionFn, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	_, err = os.Stat(p)
-	if err != nil {
-		if os.IsNotExist(err) {
-			err = os.Mkdir(p, 0755)
-			if err != nil {
-				return nil, err
-			}
+	if os.IsNotExist(err) {
+		err = os.Mkdir(p, 0755)
+		if err != nil {
+			return nil, err
 		}
+	} else if err != nil {
 		return nil, err
 	}
 
