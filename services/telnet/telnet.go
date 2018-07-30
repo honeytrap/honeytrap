@@ -47,11 +47,23 @@ var (
 )
 
 var (
-	motd = `Welcome to Microsoft Telnet Service 
+	motd = `********************************************************************************
+*             Copyright(C) 2008-2015 Huawei Technologies Co., Ltd.             *
+*                             All rights reserved                              *
+*                  Without the owner's prior written consent,                  *
+*           no decompiling or reverse-engineering shall be allowed.            *
+* Notice:                                                                      *
+*                   This is a private communication system.                    *
+*             Unauthorized access or use may lead to prosecution.              *
+********************************************************************************
+
+Warning: Telnet is not a secure protocol, and it is recommended to use STelnet. 
+
+Login authentication
 
 
-login:`
-	prompt = `C:\DOCUME~1\Doug> `
+`
+	prompt = `$ `
 )
 
 // Telnet is a placeholder
@@ -90,9 +102,48 @@ func (s *telnetService) Handle(ctx context.Context, conn net.Conn) error {
 		connOptions = ec.Options()
 	}
 
+	s.c.Send(event.New(
+		services.EventOptions,
+		event.Category("telnet"),
+		event.Type("connect"),
+		connOptions,
+		event.SourceAddr(conn.RemoteAddr()),
+		event.DestinationAddr(conn.LocalAddr()),
+		event.Custom("telnet.sessionid", id.String()),
+	))
+
 	term := NewTerminal(conn, s.Prompt)
 
 	term.Write([]byte(s.MOTD))
+
+	term.SetPrompt("Username: ")
+	username, err := term.ReadLine()
+	if err == io.EOF {
+		return nil
+	} else if err != nil {
+		return err
+	}
+
+	password, err := term.ReadPassword("Password: ")
+	if err == io.EOF {
+		return nil
+	} else if err != nil {
+		return err
+	}
+
+	s.c.Send(event.New(
+		services.EventOptions,
+		event.Category("telnet"),
+		event.Type("password-authentication"),
+		connOptions,
+		event.SourceAddr(conn.RemoteAddr()),
+		event.DestinationAddr(conn.LocalAddr()),
+		event.Custom("telnet.sessionid", id.String()),
+		event.Custom("telnet.username", username),
+		event.Custom("telnet.password", password),
+	))
+
+	term.SetPrompt(s.Prompt)
 
 	for {
 		line, err := term.ReadLine()
