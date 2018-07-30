@@ -63,9 +63,11 @@ import (
 	_ "github.com/honeytrap/honeytrap/services/ethereum"
 	_ "github.com/honeytrap/honeytrap/services/ftp"
 	_ "github.com/honeytrap/honeytrap/services/ipp"
+	_ "github.com/honeytrap/honeytrap/services/ldap"
 	_ "github.com/honeytrap/honeytrap/services/redis"
 	_ "github.com/honeytrap/honeytrap/services/smtp"
 	_ "github.com/honeytrap/honeytrap/services/ssh"
+	_ "github.com/honeytrap/honeytrap/services/telnet"
 	_ "github.com/honeytrap/honeytrap/services/vnc"
 
 	"github.com/honeytrap/honeytrap/listener"
@@ -481,7 +483,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		// individual configuration per service
 		options := []services.ServicerFunc{
 			services.WithChannel(hc.bus),
-			services.WithConfig(s),
+			services.WithConfig(s, hc.config),
 		}
 
 		if x.Director == "" {

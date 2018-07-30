@@ -38,7 +38,7 @@ import (
 
 const (
 	TypeHello             int = 0x00
-	TypeReadWrite         int = 0x01
+	TypeReadWriteTCP      int = 0x01
 	TypeHandshake         int = 0x02
 	TypeHandshakeResponse int = 0x03
 	TypeEOF               int = 0x04
@@ -180,14 +180,14 @@ func (e EOF) MarshalBinary() ([]byte, error) {
 	return buff.Bytes(), nil
 }
 
-type ReadWrite struct {
+type ReadWriteTCP struct {
 	Laddr net.Addr
 	Raddr net.Addr
 
 	Payload []byte
 }
 
-func (rw ReadWrite) MarshalBinary() ([]byte, error) {
+func (rw ReadWriteTCP) MarshalBinary() ([]byte, error) {
 	buff := bytes.Buffer{}
 
 	e := NewEncoder(&buff, binary.LittleEndian)
@@ -202,7 +202,7 @@ func (rw ReadWrite) MarshalBinary() ([]byte, error) {
 	return buff.Bytes(), nil
 }
 
-func (rw *ReadWrite) UnmarshalBinary(data []byte) error {
+func (rw *ReadWriteTCP) UnmarshalBinary(data []byte) error {
 	decoder := NewDecoder(data)
 
 	rw.Laddr = decoder.ReadAddr()

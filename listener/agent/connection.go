@@ -116,7 +116,7 @@ func (dc *agentConnection) Write(b []byte) (int, error) {
 
 	copy(payload, b)
 
-	p := ReadWrite{
+	p := ReadWriteTCP{
 		Laddr:   dc.LocalAddr(),
 		Raddr:   dc.RemoteAddr(),
 		Payload: payload[:],

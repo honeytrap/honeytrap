@@ -34,6 +34,8 @@ import (
 	"context"
 	"net"
 
+	"time"
+
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/services"
@@ -108,6 +110,7 @@ func (s *Service) SetChannel(c pushers.Channel) {
 }
 
 func (s *Service) Handle(ctx context.Context, conn net.Conn) error {
+	defer conn.Close()
 
 	rcvLine := make(chan string)
 
@@ -115,8 +118,10 @@ func (s *Service) Handle(ctx context.Context, conn net.Conn) error {
 	go func() {
 		for {
 			select {
+			case <-time.After(time.Minute * 2):
+				log.Error("timeout expired")
+				return
 			case message := <-s.receiveChan:
-				log.Debug("Message Received")
 				s.ch.Send(event.New(
 					services.EventOptions,
 					event.Category("smtp"),

@@ -29,19 +29,3 @@
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
 package event
-
-import (
-	"net"
-
-	"github.com/google/netstack/tcpip/adapters/gonet"
-)
-
-func Conn(conn net.Conn) Option {
-	return func(m Event) {
-		if gc, ok := conn.(*gonet.Conn); !ok {
-		} else if irs, err := gc.IRS(); err != nil {
-		} else {
-			m.Store("irs", irs)
-		}
-	}
-}
