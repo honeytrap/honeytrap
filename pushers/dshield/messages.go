@@ -28,108 +28,79 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package storage
+package dshield
 
 import (
-	"log"
-	"path/filepath"
+	"encoding/json"
 
-	"github.com/dgraph-io/badger"
+	"time"
 )
 
-type storage interface {
-	Get(string) error
-	Set(string, []byte) error
+type Submit struct {
+	AuthHeader string `json:"authheader"`
+
+	Type string           `json:"type"`
+	Logs []json.Marshaler `json:"logs"`
 }
 
-var db *badger.DB
-var dataDir string
+type HTTPEvent struct {
+	Date time.Time
 
-// SetDataDir
-func SetDataDir(s string) {
-	if db != nil {
-		return
+	SourceIP        string
+	DestinationIP   string
+	SourcePort      int
+	DestinationPort int
+
+	Method    string
+	UserAgent string
+	URL       string
+}
+
+func (e *HTTPEvent) MarshalJSON() ([]byte, error) {
+	headers := []string{}
+
+	val := map[string]interface{}{
+		"type":      "httprequest",
+		"time":      e.Date.Unix(),
+		"sip":       e.SourceIP,
+		"dip":       e.DestinationIP,
+		"sport":     e.SourcePort,
+		"dport":     e.DestinationPort,
+		"headers":   headers,
+		"method":    e.Method,
+		"url":       e.URL,
+		"useragent": e.UserAgent,
 	}
 
-	dataDir = s
-	db = MustDB()
+	return json.Marshal(val)
 }
 
-// MustDB
-func MustDB() *badger.DB {
-	opts := badger.DefaultOptions
+type SSHEvent struct {
+	Date time.Time
 
-	p := filepath.Join(dataDir, "badger.db")
-	opts.Dir = p
-	opts.ValueDir = p
+	SourceIP        string
+	DestinationIP   string
+	SourcePort      int
+	DestinationPort int
 
-	for _, fn := range PlatformOptions {
-		fn(&opts)
+	Username string
+	Password string
+}
+
+func (e *SSHEvent) MarshalJSON() ([]byte, error) {
+	val := map[string]interface{}{
+		"type": "sshlogin",
+
+		"time": e.Date.Unix(),
+
+		"sip":   e.SourceIP,
+		"dip":   e.DestinationIP,
+		"sport": e.SourcePort,
+		"dport": e.DestinationPort,
+
+		"username": e.Username,
+		"password": e.Password,
 	}
 
-	db, err := badger.Open(opts)
-	if err != nil {
-		log.Fatal(err)
-		return nil
-	}
-
-	return db
-}
-
-// Storage interface
-type Storage interface {
-	Get(key string) ([]byte, error)
-	Set(key string, data []byte) error
-}
-
-// Namespace sets the namespace prefix
-func Namespace(namespace string) (*badgeStorage, error) {
-	prefix := make([]byte, len(namespace)+1)
-
-	_ = copy(prefix, namespace)
-
-	prefix[len(namespace)] = byte('.')
-
-	return &badgeStorage{
-		db: db,
-		ns: prefix,
-	}, nil
-}
-
-type badgeStorage struct {
-	db *badger.DB
-
-	ns []byte
-}
-
-func (s *badgeStorage) Get(key string) ([]byte, error) {
-	val := []byte{}
-
-	k := append(s.ns, key...)
-
-	err := s.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(k)
-		if err != nil {
-			return err
-		}
-
-		v, err := item.Value()
-		if err != nil {
-			return err
-		}
-
-		val = v
-		return nil
-	})
-
-	return val, err
-}
-
-func (s *badgeStorage) Set(key string, data []byte) error {
-	k := append(s.ns, key...)
-
-	return s.db.Update(func(txn *badger.Txn) error {
-		err := txn.Set(k, data)
-		return err
-	})
+	return json.Marshal(val)
 }

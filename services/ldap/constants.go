@@ -30,54 +30,36 @@
  */
 package ldap
 
-import ber "github.com/go-asn1-ber/asn1-ber"
+const (
+	// LDAP App Codes
+	AppBindRequest           = 0
+	AppBindResponse          = 1
+	AppUnbindRequest         = 2
+	AppSearchRequest         = 3
+	AppSearchResultEntry     = 4
+	AppSearchResultDone      = 5
+	AppModifyRequest         = 6
+	AppModifyResponse        = 7
+	AppAddRequest            = 8
+	AppAddResponse           = 9
+	AppDelRequest            = 10
+	AppDelResponse           = 11
+	AppModifyDNRequest       = 12
+	AppModifyDNResponse      = 13
+	AppCompareRequest        = 14
+	AppCompareResponse       = 15
+	AppAbandonRequest        = 16
+	AppSearchResultReference = 19
+	AppExtendedRequest       = 23
+	AppExtendedResponse      = 24
 
-//CatchAll handles the not implemented LDAP requests
-type CatchAll struct {
-	isLogin func() bool
-}
-
-func (c *CatchAll) handle(p *ber.Packet, el eventLog) []*ber.Packet {
-
-	if p == nil || len(p.Children) < 2 {
-		return nil
-	}
-
-	el["ldap.payload"] = p.Bytes()
-
-	opcode := int(p.Children[1].Tag)
-
-	reth := &resultCodeHandler{
-		resultCode: ResSuccess,
-	}
-
-	if !c.isLogin() {
-		// Not authenticated
-		reth.resultCode = ResUnwillingToPerform
-	}
-
-	switch opcode {
-	case AppModifyRequest:
-		el["ldap.request-type"] = "modify"
-		reth.replyTypeID = AppModifyResponse
-	case AppAddRequest:
-		el["ldap.request-type"] = "add"
-		reth.replyTypeID = AppAddResponse
-	case AppDelRequest:
-		el["ldap.request-type"] = "delete"
-		reth.replyTypeID = AppDelResponse
-	case AppModifyDNRequest:
-		el["ldap.request-type"] = "modify-dn"
-		reth.replyTypeID = AppModifyDNResponse
-	case AppCompareRequest:
-		el["ldap.request-type"] = "compare"
-		reth.replyTypeID = AppCompareResponse
-	case AppAbandonRequest:
-		el["ldap.request-type"] = "abandon"
-		return nil // This needs no answer
-	default:
-		//el["ldap.request-type"] = opcode
-		//reth.replyTypeID = 1 // protocolError
-	}
-	return reth.handle(p, el)
-}
+	// LDAP result codes
+	ResSuccess                  = 0
+	ResOperationsError          = 1
+	ResProtocolError            = 2
+	ResNoSuchObject             = 32
+	ResInvalidCred              = 49
+	ResInsufficientAccessRights = 50
+	ResUnwillingToPerform       = 53
+	ResOther                    = 80
+)

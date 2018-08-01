@@ -1,6 +1,6 @@
 /*
 * Honeytrap
-* Copyright (C) 2016-2018 DutchSec (https://dutchsec.com/)
+* Copyright (C) 2016-2017 DutchSec (https://dutchsec.com/)
 *
 * This program is free software; you can redistribute it and/or modify it under
 * the terms of the GNU Affero General Public License version 3 as published by the
@@ -28,56 +28,15 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package ldap
+package dshield
 
-import ber "github.com/go-asn1-ber/asn1-ber"
+// Config defines a struct which holds configuration values for a SearchBackend.
+type Config struct {
+	URL string `toml:"url"`
 
-//CatchAll handles the not implemented LDAP requests
-type CatchAll struct {
-	isLogin func() bool
-}
+	Insecure bool `toml:"insecure"`
+	Debug    bool `toml:"debug"`
 
-func (c *CatchAll) handle(p *ber.Packet, el eventLog) []*ber.Packet {
-
-	if p == nil || len(p.Children) < 2 {
-		return nil
-	}
-
-	el["ldap.payload"] = p.Bytes()
-
-	opcode := int(p.Children[1].Tag)
-
-	reth := &resultCodeHandler{
-		resultCode: ResSuccess,
-	}
-
-	if !c.isLogin() {
-		// Not authenticated
-		reth.resultCode = ResUnwillingToPerform
-	}
-
-	switch opcode {
-	case AppModifyRequest:
-		el["ldap.request-type"] = "modify"
-		reth.replyTypeID = AppModifyResponse
-	case AppAddRequest:
-		el["ldap.request-type"] = "add"
-		reth.replyTypeID = AppAddResponse
-	case AppDelRequest:
-		el["ldap.request-type"] = "delete"
-		reth.replyTypeID = AppDelResponse
-	case AppModifyDNRequest:
-		el["ldap.request-type"] = "modify-dn"
-		reth.replyTypeID = AppModifyDNResponse
-	case AppCompareRequest:
-		el["ldap.request-type"] = "compare"
-		reth.replyTypeID = AppCompareResponse
-	case AppAbandonRequest:
-		el["ldap.request-type"] = "abandon"
-		return nil // This needs no answer
-	default:
-		//el["ldap.request-type"] = opcode
-		//reth.replyTypeID = 1 // protocolError
-	}
-	return reth.handle(p, el)
+	UserID string `toml:"user_id"`
+	APIKey string `toml:"api_key"`
 }

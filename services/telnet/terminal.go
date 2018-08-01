@@ -685,14 +685,16 @@ func (t *Terminal) ReadPassword(prompt string) (line string, err error) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
+	oldEcho := t.echo
 	oldPrompt := t.prompt
+
 	t.prompt = []rune(prompt)
 	t.echo = false
 
 	line, err = t.readLine()
 
 	t.prompt = oldPrompt
-	t.echo = true
+	t.echo = oldEcho
 
 	return
 }

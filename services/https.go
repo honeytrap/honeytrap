@@ -86,6 +86,10 @@ type httpsService struct {
 	cache map[string]*tls.Certificate
 }
 
+func (s *httpsService) SetChannel(c pushers.Channel) {
+	s.c = c
+}
+
 func (s *httpsService) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	s.m.Lock()
 	defer s.m.Unlock()
