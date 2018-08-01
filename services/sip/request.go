@@ -31,49 +31,45 @@
 
 package sip
 
-import (
-	"strings"
-)
-
-func (s *sipService) parseURI() bool {
-	if !strings.HasPrefix(s.Uri, "sip:") {
-		return false
-	}
-
-	request := strings.Split(s.Uri, ":")
-
-	if strings.Contains(request[1], "@") {
-		result := strings.Split(request[1], "@")
-		s.Username = result[0]
-		s.Domain = result[1]
-	} else {
-		s.Username = request[1]
-		s.Domain = request[1]
-	}
-
-	return true
+type URI struct {
+	Scheme, Username, Domain string
 }
 
-func (s *sipService) checkRequest(line string) bool {
-	ok := s.parseURI()
-	if !ok {
-		return ok
+func parseUri(uri string) (*URI, error) {
+	result := uriRegexp.FindStringSubmatch(uri)
+	if len(result) == 0 {
+		return &URI{}, ErrParseError
+	}
+
+	return &URI{
+		Scheme:   result[1],
+		Username: result[2],
+		Domain:   result[3],
+	}, nil
+}
+
+func checkRequest(line string, Request *request) (*URI, error) {
+	var ok bool
+	r := Request
+	uri, err := parseUri(r.Uri)
+	if err != nil {
+		return uri, err
 	}
 
 	for i, _ := range Map_Method {
-		if s.Method == Map_Method[i] {
+		if r.Method == Map_Method[i] {
 			ok = true
 			break
 		}
 	}
 
 	if !ok {
-		return ok
+		return uri, err
 	}
 
-	if s.SIPVersion != "SIP/2.0" {
-		return false
+	if r.SIPVersion != "SIP/2.0" {
+		return uri, err
 	}
 
-	return true
+	return uri, nil
 }

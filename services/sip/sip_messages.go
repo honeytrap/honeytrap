@@ -33,16 +33,18 @@ package sip
 
 import "fmt"
 
-func (s *sipService) OptionMethod() string {
+func (s *sipService) OptionMethod(Request *request, uri *URI) string {
+	r := Request
+	u := uri
 	return fmt.Sprintf(`
 %s %s %s
 Via: %s/TCP %s;branch=foo
-From: <sip:%s@%s>;tag=root
+From: <%s:%s@%s>;tag=root
 To: <sip:nm2@nm2>
-Call-ID: 50000 CSeq: 42 OPTIONS
+Call-ID: 50000 CSeq: 42 %s
 Max-Forwards: 70
 Content-Length: 0
-Contact: <sip:%s@%s>
+Contact: <%s:%s@%s>
 Accept: application/sdp
-`, s.Method, s.Uri, s.SIPVersion, s.SIPVersion, s.Username, s.Username, s.Domain, s.Username, s.Domain)
+`, r.Method, r.Uri, r.SIPVersion, r.SIPVersion, u.Username, u.Scheme, u.Username, u.Domain, r.Method, u.Scheme, u.Username, u.Domain)
 }

@@ -35,7 +35,10 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"io/ioutil"
 	"net"
+	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/honeytrap/honeytrap/event"
@@ -57,7 +60,9 @@ services=["sip"]
 
 var (
 	_             = services.Register("sip", SIP)
-	ErrBadMessage = errors.New("bad message")
+	ErrParseError = errors.New("sip: parse error")
+	ErrBadMessage = errors.New("sip: bad message")
+	uriRegexp     = regexp.MustCompile("^([A-Za-z]+):([^@]+)@([^\\s;]+)(.*)$")
 	Map_Method    = map[string]string{
 		"MethodInvite":    "INVITE",
 		"MethodAck":       "ACK",
@@ -74,7 +79,7 @@ var (
 		"MethodMessage":   "MESSAGE",
 		"MethodUpdate":    "UPDATE",
 	}
-	sipRequest = map[string]func(*sipService) string{
+	sipRequest = map[string]func(*sipService, *request, *URI) string{
 		"OPTIONS": (*sipService).OptionMethod,
 	}
 )
@@ -99,10 +104,10 @@ type sipService struct {
 	sipServiceConfig
 
 	ch pushers.Channel
+}
 
-	Method, Uri, SIPVersion, Username, Domain string
-
-	Body []byte
+type request struct {
+	Method, Uri, SIPVersion string
 }
 
 func (s *sipService) SetChannel(ch pushers.Channel) {
@@ -110,39 +115,64 @@ func (s *sipService) SetChannel(ch pushers.Channel) {
 }
 
 func (s *sipService) Handle(ctx context.Context, conn net.Conn) error {
+	r := &request{}
 	br := bufio.NewReader(conn)
 	line, err := br.ReadString('\n')
 	if err != nil {
 		return err
 	}
 
+	args := strings.Split(line, " ")
+	if len(args) != 3 {
+		s.ch.Send(event.New(
+			services.EventOptions,
+			event.Category("sip"),
+			event.SourceAddr(conn.RemoteAddr()),
+			event.DestinationAddr(conn.LocalAddr()),
+		))
+		return ErrBadMessage
+	}
+
+	r.Method = args[0]
+	r.Uri = args[1]
+	r.SIPVersion = strings.TrimSpace(args[2])
+
+	uri, err := checkRequest(line, r)
+	if err != nil {
+		s.ch.Send(event.New(
+			services.EventOptions,
+			event.Category("sip"),
+			event.SourceAddr(conn.RemoteAddr()),
+			event.DestinationAddr(conn.LocalAddr()),
+			event.Custom("sip.method", r.Method),
+			event.Custom("sip.uri", r.Uri),
+			event.Custom("sip.version", r.SIPVersion),
+		))
+		return ErrBadMessage
+	}
+
+	fn := sipRequest[r.Method]
+
+	resp := http.Response{
+		StatusCode: http.StatusOK,
+		Status:     http.StatusText(http.StatusOK),
+		Proto:      "HTTP/1.0",
+		ProtoMajor: 1,
+		ProtoMinor: 0,
+	}
+
+	resp.Body = ioutil.NopCloser(strings.NewReader(fn(s, r, uri)))
+
 	s.ch.Send(event.New(
 		services.EventOptions,
 		event.Category("sip"),
 		event.SourceAddr(conn.RemoteAddr()),
 		event.DestinationAddr(conn.LocalAddr()),
-		event.Payload(s.Body),
+		event.Custom("sip.method", r.Method),
+		event.Custom("sip.uri", r.Uri),
+		event.Custom("sip.version", r.SIPVersion),
+		event.Payload([]byte(fn(s, r, uri))),
 	))
 
-	args := strings.Split(line, " ")
-	if len(args) != 3 {
-		return ErrBadMessage
-	}
-
-	s.Method = args[0]
-	s.Uri = args[1]
-	s.SIPVersion = strings.TrimSpace(args[2])
-
-	ok := s.checkRequest(line)
-	if !ok {
-		return ErrBadMessage
-	}
-
-	fn := sipRequest[s.Method]
-
-	s.Body = []byte(fn(s))
-
-	conn.Write(s.Body)
-
-	return nil
+	return resp.Write(conn)
 }
