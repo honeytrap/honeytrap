@@ -31,20 +31,71 @@
 
 package sip
 
-import "fmt"
+import (
+	"fmt"
+)
 
-func (s *sipService) OptionMethod(Request *request, uri *URI) string {
+func (s *sipService) OptionsMethod(Request *request) map[string][]string {
 	r := Request
-	u := uri
+	return map[string][]string{
+		"Via":            []string{r.SIPVersion + "/TCP " + r.User + ";branch=z9hG4bK" + randomID(20)},
+		"From":           []string{"<" + r.UriType + ":" + r.User + "@" + r.RemoteIP + ">;tag=" + randomID(20)},
+		"To":             []string{"<sip:nm2@" + r.LocalIP + ">"},
+		"Call-ID":        []string{randomID(20) + "@" + r.RemoteIP},
+		"CSeq":           []string{"42 " + r.Method},
+		"Max-Forwards":   []string{"70"},
+		"Contact":        []string{"<" + r.UriType + ":" + r.User + "@" + r.RemoteIP + ">;transport=tcp"},
+		"Content-Length": []string{"0"},
+		"Accept":         []string{"application/sdp"},
+	}
+}
+
+func (s *sipService) InviteMethod(Request *request) map[string][]string {
+	r := Request
+	str := fmt.Sprintf("%v", len(s.InviteBody(r)))
+	return map[string][]string{
+		"Via":            []string{r.SIPVersion + "/TCP " + r.User + ";branch=z9hG4bK" + randomID(20)},
+		"From":           []string{"<" + r.UriType + ":" + r.User + "@" + r.RemoteIP + ">;tag=" + randomID(20)},
+		"To":             []string{"<sip:nm2@" + r.LocalIP + ">"},
+		"Call-ID":        []string{randomID(20) + "@" + r.RemoteIP},
+		"CSeq":           []string{"15 " + r.Method},
+		"Max-Forwards":   []string{"70"},
+		"Contact":        []string{"<" + r.UriType + ":" + r.User + "@" + r.RemoteIP + ">;transport=tcp"},
+		"Content-Length": []string{str},
+		"Content-Type":   []string{"application/sdp"},
+		"User-Agent":     []string{"Ekiga SIP Softphone"},
+	}
+}
+
+func (s *sipService) PublishMethod(Request *request) map[string][]string {
+	r := Request
+	return map[string][]string{
+		"Via":            []string{r.SIPVersion + "/TCP " + r.User + ";branch=z9hG4bK" + randomID(20)},
+		"From":           []string{"<" + r.UriType + ":" + r.User + "@" + r.RemoteIP + ">;tag=" + randomID(20)},
+		"To":             []string{"<sip:nm2@" + r.LocalIP + ">"},
+		"Call-ID":        []string{randomID(20) + "@" + r.RemoteIP},
+		"CSeq":           []string{"1 " + r.Method},
+		"Max-Forwards":   []string{"70"},
+		"Expires":        []string{"3600"},
+		"Event":          []string{"presence"},
+		"Content-Length": []string{"0"},
+		"Content-Type":   []string{"application/sdp"},
+	}
+}
+
+func (s *sipService) InviteBody(Request *request) string {
+	r := Request
 	return fmt.Sprintf(`
-%s %s %s
-Via: %s/TCP %s;branch=foo
-From: <%s:%s@%s>;tag=root
-To: <sip:nm2@nm2>
-Call-ID: 50000 CSeq: 42 %s
-Max-Forwards: 70
-Content-Length: 0
-Contact: <%s:%s@%s>
-Accept: application/sdp
-`, r.Method, r.Uri, r.SIPVersion, r.SIPVersion, u.Username, u.Scheme, u.Username, u.Domain, r.Method, u.Scheme, u.Username, u.Domain)
+v=0
+o=%s:%s@%s 1 16 IN IP4 %s
+s=%s:%s@%s
+c=IN IP4 %s
+t=0 0
+m=audio 5000 RTP/AVP 0 8 18 4 120
+a=rtpmap:0 PCMU/8000/1
+a=rtpmap:8 PCMA/8000/1
+a=rtpmap:18 G729/8000/1
+a=fmtp:18 annexb=no
+a=rtpmap:4 G723/8000/1
+a=rtpmap:120 telephone-event/8000/1`, r.UriType, r.User, r.RemoteIP, r.RemoteIP, r.UriType, r.User, r.RemoteIP, r.RemoteIP)
 }

@@ -33,18 +33,25 @@ package sip
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"net"
 	"net/http"
-	"regexp"
 	"strings"
+	"time"
 
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/services"
+	"github.com/marv2097/siprocket"
 )
+
+// please use "go get -u github.com/marv2097/siprocket" to import the siprocket library
 
 /*Example config:
 
@@ -60,9 +67,8 @@ services=["sip"]
 
 var (
 	_             = services.Register("sip", SIP)
-	ErrParseError = errors.New("sip: parse error")
 	ErrBadMessage = errors.New("sip: bad message")
-	uriRegexp     = regexp.MustCompile("^([A-Za-z]+):([^@]+)@([^\\s;]+)(.*)$")
+	letters       = []rune("abcdefghijklmnopqrstuvwxyz_0123456789")
 	Map_Method    = map[string]string{
 		"MethodInvite":    "INVITE",
 		"MethodAck":       "ACK",
@@ -79,8 +85,10 @@ var (
 		"MethodMessage":   "MESSAGE",
 		"MethodUpdate":    "UPDATE",
 	}
-	sipRequest = map[string]func(*sipService, *request, *URI) string{
-		"OPTIONS": (*sipService).OptionMethod,
+	sipRequest = map[string]func(*sipService, *request) map[string][]string{
+		"INVITE":  (*sipService).InviteMethod,
+		"OPTIONS": (*sipService).OptionsMethod,
+		"PUBLISH": (*sipService).PublishMethod,
 	}
 )
 
@@ -107,18 +115,36 @@ type sipService struct {
 }
 
 type request struct {
-	Method, Uri, SIPVersion string
+	Method, UriType, User, Host, SIPVersion, Uri, Src, RemoteIP, LocalIP string
 }
 
 func (s *sipService) SetChannel(ch pushers.Channel) {
 	s.ch = ch
 }
 
+func randomID(n int) string {
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
+	}
+	return string(b)
+}
+
 func (s *sipService) Handle(ctx context.Context, conn net.Conn) error {
+	var ok bool
+	rand.Seed(time.Now().UnixNano())
 	r := &request{}
+	var data bytes.Buffer
 	br := bufio.NewReader(conn)
 	line, err := br.ReadString('\n')
 	if err != nil {
+		s.ch.Send(event.New(
+			services.EventOptions,
+			event.Category("sip"),
+			event.SourceAddr(conn.RemoteAddr()),
+			event.DestinationAddr(conn.LocalAddr()),
+			event.Payload([]byte(line)),
+		))
 		return err
 	}
 
@@ -129,24 +155,49 @@ func (s *sipService) Handle(ctx context.Context, conn net.Conn) error {
 			event.Category("sip"),
 			event.SourceAddr(conn.RemoteAddr()),
 			event.DestinationAddr(conn.LocalAddr()),
+			event.Payload([]byte(line)),
 		))
 		return ErrBadMessage
 	}
 
-	r.Method = args[0]
-	r.Uri = args[1]
-	r.SIPVersion = strings.TrimSpace(args[2])
+	sip := siprocket.Parse([]byte(line))
 
-	uri, err := checkRequest(line, r)
-	if err != nil {
+	sip_request := strings.Split(line, " ")
+
+	r.Host = fmt.Sprintf("%s", sip.Req.Host)
+	r.Method = fmt.Sprintf("%s", sip.Req.Method)
+	r.UriType = fmt.Sprintf("%s", sip.Req.UriType)
+	r.User = fmt.Sprintf("%s", sip.Req.User)
+	r.Src = fmt.Sprintf("%s", sip.Req.Src)
+	r.Uri = strings.TrimSpace(sip_request[1])
+	r.SIPVersion = strings.TrimSpace(sip_request[2])
+	r.LocalIP = fmt.Sprintf("%s", conn.LocalAddr().(*net.TCPAddr).IP)
+	r.RemoteIP = fmt.Sprintf("%s", conn.RemoteAddr().(*net.TCPAddr).IP)
+
+	s.ch.Send(event.New(
+		services.EventOptions,
+		event.Category("sip"),
+		event.SourceAddr(conn.RemoteAddr()),
+		event.DestinationAddr(conn.LocalAddr()),
+		event.Custom("sip.method", r.Method),
+		event.Custom("sip.uri", r.Uri),
+		event.Custom("sip.source", r.Src),
+		event.Custom("sip.version", r.SIPVersion),
+		event.Custom("sip.uritype", r.UriType),
+		event.Custom("sip.user", r.User),
+		event.Custom("sip.host", r.Host),
+	))
+
+	for i, _ := range Map_Method {
+		if r.Method == Map_Method[i] {
+			ok = true
+			break
+		}
+	}
+
+	if !ok || r.SIPVersion != "SIP/2.0" {
 		s.ch.Send(event.New(
-			services.EventOptions,
-			event.Category("sip"),
-			event.SourceAddr(conn.RemoteAddr()),
-			event.DestinationAddr(conn.LocalAddr()),
-			event.Custom("sip.method", r.Method),
-			event.Custom("sip.uri", r.Uri),
-			event.Custom("sip.version", r.SIPVersion),
+			event.Payload([]byte(line)),
 		))
 		return ErrBadMessage
 	}
@@ -156,22 +207,29 @@ func (s *sipService) Handle(ctx context.Context, conn net.Conn) error {
 	resp := http.Response{
 		StatusCode: http.StatusOK,
 		Status:     http.StatusText(http.StatusOK),
-		Proto:      "HTTP/1.0",
+		Proto:      "HTTP/1.1",
 		ProtoMajor: 1,
-		ProtoMinor: 0,
+		ProtoMinor: 1,
+		Header:     fn(s, r),
 	}
 
-	resp.Body = ioutil.NopCloser(strings.NewReader(fn(s, r, uri)))
+	encode, err := json.Marshal(fn(s, r))
+	if err != nil {
+		s.ch.Send(event.New(
+			event.Payload(encode),
+		))
+		return err
+	}
+
+	data.Write(encode)
+
+	if r.Method == "INVITE" {
+		resp.Body = ioutil.NopCloser(strings.NewReader(s.InviteBody(r)))
+		data.Write([]byte(s.InviteBody(r)))
+	}
 
 	s.ch.Send(event.New(
-		services.EventOptions,
-		event.Category("sip"),
-		event.SourceAddr(conn.RemoteAddr()),
-		event.DestinationAddr(conn.LocalAddr()),
-		event.Custom("sip.method", r.Method),
-		event.Custom("sip.uri", r.Uri),
-		event.Custom("sip.version", r.SIPVersion),
-		event.Payload([]byte(fn(s, r, uri))),
+		event.Payload(data.Bytes()),
 	))
 
 	return resp.Write(conn)
