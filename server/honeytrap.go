@@ -42,7 +42,6 @@ import (
 
 	"github.com/mattn/go-isatty"
 
-	"github.com/BurntSushi/toml"
 	"github.com/fatih/color"
 
 	"github.com/honeytrap/honeytrap/cmd"
@@ -63,6 +62,7 @@ import (
 	_ "github.com/honeytrap/honeytrap/services/eos"
 	_ "github.com/honeytrap/honeytrap/services/ethereum"
 	_ "github.com/honeytrap/honeytrap/services/ftp"
+	_ "github.com/honeytrap/honeytrap/services/hadoop"
 	_ "github.com/honeytrap/honeytrap/services/ipp"
 	_ "github.com/honeytrap/honeytrap/services/redis"
 	_ "github.com/honeytrap/honeytrap/services/smtp"
@@ -329,6 +329,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 	w.Start()
 
 	channels := map[string]pushers.Channel{}
+	isChannelUsed := make(map[string]bool)
 	// sane defaults!
 
 	for key, s := range hc.config.Channels {
@@ -336,7 +337,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			Type string `toml:"type"`
 		}{}
 
-		err := toml.PrimitiveDecode(s, &x)
+		err := hc.config.PrimitiveDecode(s, &x)
 		if err != nil {
 			log.Error("Error parsing configuration of channel: %s", err.Error())
 			continue
@@ -355,6 +356,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			log.Fatalf("Error initializing channel %s(%s): %s", key, x.Type, err)
 		} else {
 			channels[key] = d
+			isChannelUsed[key] = false
 		}
 	}
 
@@ -365,7 +367,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			Categories []string `toml:"categories"`
 		}{}
 
-		err := toml.PrimitiveDecode(s, &x)
+		err := hc.config.PrimitiveDecode(s, &x)
 		if err != nil {
 			log.Error("Error parsing configuration of filter: %s", err.Error())
 			continue
@@ -378,6 +380,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 				continue
 			}
 
+			isChannelUsed[name] = true
 			channel = pushers.TokenChannel(channel, hc.token)
 
 			if len(x.Categories) != 0 {
@@ -394,6 +397,12 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		}
 	}
 
+	for name, isUsed := range isChannelUsed {
+		if !isUsed {
+			log.Warningf("Channel %s is unused. Did you forget to add a filter?", name)
+		}
+	}
+
 	// initialize directors
 	directors := map[string]director.Director{}
 	availableDirectorNames := director.GetAvailableDirectorNames()
@@ -403,7 +412,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			Type string `toml:"type"`
 		}{}
 
-		err := toml.PrimitiveDecode(s, &x)
+		err := hc.config.PrimitiveDecode(s, &x)
 		if err != nil {
 			log.Error("Error parsing configuration of director: %s", err.Error())
 			continue
@@ -431,7 +440,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		Type string `toml:"type"`
 	}{}
 
-	if err := toml.PrimitiveDecode(hc.config.Listener, &x); err != nil {
+	if err := hc.config.PrimitiveDecode(hc.config.Listener, &x); err != nil {
 		log.Error("Error parsing configuration of listener: %s", err.Error())
 		return
 	}
@@ -455,7 +464,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			Port     string `toml:"port"`
 		}{}
 
-		if err := toml.PrimitiveDecode(s, &x); err != nil {
+		if err := hc.config.PrimitiveDecode(s, &x); err != nil {
 			log.Error("Error parsing configuration of service %s: %s", key, err.Error())
 			continue
 		}
@@ -518,7 +527,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			Services []string `toml:"services"`
 		}{}
 
-		if err := toml.PrimitiveDecode(s, &x); err != nil {
+		if err := hc.config.PrimitiveDecode(s, &x); err != nil {
 			log.Error("Error parsing configuration of generic ports: %s", err.Error())
 			continue
 		}
@@ -595,6 +604,10 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		if !isUsed {
 			log.Warningf("Service %s is defined but not used", name)
 		}
+	}
+
+	if len(hc.config.Undecoded()) != 0 {
+		log.Warningf("Unrecognized keys in configuration: %v", hc.config.Undecoded())
 	}
 
 	if err := l.Start(ctx); err != nil {
