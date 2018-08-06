@@ -127,10 +127,19 @@ func (s *Service) Handle(ctx context.Context, conn net.Conn) error {
 			//	log.Error("timeout expired")
 			//	return
 			case message := <-s.receiveChan:
-				var smtpTo strings.Builder
+				header := []event.Option{}
 
-				for _, s := range message.To {
-					smtpTo.WriteString(s.String())
+				for key, values := range message.Header {
+					var vals strings.Builder
+
+					for _, s := range values {
+						if vals.Len() > 0 {
+							_, _ = vals.WriteRune(',')
+						}
+						_, _ = vals.WriteString(s)
+					}
+
+					header = append(header, event.Custom("smtp."+key, vals.String()))
 				}
 
 				s.ch.Send(event.New(
@@ -139,9 +148,8 @@ func (s *Service) Handle(ctx context.Context, conn net.Conn) error {
 					event.Type("email"),
 					event.SourceAddr(conn.RemoteAddr()),
 					event.DestinationAddr(conn.LocalAddr()),
-					event.Custom("smtp.from", message.From.String()),
-					event.Custom("smtp.to", smtpTo.String()),
 					event.Custom("smtp.body", message.Body.String()),
+					event.NewWith(header...),
 				))
 			case line := <-rcvLine:
 				s.ch.Send(event.New(
