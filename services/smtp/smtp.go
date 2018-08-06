@@ -33,6 +33,7 @@ package smtp
 import (
 	"context"
 	"errors"
+	"html/template"
 	"net"
 	"strings"
 	"time"
@@ -53,7 +54,9 @@ func SMTP(options ...services.ServicerFunc) services.Servicer {
 
 	s := &Service{
 		Config: Config{
-			Banner: "SMTPd",
+			BannerFmt: "{{.Host}} {{.Name}} Ready",
+			Host:      "mail.example.org",
+			Name:      "SMTP",
 			srv: &Server{
 				tlsConfig: nil,
 			},
@@ -80,7 +83,10 @@ func SMTP(options ...services.ServicerFunc) services.Servicer {
 		}
 	}
 
-	s.srv.Banner = s.Banner
+	t, _ := template.New("banner").Parse(s.BannerFmt)
+	var buf strings.Builder
+	t.Execute(&buf, s)
+	s.srv.Banner = buf.String()
 
 	handler := HandleFunc(func(msg Message) error {
 		s.receiveChan <- msg
@@ -93,7 +99,11 @@ func SMTP(options ...services.ServicerFunc) services.Servicer {
 }
 
 type Config struct {
-	Banner string `toml:"banner"`
+	BannerFmt string `toml:"banner-fmt"`
+
+	Host string `toml:"host"`
+
+	Name string `toml:"name"`
 
 	srv *Server
 
