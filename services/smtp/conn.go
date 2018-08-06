@@ -43,7 +43,10 @@ import (
 	"strings"
 )
 
-const loopTreshold = 100
+const (
+	loopTreshold = 100
+	cmdSupported = "HELO EHLO STARTTLS RCPT DATA RSET MAIL QUIT HELP AUTH BDAT NOOP QUIT"
+)
 
 type conn struct {
 	rwc    net.Conn
@@ -81,13 +84,17 @@ func (c *conn) PrintfLine(format string, args ...interface{}) error {
 
 func (c *conn) ReadLine() (string, error) {
 	s, err := c.Text.ReadLine()
+	if err != nil {
+		return s, err
+	}
+
 	fmt.Printf("> ")
 	fmt.Println(s)
 
 	//send line to log channel
 	c.rcv <- s
 
-	return s, err
+	return s, nil
 }
 
 func startState(c *conn) stateFn {
@@ -122,8 +129,7 @@ func isCommand(line string, cmd string) bool {
 func mailFromState(c *conn) stateFn {
 	line, err := c.ReadLine()
 	if err != nil {
-		log.Error("[mailFromState] error: %s", err.Error())
-		return nil
+		return errorState("[mailFromState] %s", err.Error())
 	}
 
 	if line == "" {
@@ -186,6 +192,10 @@ func mailFromState(c *conn) stateFn {
 
 		c.msg = c.newMessage()
 		return loopState
+	} else if isCommand(line, "HELP") {
+		c.PrintfLine("214 Following SMTP commands are supported:")
+		c.PrintfLine("214 %s", cmdSupported)
+		return mailFromState
 	} else {
 		return unrecognizedState
 	}
@@ -194,8 +204,7 @@ func mailFromState(c *conn) stateFn {
 func loopState(c *conn) stateFn {
 	line, err := c.ReadLine()
 	if err != nil {
-		log.Error("[loopState] error: %s", err.Error())
-		return nil
+		return errorState("[loopState] %s", err.Error())
 	}
 
 	if line == "" {
@@ -205,7 +214,7 @@ func loopState(c *conn) stateFn {
 	c.i++
 
 	if c.i > loopTreshold {
-		return errorState("Error: invalid.")
+		return errorState("[loopState] error: exceeded server loop treshold > %d", loopTreshold)
 	}
 
 	if isCommand(line, "MAIL FROM") {
@@ -218,19 +227,22 @@ func loopState(c *conn) stateFn {
 		if c.server.tlsConfig != nil {
 			tlsConn := tls.Server(c.rwc, c.server.tlsConfig)
 
-			if err := tlsConn.Handshake(); err != nil {
-				log.Error("Error during tls handshake: %s", err.Error())
-				return nil
+			err := tlsConn.Handshake()
+			if err != nil {
+				log.Debug("Set TLS failed")
+				c.PrintfLine("454 TLS not available")
+				return loopState
 			}
-
 			c.Text = textproto.NewConn(tlsConn)
-			return helloState
 		}
-		log.Error("TLS not available")
-		return nil
+		return helloState
 	} else if isCommand(line, "RSET") {
 		c.msg = c.newMessage()
 		c.PrintfLine("250 Ok")
+		return loopState
+	} else if isCommand(line, "HELP") {
+		c.PrintfLine("214 Following SMTP commands are supported:")
+		c.PrintfLine("214 %s", cmdSupported)
 		return loopState
 	} else if isCommand(line, "QUIT") {
 		c.PrintfLine("221 Bye")
@@ -257,7 +269,14 @@ func parseHelloArgument(arg string) (string, error) {
 }
 
 func helloState(c *conn) stateFn {
-	line, _ := c.ReadLine()
+	line, err := c.ReadLine()
+	if err != nil {
+		return errorState("[helloState] ReadLine error. %s", err.Error())
+	}
+
+	//if line == "" {
+	//	return helloState
+	//}
 
 	if isCommand(line, "HELO") {
 		domain, err := parseHelloArgument(line)
@@ -283,11 +302,16 @@ func helloState(c *conn) stateFn {
 		c.PrintfLine("250-SIZE 35882577")
 		c.PrintfLine("250-8BITMIME")
 		c.PrintfLine("250-STARTTLS")
+		c.PrintfLine("250-HELP")
 		c.PrintfLine("250-ENHANCEDSTATUSCODES")
 		c.PrintfLine("250-PIPELINING")
 		c.PrintfLine("250-CHUNKING")
 		c.PrintfLine("250 SMTPUTF8")
 		return loopState
+	} else if isCommand(line, "HELP") {
+		c.PrintfLine("214 This server supports the following commands")
+		c.PrintfLine("214 HELO EHLO STARTTLS RCPT DATA RSET MAIL QUIT HELP AUTH DATA BDAT")
+		return helloState
 	} else {
 		return errorState("Before we shake hands it will be appropriate to tell me who you are.")
 	}
@@ -297,10 +321,7 @@ func (c *conn) serve() {
 	c.Text = textproto.NewConn(c.rwc)
 	defer c.Text.Close()
 
-	// todo add idle timeout here
-
-	state := startState
-	for state != nil {
+	for state := startState; state != nil; {
 		state = state(c)
 	}
 }

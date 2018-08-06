@@ -32,8 +32,9 @@ package smtp
 
 import (
 	"context"
+	"errors"
 	"net"
-
+	"strings"
 	"time"
 
 	"github.com/honeytrap/honeytrap/event"
@@ -112,24 +113,34 @@ func (s *Service) SetChannel(c pushers.Channel) {
 func (s *Service) Handle(ctx context.Context, conn net.Conn) error {
 	defer conn.Close()
 
+	if err := conn.SetReadDeadline(time.Now().Add(time.Minute * 5)); err != nil {
+		return errors.New("Can't set ReadDeadline on connection")
+	}
+
 	rcvLine := make(chan string)
 
 	// Wait for a message and send it into the eventbus
 	go func() {
 		for {
 			select {
-			case <-time.After(time.Minute * 2):
-				log.Error("timeout expired")
-				return
+			//case <-time.After(time.Minute * 2):
+			//	log.Error("timeout expired")
+			//	return
 			case message := <-s.receiveChan:
+				var smtpTo strings.Builder
+
+				for _, s := range message.To {
+					smtpTo.WriteString(s.String())
+				}
+
 				s.ch.Send(event.New(
 					services.EventOptions,
 					event.Category("smtp"),
 					event.Type("email"),
 					event.SourceAddr(conn.RemoteAddr()),
 					event.DestinationAddr(conn.LocalAddr()),
-					event.Custom("smtp.from", message.From),
-					event.Custom("smtp.to", message.To),
+					event.Custom("smtp.from", message.From.String()),
+					event.Custom("smtp.to", smtpTo.String()),
 					event.Custom("smtp.body", message.Body.String()),
 				))
 			case line := <-rcvLine:
