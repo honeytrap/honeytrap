@@ -58,6 +58,7 @@ import (
 	"github.com/honeytrap/honeytrap/pushers/eventbus"
 
 	"github.com/honeytrap/honeytrap/services"
+	_ "github.com/honeytrap/honeytrap/services/bannerfmt"
 	_ "github.com/honeytrap/honeytrap/services/elasticsearch"
 	_ "github.com/honeytrap/honeytrap/services/eos"
 	_ "github.com/honeytrap/honeytrap/services/ethereum"
@@ -67,7 +68,6 @@ import (
 	_ "github.com/honeytrap/honeytrap/services/redis"
 	_ "github.com/honeytrap/honeytrap/services/smtp"
 	_ "github.com/honeytrap/honeytrap/services/ssh"
-	_ "github.com/honeytrap/honeytrap/services/stringformatter"
 	_ "github.com/honeytrap/honeytrap/services/telnet"
 	_ "github.com/honeytrap/honeytrap/services/vnc"
 

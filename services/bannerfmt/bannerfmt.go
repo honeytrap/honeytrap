@@ -1,6 +1,6 @@
 /*
 * Honeytrap
-* Copyright (C) 2016-2017 DutchSec (https://dutchsec.com/)
+* Copyright (C) 2016-2018 DutchSec (https://dutchsec.com/)
 *
 * This program is free software; you can redistribute it and/or modify it under
 * the terms of the GNU Affero General Public License version 3 as published by the
@@ -29,53 +29,75 @@
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
 
-// Package stringformatter formats strings based upon a given template with a time and text element.
-package stringformatter
+// Package bannerfmt formats strings based upon a given template with a time and text element.
+package bannerfmt
 
 import (
 	"strings"
 	"text/template"
 	"time"
+
+	logging "github.com/op/go-logging"
 )
 
-type strFormat struct {
+var log = logging.MustGetLogger("bannerformatter")
+
+type BannerFmt struct {
 	templ *template.Template
+
+	data interface{}
 }
 
-func New(templ string) (*strFormat, error) {
+// New creates a new template using 'templ' as format
+// arguments:
+// templ - go template string, see https://golang.org/pkg/text/template/
+// data  - the data structure to use in your template
+//
+// template functions:
+// now "time layout" - the current time formatted as `"time layout"`
+// timefmt [tm time.Time] [time-format string] - the time `tm` formatted as time-format
+// see https://golang.org/pkg/time/#pkg-constants for some predefined layouts
+func New(templ string, data interface{}) (*BannerFmt, error) {
+
 	t, err := template.New("").Funcs(template.FuncMap{
 		"timefmt": func(tm time.Time, fmt string) string {
 			if fmt == "" {
 				fmt = time.RFC3339
 			}
-
 			return tm.Format(fmt)
+		},
+		"now": func(fmt string) string {
+			if fmt == "" {
+				return time.Now().String()
+			}
+			return time.Now().Format(fmt)
 		},
 	}).Parse(templ)
 	if err != nil {
+		log.Debug(err.Error())
 		return nil, err
 	}
 
-	return &strFormat{
+	return &BannerFmt{
 		templ: t,
+		data:  data,
 	}, nil
 }
 
-// Format returns the string formatted from a template.
-// An empty <time format> will render as RFC3339
-func (s *strFormat) Format(tm time.Time, vartext string) string {
-
+// String returns the formatted banner string
+// On error it returns an empty or partially formatted string.
+func (b *BannerFmt) String() string {
 	var parsed strings.Builder
 
-	if err := s.templ.Execute(&parsed, struct {
-		Time    time.Time
-		VarText string
-	}{
-		Time:    tm,
-		VarText: vartext,
-	}); err != nil {
-		return ""
+	if err := b.templ.Execute(&parsed, b.data); err != nil {
+		log.Debug(err.Error())
 	}
 
 	return parsed.String()
+}
+
+// Set replaces the data where the banner is rendered from
+//   this should be of the same type
+func (b *BannerFmt) Set(data interface{}) {
+	b.data = data
 }
