@@ -60,7 +60,14 @@ func serviceWithPort(svc string, port string) string {
 	`
 }
 
-var honeytrapBinary = path.Join("/honeytrap", "honeytrap")
+func fnHoneytrapPath() string {
+	if os.Getenv("TRAVIS") == "" {
+		return path.Join("/honeytrap", "honeytrap")
+	} else {
+		return path.Join(os.Getenv("HOME"), "honeytrap")
+	}
+}
+var honeytrapPath = fnHoneytrapPath()
 
 func runWithConfig(config string, flags ...string) (confPath string, p *os.Process) {
 	config += `[listener]
@@ -79,10 +86,10 @@ level = "debug"`
 		panic(err)
 	}
 	// Argv[0] is the current process.
-	flags = append([]string{honeytrapBinary}, flags...)
+	flags = append([]string{honeytrapPath}, flags...)
 	flags = append(flags, "-c", confPath)
 
-	p, err = os.StartProcess(honeytrapBinary, flags, &os.ProcAttr{
+	p, err = os.StartProcess(honeytrapPath, flags, &os.ProcAttr{
 		Files: []*os.File{
 			nil,
 			os.Stdout,

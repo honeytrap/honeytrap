@@ -52,8 +52,17 @@ func runWithConfig(t *testing.T, config string, flags ...string) string {
 	return runWithConfigAndErrHandler(t, config, func(e error) { t.Fatal(e) }, flags...)
 }
 
+func fnHoneytrapPath() string {
+	if os.Getenv("TRAVIS") == "" {
+		return path.Join("/honeytrap", "honeytrap")
+	} else {
+		return path.Join(os.Getenv("HOME"), "honeytrap")
+	}
+}
+var honeytrapPath = fnHoneytrapPath()
+
 func runWithErrHandler(errHandler func(error), flags ...string) string {
-	cmd := exec.Command("/honeytrap/honeytrap", flags...)
+	cmd := exec.Command(honeytrapPath, flags...)
 	out, err := cmd.Output()
 	if err != nil {
 		errHandler(err)
