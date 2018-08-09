@@ -38,12 +38,22 @@ import (
 )
 
 // Test that we can create a HTTP service and connect to it
-func TestHTTP(t *testing.T) {
+func TestHTTPIPv4(t *testing.T) {
 	tmpConf, p := runWithConfig(serviceWithPort("http", "tcp/8000"))
 	defer os.Remove(tmpConf)
 	defer p.Kill()
 	httpClient := http.Client{}
 	_, err := httpClient.Get("http://127.0.0.1:8000/")
+	if err != nil {
+		t.Error(err)
+	}
+}
+func TestHTTPIPv6(t *testing.T) {
+	tmpConf, p := runWithConfig(serviceWithPort("http", "tcp/8000"))
+	defer os.Remove(tmpConf)
+	defer p.Kill()
+	httpClient := http.Client{}
+	_, err := httpClient.Get("http://[::]:8000/")
 	if err != nil {
 		t.Error(err)
 	}

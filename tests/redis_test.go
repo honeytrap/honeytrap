@@ -39,13 +39,11 @@ import (
 	"testing"
 )
 
-// Test that we can create a Redis service, connect to it, send INFO and receive a string
-// https://redis.io/topics/protocol
-func TestRedis(t *testing.T) {
+func testRedis(t *testing.T, proto string) {
 	tmpConf, p := runWithConfig(serviceWithPort("redis", "tcp/6379"))
 	defer os.Remove(tmpConf)
 	defer p.Kill()
-	conn, err := net.Dial("tcp", "127.0.0.1:6379")
+	conn, err := net.Dial(proto, ":6379")
 	if err != nil {
 		t.Error(err)
 	}
@@ -64,6 +62,15 @@ func TestRedis(t *testing.T) {
 	if !bytes.Contains(resp, []byte("\r\n")) {
 		t.Error("No CRLF found in response")
 	}
+}
+
+// Test that we can create a Redis service, connect to it, send INFO and receive a string
+// https://redis.io/topics/protocol
+func TestRedisIPv4(t *testing.T) {
+	testRedis(t, "tcp4")
+}
+func TestRedisIPv6(t *testing.T) {
+	testRedis(t, "tcp6")
 }
 
 // Test that nmap recognizes the Redis service
