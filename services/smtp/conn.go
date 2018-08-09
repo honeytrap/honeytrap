@@ -37,7 +37,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/mail"
 	"net/textproto"
 	"strconv"
 	"strings"
@@ -61,11 +60,8 @@ type conn struct {
 func (c *conn) newMessage() *Message {
 
 	return &Message{
-		To:         []*mail.Address{},
-		Body:       &bytes.Buffer{},
-		Buffer:     &bytes.Buffer{},
-		Domain:     c.domain,
-		RemoteAddr: c.RemoteAddr().String(),
+		Body:   &bytes.Buffer{},
+		Buffer: &bytes.Buffer{},
 	}
 }
 
@@ -134,17 +130,12 @@ func mailFromState(c *conn) stateFn {
 
 	if line == "" {
 		return loopState
-	}
-
-	if isCommand(line, "RSET") {
+	} else if isCommand(line, "RSET") {
 		c.PrintfLine("250 Ok")
 
 		c.msg = c.newMessage()
 		return loopState
 	} else if isCommand(line, "RCPT TO") {
-		addr, _ := mail.ParseAddress(line[8:])
-
-		c.msg.To = append(c.msg.To, addr)
 
 		c.PrintfLine("250 Ok")
 		return mailFromState
@@ -196,9 +187,9 @@ func mailFromState(c *conn) stateFn {
 		c.PrintfLine("214 Following SMTP commands are supported:")
 		c.PrintfLine("214 %s", cmdSupported)
 		return mailFromState
-	} else {
-		return unrecognizedState
 	}
+
+	return unrecognizedState
 }
 
 func loopState(c *conn) stateFn {
@@ -218,7 +209,7 @@ func loopState(c *conn) stateFn {
 	}
 
 	if isCommand(line, "MAIL FROM") {
-		c.msg.From, _ = mail.ParseAddress(line[10:])
+		//c.msg.From, _ = mail.ParseAddress(line[10:])
 		c.PrintfLine("250 Ok")
 		return mailFromState
 	} else if isCommand(line, "STARTTLS") {
@@ -252,9 +243,9 @@ func loopState(c *conn) stateFn {
 		return loopState
 	} else if strings.Trim(line, " \r\n") == "" {
 		return loopState
-	} else {
-		return unrecognizedState
 	}
+
+	return unrecognizedState
 }
 
 func parseHelloArgument(arg string) (string, error) {
@@ -274,10 +265,6 @@ func helloState(c *conn) stateFn {
 		return errorState("[helloState] ReadLine error. %s", err.Error())
 	}
 
-	//if line == "" {
-	//	return helloState
-	//}
-
 	if isCommand(line, "HELO") {
 		domain, err := parseHelloArgument(line)
 		if err != nil {
@@ -285,7 +272,6 @@ func helloState(c *conn) stateFn {
 		}
 
 		c.domain = domain
-		c.msg.Domain = domain
 
 		c.PrintfLine("250 Hello %s, I am glad to meet you", domain)
 		return loopState
@@ -296,7 +282,6 @@ func helloState(c *conn) stateFn {
 		}
 
 		c.domain = domain
-		c.msg.Domain = domain
 
 		c.PrintfLine("250-Hello %s", domain)
 		c.PrintfLine("250-SIZE 35882577")
@@ -312,9 +297,9 @@ func helloState(c *conn) stateFn {
 		c.PrintfLine("214 This server supports the following commands")
 		c.PrintfLine("214 HELO EHLO STARTTLS RCPT DATA RSET MAIL QUIT HELP AUTH DATA BDAT")
 		return helloState
-	} else {
-		return errorState("Before we shake hands it will be appropriate to tell me who you are.")
 	}
+
+	return errorState("Before we shake hands it will be appropriate to tell me who you are.")
 }
 
 func (c *conn) serve() {

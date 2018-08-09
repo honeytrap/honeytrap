@@ -54,9 +54,10 @@ type BannerFmt struct {
 // data  - the data structure to use in your template
 //
 // template functions:
-// now "time layout" - the current time formatted as `"time layout"`
-// timefmt [tm time.Time] [time-format string] - the time `tm` formatted as time-format
-// see https://golang.org/pkg/time/#pkg-constants for some predefined layouts
+// now [time-format string] - the current time formatted as `time-format`
+// timefmt [tm time.Time] [time-format string] - the time `tm` formatted as `time-format`
+// time-format:
+//   example time format eg. `2018-01-20 15:00`
 func New(templ string, data interface{}) (*BannerFmt, error) {
 
 	t, err := template.New("").Funcs(template.FuncMap{

@@ -33,7 +33,6 @@ package smtp
 import (
 	"context"
 	"errors"
-	"html/template"
 	"net"
 	"strings"
 	"time"
@@ -41,8 +40,11 @@ import (
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/services"
+	"github.com/honeytrap/honeytrap/services/bannerfmt"
 	logging "github.com/op/go-logging"
 )
+
+const readDeadline = 5 // connection deadline in minutes
 
 var (
 	_   = services.Register("smtp", SMTP)
@@ -54,9 +56,11 @@ func SMTP(options ...services.ServicerFunc) services.Servicer {
 
 	s := &Service{
 		Config: Config{
-			BannerFmt: "{{.Host}} {{.Name}} Ready",
-			Host:      "mail.example.org",
-			Name:      "SMTP",
+			bannerData: bannerData{
+				BannerTemplate: "{{.Host}} {{.Name}} Ready",
+				Host:           "remailer.ru",
+				Name:           "SMTP",
+			},
 			srv: &Server{
 				tlsConfig: nil,
 			},
@@ -83,10 +87,12 @@ func SMTP(options ...services.ServicerFunc) services.Servicer {
 		}
 	}
 
-	t, _ := template.New("banner").Parse(s.BannerFmt)
-	var buf strings.Builder
-	t.Execute(&buf, s)
-	s.srv.Banner = buf.String()
+	banner, err := bannerfmt.New(s.BannerTemplate, s.Config.bannerData)
+	if err != nil {
+		log.Error(err.Error())
+	}
+
+	s.srv.Banner = banner.String()
 
 	handler := HandleFunc(func(msg Message) error {
 		s.receiveChan <- msg
@@ -98,12 +104,16 @@ func SMTP(options ...services.ServicerFunc) services.Servicer {
 	return s
 }
 
-type Config struct {
-	BannerFmt string `toml:"banner-fmt"`
+type bannerData struct {
+	BannerTemplate string `toml:"banner-fmt"`
 
 	Host string `toml:"host"`
 
 	Name string `toml:"name"`
+}
+
+type Config struct {
+	bannerData
 
 	srv *Server
 
@@ -123,7 +133,7 @@ func (s *Service) SetChannel(c pushers.Channel) {
 func (s *Service) Handle(ctx context.Context, conn net.Conn) error {
 	defer conn.Close()
 
-	if err := conn.SetReadDeadline(time.Now().Add(time.Minute * 5)); err != nil {
+	if err := conn.SetReadDeadline(time.Now().Add(time.Minute * readDeadline)); err != nil {
 		return errors.New("Can't set ReadDeadline on connection")
 	}
 
@@ -133,9 +143,6 @@ func (s *Service) Handle(ctx context.Context, conn net.Conn) error {
 	go func() {
 		for {
 			select {
-			//case <-time.After(time.Minute * 2):
-			//	log.Error("timeout expired")
-			//	return
 			case message := <-s.receiveChan:
 				header := []event.Option{}
 
