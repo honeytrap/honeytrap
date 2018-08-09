@@ -29,6 +29,7 @@ install:
   - sudo apt-get update -qq
   - sudo apt-get install -y software-properties-common python-software-properties lxc-dev
   - go get -u -v gopkg.in/alecthomas/gometalinter.v2
+  - go get -u -v github.com/antchfx/xmlquery # Used in tests
   - go get -u -v github.com/honeytrap/honeytrap
   - gometalinter.v2 --install
 
