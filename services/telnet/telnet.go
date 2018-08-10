@@ -114,7 +114,7 @@ func (s *telnetService) Handle(ctx context.Context, conn net.Conn) error {
 
 	term := NewTerminal(conn, s.Prompt)
 
-	term.Write([]byte(s.MOTD))
+	term.Write([]byte(s.MOTD + "\n"))
 
 	term.SetPrompt("Username: ")
 	username, err := term.ReadLine()
