@@ -34,19 +34,22 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 
 	"github.com/BurntSushi/toml"
+	"strconv"
 )
 
 type service struct {
 	Name        string `toml:"name"`
 	Description string `toml:"description"`
-	Config      string `toml:"config"`
+	Config      string /* `toml:"config"` */
 	Filename    string
 }
 
@@ -84,6 +87,76 @@ parsing:
 	if len(md.Undecoded()) != 0 {
 		fmt.Fprintf(os.Stderr, "Unrecognized keys: %v\n", md.Undecoded())
 	}
+
+	configMap := make(map[string]interface{})
+	var configStruct *ast.StructType
+	for _, _decl := range file.Decls {
+		decl, ok := _decl.(*ast.GenDecl)
+		if !ok {
+			continue
+		}
+		if decl.Tok != token.TYPE {
+			continue
+		}
+		typeSpec := decl.Specs[0].(*ast.TypeSpec)
+		if !strings.HasSuffix(typeSpec.Name.Name, "Config") {
+			continue
+		}
+		fmt.Printf("Inspecting struct %s.\n", typeSpec.Name.Name)
+		configStruct, ok = typeSpec.Type.(*ast.StructType)
+		if !ok {
+			continue
+		}
+	}
+	if configStruct == nil {
+		panic("No config struct found!")
+	}
+	for _, field := range configStruct.Fields.List {
+		if field.Tag == nil {
+			continue
+		}
+		if len(field.Names) != 1 {
+			panic("Not supported")
+		}
+		if field.Type.(*ast.Ident).Name != "string" {
+			panic("Not supported")
+		}
+		name := field.Names[0].Name
+		tag := reflect.StructTag(strings.Replace(field.Tag.Value, "`", "", -1))
+		tomlTag, tomlOk := tag.Lookup("toml")
+		defaultTag, defaultOk := tag.Lookup("default")
+		if !tomlOk {
+			if !defaultOk {
+				continue
+			} else {
+				panic("Field " + name + "has a default tag, but no toml tag")
+			}
+		}
+		if !defaultOk {
+			panic("No default tag for field " + name)
+			continue
+		}
+		switch field.Type.(*ast.Ident).Name {
+		case "string":
+			configMap[tomlTag] = defaultTag
+		case "int":
+			val, err := strconv.Atoi(defaultTag)
+			if err != nil {
+				panic(err)
+			}
+			configMap[tomlTag] = val
+		default:
+			panic("Type " + field.Type.(*ast.Ident).Name + "is not supported")
+		}
+	}
+
+	buf := new(bytes.Buffer)
+	err = toml.NewEncoder(buf).Encode(configMap)
+	if err != nil {
+		panic(err)
+	}
+	svc.Config = buf.String()
+
 	tmp := struct{}{}
 	_, err = toml.Decode(svc.Config, &tmp)
 	if err != nil {

@@ -31,10 +31,6 @@
 /* Metadata:
 name = "redis"
 description = "The Redis service will simulate a redis server. Currently the INFO command has been implemented."
-config = """
-version="4.0.6"
-os="Linux 4.9.49-moby x86_64"
-"""
 */
 package redis
 
@@ -72,9 +68,9 @@ func REDIS(options ...services.ServicerFunc) services.Servicer {
 }
 
 type redisServiceConfig struct {
-	Version string `toml:"version"`
+	Version string `toml:"version" default:"4.0.6"`
 
-	Os string `toml:"os"`
+	Os string `toml:"os" default:"Linux 4.9.49-moby x86_64"`
 }
 
 type redisService struct {
