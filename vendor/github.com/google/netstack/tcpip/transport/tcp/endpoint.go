@@ -1,6 +1,16 @@
-// Copyright 2016 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2018 Google Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package tcp
 
@@ -40,9 +50,12 @@ const (
 	notifyClose
 	notifyMTUChanged
 	notifyDrain
+	notifyReset
 )
 
 // SACKInfo holds TCP SACK related information for a given endpoint.
+//
+// +stateify savable
 type SACKInfo struct {
 	// Blocks is the maximum number of SACK blocks we track
 	// per endpoint.
@@ -58,6 +71,8 @@ type SACKInfo struct {
 // have concurrent goroutines make calls into the endpoint, they are properly
 // synchronized. The protocol implementation, however, runs in a single
 // goroutine.
+//
+// +stateify savable
 type endpoint struct {
 	// workMu is used to arbitrate which goroutine may perform protocol
 	// work. Only the main protocol goroutine is expected to call Lock() on
@@ -82,6 +97,8 @@ type endpoint struct {
 	//
 	// Once the peer has closed its send side, rcvClosed is set to true
 	// to indicate to users that no more data is coming.
+	//
+	// rcvListMu can be taken after the endpoint mu below.
 	rcvListMu  sync.Mutex
 	rcvList    segmentList
 	rcvClosed  bool
@@ -173,6 +190,10 @@ type endpoint struct {
 	sndWaker      sleep.Waker
 	sndCloseWaker sleep.Waker
 
+	// cc stores the name of the Congestion Control algorithm to use for
+	// this endpoint.
+	cc CongestionControlOption
+
 	// The following are used when a "packet too big" control packet is
 	// received. They are protected by sndBufMu. They are used to
 	// communicate to the main protocol goroutine how many such control
@@ -197,10 +218,6 @@ type endpoint struct {
 	// send newly accepted connections to the endpoint so that they can be
 	// read by Accept() calls.
 	acceptedChan chan *endpoint
-
-	// acceptedEndpoints is only used to save / restore the channel buffer.
-	// FIXME
-	acceptedEndpoints []*endpoint
 
 	// The following are only used from the protocol goroutine, and
 	// therefore don't need locks to protect them.
@@ -249,6 +266,11 @@ func newEndpoint(stack *stack.Stack, netProto tcpip.NetworkProtocolNumber, waite
 	var rs ReceiveBufferSizeOption
 	if err := stack.TransportProtocolOption(ProtocolNumber, &rs); err == nil {
 		e.rcvBufSize = rs.Default
+	}
+
+	var cs CongestionControlOption
+	if err := stack.TransportProtocolOption(ProtocolNumber, &cs); err == nil {
+		e.cc = cs
 	}
 
 	if p := stack.GetTCPProbe(); p != nil {
@@ -403,7 +425,10 @@ func (e *endpoint) Read(*tcpip.FullAddress) (buffer.View, tcpip.ControlMessages,
 	// but has some pending unread data. Also note that a RST being received
 	// would cause the state to become stateError so we should allow the
 	// reads to proceed before returning a ECONNRESET.
-	if s := e.state; s != stateConnected && s != stateClosed && e.rcvBufUsed == 0 {
+	e.rcvListMu.Lock()
+	bufUsed := e.rcvBufUsed
+	if s := e.state; s != stateConnected && s != stateClosed && bufUsed == 0 {
+		e.rcvListMu.Unlock()
 		e.mu.RUnlock()
 		if s == stateError {
 			return buffer.View{}, tcpip.ControlMessages{}, e.hardError
@@ -411,7 +436,6 @@ func (e *endpoint) Read(*tcpip.FullAddress) (buffer.View, tcpip.ControlMessages,
 		return buffer.View{}, tcpip.ControlMessages{}, tcpip.ErrInvalidEndpointState
 	}
 
-	e.rcvListMu.Lock()
 	v, err := e.readLocked()
 	e.rcvListMu.Unlock()
 
@@ -967,7 +991,20 @@ func (e *endpoint) Shutdown(flags tcpip.ShutdownFlags) *tcpip.Error {
 	switch e.state {
 	case stateConnected:
 		// Close for write.
-		if (flags & tcpip.ShutdownWrite) != 0 {
+		if (e.shutdownFlags & tcpip.ShutdownWrite) != 0 {
+			if (e.shutdownFlags & tcpip.ShutdownRead) != 0 {
+				// We're fully closed, if we have unread data we need to abort
+				// the connection with a RST.
+				e.rcvListMu.Lock()
+				rcvBufUsed := e.rcvBufUsed
+				e.rcvListMu.Unlock()
+
+				if rcvBufUsed > 0 {
+					e.notifyProtocolGoroutine(notifyReset)
+					return nil
+				}
+			}
+
 			e.sndBufMu.Lock()
 
 			if e.sndClosed {
@@ -997,7 +1034,7 @@ func (e *endpoint) Shutdown(flags tcpip.ShutdownFlags) *tcpip.Error {
 		}
 
 	default:
-		return tcpip.ErrInvalidEndpointState
+		return tcpip.ErrNotConnected
 	}
 
 	return nil
@@ -1424,6 +1461,20 @@ func (e *endpoint) completeState() stack.TCPEndpointState {
 		MaxPayloadSize:   e.snd.maxPayloadSize,
 		SndWndScale:      e.snd.sndWndScale,
 		MaxSentAck:       e.snd.maxSentAck,
+	}
+
+	if cubic, ok := e.snd.cc.(*cubicState); ok {
+		s.Sender.Cubic = stack.TCPCubicState{
+			WMax:                    cubic.wMax,
+			WLastMax:                cubic.wLastMax,
+			T:                       cubic.t,
+			TimeSinceLastCongestion: time.Since(cubic.t),
+			C:                       cubic.c,
+			K:                       cubic.k,
+			Beta:                    cubic.beta,
+			WC:                      cubic.wC,
+			WEst:                    cubic.wEst,
+		}
 	}
 	return s
 }

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build linux,!arm
+// +build linux
 
 // Package rawfile contains utilities for using the netstack with raw host
 // files on Linux hosts.
@@ -78,11 +78,11 @@ func NonBlockingWrite2(fd int, b1, b2 []byte) *tcpip.Error {
 	iovec := [...]syscall.Iovec{
 		{
 			Base: &b1[0],
-			Len:  uint64(len(b1)),
+			Len:  uint32(len(b1)),
 		},
 		{
 			Base: &b2[0],
-			Len:  uint64(len(b2)),
+			Len:  uint32(len(b2)),
 		},
 	}
 
@@ -105,7 +105,7 @@ func NonBlockingWriteN(fd int, bs ...[]byte) *tcpip.Error {
 		}
 		iovec = append(iovec, syscall.Iovec{
 			Base: &b[0],
-			Len:  uint64(len(b)),
+			Len:  uint32(len(b)),
 		})
 	}
 

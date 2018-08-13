@@ -1,6 +1,16 @@
-// Copyright 2016 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2018 Google Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package udp
 
@@ -15,6 +25,7 @@ import (
 	"github.com/google/netstack/waiter"
 )
 
+// +stateify savable
 type udpPacket struct {
 	udpPacketEntry
 	senderAddress tcpip.FullAddress
@@ -39,6 +50,8 @@ const (
 // between users of the endpoint and the protocol implementation; it is legal to
 // have concurrent goroutines make calls into the endpoint, they are properly
 // synchronized.
+//
+// +stateify savable
 type endpoint struct {
 	// The following fields are initialized at creation time and do not
 	// change throughout the lifetime of the endpoint.
@@ -66,6 +79,9 @@ type endpoint struct {
 	route      stack.Route
 	dstPort    uint16
 	v6only     bool
+
+	// shutdownFlags represent the current shutdown state of the endpoint.
+	shutdownFlags tcpip.ShutdownFlags
 
 	// effectiveNetProtos contains the network protocols actually in use. In
 	// most cases it will only contain "netProto", but in cases like IPv6
@@ -111,7 +127,7 @@ func NewConnectedEndpoint(stack *stack.Stack, r *stack.Route, id stack.Transport
 // associated with it.
 func (e *endpoint) Close() {
 	e.mu.Lock()
-	defer e.mu.Unlock()
+	e.shutdownFlags = tcpip.ShutdownRead | tcpip.ShutdownWrite
 
 	switch e.state {
 	case stateBound, stateConnected:
@@ -132,6 +148,10 @@ func (e *endpoint) Close() {
 
 	// Update the state.
 	e.state = stateClosed
+
+	e.mu.Unlock()
+
+	e.waiterQueue.Notify(waiter.EventHUp | waiter.EventErr | waiter.EventIn | waiter.EventOut)
 }
 
 // Read reads data from the endpoint. This method does not block if
@@ -219,6 +239,11 @@ func (e *endpoint) Write(p tcpip.Payload, opts tcpip.WriteOptions) (uintptr, *tc
 
 	e.mu.RLock()
 	defer e.mu.RUnlock()
+
+	// If we've shutdown with SHUT_WR we are in an invalid state for sending.
+	if e.shutdownFlags&tcpip.ShutdownWrite != 0 {
+		return 0, tcpip.ErrClosedForSend
+	}
 
 	// Prepare for write.
 	for {
@@ -546,12 +571,14 @@ func (*endpoint) ConnectEndpoint(tcpip.Endpoint) *tcpip.Error {
 // Shutdown closes the read and/or write end of the endpoint connection
 // to its peer.
 func (e *endpoint) Shutdown(flags tcpip.ShutdownFlags) *tcpip.Error {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
+	e.mu.Lock()
+	defer e.mu.Unlock()
 
 	if e.state != stateConnected {
 		return tcpip.ErrNotConnected
 	}
+
+	e.shutdownFlags |= flags
 
 	if flags&tcpip.ShutdownRead != 0 {
 		e.rcvMu.Lock()
