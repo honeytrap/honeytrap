@@ -98,7 +98,7 @@ func (hc Backend) run() {
 			messageID := uuid.NewV4()
 
 			bulk = bulk.Add(elastic.NewBulkIndexRequest().
-				Index(hc.Index).
+				Index(hc.index).
 				Type("event").
 				Id(messageID.String()).
 				Doc(doc),
