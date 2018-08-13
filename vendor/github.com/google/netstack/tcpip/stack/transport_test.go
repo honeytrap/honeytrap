@@ -1,6 +1,16 @@
-// Copyright 2016 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2018 Google Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package stack_test
 
@@ -210,7 +220,7 @@ func (f *fakeTransportProtocol) Option(option interface{}) *tcpip.Error {
 
 func TestTransportReceive(t *testing.T) {
 	id, linkEP := channel.New(10, defaultMTU, "")
-	s := stack.New(&tcpip.StdClock{}, []string{"fakeNet"}, []string{"fakeTrans"})
+	s := stack.New([]string{"fakeNet"}, []string{"fakeTrans"}, stack.Options{})
 	if err := s.CreateNIC(1, id); err != nil {
 		t.Fatalf("CreateNIC failed: %v", err)
 	}
@@ -270,7 +280,7 @@ func TestTransportReceive(t *testing.T) {
 
 func TestTransportControlReceive(t *testing.T) {
 	id, linkEP := channel.New(10, defaultMTU, "")
-	s := stack.New(&tcpip.StdClock{}, []string{"fakeNet"}, []string{"fakeTrans"})
+	s := stack.New([]string{"fakeNet"}, []string{"fakeTrans"}, stack.Options{})
 	if err := s.CreateNIC(1, id); err != nil {
 		t.Fatalf("CreateNIC failed: %v", err)
 	}
@@ -336,7 +346,7 @@ func TestTransportControlReceive(t *testing.T) {
 
 func TestTransportSend(t *testing.T) {
 	id, _ := channel.New(10, defaultMTU, "")
-	s := stack.New(&tcpip.StdClock{}, []string{"fakeNet"}, []string{"fakeTrans"})
+	s := stack.New([]string{"fakeNet"}, []string{"fakeTrans"}, stack.Options{})
 	if err := s.CreateNIC(1, id); err != nil {
 		t.Fatalf("CreateNIC failed: %v", err)
 	}
@@ -373,7 +383,7 @@ func TestTransportSend(t *testing.T) {
 }
 
 func TestTransportOptions(t *testing.T) {
-	s := stack.New(&tcpip.StdClock{}, []string{"fakeNet"}, []string{"fakeTrans"})
+	s := stack.New([]string{"fakeNet"}, []string{"fakeTrans"}, stack.Options{})
 
 	// Try an unsupported transport protocol.
 	if err := s.SetTransportProtocolOption(tcpip.TransportProtocolNumber(99999), fakeTransportGoodOption(false)); err != tcpip.ErrUnknownProtocol {

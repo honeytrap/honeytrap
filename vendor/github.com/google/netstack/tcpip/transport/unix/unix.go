@@ -1,6 +1,16 @@
-// Copyright 2016 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2018 Google Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 // Package unix contains the implementation of Unix endpoints.
 package unix
@@ -50,6 +60,8 @@ type CredentialsControlMessage interface {
 }
 
 // A ControlMessages represents a collection of socket control messages.
+//
+// +stateify savable
 type ControlMessages struct {
 	// Rights is a control message containing FDs.
 	Rights RightsControlMessage
@@ -212,7 +224,11 @@ type BoundEndpoint interface {
 	// type that isn't SockStream or SockSeqpacket.
 	BidirectionalConnect(ep ConnectingEndpoint, returnConnect func(Receiver, ConnectedEndpoint)) *tcpip.Error
 
-	// UnidirectionalConnect establishes a write-only connection to a unix endpoint.
+	// UnidirectionalConnect establishes a write-only connection to a unix
+	// endpoint.
+	//
+	// An endpoint which calls UnidirectionalConnect and supports it itself must
+	// not hold its own lock when calling UnidirectionalConnect.
 	//
 	// This method will return tcpip.ErrConnectionRefused on a non-SockDgram
 	// endpoint.
@@ -225,6 +241,8 @@ type BoundEndpoint interface {
 }
 
 // message represents a message passed over a Unix domain socket.
+//
+// +stateify savable
 type message struct {
 	ilist.Entry
 
@@ -296,6 +314,8 @@ type Receiver interface {
 }
 
 // queueReceiver implements Receiver for datagram sockets.
+//
+// +stateify savable
 type queueReceiver struct {
 	readQueue *queue.Queue
 }
@@ -359,6 +379,8 @@ func (q *queueReceiver) RecvMaxQueueSize() int64 {
 func (*queueReceiver) Release() {}
 
 // streamQueueReceiver implements Receiver for stream sockets.
+//
+// +stateify savable
 type streamQueueReceiver struct {
 	queueReceiver
 
@@ -384,14 +406,22 @@ func vecCopy(data [][]byte, buf []byte) (uintptr, [][]byte, []byte) {
 
 // Readable implements Receiver.Readable.
 func (q *streamQueueReceiver) Readable() bool {
+	q.mu.Lock()
+	bl := len(q.buffer)
+	r := q.readQueue.IsReadable()
+	q.mu.Unlock()
 	// We're readable if we have data in our buffer or if the queue receiver is
 	// readable.
-	return len(q.buffer) > 0 || q.readQueue.IsReadable()
+	return bl > 0 || r
 }
 
 // RecvQueuedSize implements Receiver.RecvQueuedSize.
 func (q *streamQueueReceiver) RecvQueuedSize() int64 {
-	return int64(len(q.buffer)) + q.readQueue.QueuedSize()
+	q.mu.Lock()
+	bl := len(q.buffer)
+	qs := q.readQueue.QueuedSize()
+	q.mu.Unlock()
+	return int64(bl) + qs
 }
 
 // RecvMaxQueueSize implements Receiver.RecvMaxQueueSize.
@@ -561,6 +591,7 @@ type ConnectedEndpoint interface {
 	Release()
 }
 
+// +stateify savable
 type connectedEndpoint struct {
 	// endpoint represents the subset of the Endpoint functionality needed by
 	// the connectedEndpoint. It is implemented by both connectionedEndpoint
@@ -653,6 +684,8 @@ func (*connectedEndpoint) Release() {}
 // unix domain socket Endpoint implementations.
 //
 // Not to be used on its own.
+//
+// +stateify savable
 type baseEndpoint struct {
 	*waiter.Queue
 

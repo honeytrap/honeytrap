@@ -1,6 +1,16 @@
-// Copyright 2016 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2018 Google Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 // Package stack provides the glue between networking protocols and the
 // consumers of the networking stack.
@@ -45,6 +55,20 @@ type transportProtocolState struct {
 // TCPProbeFunc is the expected function type for a TCP probe function to be
 // passed to stack.AddTCPProbe.
 type TCPProbeFunc func(s TCPEndpointState)
+
+// TCPCubicState is used to hold a copy of the internal cubic state when the
+// TCPProbeFunc is invoked.
+type TCPCubicState struct {
+	WLastMax                float64
+	WMax                    float64
+	T                       time.Time
+	TimeSinceLastCongestion time.Duration
+	C                       float64
+	K                       float64
+	Beta                    float64
+	WC                      float64
+	WEst                    float64
+}
 
 // TCPEndpointID is the unique 4 tuple that identifies a given endpoint.
 type TCPEndpointID struct {
@@ -170,6 +194,9 @@ type TCPSenderState struct {
 
 	// FastRecovery holds the fast recovery state for the endpoint.
 	FastRecovery TCPFastRecoveryState
+
+	// Cubic holds the state related to CUBIC congestion control.
+	Cubic TCPCubicState
 }
 
 // TCPSACKInfo holds TCP SACK related information for a given TCP endpoint.
@@ -275,6 +302,14 @@ type Stack struct {
 	clock tcpip.Clock
 }
 
+// Options contains optional Stack configuration.
+type Options struct {
+	// Clock is an optional clock source used for timestampping packets.
+	//
+	// If no Clock is specified, the clock source will be time.Now.
+	Clock tcpip.Clock
+}
+
 // New allocates a new networking stack with only the requested networking and
 // transport protocols configured with default options.
 //
@@ -282,7 +317,12 @@ type Stack struct {
 // SetNetworkProtocolOption/SetTransportProtocolOption methods provided by the
 // stack. Please refer to individual protocol implementations as to what options
 // are supported.
-func New(clock tcpip.Clock, network []string, transport []string) *Stack {
+func New(network []string, transport []string, opts Options) *Stack {
+	clock := opts.Clock
+	if clock == nil {
+		clock = &tcpip.StdClock{}
+	}
+
 	s := &Stack{
 		transportProtocols: make(map[tcpip.TransportProtocolNumber]*transportProtocolState),
 		networkProtocols:   make(map[tcpip.NetworkProtocolNumber]NetworkProtocol),
@@ -523,6 +563,12 @@ type NICInfo struct {
 	Name              string
 	LinkAddress       tcpip.LinkAddress
 	ProtocolAddresses []tcpip.ProtocolAddress
+
+	// Flags indicate the state of the NIC.
+	Flags NICStateFlags
+
+	// MTU is the maximum transmission unit.
+	MTU uint32
 }
 
 // NICInfo returns a map of NICIDs to their associated information.
@@ -532,10 +578,18 @@ func (s *Stack) NICInfo() map[tcpip.NICID]NICInfo {
 
 	nics := make(map[tcpip.NICID]NICInfo)
 	for id, nic := range s.nics {
+		flags := NICStateFlags{
+			Up:          true, // Netstack interfaces are always up.
+			Running:     nic.linkEP.IsAttached(),
+			Promiscuous: nic.isPromiscuousMode(),
+			Loopback:    nic.linkEP.Capabilities()&CapabilityLoopback != 0,
+		}
 		nics[id] = NICInfo{
 			Name:              nic.name,
 			LinkAddress:       nic.linkEP.LinkAddress(),
 			ProtocolAddresses: nic.Addresses(),
+			Flags:             flags,
+			MTU:               nic.linkEP.MTU(),
 		}
 	}
 	return nics
@@ -551,27 +605,9 @@ type NICStateFlags struct {
 
 	// Promiscuous indicates whether the interface is in promiscuous mode.
 	Promiscuous bool
-}
 
-// NICFlags returns flags about the state of the NIC. It returns an error if
-// the NIC corresponding to id cannot be found.
-func (s *Stack) NICFlags(id tcpip.NICID) (NICStateFlags, *tcpip.Error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	nic := s.nics[id]
-	if nic == nil {
-		return NICStateFlags{}, tcpip.ErrUnknownNICID
-	}
-
-	ret := NICStateFlags{
-		// Netstack interfaces are always up.
-		Up: true,
-
-		Running:     nic.linkEP.IsAttached(),
-		Promiscuous: nic.promiscuous,
-	}
-	return ret, nil
+	// Loopback indicates whether the interface is a loopback.
+	Loopback bool
 }
 
 // AddAddress adds a new network-layer address to the specified NIC.
@@ -647,7 +683,7 @@ func (s *Stack) FindRoute(id tcpip.NICID, localAddr, remoteAddr tcpip.Address, n
 			remoteAddr = ref.ep.ID().LocalAddress
 		}
 
-		r := makeRoute(netProto, ref.ep.ID().LocalAddress, remoteAddr, ref)
+		r := makeRoute(netProto, ref.ep.ID().LocalAddress, remoteAddr, nic.linkEP.LinkAddress(), ref)
 		r.NextHop = s.routeTable[i].Gateway
 		return r, nil
 	}

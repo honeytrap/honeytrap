@@ -1,6 +1,16 @@
-// Copyright 2016 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2018 Google Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package stack
 
@@ -40,12 +50,13 @@ type Route struct {
 
 // makeRoute initializes a new route. It takes ownership of the provided
 // reference to a network endpoint.
-func makeRoute(netProto tcpip.NetworkProtocolNumber, localAddr, remoteAddr tcpip.Address, ref *referencedNetworkEndpoint) Route {
+func makeRoute(netProto tcpip.NetworkProtocolNumber, localAddr, remoteAddr tcpip.Address, localLinkAddr tcpip.LinkAddress, ref *referencedNetworkEndpoint) Route {
 	return Route{
-		NetProto:      netProto,
-		LocalAddress:  localAddr,
-		RemoteAddress: remoteAddr,
-		ref:           ref,
+		NetProto:         netProto,
+		LocalAddress:     localAddr,
+		LocalLinkAddress: localLinkAddr,
+		RemoteAddress:    remoteAddr,
+		ref:              ref,
 	}
 }
 
@@ -82,6 +93,11 @@ func (r *Route) Resolve(waker *sleep.Waker) *tcpip.Error {
 
 	nextAddr := r.NextHop
 	if nextAddr == "" {
+		// Local link address is already known.
+		if r.RemoteAddress == r.LocalAddress {
+			r.RemoteLinkAddress = r.LocalLinkAddress
+			return nil
+		}
 		nextAddr = r.RemoteAddress
 	}
 	linkAddr, err := r.ref.linkCache.GetLinkAddress(r.ref.nic.ID(), nextAddr, r.LocalAddress, r.NetProto, waker)

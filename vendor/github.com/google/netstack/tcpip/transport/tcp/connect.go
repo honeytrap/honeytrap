@@ -1,6 +1,16 @@
-// Copyright 2016 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2018 Google Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package tcp
 
@@ -822,7 +832,7 @@ func (e *endpoint) protocolMainLoop(handshake bool) *tcpip.Error {
 	var closeTimer *time.Timer
 	var closeWaker sleep.Waker
 
-	defer func() {
+	epilogue := func() {
 		// e.mu is expected to be hold upon entering this section.
 
 		if e.snd != nil {
@@ -843,7 +853,7 @@ func (e *endpoint) protocolMainLoop(handshake bool) *tcpip.Error {
 
 		// When the protocol loop exits we should wake up our waiters.
 		e.waiterQueue.Notify(waiter.EventHUp | waiter.EventErr | waiter.EventIn | waiter.EventOut)
-	}()
+	}
 
 	if handshake {
 		// This is an active connection, so we must initiate the 3-way
@@ -861,7 +871,8 @@ func (e *endpoint) protocolMainLoop(handshake bool) *tcpip.Error {
 			e.mu.Lock()
 			e.state = stateError
 			e.hardError = err
-			// Lock released in deferred statement.
+			// Lock released below.
+			epilogue()
 
 			return err
 		}
@@ -887,9 +898,6 @@ func (e *endpoint) protocolMainLoop(handshake bool) *tcpip.Error {
 	}
 
 	e.waiterQueue.Notify(waiter.EventOut)
-
-	// When the protocol loop exits we should wake up our waiters with EventHUp.
-	defer e.waiterQueue.Notify(waiter.EventHUp)
 
 	// Set up the functions that will be called when the main protocol loop
 	// wakes up.
@@ -946,6 +954,11 @@ func (e *endpoint) protocolMainLoop(handshake bool) *tcpip.Error {
 					e.snd.updateMaxPayloadSize(mtu, count)
 				}
 
+				if n&notifyReset != 0 {
+					e.mu.Lock()
+					e.resetConnectionLocked(tcpip.ErrConnectionAborted)
+					e.mu.Unlock()
+				}
 				if n&notifyClose != 0 && closeTimer == nil {
 					// Reset the connection 3 seconds after the
 					// endpoint has been closed.
@@ -1005,15 +1018,20 @@ func (e *endpoint) protocolMainLoop(handshake bool) *tcpip.Error {
 		if err := funcs[v].f(); err != nil {
 			e.mu.Lock()
 			e.resetConnectionLocked(err)
-			// Lock released in deferred statement.
+			// Lock released below.
+			epilogue()
+
 			return nil
 		}
 	}
 
 	// Mark endpoint as closed.
 	e.mu.Lock()
-	e.state = stateClosed
-	// Lock released in deferred statement.
+	if e.state != stateError {
+		e.state = stateClosed
+	}
+	// Lock released below.
+	epilogue()
 
 	return nil
 }
