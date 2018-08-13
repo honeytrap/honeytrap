@@ -190,6 +190,31 @@ var ethereumMethods = map[string]func(map[string]interface{}) map[string]interfa
 			"result":  true,
 		}
 	},
+	"eth_getTransactionCount": func(m map[string]interface{}) map[string]interface{} {
+		return map[string]interface{}{
+			"id":      m["id"],
+			"jsonrpc": m["jsonrpc"],
+			"result":  "0x1",
+		}
+	},
+	"rpc_modules": func(m map[string]interface{}) map[string]interface{} {
+		return map[string]interface{}{
+			"id":      m["id"],
+			"jsonrpc": m["jsonrpc"],
+			"result": map[string]string{
+				"admin":    "1.0",
+				"db":       "1.0",
+				"debug":    "1.0",
+				"eth":      "1.0",
+				"miner":    "1.0",
+				"net":      "1.0",
+				"personal": "1.0",
+				"shh":      "1.0",
+				"txpool":   "1.0",
+				"web3":     "1.0",
+			},
+		}
+	},
 }
 
 // Todo: implement CanHandle

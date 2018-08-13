@@ -38,6 +38,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/op/go-logging"
+	"fmt"
 )
 
 var log = logging.MustGetLogger("honeytrap:config")
@@ -80,7 +81,10 @@ func (c *Config) Load(r io.Reader) error {
 	}
 	c.MetaData = md
 
-	logBackends := []logging.Backend{}
+	if len(c.Logging) == 0 {
+		fmt.Println("Warning: no logging backends configured. Add one to view log messages.")
+	}
+	var logBackends []logging.Backend
 	for _, log := range c.Logging {
 		var err error
 

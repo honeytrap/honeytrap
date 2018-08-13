@@ -63,9 +63,11 @@ import (
 	_ "github.com/honeytrap/honeytrap/services/ethereum"
 	_ "github.com/honeytrap/honeytrap/services/ftp"
 	_ "github.com/honeytrap/honeytrap/services/ipp"
+	_ "github.com/honeytrap/honeytrap/services/ldap"
 	_ "github.com/honeytrap/honeytrap/services/redis"
 	_ "github.com/honeytrap/honeytrap/services/smtp"
 	_ "github.com/honeytrap/honeytrap/services/ssh"
+	_ "github.com/honeytrap/honeytrap/services/telnet"
 	_ "github.com/honeytrap/honeytrap/services/vnc"
 
 	"github.com/honeytrap/honeytrap/listener"
@@ -83,6 +85,7 @@ import (
 	"github.com/honeytrap/honeytrap/server/profiler"
 
 	_ "github.com/honeytrap/honeytrap/pushers/console"
+	_ "github.com/honeytrap/honeytrap/pushers/dshield"
 	_ "github.com/honeytrap/honeytrap/pushers/elasticsearch"
 	_ "github.com/honeytrap/honeytrap/pushers/file"
 	_ "github.com/honeytrap/honeytrap/pushers/kafka"
@@ -481,7 +484,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		// individual configuration per service
 		options := []services.ServicerFunc{
 			services.WithChannel(hc.bus),
-			services.WithConfig(s),
+			services.WithConfig(s, hc.config),
 		}
 
 		if x.Director == "" {
@@ -570,10 +573,15 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			for _, serviceName := range x.Services {
 				ptr, ok := serviceList[serviceName]
 				if !ok {
-					log.Error("Unknown service '%s' in ports", serviceName)
+					log.Error("Unknown service '%s' for port %s", serviceName, portStr)
+					continue
 				}
 				servicePtrs = append(servicePtrs, ptr)
 				isServiceUsed[serviceName] = true
+			}
+			if len(servicePtrs) == 0 {
+				log.Errorf("Port %s has no valid services, it won't be listened on", portStr)
+				continue
 			}
 			switch proto {
 			case "tcp":

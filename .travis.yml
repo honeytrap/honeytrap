@@ -3,7 +3,6 @@ language: go
 go:
   - master
   - tip
-  - 1.9.x
   - 1.10.x
 
 sudo: required

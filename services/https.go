@@ -34,7 +34,6 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"fmt"
@@ -42,6 +41,9 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	"github.com/honeytrap/honeytrap/event"
+	tls "github.com/honeytrap/honeytrap/services/ja3/crypto/tls"
 
 	"github.com/honeytrap/honeytrap/pushers"
 )
@@ -82,6 +84,10 @@ type httpsService struct {
 	m sync.Mutex
 
 	cache map[string]*tls.Certificate
+}
+
+func (s *httpsService) SetChannel(c pushers.Channel) {
+	s.c = c
 }
 
 func (s *httpsService) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
@@ -143,14 +149,35 @@ func (s *httpsService) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 }
 
 func (s *httpsService) Handle(ctx context.Context, conn net.Conn) error {
+	ja3Digest := ""
+	serverName := ""
+
 	tlsConn := tls.Server(conn, &tls.Config{
-		Certificates:   []tls.Certificate{},
-		GetCertificate: s.getCertificate,
+		Certificates: []tls.Certificate{},
+		GetCertificate: func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+			ja3Digest = hello.JA3Digest()
+			serverName = hello.ServerName
+			return s.getCertificate(hello)
+		},
 	})
 
 	if err := tlsConn.Handshake(); err != nil {
+		s.c.Send(event.New(
+			EventOptions,
+			event.Category("https"),
+			event.Type("handshake-failed"),
+			event.SourceAddr(conn.RemoteAddr()),
+			event.DestinationAddr(conn.LocalAddr()),
+			event.Custom("https.ja3-digest", ja3Digest),
+			event.Custom("https.server-name", serverName),
+		))
+
 		return err
 	}
 
-	return s.httpService.Handle(ctx, tlsConn)
+	return s.httpService.Handle(ctx, event.WithConn(
+		tlsConn,
+		event.Custom("https.ja3-digest", ja3Digest),
+		event.Custom("https.server-name", serverName),
+	))
 }

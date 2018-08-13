@@ -31,10 +31,3 @@
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
 package event
-
-import "net"
-
-func Conn(conn net.Conn) Option {
-	return func(m Event) {
-	}
-}

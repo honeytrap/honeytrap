@@ -40,6 +40,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/vishvananda/netlink"
 
+	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/listener"
 	"github.com/honeytrap/honeytrap/pushers"
 
@@ -315,6 +316,13 @@ func (l *netstackListener) Start(ctx context.Context) error {
 					if err != nil {
 						log.Error("Error accepting tcp connection: %s", err.Error())
 						continue
+					}
+
+					if gc, ok := conn.(*gonet.Conn); !ok {
+					} else if irs, err := gc.IRS(); err != nil {
+					} else {
+						conn = event.WithConn(conn, event.Custom("irs", irs))
+
 					}
 
 					l.ch <- conn

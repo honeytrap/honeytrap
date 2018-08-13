@@ -22,6 +22,9 @@
 
 See our documentation on [docs.honeytrap.io](http://docs.honeytrap.io/docs/home/).
 
+## Community
+Join the [honeytrap-users](https://groups.google.com/forum/#!forum/honeytrap-users) mailing list to discuss all things Honeytrap.
+
 ## Creators
 
 [DutchSec](https://dutchsec.com)’s mission is to safeguard the evolution of technology and therewith humanity. By delivering  groundbreaking and solid, yet affordable security solutions we make sure no people, companies or institutes are harmed while using technology. We aim to make cyber security available for everyone.
