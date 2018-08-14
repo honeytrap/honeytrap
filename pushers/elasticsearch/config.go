@@ -28,6 +28,8 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
+
+// Package elasticsearch contains the event channel for indexing events to Elasticsearch
 package elasticsearch
 
 import (
@@ -43,7 +45,9 @@ import (
 )
 
 var (
-	ErrElasticsearchNoURL   = errors.New("Elasticsearch url has not been set")
+	// ErrElasticsearchNoURL will be returned if no url has been set in configuration
+	ErrElasticsearchNoURL = errors.New("Elasticsearch url has not been set")
+	// ErrElasticsearchNoIndex will be returned if no path has been set in the url which is being used as index
 	ErrElasticsearchNoIndex = errors.New("Elasticsearch index has not been set")
 )
 
@@ -51,20 +55,23 @@ var (
 type Config struct {
 	options []elastic.ClientOptionFunc
 
-	Index string
+	// URL configures the Elasticsearch server and index to send messages to
+	URL *url.URL `toml:"url"`
+
+	// Insecure configures if the client should not verify tls configuration
+	InsecureSkipVerify bool `toml:"insecure"`
+
+	// Sniff defines if the client should find all nodes
+	Sniff bool `toml:"sniff"`
+
+	index string
 }
 
 // UnmarshalTOML deserializes the giving data into the config.
 func (c *Config) UnmarshalTOML(p interface{}) error {
+	tlsConfig := &tls.Config{}
+
 	c.options = []elastic.ClientOptionFunc{
-		elastic.SetHttpClient(&http.Client{
-			Transport: &http.Transport{
-				MaxIdleConnsPerHost: 5,
-				TLSClientConfig:     &tls.Config{},
-			},
-			Timeout: time.Duration(20) * time.Second,
-		}),
-		elastic.SetSniff(false),
 		elastic.SetRetrier(&Retrier{}),
 	}
 
@@ -74,6 +81,7 @@ func (c *Config) UnmarshalTOML(p interface{}) error {
 	if !ok {
 		return ErrElasticsearchNoURL
 	}
+
 	s, _ := v.(string)
 	u, err := url.Parse(s)
 	if err != nil {
@@ -84,13 +92,16 @@ func (c *Config) UnmarshalTOML(p interface{}) error {
 		return ErrElasticsearchNoIndex
 	}
 
-	c.Index = parts[1]
+	c.index = parts[1]
 
 	// remove path
 	u.Path = ""
-	c.options = append(c.options, elastic.SetURL(u.String()))
+	c.URL = u
 
-	log.Debugf("Using URL: %s with index: %s", u.String(), c.Index)
+	c.options = append(c.options, elastic.SetURL(u.String()))
+	c.options = append(c.options, elastic.SetScheme(u.Scheme))
+
+	log.Debugf("Using URL: %s with index: %s", u.String(), c.index)
 
 	if username, ok := data["username"]; !ok {
 	} else if password := data["password"]; !ok {
@@ -101,6 +112,34 @@ func (c *Config) UnmarshalTOML(p interface{}) error {
 
 		log.Debugf("Using authentication with username: %s and password.", username)
 	}
+
+	c.InsecureSkipVerify = false
+
+	if v, ok := data["insecure"]; !ok {
+	} else if b, ok := v.(bool); !ok {
+	} else {
+		c.InsecureSkipVerify = b
+	}
+
+	tlsConfig.InsecureSkipVerify = c.InsecureSkipVerify
+
+	c.Sniff = false
+
+	if v, ok := data["sniff"]; !ok {
+	} else if b, ok := v.(bool); !ok {
+	} else {
+		c.Sniff = b
+	}
+
+	c.options = append(c.options, elastic.SetSniff(c.Sniff))
+
+	c.options = append(c.options, elastic.SetHttpClient(&http.Client{
+		Transport: &http.Transport{
+			MaxIdleConnsPerHost: 5,
+			TLSClientConfig:     tlsConfig,
+		},
+		Timeout: time.Duration(20) * time.Second,
+	}))
 
 	return nil
 }

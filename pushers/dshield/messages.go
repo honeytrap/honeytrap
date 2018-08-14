@@ -1,6 +1,6 @@
 /*
 * Honeytrap
-* Copyright (C) 2016-2018 DutchSec (https://dutchsec.com/)
+* Copyright (C) 2016-2017 DutchSec (https://dutchsec.com/)
 *
 * This program is free software; you can redistribute it and/or modify it under
 * the terms of the GNU Affero General Public License version 3 as published by the
@@ -28,56 +28,79 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package ldap
+package dshield
 
-import ber "github.com/go-asn1-ber/asn1-ber"
+import (
+	"encoding/json"
 
-//CatchAll handles the not implemented LDAP requests
-type CatchAll struct {
-	isLogin func() bool
+	"time"
+)
+
+type Submit struct {
+	AuthHeader string `json:"authheader"`
+
+	Type string           `json:"type"`
+	Logs []json.Marshaler `json:"logs"`
 }
 
-func (c *CatchAll) handle(p *ber.Packet, el eventLog) []*ber.Packet {
+type HTTPEvent struct {
+	Date time.Time
 
-	if p == nil || len(p.Children) < 2 {
-		return nil
+	SourceIP        string
+	DestinationIP   string
+	SourcePort      int
+	DestinationPort int
+
+	Method    string
+	UserAgent string
+	URL       string
+}
+
+func (e *HTTPEvent) MarshalJSON() ([]byte, error) {
+	headers := []string{}
+
+	val := map[string]interface{}{
+		"type":      "httprequest",
+		"time":      e.Date.Unix(),
+		"sip":       e.SourceIP,
+		"dip":       e.DestinationIP,
+		"sport":     e.SourcePort,
+		"dport":     e.DestinationPort,
+		"headers":   headers,
+		"method":    e.Method,
+		"url":       e.URL,
+		"useragent": e.UserAgent,
 	}
 
-	el["ldap.payload"] = p.Bytes()
+	return json.Marshal(val)
+}
 
-	opcode := int(p.Children[1].Tag)
+type SSHEvent struct {
+	Date time.Time
 
-	reth := &resultCodeHandler{
-		resultCode: ResSuccess,
+	SourceIP        string
+	DestinationIP   string
+	SourcePort      int
+	DestinationPort int
+
+	Username string
+	Password string
+}
+
+func (e *SSHEvent) MarshalJSON() ([]byte, error) {
+	val := map[string]interface{}{
+		"type": "sshlogin",
+
+		"time": e.Date.Unix(),
+
+		"sip":   e.SourceIP,
+		"dip":   e.DestinationIP,
+		"sport": e.SourcePort,
+		"dport": e.DestinationPort,
+
+		"username": e.Username,
+		"password": e.Password,
 	}
 
-	if !c.isLogin() {
-		// Not authenticated
-		reth.resultCode = ResUnwillingToPerform
-	}
-
-	switch opcode {
-	case AppModifyRequest:
-		el["ldap.request-type"] = "modify"
-		reth.replyTypeID = AppModifyResponse
-	case AppAddRequest:
-		el["ldap.request-type"] = "add"
-		reth.replyTypeID = AppAddResponse
-	case AppDelRequest:
-		el["ldap.request-type"] = "delete"
-		reth.replyTypeID = AppDelResponse
-	case AppModifyDNRequest:
-		el["ldap.request-type"] = "modify-dn"
-		reth.replyTypeID = AppModifyDNResponse
-	case AppCompareRequest:
-		el["ldap.request-type"] = "compare"
-		reth.replyTypeID = AppCompareResponse
-	case AppAbandonRequest:
-		el["ldap.request-type"] = "abandon"
-		return nil // This needs no answer
-	default:
-		//el["ldap.request-type"] = opcode
-		//reth.replyTypeID = 1 // protocolError
-	}
-	return reth.handle(p, el)
+	return json.Marshal(val)
 }
