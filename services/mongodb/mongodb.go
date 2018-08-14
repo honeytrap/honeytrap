@@ -45,6 +45,7 @@ import (
 
 /*
 
+
 [service.mongodb]
 type="mongodb"
 version="3.4.2"
@@ -68,13 +69,20 @@ func Mongodb(options ...services.ServicerFunc) services.Servicer {
 		mongodbServiceConfig: mongodbServiceConfig{
 			Version: "3.4.2",
 			Dbs: []Db{
-				{"admin", "32768", "false"},
-				{"config", "12288", "false"},
-				{"local", "122880", "false"},
+				{"admin", "32768", "false", []User{
+					{"user", "pencil", "9QWKl3mbUxIkOafHoI1nbQ=="},
+				},
+				},
+
+				// {"config", "12288", "false"},
+				// {"local", "122880", "false"},
 			},
+			authActivated: false,
+			logged:        false,
+			itercounts:    10000,
 		},
 	}
-	// TODO check the config
+	// TODO parse/check the config
 
 	for _, o := range options {
 		o(s)
@@ -83,17 +91,64 @@ func Mongodb(options ...services.ServicerFunc) services.Servicer {
 }
 
 type mongodbServiceConfig struct {
-	Version string `toml:"version"`
-	Dbs     `toml:"dbs"`
+	Version     string `toml:"version"`
+	Dbs         `toml:"dbs"`
+	clAddr      net.Addr
+	versionBoth string
+	port        int
+	logged      bool
+	username    string
+	Client
+	authActivated bool
+	itercounts    int
 }
+
+type Dbs []Db
 
 type Db struct {
 	Name       string
 	SizeOnDisk string
 	Empty      string
+	Users
 }
 
-type Dbs []Db
+type Client struct {
+	username string
+	clNonce  string
+	clProof  string
+	svNonce  string
+	svProof  string
+	cbNonce  string
+	password string
+	salt     string
+}
+
+type Users []User
+
+type User struct {
+	username string
+	password string
+	salt     string
+}
+
+type Client struct {
+	username string
+	clNonce  string
+	clProof  string
+	svNonce  string
+	svProof  string
+	cbNonce  string
+	password string
+	salt     string
+}
+
+type Users []User
+
+type User struct {
+	username string
+	password string
+	salt     string
+}
 
 type mongodbService struct {
 	mongodbServiceConfig
@@ -109,9 +164,11 @@ func (s *mongodbService) Handle(ctx context.Context, conn net.Conn) error {
 	defer conn.Close()
 
 	br := bufio.NewReader(conn)
-	port := conn.RemoteAddr().(*net.TCPAddr).Port
+	s.port = conn.RemoteAddr().(*net.TCPAddr).Port
+	s.clAddr = conn.RemoteAddr()
 
 	for {
+
 		buff := make([]byte, 1024)
 		n, err := br.Read(buff[:])
 		if err == io.EOF {
@@ -122,7 +179,7 @@ func (s *mongodbService) Handle(ctx context.Context, conn net.Conn) error {
 		bb := bytes.NewBuffer(buff[:n])
 		payload := bb.Bytes()
 
-		response, ev := s.reqHandler(bb, port)
+		response, ev := s.reqHandler(bb)
 
 		s.ch.Send(event.New(
 			services.EventOptions,
@@ -133,9 +190,41 @@ func (s *mongodbService) Handle(ctx context.Context, conn net.Conn) error {
 			event.Payload(payload),
 			event.CopyFrom(ev),
 		))
-
 		conn.Write(response)
 		br.Reset(conn)
 	}
 	return nil
 }
+
+/*
+
+"user + ':mongo:' + pencil"
+
+Ho+Vgk7qvUOKUwuWLIWg4l/9SraGMHEE
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+*/
