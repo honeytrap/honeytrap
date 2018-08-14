@@ -71,13 +71,11 @@ func Mongodb(options ...services.ServicerFunc) services.Servicer {
 			Dbs: []Db{
 				{"admin", "32768", "false", []User{
 					{"user", "pencil", "9QWKl3mbUxIkOafHoI1nbQ=="},
+					{"admin", "pass", "ZFuiFie3hfoiaofpkenlzm=="}},
 				},
-				},
-
-				// {"config", "12288", "false"},
-				// {"local", "122880", "false"},
+				{"config", "12288", "false", []User{}},
 			},
-			authActivated: false,
+			authActivated: true,
 			logged:        false,
 			itercounts:    10000,
 		},
@@ -101,6 +99,7 @@ type mongodbServiceConfig struct {
 	Client
 	authActivated bool
 	itercounts    int
+	responseTo    int
 }
 
 type Dbs []Db
@@ -129,6 +128,7 @@ type User struct {
 	username string
 	password string
 	salt     string
+	// roles TODO
 }
 
 type mongodbService struct {
@@ -149,7 +149,6 @@ func (s *mongodbService) Handle(ctx context.Context, conn net.Conn) error {
 	s.clAddr = conn.RemoteAddr()
 
 	for {
-
 		buff := make([]byte, 1024)
 		n, err := br.Read(buff[:])
 		if err == io.EOF {
@@ -161,6 +160,8 @@ func (s *mongodbService) Handle(ctx context.Context, conn net.Conn) error {
 		payload := bb.Bytes()
 
 		response, ev := s.reqHandler(bb)
+
+		s.responseTo++
 
 		s.ch.Send(event.New(
 			services.EventOptions,

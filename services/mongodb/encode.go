@@ -46,7 +46,7 @@ func (s *mongodbService) encodeResponse(md *MsgData, msg interface{}) []byte {
 		return s.encodeOpMsgMsg(md, msg)
 	}
 	log.Error("Error when encoding response: opCode unknown: %d", md.mh.OpCode)
-	return []byte("")
+	return []byte("") //TODO
 }
 
 func (s *mongodbService) encodeOpReplyMsg(md *MsgData, msg interface{}) []byte {
@@ -253,18 +253,11 @@ func startupTime() string {
 func (s *mongodbService) encodeHeader(md *MsgData, aw *bytes.Buffer, msg interface{}) []byte {
 
 	str := aw.String()
-	id := encodeIntLittleEndian(md.mh.RequestID, 4)
-	idd := encodeIntLittleEndian(md.mh.RequestID+1, 4)
 	aw.Reset()
-
-	switch s.versionBoth { //TODO
-	case "34":
-		aw.Write(id)
-	case "36":
-		aw.Write(idd)
-	}
-
+	id := encodeIntLittleEndian(md.mh.RequestID, 4)
+	aw.Write(encodeIntLittleEndian(int32(s.responseTo), 4))
 	aw.Write(id)
+
 	if md.mh.OpCode == 2004 {
 		aw.Write(encodeIntLittleEndian(int32(1), 4))
 	} else {

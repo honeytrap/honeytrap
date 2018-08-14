@@ -40,10 +40,10 @@ type MsgHeader struct {
 }
 
 type MsgData struct {
-	mh   MsgHeader
-	rq   interface{}
-	port string
-	cmd  string
+	mh  MsgHeader
+	rq  interface{}
+	cmd string
+	// data []interface{}
 }
 
 type dbSizeStruct struct {

@@ -46,6 +46,7 @@ func decodeMsgHeader(bb *bytes.Buffer, md *MsgData) {
 	}
 }
 
+// TODO check services/decoder
 func decodeInt32(bb *bytes.Buffer) int32 {
 	i := make([]byte, 4)
 	_, err := bb.Read(i[:4])

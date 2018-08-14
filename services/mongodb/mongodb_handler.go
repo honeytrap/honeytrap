@@ -32,8 +32,6 @@ package mongodb
 
 import (
 	"bytes"
-	"strconv"
-	"strings"
 )
 
 var mapCommands = map[string]func(*mongodbService, *MsgData) []byte{
@@ -56,15 +54,15 @@ var mapCommands = map[string]func(*mongodbService, *MsgData) []byte{
 func (s *mongodbService) reqHandler(bb *bytes.Buffer) ([]byte, map[string]interface{}) {
 
 	md := &MsgData{}
-
 	decodeMsgHeader(bb, md)
+	// TODO If problem decoding msgheader?
 
 	ev := make(eventLog)
 
 	switch md.mh.OpCode {
 	case 2004:
 		md.rq = parseOpQuery(bb, ev)
-		s.findSmallestVersion(md)
+		// s.versionBoth = s.findSmallestVersion(md) //TODO
 		cmd := md.rq.(*OpQueryMsg).query.elements[0]
 		switch cmd.(type) {
 		case doubleStruct:
@@ -88,36 +86,37 @@ func (s *mongodbService) reqHandler(bb *bytes.Buffer) ([]byte, map[string]interf
 	return s.respHandler(md), ev
 }
 
-func (s *mongodbService) findSmallestVersion(md *MsgData) {
-	//TODO: Fieldbyname
-	svV := strings.Split(s.Version, ".")
-	if len(md.rq.(*OpQueryMsg).query.elements) == 1 {
-		s.versionBoth = strings.Join(svV[:2], "")
-	} else {
+// func (s *mongodbService) findSmallestVersion(md *MsgData) string {
 
-		clientV := md.rq.(*OpQueryMsg).query.elements[1].(documentStruct).query.elements[1].(documentStruct).query.elements[1].(stringStruct).value
-		clV := strings.Split(clientV, ".")
+// 	svV := strings.Split(s.Version, ".")
 
-		bothV := svV // incase it's ==
+// 	//TODO: if there is no version in the msg ? / if not a queryMsg ?
 
-		for i := range svV {
-			x, _ := strconv.Atoi(svV[i])
-			y, _ := strconv.Atoi(clV[i])
+// 	if len(md.rq.(*OpQueryMsg).query.elements) == 1 {
+// 		return strings.Join(svV[:2], "")
+// 	}
 
-			if x == y {
-				continue
-			}
-			if x < y {
-				bothV = svV
-				break
-			}
-			bothV = clV
-			break
-		}
+// 	clientV := md.rq.(*OpQueryMsg).query.elements[1].(documentStruct).query.elements[1].(documentStruct).query.elements[1].(stringStruct).value
+// 	clV := strings.Split(clientV, ".")
 
-		s.versionBoth = strings.Join(bothV[:2], "")
-	}
-}
+// 	bothV := svV // incase it's ==
+
+// 	for i := range svV {
+// 		x, _ := strconv.Atoi(svV[i])
+// 		y, _ := strconv.Atoi(clV[i])
+
+// 		if x == y {
+// 			continue
+// 		}
+// 		if x < y {
+// 			bothV = svV
+// 			break
+// 		}
+// 		bothV = clV
+// 		break
+// 	}
+// 	return strings.Join(bothV[:2], "")
+// }
 
 func (s *mongodbService) respHandler(md *MsgData) []byte {
 	// fn, ok := mapCommands[strings.ToLower(md.cmd)]

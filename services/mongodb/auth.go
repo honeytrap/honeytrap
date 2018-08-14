@@ -33,9 +33,11 @@ package mongodb
 import (
 	"bytes"
 	"crypto/hmac"
+	"crypto/md5"
 	"crypto/sha1"
 	"encoding/base64"
-	"fmt"
+	"encoding/hex"
+	"strconv"
 )
 
 func fromBase64(src []byte) []byte {
@@ -52,20 +54,19 @@ func createServerSignature(serverKey, authMsg []byte) []byte {
 	mac := hmac.New(sha1.New, serverKey)
 	mac.Write([]byte(authMsg))
 	serverSign := mac.Sum(nil)
-
 	serverSignature := make([]byte, base64.StdEncoding.EncodedLen(len(serverSign)))
 	base64.StdEncoding.Encode(serverSignature, serverSign)
 	return serverSignature
 }
 
-func createSaltPassword(salt []byte, iterCount int, pass string) []byte {
+func (s *mongodbService) createSaltPassword(salt []byte, pass string) []byte {
 	mac := hmac.New(sha1.New, []byte(pass))
 	mac.Write(salt)
 	mac.Write([]byte{0, 0, 0, 1})
 	ui := mac.Sum(nil)
 	hi := make([]byte, len(ui))
 	copy(hi, ui)
-	for i := 1; i < iterCount; i++ {
+	for i := 1; i < s.itercounts; i++ {
 		mac.Reset()
 		mac.Write(ui)
 		mac.Sum(ui[:0])
@@ -82,8 +83,8 @@ func createClientSignature(storedKey, authMsg []byte) []byte {
 	return mac.Sum(nil)
 }
 
-func createAuthMsg(username, clnonce, combinedNonce, salt string, itercount int) []byte {
-	return []byte("n=" + username + ",r=" + clnonce + ",r=" + combinedNonce + ",s=" + salt + ",i=" + string(itercount) + ",c=biws,r=" + combinedNonce)
+func createAuthMsg(username, clnonce, combinedNonce, salt, itercount string) []byte {
+	return []byte("n=" + username + ",r=" + clnonce + ",r=" + combinedNonce + ",s=" + salt + ",i=" + itercount + ",c=biws,r=" + combinedNonce)
 }
 
 func createHashKey(clientKey []byte) []byte {
@@ -99,9 +100,6 @@ func createHmacKey(key, message []byte) []byte {
 }
 
 func xor(clientSignature, clientProof []byte) []byte {
-	if len(clientSignature) != len(clientProof) {
-		fmt.Println("Warning: xor lengths are differing...", clientSignature, clientProof)
-	}
 	n := len(clientSignature)
 	if len(clientProof) < n {
 		n = len(clientProof)
@@ -110,7 +108,6 @@ func xor(clientSignature, clientProof []byte) []byte {
 	for i := 0; i < n; i++ {
 		out[i] = clientSignature[i] ^ clientProof[i]
 	}
-
 	return createHashKey(out)
 }
 
@@ -119,13 +116,22 @@ func checkClientProof(clientSignature, clientProof, storedKey []byte) bool {
 	return bytes.Equal(temp, storedKey)
 }
 
+func (s *mongodbService) createPassword() string {
+	md5 := md5.New()
+	md5.Write([]byte(s.Client.username + ":mongo:" + s.Client.password))
+	return hex.EncodeToString(md5.Sum(nil))
+}
+
 func (s *mongodbService) scram() ([]byte, bool) {
-	itercount := s.itercounts
-	saltedPass := createSaltPassword([]byte(s.Client.salt), itercount, s.Client.password)
-	authMsg := createAuthMsg(s.Client.username, s.Client.clNonce, s.Client.cbNonce, s.Client.salt, itercount)
+
+	salt := fromBase64([]byte(s.Client.salt))
+	password := s.createPassword() //TODO
+	saltedPass := s.createSaltPassword(salt, password)
+	authMsg := createAuthMsg(s.Client.username, s.Client.clNonce, s.Client.cbNonce, s.Client.salt, strconv.Itoa(s.itercounts))
 	clientKey := createHmacKey(saltedPass, []byte("Client Key"))
 	serverKey := createHmacKey(saltedPass, []byte("Server Key"))
 	storedKey := createHashKey(clientKey)
+
 	clientProof := fromBase64([]byte(s.Client.clProof))
 	clientSignature := createClientSignature(storedKey, []byte(authMsg))
 

@@ -54,25 +54,26 @@ func (s *mongodbService) isMasterMsg(md *MsgData) []byte {
 		booleanStruct{0x08, "readOnly", false},
 		doubleStruct{0x01, "ok", 61503}}
 
-	elements36 := []elem{
-		booleanStruct{0x08, "ismaster", true},
-		int32Struct{0x10, "maxBsonObjectSize", 16777216},
-		int32Struct{0x10, "maxMessageSizeBytes", 48000000},
-		int32Struct{0x10, "maxWriteBatchSize", 100000},
-		datetimeStruct{0x09, "localTime", encodelocalTime()},
-		int32Struct{0x10, "logicalSessionTimeoutMinutes", 30},
-		int32Struct{0x10, "minWireVersion", 0},
-		int32Struct{0x10, "maxWireVersion", 6},
-		booleanStruct{0x08, "readOnly", false},
-		doubleStruct{0x01, "ok", 61503}}
+	// elements36 := []elem{
+	// 	booleanStruct{0x08, "ismaster", true},
+	// 	int32Struct{0x10, "maxBsonObjectSize", 16777216},
+	// 	int32Struct{0x10, "maxMessageSizeBytes", 48000000},
+	// 	int32Struct{0x10, "maxWriteBatchSize", 100000},
+	// 	datetimeStruct{0x09, "localTime", encodelocalTime()},
+	// 	int32Struct{0x10, "logicalSessionTimeoutMinutes", 30},
+	// 	int32Struct{0x10, "minWireVersion", 0},
+	// 	int32Struct{0x10, "maxWireVersion", 6},
+	// 	booleanStruct{0x08, "readOnly", false},
+	// 	doubleStruct{0x01, "ok", 61503}}
 
-	switch s.versionBoth {
-	case "34":
-		return s.encodeResponse(md, elements34)
-	case "36":
-		return s.encodeResponse(md, elements36)
-	}
-	return []byte("") //TODO
+	// switch s.versionBoth {
+	// case "34":
+	// 	return s.encodeResponse(md, elements34)
+	// case "36":
+	// 	return s.encodeResponse(md, elements36)
+	// }
+
+	return s.encodeResponse(md, elements34)
 }
 
 func (s *mongodbService) uriMsg(md *MsgData) []byte {
@@ -80,17 +81,17 @@ func (s *mongodbService) uriMsg(md *MsgData) []byte {
 		stringStruct{0x02, "you", 0, s.clAddr.String()},
 		doubleStruct{0x01, "ok", 61503}}
 
-	elements36 := []elem{
-		stringStruct{0x02, "you", 0, s.clAddr.String()}}
+	// elements36 := []elem{
+	// 	stringStruct{0x02, "you", 0, s.clAddr.String()}}
 
-	switch s.versionBoth {
-	case "34":
-		return s.encodeResponse(md, elements34)
-	case "36":
-		return s.encodeResponse(md, elements36)
-	}
+	// switch s.versionBoth {
+	// case "34":
+	// 	return s.encodeResponse(md, elements34)
+	// case "36":
+	// 	return s.encodeResponse(md, elements36)
+	// }
 
-	return []byte("")
+	return s.encodeResponse(md, elements34)
 }
 
 func (s *mongodbService) buildInfoMsg(md *MsgData) []byte {
@@ -381,7 +382,7 @@ func (s *mongodbService) finishAuthShake(md *MsgData) []byte {
 func (s *mongodbService) errorMsgNotAuthorized(md *MsgData, msg string) []byte {
 	elements := []elem{
 		doubleStruct{0x01, "ok", 0},
-		stringStruct{0x02, "errmsg", 0, fmt.Sprintf("not authorized on %s to execute command { %s }", md.rq.(OpCommandMsg).database, msg)},
+		stringStruct{0x02, "errmsg", 0, fmt.Sprintf("not authorized on %s to execute command { %s }", md.rq.(*OpCommandMsg).database, msg)},
 		int32Struct{0x10, "code", 13},
 		stringStruct{0x02, "codeName", 0, "Unauthorized"}}
 	return s.encodeResponse(md, elements)
@@ -402,5 +403,15 @@ func (s *mongodbService) errorMsgBadCmd(md *MsgData) []byte {
 		stringStruct{0x02, "errmsg", 0, fmt.Sprintf("no such command: '%s', bad cmd: '{ %s: 1.0}'", md.cmd, md.cmd)},
 		int32Struct{0x10, "code", 59},
 		stringStruct{0x02, "codeName", 0, "CommandNotFound"}}
+	return s.encodeResponse(md, elements)
+}
+
+/////////////////
+func (s *mongodbService) errorMsg(md *MsgData, errmsg, codeName string, code int32) []byte {
+	elements := []elem{
+		doubleStruct{0x01, "ok", 0},
+		stringStruct{0x02, "errmsg", 0, errmsg},
+		int32Struct{0x10, "code", code},
+		stringStruct{0x02, "codeName", 0, codeName}}
 	return s.encodeResponse(md, elements)
 }
