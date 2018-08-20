@@ -138,19 +138,21 @@ func WithToken() OptionFn {
 
 	return func(h *Honeytrap) error {
 		h.token = uid
+
 		p := h.dataDir
 		p = path.Join(p, "token")
 
 		if _, err := os.Stat(p); os.IsNotExist(err) {
 			ioutil.WriteFile(p, []byte(uid), 0600)
-		} else if err != nil {
-			// other error
+		} else if err != nil /* other error */ {
 			return err
-		} else if data, err := ioutil.ReadFile(p); err == nil {
-			uid = string(data)
+		} else if data, err := ioutil.ReadFile(p); err != nil {
+			return err
 		} else {
-			return err
+			uid = string(data)
 		}
+
+		h.token = uid
 		return nil
 	}
 }
