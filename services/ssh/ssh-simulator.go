@@ -91,7 +91,10 @@ func Simulator(options ...services.ServicerFunc) services.Servicer {
 	}
 
 	for _, o := range options {
-		o(service)
+		err := o(service)
+		if err != nil {
+			log.Error("Error calling servicerfunc in ssh-service: %s", err)
+		}
 	}
 
 	return service

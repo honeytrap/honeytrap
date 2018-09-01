@@ -105,7 +105,6 @@ func (l *luaScripter) Init(service string) error {
 		return err
 	}
 
-	// TODO: Load basic lua functions from shared context
 	l.connections = map[string]*luaConn{}
 	l.scripts[service] = map[string]string{}
 	l.canHandleStates[service] = map[string]*lua.LState{}

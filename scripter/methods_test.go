@@ -32,7 +32,6 @@ package scripter
 
 import (
 	"fmt"
-	"github.com/BurntSushi/toml"
 	"github.com/honeytrap/honeytrap/pushers"
 	"reflect"
 	"testing"
