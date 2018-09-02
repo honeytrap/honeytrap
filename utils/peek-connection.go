@@ -28,29 +28,31 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package server
+package utils
 
 import (
 	"net"
 	"sync"
 )
 
-func PeekConnection(conn net.Conn) *peekConnection {
-	return &peekConnection{
+func PeekConnection(conn net.Conn) *PeekConn {
+	return &PeekConn{
 		conn,
 		[]byte{},
 		sync.Mutex{},
 	}
 }
 
-type peekConnection struct {
+// PeekConn struct, allows peeking a connection by writing peeked content to a buffer. Returning this content first when reading
+type PeekConn struct {
 	net.Conn
 
 	buffer []byte
 	m      sync.Mutex
 }
 
-func (pc *peekConnection) Peek(p []byte) (int, error) {
+// Peek writes the buffer from the connection, returning the amount of bytes written
+func (pc *PeekConn) Peek(p []byte) (int, error) {
 	pc.m.Lock()
 	defer pc.m.Unlock()
 
@@ -60,7 +62,8 @@ func (pc *peekConnection) Peek(p []byte) (int, error) {
 	return n, err
 }
 
-func (pc *peekConnection) Read(p []byte) (n int, err error) {
+// Read writes the buffer from the connection, first writing bytes that have been peeked
+func (pc *PeekConn) Read(p []byte) (n int, err error) {
 	pc.m.Lock()
 	defer pc.m.Unlock()
 

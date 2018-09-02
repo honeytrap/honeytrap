@@ -78,6 +78,11 @@ func (c *connection) readPump() {
 			break
 		}
 
+		response, err := c.web.handleRequest(message)
+		if response != nil {
+			c.write(websocket.TextMessage, response)
+		}
+
 		_ = message
 	}
 }
