@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y ca-certificates
 COPY --from=builder /go/bin/app /honeytrap/honeytrap
 
 RUN mkdir /config /data
-ADD config-docker.toml /config/config.toml
+ADD https://raw.githubusercontent.com/honeytrap/honeytrap-configs/master/server-standalone/config-server-standalone.toml /config/config.toml
 
 ENTRYPOINT ["/honeytrap/honeytrap", "--config", "/config/config.toml", "--data", "/data/"]
 
