@@ -670,6 +670,10 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			}
 
 			incoming <- conn
+
+			// in case of goroutine starvation
+			// with many connection and single procs
+			runtime.Gosched()
 		}
 	}()
 
