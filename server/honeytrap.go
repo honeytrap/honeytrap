@@ -274,19 +274,24 @@ func ToAddr(input string) (net.Addr, string, int, error) {
 	}
 
 	proto := parts[0]
-	portStr := parts[1]
-	portUint16, err := strconv.ParseUint(portStr, 10, 16)
+
+	host, port, err := net.SplitHostPort(parts[1])
+	if err != nil {
+		port = parts[1]
+	}
+
+	portUint16, err := strconv.ParseUint(port, 10, 16)
 	if err != nil {
 		return nil, "", 0, fmt.Errorf("error parsing port value: %s", err.Error())
 	}
-	port := int(portUint16)
+
 	switch proto {
 	case "tcp":
-		addr, err := net.ResolveTCPAddr("tcp", ":"+portStr)
-		return addr, proto, port, err
+		addr, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(host, port))
+		return addr, proto, int(portUint16), err
 	case "udp":
-		addr, err := net.ResolveUDPAddr("udp", ":"+portStr)
-		return addr, proto, port, err
+		addr, err := net.ResolveUDPAddr("udp", net.JoinHostPort(host, port))
+		return addr, proto, int(portUint16), err
 	default:
 		return nil, "", 0, fmt.Errorf("unknown protocol %s", proto)
 	}
