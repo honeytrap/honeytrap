@@ -270,7 +270,7 @@ func ToAddr(input string) (net.Addr, string, int, error) {
 	parts := strings.Split(input, "/")
 
 	if len(parts) != 2 {
-		return nil, "", 0, fmt.Errorf("wrong format (needs to be \"protocol/port\")")
+		return nil, "", 0, fmt.Errorf("wrong format (needs to be \"protocol/port\" or \"protocol/ip:port\")")
 	}
 
 	proto := parts[0]
