@@ -7,11 +7,12 @@ ARG LDFLAGS=""
 RUN go build -tags="" -ldflags="$(go run scripts/gen-ldflags.go)" -o /go/bin/app github.com/honeytrap/honeytrap
 
 FROM debian
-RUN apt-get update && apt-get install -y ca-certificates
+RUN apt-get update && apt-get install -y ca-certificates curl
 COPY --from=builder /go/bin/app /honeytrap/honeytrap
 
 RUN mkdir /config /data
-ADD config-docker.toml /config/config.toml
+
+RUN curl -s -o /config/config.toml https://raw.githubusercontent.com/honeytrap/honeytrap-configs/master/server-standalone/config-server-standalone.toml
 
 ENTRYPOINT ["/honeytrap/honeytrap", "--config", "/config/config.toml", "--data", "/data/"]
 
