@@ -27,51 +27,31 @@
 * Honeytrap" logo and retain the original copyright notice. If the display of the
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
- */
-package services
+*/
+package storers
 
-import (
-	"bufio"
-	"context"
-	"net"
+import "github.com/honeytrap/honeytrap/event"
 
-	"github.com/honeytrap/honeytrap/event"
-	"github.com/honeytrap/honeytrap/pushers"
-)
-
-// Dummy is a placeholder
-func Dummy(options ...ServicerFunc) Servicer {
-	s := &dummyService{}
-	for _, o := range options {
-		o(s)
-	}
-	return s
+type StoredFile struct {
+	Reference string
+	Backend string
 }
 
-type dummyService struct {
-	c pushers.Channel
+func (f *StoredFile) ToMap() map[string]interface{} {
+	out := make(map[string]interface{})
+	out["reference"] = f.Reference
+	out["backend"] = f.Backend
+	return out
 }
 
-func (s *dummyService) SetChannel(c pushers.Channel) {
-	s.c = c
+func (f *StoredFile) ToEvent() event.Event {
+	var out event.Event
+	out.Store("reference", f.Reference)
+	out.Store("backend", f.Backend)
+	return out
 }
 
-func (s *dummyService) Handle(ctx context.Context, conn net.Conn) error {
-	b := bufio.NewReader(conn)
-	for {
-		line, err := b.ReadBytes('\n')
-		if err != nil { // EOF, or worse
-			break
-		}
-
-		s.c.Send(event.New(
-			SensorLow,
-			event.Category("echo"),
-			event.Payload([]byte(line)),
-		))
-
-		conn.Write(line)
-	}
-
-	return nil
+type Storer interface {
+	Push([]byte) StoredFile
+	Fetch(StoredFile) ([]byte, error)
 }

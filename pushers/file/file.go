@@ -46,6 +46,7 @@ import (
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/op/go-logging"
+	"github.com/honeytrap/honeytrap/storers"
 )
 
 var (
@@ -108,6 +109,7 @@ type FileBackend struct {
 	request chan map[string]interface{}
 	closer  chan struct{}
 	wg      sync.WaitGroup
+	storers.Storer
 }
 
 // Wait calls the internal waiter.
@@ -133,6 +135,16 @@ func (f *FileBackend) Send(message event.Event) {
 	})
 
 	f.request <- mp
+}
+
+// Must be called as a goroutine in order to be non-blocking
+func (f *FileBackend) SendFile(file []byte) {
+	ref := f.Storer.Push(file)
+	f.request <- ref.ToMap()
+}
+
+func (f *FileBackend) SetStorer(storer storers.Storer) {
+	f.Storer = storer
 }
 
 // syncWrites startups the channel procedure to listen for new writes to giving file.

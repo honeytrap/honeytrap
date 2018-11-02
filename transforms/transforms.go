@@ -28,47 +28,71 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package eventbus
+package transforms
 
 import (
+	"fmt"
 	"github.com/honeytrap/honeytrap/event"
+	"github.com/honeytrap/honeytrap/plugins"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/storers"
 )
 
-// EventBus defines a structure which provides a pubsub bus where message.Events
-// are sent along it's wires for delivery
-type EventBus struct {
-	subscribers []pushers.Channel
+type transformChannel struct {
+	destination pushers.Channel
+	fn          TransformFunc
 }
 
-// NewEventBus returns a new instance of a EventBus.
-func New() *EventBus {
-	return &EventBus{}
+func (c transformChannel) Send(input event.Event) {
+	c.fn(input, c.destination.Send)
 }
 
-// Subscribe adds the giving channel to the list of subscribers for the giving bus.
-func (eb *EventBus) Subscribe(channel pushers.Channel) error {
-	eb.subscribers = append(eb.subscribers, channel)
-	return nil
+func (c transformChannel) SendFile(arg []byte) {
+	// File transforms are currently not supported, and they will work transparently
+	c.destination.SendFile(arg)
 }
 
-// Send deliverers the slice of messages to all subscribers.
-func (eb *EventBus) Send(e event.Event) {
-	for _, subscriber := range eb.subscribers {
-		subscriber.Send(e)
+func (c transformChannel) SetStorer(storer storers.Storer) {
+	c.destination.SetStorer(storer)
+}
+
+func Transform(dest pushers.Channel, fn TransformFunc) pushers.Channel {
+	return transformChannel{destination: dest, fn: fn}
+}
+
+type TransformFunc func(e event.Event, send func(event.Event))
+
+var staticTransforms = make(map[string]TransformFunc)
+
+// Registers a static transform.
+func Register(name string, fn TransformFunc) int {
+	staticTransforms[name] = fn
+	// The return value is unused, but it allows for `var _ = Register("name", handler)`
+	return 0
+}
+
+// Gets a static or dynamic transform, giving priority to static ones.
+func Get(name, folder string) (TransformFunc, error) {
+	staticPl, ok := staticTransforms[name]
+	if ok {
+		return staticPl, nil
 	}
+
+	// todo: add Lua support (issue #272)
+	sym, found, err := plugins.Get(name, "Transform", folder)
+	if !found {
+		return nil, fmt.Errorf("Transform %s not found", name)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return sym.(func() TransformFunc)(), nil
 }
 
-// SendFile delivers the file to all subscribers.
-func (eb *EventBus) SendFile(file []byte) {
-	for _, subscriber := range eb.subscribers {
-		subscriber.SendFile(file)
+func MustGet(name, folder string) TransformFunc {
+	out, err := Get(name, folder)
+	if err != nil {
+		panic(err.Error())
 	}
-}
-
-func (eb *EventBus) SetStorer(storer storers.Storer) {
-	for _, subscriber := range eb.subscribers {
-		subscriber.SetStorer(storer)
-	}
+	return out
 }

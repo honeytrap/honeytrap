@@ -28,23 +28,42 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package pushers
+package plugins
 
 import (
-	"github.com/honeytrap/honeytrap/event"
-	"github.com/honeytrap/honeytrap/storers"
+	"fmt"
+	"os"
+	"path"
+	"plugin"
 )
 
-func MustDummy(...func(Channel) error) Channel {
-	return &dummyChannel{}
+func Get(name, symName, folder string) (sym interface{}, found bool, e error) {
+	filename := path.Join(folder, name+".so")
+	if _, err := os.Stat(filename); err != nil {
+		e = fmt.Errorf("Couldn't find dynamic plugin: %s", err.Error())
+		return
+	}
+	found = true
+	dynamicPl, err := plugin.Open(filename)
+	if err != nil {
+		e = fmt.Errorf("Couldn't load dynamic plugin: %s", err.Error())
+		return
+	}
+	sym, err = dynamicPl.Lookup(symName)
+	if err != nil {
+		e = fmt.Errorf("Couldn't lookup symbol \"%s\": %s", symName, err.Error())
+		return
+	}
+	return
 }
 
-func Dummy(...func(Channel) error) (Channel, error) {
-	return &dummyChannel{}, nil
+func MustGet(name, symName, folder string) interface{} {
+	out, found, err := Get(name, symName, folder)
+	if !found {
+		panic(fmt.Errorf("Plugin %s not found", name))
+	}
+	if err != nil {
+		panic(err.Error())
+	}
+	return out
 }
-
-type dummyChannel struct { }
-
-func (dc *dummyChannel) Send(event.Event) { }
-func (dc *dummyChannel) SendFile([]byte) { }
-func (dc *dummyChannel) SetStorer(storer storers.Storer) { }

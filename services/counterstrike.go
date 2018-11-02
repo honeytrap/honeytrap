@@ -127,7 +127,6 @@ func (s *counterStrikeService) Handle(ctx context.Context, conn net.Conn) error 
 		s.ch.Send(event.New(
 			EventOptions,
 			event.Category("counterstrike"),
-			event.Protocol(conn.RemoteAddr().Network()),
 			event.Type("request"),
 			event.SourceAddr(conn.RemoteAddr()),
 			event.DestinationAddr(conn.LocalAddr()),
@@ -141,7 +140,6 @@ func (s *counterStrikeService) Handle(ctx context.Context, conn net.Conn) error 
 		s.ch.Send(event.New(
 			EventOptions,
 			event.Category("counterstrike"),
-			event.Protocol(conn.RemoteAddr().Network()),
 			event.Type("request"),
 			event.SourceAddr(conn.RemoteAddr()),
 			event.DestinationAddr(conn.LocalAddr()),
@@ -153,7 +151,6 @@ func (s *counterStrikeService) Handle(ctx context.Context, conn net.Conn) error 
 		s.ch.Send(event.New(
 			EventOptions,
 			event.Category("counterstrike"),
-			event.Protocol(conn.RemoteAddr().Network()),
 			event.Type("request"),
 			event.SourceAddr(conn.RemoteAddr()),
 			event.DestinationAddr(conn.LocalAddr()),
@@ -165,7 +162,6 @@ func (s *counterStrikeService) Handle(ctx context.Context, conn net.Conn) error 
 		s.ch.Send(event.New(
 			EventOptions,
 			event.Category("counterstrike"),
-			event.Protocol(conn.RemoteAddr().Network()),
 			event.Type("request"),
 			event.SourceAddr(conn.RemoteAddr()),
 			event.DestinationAddr(conn.LocalAddr()),
@@ -177,7 +173,6 @@ func (s *counterStrikeService) Handle(ctx context.Context, conn net.Conn) error 
 		s.ch.Send(event.New(
 			EventOptions,
 			event.Category("counterstrike"),
-			event.Protocol(conn.RemoteAddr().Network()),
 			event.Type("request"),
 			event.SourceAddr(conn.RemoteAddr()),
 			event.DestinationAddr(conn.LocalAddr()),
