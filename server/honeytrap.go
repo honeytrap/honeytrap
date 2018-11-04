@@ -440,6 +440,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		} else if d, err := directorFunc(
 			director.WithChannel(hc.bus),
 			director.WithConfig(s),
+			director.WithContext(ctx),
 		); err != nil {
 			log.Fatalf("Error initializing director %s(%s): %s", key, x.Type, err)
 		} else {
@@ -648,6 +649,8 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			log.Info("Stopping honeytrap")
+			time.Sleep(2 * time.Second)
 			return
 		case conn := <-incoming:
 			go hc.handle(conn)

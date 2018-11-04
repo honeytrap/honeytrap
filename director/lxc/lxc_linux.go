@@ -33,6 +33,7 @@
 package lxc
 
 import (
+	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -65,6 +66,7 @@ func New(options ...func(director.Director) error) (director.Director, error) {
 }
 
 type lxcDirector struct {
+	ctx      context.Context
 	template string
 	eb       pushers.Channel
 	cache    *sync.Map // map[string]*lxcContainer
@@ -72,6 +74,10 @@ type lxcDirector struct {
 
 func (d *lxcDirector) SetChannel(eb pushers.Channel) {
 	d.eb = eb
+}
+
+func (d *lxcDirector) SetContext(ctx context.Context) {
+	d.ctx = ctx
 }
 
 func (d *lxcDirector) Dial(conn net.Conn) (net.Conn, error) {
@@ -106,7 +112,7 @@ func (d *lxcDirector) Dial(conn net.Conn) (net.Conn, error) {
 	}
 
 	// Housekeeper only runs in Running containers, so start it always
-	go c.(*lxcContainer).housekeeper()
+	go c.(*lxcContainer).housekeeper(d.ctx)
 
 	if ta, ok := conn.LocalAddr().(*net.TCPAddr); ok {
 		connection, err := c.(*lxcContainer).Dial("tcp", ta.Port)
@@ -161,25 +167,30 @@ func (d *lxcDirector) newContainer(name string, template string) (*lxcContainer,
 
 // housekeeper handles the needed process of handling internal logic
 // in maintaining the provided lxc.Container.
-func (c *lxcContainer) housekeeper() {
+func (c *lxcContainer) housekeeper(ctx context.Context) {
 	// container lifetime function
 	log.Infof("Housekeeper (%s) started.", c.name)
 	defer log.Infof("Housekeeper (%s) stopped.", c.name)
 
 	for {
-		time.Sleep(time.Duration(c.Delays.HousekeeperDelay))
-
-		if c.isStopped() {
-			continue
-		}
-
-		if time.Since(c.idle) > time.Duration(c.Delays.StopDelay) && c.isFrozen() {
-			log.Debugf("LxcContainer %s: idle for %s, stopping container", c.name, time.Now().Sub(c.idle).String())
+		select {
+		case <-ctx.Done():
+			log.Debugf("LxcContainer %s: stopping", c.name)
 			c.c.Stop()
 			return
-		} else if time.Since(c.idle) > time.Duration(c.Delays.FreezeDelay) && c.isRunning() {
-			log.Debugf("LxcContainer %s: idle for %s, freezing container", c.name, time.Now().Sub(c.idle).String())
-			c.c.Freeze()
+		case <-time.After(time.Duration(c.Delays.HousekeeperDelay)):
+			if c.isStopped() {
+				continue
+			}
+
+			if time.Since(c.idle) > time.Duration(c.Delays.StopDelay) && c.isFrozen() {
+				log.Debugf("LxcContainer %s: idle for %s, stopping container", c.name, time.Now().Sub(c.idle).String())
+				c.c.Stop()
+				return
+			} else if time.Since(c.idle) > time.Duration(c.Delays.FreezeDelay) && c.isRunning() {
+				log.Debugf("LxcContainer %s: idle for %s, freezing container", c.name, time.Now().Sub(c.idle).String())
+				c.c.Freeze()
+			}
 		}
 	}
 }
