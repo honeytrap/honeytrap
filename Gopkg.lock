@@ -73,6 +73,14 @@
   version = "v3.9.0"
 
 [[projects]]
+  branch = "master"
+  digest = "1:8b89317cd6e0b00797c2aa4a4f3d64e58768007d753499b502f28755982a4c18"
+  name = "github.com/dutchcoders/gobus"
+  packages = ["."]
+  pruneopts = ""
+  revision = "ece5a7810d96387052e8e60fd4d9998b5b8cdb38"
+
+[[projects]]
   digest = "1:f714fa0ab4449a2fe13d156446ac1c1e16bc85334e9be320d42bf8bee362ba45"
   name = "github.com/eapache/go-resiliency"
   packages = ["breaker"]
@@ -483,6 +491,7 @@
     "github.com/dgraph-io/badger",
     "github.com/dgraph-io/badger/options",
     "github.com/dimfeld/httptreemux",
+    "github.com/dutchcoders/gobus",
     "github.com/elazarl/go-bindata-assetfs",
     "github.com/fatih/color",
     "github.com/fuyufjh/splunk-hec-go",
