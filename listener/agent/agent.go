@@ -38,9 +38,11 @@ import (
 	"net"
 	"runtime"
 
+	bus "github.com/dutchcoders/gobus"
 	"github.com/fatih/color"
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/listener"
+	"github.com/honeytrap/honeytrap/messages"
 	"github.com/mimoo/disco/libdisco"
 
 	logging "github.com/op/go-logging"
@@ -120,6 +122,24 @@ func (al *agentListener) serv(c *conn2) {
 
 	log.Infof(color.YellowString("Agent connected (version=%s, commitid=%s, token=%s)...", version, shortCommitID, token))
 	defer log.Infof(color.YellowString("Agent disconnected"))
+
+	bus.Emit("agent-connect", &messages.AgentConnect{
+		Agent: &messages.Agent{
+			Version:       version,
+			ShortCommitID: shortCommitID,
+			Token:         token,
+			RemoteAddr:    c.RemoteAddr().String(),
+		},
+	})
+
+	defer bus.Emit("agent-disconnect", &messages.AgentDisconnect{
+		Agent: &messages.Agent{
+			Version:       version,
+			ShortCommitID: shortCommitID,
+			Token:         token,
+			RemoteAddr:    c.RemoteAddr().String(),
+		},
+	})
 
 	c.send(HandshakeResponse{
 		al.Addresses,
@@ -224,6 +244,15 @@ func (al *agentListener) serv(c *conn2) {
 			conn.Close()
 		case *Ping:
 			log.Debugf("Received ping from agent: %s", c.RemoteAddr())
+
+			bus.Emit("agent-ping", messages.AgentPing{
+				Agent: &messages.Agent{
+					Version:       version,
+					ShortCommitID: shortCommitID,
+					Token:         token,
+					RemoteAddr:    c.RemoteAddr().String(),
+				},
+			})
 		}
 	}
 }

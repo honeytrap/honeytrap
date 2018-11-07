@@ -51,6 +51,7 @@ import (
 	"github.com/honeytrap/honeytrap/director"
 	_ "github.com/honeytrap/honeytrap/director/forward"
 	_ "github.com/honeytrap/honeytrap/director/lxc"
+
 	// _ "github.com/honeytrap/honeytrap/director/qemu"
 	// Import your directors here.
 
@@ -401,6 +402,11 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			isChannelUsed[key] = false
 		}
 	}
+
+	// subscribe default to global bus
+	// maybe we can rewrite pushers / channels to use global bus instead
+	bc := pushers.NewBusChannel()
+	hc.bus.Subscribe(bc)
 
 	for _, s := range hc.config.Filters {
 		x := struct {
