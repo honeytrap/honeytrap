@@ -120,7 +120,7 @@ func (sl *socketListener) Start(ctx context.Context) error {
 
 					sl.ch <- &listener.DummyUDPConn{
 						Buffer: buf[:n],
-						Laddr:  ua,
+						Laddr:  l.LocalAddr(),
 						Raddr:  raddr,
 						Fn:     l.WriteToUDP,
 					}

@@ -38,7 +38,7 @@ import (
 type DummyUDPConn struct {
 	Buffer []byte
 
-	Laddr *net.UDPAddr
+	Laddr net.Addr
 	Raddr *net.UDPAddr
 
 	Fn func(b []byte, addr *net.UDPAddr) (int, error)
