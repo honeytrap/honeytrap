@@ -512,14 +512,7 @@ func (t *Terminal) handleKey(key rune) (line string, ok bool) {
 		t.maxLine = 0
 	case keyEnter:
 		t.moveCursorToPos(len(t.line))
-		//t.queue([]rune("\r\n"))
-		line = string(t.line)
-		ok = true
-		t.line = t.line[:0]
-		t.pos = 0
-		t.cursorX = 0
-		t.cursorY = 0
-		t.maxLine = 0
+		ok = false
 	case keyDeleteWord:
 		// Delete zero or more spaces and then one or more characters.
 		t.eraseNPreviousChars(t.countToLeftWord())
