@@ -1,4 +1,4 @@
-// Copyright 2018 Google Inc.
+// Copyright 2018 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,6 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
+// +build linux
 
 // This sample creates a stack with TCP and IPv4 protocols on top of a TUN
 // device, and connects to a peer. Similar to "nc <address> <port>". While the
@@ -78,7 +80,7 @@ func writer(ch chan struct{}, ep tcpip.Endpoint) {
 
 		v.CapLength(n)
 		for len(v) > 0 {
-			n, err := ep.Write(tcpip.SlicePayload(v), tcpip.WriteOptions{})
+			n, _, err := ep.Write(tcpip.SlicePayload(v), tcpip.WriteOptions{})
 			if err != nil {
 				fmt.Println("Write failed:", err)
 				return

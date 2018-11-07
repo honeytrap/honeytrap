@@ -1,4 +1,4 @@
-// Copyright 2018 Google Inc.
+// Copyright 2018 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -366,11 +366,6 @@ func (e *endpoint) protocolListenLoop(rcvWnd seqnum.Size) *tcpip.Error {
 		e.mu.Lock()
 		e.state = stateClosed
 
-		// Notify waiters that the endpoint is shutdown.
-		e.mu.Unlock()
-		e.waiterQueue.Notify(waiter.EventIn | waiter.EventOut)
-		e.mu.Lock()
-
 		// Do cleanup if needed.
 		e.completeWorkerLocked()
 
@@ -378,6 +373,9 @@ func (e *endpoint) protocolListenLoop(rcvWnd seqnum.Size) *tcpip.Error {
 			close(e.drainDone)
 		}
 		e.mu.Unlock()
+
+		// Notify waiters that the endpoint is shutdown.
+		e.waiterQueue.Notify(waiter.EventIn | waiter.EventOut)
 	}()
 
 	e.mu.Lock()

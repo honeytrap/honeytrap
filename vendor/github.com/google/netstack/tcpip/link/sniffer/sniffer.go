@@ -1,4 +1,4 @@
-// Copyright 2018 Google Inc.
+// Copyright 2018 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,7 +32,6 @@ import (
 	"github.com/google/netstack/tcpip"
 	"github.com/google/netstack/tcpip/buffer"
 	"github.com/google/netstack/tcpip/header"
-	"github.com/google/netstack/tcpip/link/rawfile"
 	"github.com/google/netstack/tcpip/stack"
 	"log"
 )
@@ -117,32 +116,38 @@ func NewWithFile(lower tcpip.LinkEndpointID, file *os.File, snapLen uint32) (tcp
 // DeliverNetworkPacket implements the stack.NetworkDispatcher interface. It is
 // called by the link-layer endpoint being wrapped when a packet arrives, and
 // logs the packet before forwarding to the actual dispatcher.
-func (e *endpoint) DeliverNetworkPacket(linkEP stack.LinkEndpoint, remoteLinkAddr tcpip.LinkAddress, protocol tcpip.NetworkProtocolNumber, vv *buffer.VectorisedView) {
+func (e *endpoint) DeliverNetworkPacket(linkEP stack.LinkEndpoint, remoteLinkAddr, localLinkAddr tcpip.LinkAddress, protocol tcpip.NetworkProtocolNumber, vv buffer.VectorisedView) {
 	if atomic.LoadUint32(&LogPackets) == 1 && e.file == nil {
-		LogPacket("recv", protocol, vv.First(), nil)
+		logPacket("recv", protocol, vv.First())
 	}
 	if e.file != nil && atomic.LoadUint32(&LogPacketsToFile) == 1 {
 		vs := vv.Views()
-		bs := make([][]byte, 1, 1+len(vs))
-		var length int
+		length := vv.Size()
+		if length > int(e.maxPCAPLen) {
+			length = int(e.maxPCAPLen)
+		}
+
+		buf := bytes.NewBuffer(make([]byte, 0, pcapPacketHeaderLen+length))
+		if err := binary.Write(buf, binary.BigEndian, newPCAPPacketHeader(uint32(length), uint32(vv.Size()))); err != nil {
+			panic(err)
+		}
 		for _, v := range vs {
-			if length+len(v) > int(e.maxPCAPLen) {
-				l := int(e.maxPCAPLen) - length
-				bs = append(bs, []byte(v)[:l])
-				length += l
+			if length == 0 {
 				break
 			}
-			bs = append(bs, []byte(v))
-			length += len(v)
+			if len(v) > length {
+				v = v[:length]
+			}
+			if _, err := buf.Write([]byte(v)); err != nil {
+				panic(err)
+			}
+			length -= len(v)
 		}
-		buf := bytes.NewBuffer(make([]byte, 0, pcapPacketHeaderLen))
-		binary.Write(buf, binary.BigEndian, newPCAPPacketHeader(uint32(length), uint32(vv.Size())))
-		bs[0] = buf.Bytes()
-		if err := rawfile.NonBlockingWriteN(int(e.file.Fd()), bs...); err != nil {
+		if _, err := e.file.Write(buf.Bytes()); err != nil {
 			panic(err)
 		}
 	}
-	e.dispatcher.DeliverNetworkPacket(e, remoteLinkAddr, protocol, vv)
+	e.dispatcher.DeliverNetworkPacket(e, remoteLinkAddr, localLinkAddr, protocol, vv)
 }
 
 // Attach implements the stack.LinkEndpoint interface. It saves the dispatcher
@@ -183,34 +188,51 @@ func (e *endpoint) LinkAddress() tcpip.LinkAddress {
 // WritePacket implements the stack.LinkEndpoint interface. It is called by
 // higher-level protocols to write packets; it just logs the packet and forwards
 // the request to the lower endpoint.
-func (e *endpoint) WritePacket(r *stack.Route, hdr *buffer.Prependable, payload buffer.View, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
+func (e *endpoint) WritePacket(r *stack.Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
 	if atomic.LoadUint32(&LogPackets) == 1 && e.file == nil {
-		LogPacket("send", protocol, hdr.UsedBytes(), payload)
+		logPacket("send", protocol, hdr.View())
 	}
 	if e.file != nil && atomic.LoadUint32(&LogPacketsToFile) == 1 {
-		bs := [][]byte{nil, hdr.UsedBytes(), payload}
-		var length int
-
-		for i, b := range bs[1:] {
-			if rem := int(e.maxPCAPLen) - length; len(b) > rem {
-				b = b[:rem]
-			}
-			bs[i+1] = b
-			length += len(b)
+		hdrBuf := hdr.View()
+		length := len(hdrBuf) + payload.Size()
+		if length > int(e.maxPCAPLen) {
+			length = int(e.maxPCAPLen)
 		}
 
-		buf := bytes.NewBuffer(make([]byte, 0, pcapPacketHeaderLen))
-		binary.Write(buf, binary.BigEndian, newPCAPPacketHeader(uint32(length), uint32(hdr.UsedLength()+len(payload))))
-		bs[0] = buf.Bytes()
-		if err := rawfile.NonBlockingWriteN(int(e.file.Fd()), bs...); err != nil {
+		buf := bytes.NewBuffer(make([]byte, 0, pcapPacketHeaderLen+length))
+		if err := binary.Write(buf, binary.BigEndian, newPCAPPacketHeader(uint32(length), uint32(len(hdrBuf)+payload.Size()))); err != nil {
+			panic(err)
+		}
+		if len(hdrBuf) > length {
+			hdrBuf = hdrBuf[:length]
+		}
+		if _, err := buf.Write(hdrBuf); err != nil {
+			panic(err)
+		}
+		length -= len(hdrBuf)
+		if length > 0 {
+			for _, v := range payload.Views() {
+				if len(v) > length {
+					v = v[:length]
+				}
+				n, err := buf.Write(v)
+				if err != nil {
+					panic(err)
+				}
+				length -= n
+				if length == 0 {
+					break
+				}
+			}
+		}
+		if _, err := e.file.Write(buf.Bytes()); err != nil {
 			panic(err)
 		}
 	}
 	return e.lower.WritePacket(r, hdr, payload, protocol)
 }
 
-// LogPacket logs the given packet.
-func LogPacket(prefix string, protocol tcpip.NetworkProtocolNumber, b, plb []byte) {
+func logPacket(prefix string, protocol tcpip.NetworkProtocolNumber, b buffer.View) {
 	// Figure out the network layer info.
 	var transProto uint8
 	src := tcpip.Address("unknown")
@@ -287,6 +309,37 @@ func LogPacket(prefix string, protocol tcpip.NetworkProtocolNumber, b, plb []byt
 		log.Printf("%s %s %v -> %v %s len:%d id:%04x code:%d", prefix, transName, src, dst, icmpType, size, id, icmp.Code())
 		return
 
+	case header.ICMPv6ProtocolNumber:
+		transName = "icmp"
+		icmp := header.ICMPv6(b)
+		icmpType := "unknown"
+		switch icmp.Type() {
+		case header.ICMPv6DstUnreachable:
+			icmpType = "destination unreachable"
+		case header.ICMPv6PacketTooBig:
+			icmpType = "packet too big"
+		case header.ICMPv6TimeExceeded:
+			icmpType = "time exceeded"
+		case header.ICMPv6ParamProblem:
+			icmpType = "param problem"
+		case header.ICMPv6EchoRequest:
+			icmpType = "echo request"
+		case header.ICMPv6EchoReply:
+			icmpType = "echo reply"
+		case header.ICMPv6RouterSolicit:
+			icmpType = "router solicit"
+		case header.ICMPv6RouterAdvert:
+			icmpType = "router advert"
+		case header.ICMPv6NeighborSolicit:
+			icmpType = "neighbor solicit"
+		case header.ICMPv6NeighborAdvert:
+			icmpType = "neighbor advert"
+		case header.ICMPv6RedirectMsg:
+			icmpType = "redirect message"
+		}
+		log.Printf("%s %s %v -> %v %s len:%d id:%04x code:%d", prefix, transName, src, dst, icmpType, size, id, icmp.Code())
+		return
+
 	case header.UDPProtocolNumber:
 		transName = "udp"
 		udp := header.UDP(b)
@@ -299,9 +352,19 @@ func LogPacket(prefix string, protocol tcpip.NetworkProtocolNumber, b, plb []byt
 	case header.TCPProtocolNumber:
 		transName = "tcp"
 		tcp := header.TCP(b)
+		offset := int(tcp.DataOffset())
+		if offset < header.TCPMinimumSize {
+			details += fmt.Sprintf("invalid packet: tcp data offset too small %d", offset)
+			break
+		}
+		if offset > len(tcp) {
+			details += fmt.Sprintf("invalid packet: tcp data offset %d larger than packet buffer length %d", offset, len(tcp))
+			break
+		}
+
 		srcPort = tcp.SourcePort()
 		dstPort = tcp.DestinationPort()
-		size -= uint16(tcp.DataOffset())
+		size -= uint16(offset)
 
 		// Initialize the TCP flags.
 		flags := tcp.Flags()
@@ -317,6 +380,7 @@ func LogPacket(prefix string, protocol tcpip.NetworkProtocolNumber, b, plb []byt
 		} else {
 			details += fmt.Sprintf(" options: %+v", tcp.ParsedOptions())
 		}
+
 	default:
 		log.Printf("%s %v -> %v unknown transport protocol: %d", prefix, src, dst, transProto)
 		return

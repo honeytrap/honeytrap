@@ -1,4 +1,4 @@
-// Copyright 2018 Google Inc.
+// Copyright 2018 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -51,6 +51,11 @@ type endpoint struct {
 	linkAddrCache stack.LinkAddressCache
 }
 
+// DefaultTTL is unused for ARP. It implements stack.NetworkEndpoint.
+func (e *endpoint) DefaultTTL() uint8 {
+	return 0
+}
+
 func (e *endpoint) MTU() uint32 {
 	lmtu := e.linkEP.MTU()
 	return lmtu - uint32(e.MaxHeaderLength())
@@ -74,11 +79,11 @@ func (e *endpoint) MaxHeaderLength() uint16 {
 
 func (e *endpoint) Close() {}
 
-func (e *endpoint) WritePacket(r *stack.Route, hdr *buffer.Prependable, payload buffer.View, protocol tcpip.TransportProtocolNumber) *tcpip.Error {
+func (e *endpoint) WritePacket(r *stack.Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.TransportProtocolNumber, ttl uint8) *tcpip.Error {
 	return tcpip.ErrNotSupported
 }
 
-func (e *endpoint) HandlePacket(r *stack.Route, vv *buffer.VectorisedView) {
+func (e *endpoint) HandlePacket(r *stack.Route, vv buffer.VectorisedView) {
 	v := vv.First()
 	h := header.ARP(v)
 	if !h.IsValid() {
@@ -98,7 +103,7 @@ func (e *endpoint) HandlePacket(r *stack.Route, vv *buffer.VectorisedView) {
 		copy(pkt.HardwareAddressSender(), r.LocalLinkAddress[:])
 		copy(pkt.ProtocolAddressSender(), h.ProtocolAddressTarget())
 		copy(pkt.ProtocolAddressTarget(), h.ProtocolAddressSender())
-		e.linkEP.WritePacket(r, &hdr, nil, ProtocolNumber)
+		e.linkEP.WritePacket(r, hdr, buffer.VectorisedView{}, ProtocolNumber)
 		fallthrough // also fill the cache from requests
 	case header.ARPReply:
 		addr := tcpip.Address(h.ProtocolAddressSender())
@@ -150,7 +155,7 @@ func (*protocol) LinkAddressRequest(addr, localAddr tcpip.Address, linkEP stack.
 	copy(h.ProtocolAddressSender(), localAddr)
 	copy(h.ProtocolAddressTarget(), addr)
 
-	return linkEP.WritePacket(r, &hdr, nil, ProtocolNumber)
+	return linkEP.WritePacket(r, hdr, buffer.VectorisedView{}, ProtocolNumber)
 }
 
 // ResolveStaticAddress implements stack.LinkAddressResolver.

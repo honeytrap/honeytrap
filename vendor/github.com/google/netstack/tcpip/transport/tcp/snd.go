@@ -1,4 +1,4 @@
-// Copyright 2018 Google Inc.
+// Copyright 2018 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@ package tcp
 
 import (
 	"math"
+	"sync"
 	"time"
 
 	"github.com/google/netstack/sleep"
@@ -116,11 +117,10 @@ type sender struct {
 	resendTimer timer
 	resendWaker sleep.Waker
 
-	// srtt, rttvar & rto are the "smoothed round-trip time", "round-trip
-	// time variation" and "retransmit timeout", as defined in section 2 of
-	// RFC 6298.
-	srtt       time.Duration
-	rttvar     time.Duration
+	// rtt.srtt, rtt.rttvar, and rto are the "smoothed round-trip time",
+	// "round-trip time variation" and "retransmit timeout", as defined in
+	// section 2 of RFC 6298.
+	rtt        rtt
 	rto        time.Duration
 	srttInited bool
 
@@ -137,6 +137,17 @@ type sender struct {
 
 	// cc is the congestion control algorithm in use for this sender.
 	cc congestionControl
+}
+
+// rtt is a synchronization wrapper used to appease stateify. See the comment
+// in sender, where it is used.
+//
+// +stateify savable
+type rtt struct {
+	sync.Mutex
+
+	srtt   time.Duration
+	rttvar time.Duration
 }
 
 // fastRecovery holds information related to fast recovery from a packet loss.
@@ -259,26 +270,57 @@ func (s *sender) updateMaxPayloadSize(mtu, count int) {
 
 // sendAck sends an ACK segment.
 func (s *sender) sendAck() {
-	s.sendSegment(nil, flagAck, s.sndNxt)
+	s.sendSegment(buffer.VectorisedView{}, flagAck, s.sndNxt)
 }
 
 // updateRTO updates the retransmit timeout when a new roud-trip time is
 // available. This is done in accordance with section 2 of RFC 6298.
 func (s *sender) updateRTO(rtt time.Duration) {
+	s.rtt.Lock()
 	if !s.srttInited {
-		s.rttvar = rtt / 2
-		s.srtt = rtt
+		s.rtt.rttvar = rtt / 2
+		s.rtt.srtt = rtt
 		s.srttInited = true
 	} else {
-		diff := s.srtt - rtt
+		diff := s.rtt.srtt - rtt
 		if diff < 0 {
 			diff = -diff
 		}
-		s.rttvar = (3*s.rttvar + diff) / 4
-		s.srtt = (7*s.srtt + rtt) / 8
+		// Use RFC6298 standard algorithm to update rttvar and srtt when
+		// no timestamps are available.
+		if !s.ep.sendTSOk {
+			s.rtt.rttvar = (3*s.rtt.rttvar + diff) / 4
+			s.rtt.srtt = (7*s.rtt.srtt + rtt) / 8
+		} else {
+			// When we are taking RTT measurements of every ACK then
+			// we need to use a modified method as specified in
+			// https://tools.ietf.org/html/rfc7323#appendix-G
+			if s.outstanding == 0 {
+				s.rtt.Unlock()
+				return
+			}
+			// Netstack measures congestion window/inflight all in
+			// terms of packets and not bytes. This is similar to
+			// how linux also does cwnd and inflight. In practice
+			// this approximation works as expected.
+			expectedSamples := math.Ceil(float64(s.outstanding) / 2)
+
+			// alpha & beta values are the original values as recommended in
+			// https://tools.ietf.org/html/rfc6298#section-2.3.
+			const alpha = 0.125
+			const beta = 0.25
+
+			alphaPrime := alpha / expectedSamples
+			betaPrime := beta / expectedSamples
+			rttVar := (1-betaPrime)*s.rtt.rttvar.Seconds() + betaPrime*diff.Seconds()
+			srtt := (1-alphaPrime)*s.rtt.srtt.Seconds() + alphaPrime*rtt.Seconds()
+			s.rtt.rttvar = time.Duration(rttVar * float64(time.Second))
+			s.rtt.srtt = time.Duration(srtt * float64(time.Second))
+		}
 	}
 
-	s.rto = s.srtt + 4*s.rttvar
+	s.rto = s.rtt.srtt + 4*s.rtt.rttvar
+	s.rtt.Unlock()
 	if s.rto < minRTO {
 		s.rto = minRTO
 	}
@@ -292,7 +334,7 @@ func (s *sender) resendSegment() {
 
 	// Resend the segment.
 	if seg := s.writeList.Front(); seg != nil {
-		s.sendSegment(&seg.data, seg.flags, seg.sequenceNumber)
+		s.sendSegment(seg.data, seg.flags, seg.sequenceNumber)
 	}
 }
 
@@ -406,7 +448,7 @@ func (s *sender) sendData() {
 			segEnd = seg.sequenceNumber.Add(seqnum.Size(seg.data.Size()))
 		}
 
-		s.sendSegment(&seg.data, seg.flags, seg.sequenceNumber)
+		s.sendSegment(seg.data, seg.flags, seg.sequenceNumber)
 
 		// Update sndNxt if we actually sent new data (as opposed to
 		// retransmitting some previously sent data).
@@ -421,6 +463,10 @@ func (s *sender) sendData() {
 	// Enable the timer if we have pending data and it's not enabled yet.
 	if !s.resendTimer.enabled() && s.sndUna != s.sndNxt {
 		s.resendTimer.enable(s.rto)
+	}
+	// If we have no more pending data, start the keepalive timer.
+	if s.sndUna == s.sndNxt {
+		s.ep.resetKeepaliveTimer(false)
 	}
 }
 
@@ -625,7 +671,7 @@ func (s *sender) handleRcvdSegment(seg *segment) {
 
 // sendSegment sends a new segment containing the given payload, flags and
 // sequence number.
-func (s *sender) sendSegment(data *buffer.VectorisedView, flags byte, seq seqnum.Value) *tcpip.Error {
+func (s *sender) sendSegment(data buffer.VectorisedView, flags byte, seq seqnum.Value) *tcpip.Error {
 	s.lastSendTime = time.Now()
 	if seq == s.rttMeasureSeqNum {
 		s.rttMeasureTime = s.lastSendTime
@@ -636,13 +682,5 @@ func (s *sender) sendSegment(data *buffer.VectorisedView, flags byte, seq seqnum
 	// Remember the max sent ack.
 	s.maxSentAck = rcvNxt
 
-	if data == nil {
-		return s.ep.sendRaw(nil, flags, seq, rcvNxt, rcvWnd)
-	}
-
-	if len(data.Views()) > 1 {
-		panic("send path does not support views with multiple buffers")
-	}
-
-	return s.ep.sendRaw(data.First(), flags, seq, rcvNxt, rcvWnd)
+	return s.ep.sendRaw(data, flags, seq, rcvNxt, rcvWnd)
 }

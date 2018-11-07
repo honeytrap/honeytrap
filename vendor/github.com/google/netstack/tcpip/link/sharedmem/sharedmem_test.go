@@ -1,4 +1,4 @@
-// Copyright 2018 Google Inc.
+// Copyright 2018 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,13 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// +build linux
+
 package sharedmem
 
 import (
+	"bytes"
 	"io/ioutil"
 	"math/rand"
 	"os"
-	"reflect"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -127,10 +130,10 @@ func newTestContext(t *testing.T, mtu, bufferSize uint32, addr tcpip.LinkAddress
 	return c
 }
 
-func (c *testContext) DeliverNetworkPacket(_ stack.LinkEndpoint, remoteAddr tcpip.LinkAddress, proto tcpip.NetworkProtocolNumber, vv *buffer.VectorisedView) {
+func (c *testContext) DeliverNetworkPacket(_ stack.LinkEndpoint, remoteLinkAddr, localLinkAddr tcpip.LinkAddress, proto tcpip.NetworkProtocolNumber, vv buffer.VectorisedView) {
 	c.mu.Lock()
 	c.packets = append(c.packets, packetInfo{
-		addr:  remoteAddr,
+		addr:  remoteLinkAddr,
 		proto: proto,
 		vv:    vv.Clone(nil),
 	})
@@ -257,63 +260,120 @@ func TestSimpleSend(t *testing.T) {
 	}
 
 	for iters := 1000; iters > 0; iters-- {
-		// Prepare and send packet.
-		n := rand.Intn(10000)
-		hdr := buffer.NewPrependable(n + int(c.ep.MaxHeaderLength()))
-		hdrBuf := hdr.Prepend(n)
-		randomFill(hdrBuf)
+		func() {
+			// Prepare and send packet.
+			n := rand.Intn(10000)
+			hdr := buffer.NewPrependable(n + int(c.ep.MaxHeaderLength()))
+			hdrBuf := hdr.Prepend(n)
+			randomFill(hdrBuf)
 
-		n = rand.Intn(10000)
-		buf := buffer.NewView(n)
-		randomFill(buf)
+			n = rand.Intn(10000)
+			buf := buffer.NewView(n)
+			randomFill(buf)
 
-		proto := tcpip.NetworkProtocolNumber(rand.Intn(0x10000))
-		err := c.ep.WritePacket(&r, &hdr, buf, proto)
-		if err != nil {
-			t.Fatalf("WritePacket failed: %v", err)
-		}
+			proto := tcpip.NetworkProtocolNumber(rand.Intn(0x10000))
+			if err := c.ep.WritePacket(&r, hdr, buf.ToVectorisedView(), proto); err != nil {
+				t.Fatalf("WritePacket failed: %v", err)
+			}
 
-		// Receive packet.
-		desc := c.txq.tx.Pull()
-		pi := queue.DecodeTxPacketHeader(desc)
-		contents := make([]byte, 0, pi.Size)
-		for i := 0; i < pi.BufferCount; i++ {
-			bi := queue.DecodeTxBufferHeader(desc, i)
-			contents = append(contents, c.txq.data[bi.Offset:][:bi.Size]...)
-		}
-		c.txq.tx.Flush()
+			// Receive packet.
+			desc := c.txq.tx.Pull()
+			pi := queue.DecodeTxPacketHeader(desc)
+			if pi.Reserved != 0 {
+				t.Fatalf("Reserved value is non-zero: 0x%x", pi.Reserved)
+			}
+			contents := make([]byte, 0, pi.Size)
+			for i := 0; i < pi.BufferCount; i++ {
+				bi := queue.DecodeTxBufferHeader(desc, i)
+				contents = append(contents, c.txq.data[bi.Offset:][:bi.Size]...)
+			}
+			c.txq.tx.Flush()
 
-		if pi.Reserved != 0 {
-			t.Fatalf("Reserved value is non-zero: 0x%x", pi.Reserved)
-		}
+			defer func() {
+				// Tell the endpoint about the completion of the write.
+				b := c.txq.rx.Push(8)
+				queue.EncodeTxCompletion(b, pi.ID)
+				c.txq.rx.Flush()
+			}()
 
-		// Check the thernet header.
-		ethTemplate := make(header.Ethernet, header.EthernetMinimumSize)
-		ethTemplate.Encode(&header.EthernetFields{
-			SrcAddr: localLinkAddr,
-			DstAddr: remoteLinkAddr,
-			Type:    proto,
-		})
-		if got := contents[:header.EthernetMinimumSize]; !reflect.DeepEqual(got, []byte(ethTemplate)) {
-			t.Fatalf("Bad ethernet header in packet: got %x, want %x", got, ethTemplate)
-		}
+			// Check the ethernet header.
+			ethTemplate := make(header.Ethernet, header.EthernetMinimumSize)
+			ethTemplate.Encode(&header.EthernetFields{
+				SrcAddr: localLinkAddr,
+				DstAddr: remoteLinkAddr,
+				Type:    proto,
+			})
+			if got := contents[:header.EthernetMinimumSize]; !bytes.Equal(got, []byte(ethTemplate)) {
+				t.Fatalf("Bad ethernet header in packet: got %x, want %x", got, ethTemplate)
+			}
 
-		// Compare contents skipping the ethernet header added by the
-		// endpoint.
-		merged := append(hdrBuf, buf...)
-		if uint32(len(contents)) < pi.Size {
-			t.Fatalf("Sum of buffers is less than packet size: %v < %v", len(contents), pi.Size)
-		}
-		contents = contents[:pi.Size][header.EthernetMinimumSize:]
+			// Compare contents skipping the ethernet header added by the
+			// endpoint.
+			merged := append(hdrBuf, buf...)
+			if uint32(len(contents)) < pi.Size {
+				t.Fatalf("Sum of buffers is less than packet size: %v < %v", len(contents), pi.Size)
+			}
+			contents = contents[:pi.Size][header.EthernetMinimumSize:]
 
-		if !reflect.DeepEqual(contents, merged) {
-			t.Fatalf("Buffers are different: got %x (%v bytes), want %x (%v bytes)", contents, len(contents), merged, len(merged))
-		}
+			if !bytes.Equal(contents, merged) {
+				t.Fatalf("Buffers are different: got %x (%v bytes), want %x (%v bytes)", contents, len(contents), merged, len(merged))
+			}
+		}()
+	}
+}
 
+// TestPreserveSrcAddressInSend calls WritePacket once with LocalLinkAddress
+// set in Route (using much of the same code as TestSimpleSend), then checks
+// that the encoded ethernet header received includes the correct SrcAddr.
+func TestPreserveSrcAddressInSend(t *testing.T) {
+	c := newTestContext(t, 20000, 1500, localLinkAddr)
+	defer c.cleanup()
+
+	newLocalLinkAddress := tcpip.LinkAddress(strings.Repeat("0xFE", 6))
+	// Set both remote and local link address in route.
+	r := stack.Route{
+		RemoteLinkAddress: remoteLinkAddr,
+		LocalLinkAddress:  newLocalLinkAddress,
+	}
+
+	// WritePacket panics given a prependable with anything less than
+	// the minimum size of the ethernet header.
+	hdr := buffer.NewPrependable(header.EthernetMinimumSize)
+
+	proto := tcpip.NetworkProtocolNumber(rand.Intn(0x10000))
+	if err := c.ep.WritePacket(&r, hdr, buffer.VectorisedView{}, proto); err != nil {
+		t.Fatalf("WritePacket failed: %v", err)
+	}
+
+	// Receive packet.
+	desc := c.txq.tx.Pull()
+	pi := queue.DecodeTxPacketHeader(desc)
+	if pi.Reserved != 0 {
+		t.Fatalf("Reserved value is non-zero: 0x%x", pi.Reserved)
+	}
+	contents := make([]byte, 0, pi.Size)
+	for i := 0; i < pi.BufferCount; i++ {
+		bi := queue.DecodeTxBufferHeader(desc, i)
+		contents = append(contents, c.txq.data[bi.Offset:][:bi.Size]...)
+	}
+	c.txq.tx.Flush()
+
+	defer func() {
 		// Tell the endpoint about the completion of the write.
 		b := c.txq.rx.Push(8)
 		queue.EncodeTxCompletion(b, pi.ID)
 		c.txq.rx.Flush()
+	}()
+
+	// Check that the ethernet header contains the expected SrcAddr.
+	ethTemplate := make(header.Ethernet, header.EthernetMinimumSize)
+	ethTemplate.Encode(&header.EthernetFields{
+		SrcAddr: newLocalLinkAddress,
+		DstAddr: remoteLinkAddr,
+		Type:    proto,
+	})
+	if got := contents[:header.EthernetMinimumSize]; !bytes.Equal(got, []byte(ethTemplate)) {
+		t.Fatalf("Bad ethernet header in packet: got %x, want %x", got, ethTemplate)
 	}
 }
 
@@ -334,7 +394,8 @@ func TestFillTxQueue(t *testing.T) {
 	ids := make(map[uint64]struct{})
 	for i := queuePipeSize / 40; i > 0; i-- {
 		hdr := buffer.NewPrependable(int(c.ep.MaxHeaderLength()))
-		if err := c.ep.WritePacket(&r, &hdr, buf, header.IPv4ProtocolNumber); err != nil {
+
+		if err := c.ep.WritePacket(&r, hdr, buf.ToVectorisedView(), header.IPv4ProtocolNumber); err != nil {
 			t.Fatalf("WritePacket failed unexpectedly: %v", err)
 		}
 
@@ -349,8 +410,7 @@ func TestFillTxQueue(t *testing.T) {
 
 	// Next attempt to write must fail.
 	hdr := buffer.NewPrependable(int(c.ep.MaxHeaderLength()))
-	err := c.ep.WritePacket(&r, &hdr, buf, header.IPv4ProtocolNumber)
-	if want := tcpip.ErrWouldBlock; err != want {
+	if want, err := tcpip.ErrWouldBlock, c.ep.WritePacket(&r, hdr, buf.ToVectorisedView(), header.IPv4ProtocolNumber); err != want {
 		t.Fatalf("WritePacket return unexpected result: got %v, want %v", err, want)
 	}
 }
@@ -375,7 +435,7 @@ func TestFillTxQueueAfterBadCompletion(t *testing.T) {
 	// Send two packets so that the id slice has at least two slots.
 	for i := 2; i > 0; i-- {
 		hdr := buffer.NewPrependable(int(c.ep.MaxHeaderLength()))
-		if err := c.ep.WritePacket(&r, &hdr, buf, header.IPv4ProtocolNumber); err != nil {
+		if err := c.ep.WritePacket(&r, hdr, buf.ToVectorisedView(), header.IPv4ProtocolNumber); err != nil {
 			t.Fatalf("WritePacket failed unexpectedly: %v", err)
 		}
 	}
@@ -395,7 +455,7 @@ func TestFillTxQueueAfterBadCompletion(t *testing.T) {
 	ids := make(map[uint64]struct{})
 	for i := queuePipeSize / 40; i > 0; i-- {
 		hdr := buffer.NewPrependable(int(c.ep.MaxHeaderLength()))
-		if err := c.ep.WritePacket(&r, &hdr, buf, header.IPv4ProtocolNumber); err != nil {
+		if err := c.ep.WritePacket(&r, hdr, buf.ToVectorisedView(), header.IPv4ProtocolNumber); err != nil {
 			t.Fatalf("WritePacket failed unexpectedly: %v", err)
 		}
 
@@ -410,8 +470,7 @@ func TestFillTxQueueAfterBadCompletion(t *testing.T) {
 
 	// Next attempt to write must fail.
 	hdr := buffer.NewPrependable(int(c.ep.MaxHeaderLength()))
-	err := c.ep.WritePacket(&r, &hdr, buf, header.IPv4ProtocolNumber)
-	if want := tcpip.ErrWouldBlock; err != want {
+	if want, err := tcpip.ErrWouldBlock, c.ep.WritePacket(&r, hdr, buf.ToVectorisedView(), header.IPv4ProtocolNumber); err != want {
 		t.Fatalf("WritePacket return unexpected result: got %v, want %v", err, want)
 	}
 }
@@ -434,7 +493,7 @@ func TestFillTxMemory(t *testing.T) {
 	ids := make(map[uint64]struct{})
 	for i := queueDataSize / bufferSize; i > 0; i-- {
 		hdr := buffer.NewPrependable(int(c.ep.MaxHeaderLength()))
-		if err := c.ep.WritePacket(&r, &hdr, buf, header.IPv4ProtocolNumber); err != nil {
+		if err := c.ep.WritePacket(&r, hdr, buf.ToVectorisedView(), header.IPv4ProtocolNumber); err != nil {
 			t.Fatalf("WritePacket failed unexpectedly: %v", err)
 		}
 
@@ -450,7 +509,7 @@ func TestFillTxMemory(t *testing.T) {
 
 	// Next attempt to write must fail.
 	hdr := buffer.NewPrependable(int(c.ep.MaxHeaderLength()))
-	err := c.ep.WritePacket(&r, &hdr, buf, header.IPv4ProtocolNumber)
+	err := c.ep.WritePacket(&r, hdr, buf.ToVectorisedView(), header.IPv4ProtocolNumber)
 	if want := tcpip.ErrWouldBlock; err != want {
 		t.Fatalf("WritePacket return unexpected result: got %v, want %v", err, want)
 	}
@@ -475,7 +534,7 @@ func TestFillTxMemoryWithMultiBuffer(t *testing.T) {
 	// until there is only one buffer left.
 	for i := queueDataSize/bufferSize - 1; i > 0; i-- {
 		hdr := buffer.NewPrependable(int(c.ep.MaxHeaderLength()))
-		if err := c.ep.WritePacket(&r, &hdr, buf, header.IPv4ProtocolNumber); err != nil {
+		if err := c.ep.WritePacket(&r, hdr, buf.ToVectorisedView(), header.IPv4ProtocolNumber); err != nil {
 			t.Fatalf("WritePacket failed unexpectedly: %v", err)
 		}
 
@@ -485,20 +544,26 @@ func TestFillTxMemoryWithMultiBuffer(t *testing.T) {
 	}
 
 	// Attempt to write a two-buffer packet. It must fail.
-	hdr := buffer.NewPrependable(int(c.ep.MaxHeaderLength()))
-	err := c.ep.WritePacket(&r, &hdr, buffer.NewView(bufferSize), header.IPv4ProtocolNumber)
-	if want := tcpip.ErrWouldBlock; err != want {
-		t.Fatalf("WritePacket return unexpected result: got %v, want %v", err, want)
+	{
+		hdr := buffer.NewPrependable(int(c.ep.MaxHeaderLength()))
+		uu := buffer.NewView(bufferSize).ToVectorisedView()
+		if want, err := tcpip.ErrWouldBlock, c.ep.WritePacket(&r, hdr, uu, header.IPv4ProtocolNumber); err != want {
+			t.Fatalf("WritePacket return unexpected result: got %v, want %v", err, want)
+		}
 	}
 
-	// Attempt to write a one-buffer packet. It must succeed.
-	hdr = buffer.NewPrependable(int(c.ep.MaxHeaderLength()))
-	if err := c.ep.WritePacket(&r, &hdr, buf, header.IPv4ProtocolNumber); err != nil {
-		t.Fatalf("WritePacket failed unexpectedly: %v", err)
+	// Attempt to write the one-buffer packet again. It must succeed.
+	{
+		hdr := buffer.NewPrependable(int(c.ep.MaxHeaderLength()))
+		if err := c.ep.WritePacket(&r, hdr, buf.ToVectorisedView(), header.IPv4ProtocolNumber); err != nil {
+			t.Fatalf("WritePacket failed unexpectedly: %v", err)
+		}
 	}
 }
 
 func pollPull(t *testing.T, p *pipe.Rx, to <-chan time.Time, errStr string) []byte {
+	t.Helper()
+
 	for {
 		b := p.Pull()
 		if b != nil {
@@ -508,7 +573,7 @@ func pollPull(t *testing.T, p *pipe.Rx, to <-chan time.Time, errStr string) []by
 		select {
 		case <-time.After(10 * time.Millisecond):
 		case <-to:
-			t.Fatalf(errStr)
+			t.Fatal(errStr)
 		}
 	}
 }
@@ -523,8 +588,8 @@ func TestSimpleReceive(t *testing.T) {
 
 	// Check that buffers have been posted.
 	limit := c.ep.rx.q.PostedBuffersLimit()
-	timeout := time.After(2 * time.Second)
 	for i := uint64(0); i < limit; i++ {
+		timeout := time.After(2 * time.Second)
 		bi := queue.DecodeRxBufferHeader(pollPull(t, &c.rxq.tx, timeout, "Timeout waiting for all buffers to be posted"))
 
 		if want := i * bufferSize; want != bi.Offset {
@@ -549,6 +614,7 @@ func TestSimpleReceive(t *testing.T) {
 
 	// Complete random packets 1000 times.
 	for iters := 1000; iters > 0; iters-- {
+		timeout := time.After(2 * time.Second)
 		// Prepare a random packet.
 		shuffle(idx)
 		n := 1 + rand.Intn(10)
@@ -576,15 +642,14 @@ func TestSimpleReceive(t *testing.T) {
 		c.packets = c.packets[:0]
 		c.mu.Unlock()
 
-		contents = contents[header.EthernetMinimumSize:]
-		if !reflect.DeepEqual(contents, rcvd) {
+		if contents := contents[header.EthernetMinimumSize:]; !bytes.Equal(contents, rcvd) {
 			t.Fatalf("Unexpected buffer contents: got %x, want %x", rcvd, contents)
 		}
 
 		// Check that buffers have been reposted.
 		for i := range bufs {
 			bi := queue.DecodeRxBufferHeader(pollPull(t, &c.rxq.tx, timeout, "Timeout waiting for buffers to be reposted"))
-			if !reflect.DeepEqual(bi, bufs[i]) {
+			if bi != bufs[i] {
 				t.Fatalf("Unexpected buffer reposted: got %x, want %x", bi, bufs[i])
 			}
 		}
@@ -602,15 +667,15 @@ func TestRxBuffersReposted(t *testing.T) {
 	// Receive all posted buffers.
 	limit := c.ep.rx.q.PostedBuffersLimit()
 	buffers := make([]queue.RxBuffer, 0, limit)
-	timeout := time.After(2 * time.Second)
 	for i := limit; i > 0; i-- {
+		timeout := time.After(2 * time.Second)
 		buffers = append(buffers, queue.DecodeRxBufferHeader(pollPull(t, &c.rxq.tx, timeout, "Timeout waiting for all buffers")))
 	}
 	c.rxq.tx.Flush()
 
 	// Check that all buffers are reposted when individually completed.
-	timeout = time.After(2 * time.Second)
 	for i := range buffers {
+		timeout := time.After(2 * time.Second)
 		// Complete the buffer.
 		c.pushRxCompletion(buffers[i].Size, buffers[i:][:1])
 		c.rxq.rx.Flush()
@@ -618,28 +683,26 @@ func TestRxBuffersReposted(t *testing.T) {
 
 		// Wait for it to be reposted.
 		bi := queue.DecodeRxBufferHeader(pollPull(t, &c.rxq.tx, timeout, "Timeout waiting for buffer to be reposted"))
-		if !reflect.DeepEqual(bi, buffers[i]) {
+		if bi != buffers[i] {
 			t.Fatalf("Different buffer posted: got %v, want %v", bi, buffers[i])
 		}
 	}
 	c.rxq.tx.Flush()
 
 	// Check that all buffers are reposted when completed in pairs.
-	timeout = time.After(2 * time.Second)
 	for i := 0; i < len(buffers)/2; i++ {
+		timeout := time.After(2 * time.Second)
 		// Complete with two buffers.
 		c.pushRxCompletion(2*bufferSize, buffers[2*i:][:2])
 		c.rxq.rx.Flush()
 		syscall.Write(c.rxCfg.EventFD, []byte{1, 0, 0, 0, 0, 0, 0, 0})
 
 		// Wait for them to be reposted.
-		bi := queue.DecodeRxBufferHeader(pollPull(t, &c.rxq.tx, timeout, "Timeout waiting for buffer to be reposted"))
-		if !reflect.DeepEqual(bi, buffers[2*i]) {
-			t.Fatalf("Different buffer posted: got %v, want %v", bi, buffers[2*i])
-		}
-		bi = queue.DecodeRxBufferHeader(pollPull(t, &c.rxq.tx, timeout, "Timeout waiting for buffer to be reposted"))
-		if !reflect.DeepEqual(bi, buffers[2*i+1]) {
-			t.Fatalf("Different buffer posted: got %v, want %v", bi, buffers[2*i+1])
+		for j := 0; j < 2; j++ {
+			bi := queue.DecodeRxBufferHeader(pollPull(t, &c.rxq.tx, timeout, "Timeout waiting for buffer to be reposted"))
+			if bi != buffers[2*i+j] {
+				t.Fatalf("Different buffer posted: got %v, want %v", bi, buffers[2*i+j])
+			}
 		}
 	}
 	c.rxq.tx.Flush()

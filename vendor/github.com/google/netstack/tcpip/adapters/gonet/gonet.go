@@ -1,4 +1,4 @@
-// Copyright 2018 Google Inc.
+// Copyright 2018 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -360,8 +360,7 @@ func (c *Conn) Write(b []byte) (int, error) {
 	default:
 	}
 
-	v := buffer.NewView(len(b))
-	copy(v, b)
+	v := buffer.NewViewFromBytes(b)
 
 	// We must handle two soft failure conditions simultaneously:
 	//  1. Write may write nothing and return tcpip.ErrWouldBlock.
@@ -404,9 +403,22 @@ func (c *Conn) Write(b []byte) (int, error) {
 		}
 
 		var n uintptr
-		n, err = c.ep.Write(tcpip.SlicePayload(v), tcpip.WriteOptions{})
+		var resCh <-chan struct{}
+		n, resCh, err = c.ep.Write(tcpip.SlicePayload(v), tcpip.WriteOptions{})
 		nbytes += int(n)
 		v.TrimFront(int(n))
+
+		if resCh != nil {
+			select {
+			case <-deadline:
+				return nbytes, c.newOpError("write", &timeoutError{})
+			case <-resCh:
+			}
+
+			n, _, err = c.ep.Write(tcpip.SlicePayload(v), tcpip.WriteOptions{})
+			nbytes += int(n)
+			v.TrimFront(int(n))
+		}
 	}
 
 	if err == nil {
@@ -582,7 +594,16 @@ func (c *PacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 	copy(v, b)
 
 	wopts := tcpip.WriteOptions{To: &fullAddr}
-	n, err := c.ep.Write(tcpip.SlicePayload(v), wopts)
+	n, resCh, err := c.ep.Write(tcpip.SlicePayload(v), wopts)
+	if resCh != nil {
+		select {
+		case <-deadline:
+			return int(n), c.newRemoteOpError("write", addr, &timeoutError{})
+		case <-resCh:
+		}
+
+		n, _, err = c.ep.Write(tcpip.SlicePayload(v), wopts)
+	}
 
 	if err == tcpip.ErrWouldBlock {
 		// Create wait queue entry that notifies a channel.
@@ -590,14 +611,15 @@ func (c *PacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 		c.wq.EventRegister(&waitEntry, waiter.EventOut)
 		defer c.wq.EventUnregister(&waitEntry)
 		for {
-			n, err = c.ep.Write(tcpip.SlicePayload(v), wopts)
-			if err != tcpip.ErrWouldBlock {
-				break
-			}
 			select {
 			case <-deadline:
 				return int(n), c.newRemoteOpError("write", addr, &timeoutError{})
 			case <-notifyCh:
+			}
+
+			n, _, err = c.ep.Write(tcpip.SlicePayload(v), wopts)
+			if err != tcpip.ErrWouldBlock {
+				break
 			}
 		}
 	}

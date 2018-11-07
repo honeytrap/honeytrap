@@ -1,4 +1,4 @@
-// Copyright 2018 Google Inc.
+// Copyright 2018 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,23 +37,23 @@ const (
 	// maxTotalSize is maximum size that can be encoded in the 16-bit
 	// PayloadLength field of the ipv6 header.
 	maxPayloadSize = 0xffff
+
+	// defaultIPv6HopLimit is the default hop limit for IPv6 Packets
+	// egressed by Netstack.
+	defaultIPv6HopLimit = 255
 )
 
-type address [header.IPv6AddressSize]byte
-
 type endpoint struct {
-	nicid      tcpip.NICID
-	id         stack.NetworkEndpointID
-	address    address
-	linkEP     stack.LinkEndpoint
-	dispatcher stack.TransportDispatcher
+	nicid         tcpip.NICID
+	id            stack.NetworkEndpointID
+	linkEP        stack.LinkEndpoint
+	linkAddrCache stack.LinkAddressCache
+	dispatcher    stack.TransportDispatcher
 }
 
-func newEndpoint(nicid tcpip.NICID, addr tcpip.Address, dispatcher stack.TransportDispatcher, linkEP stack.LinkEndpoint) *endpoint {
-	e := &endpoint{nicid: nicid, linkEP: linkEP, dispatcher: dispatcher}
-	copy(e.address[:], addr)
-	e.id = stack.NetworkEndpointID{tcpip.Address(e.address[:])}
-	return e
+// DefaultTTL is the default hop limit for this endpoint.
+func (e *endpoint) DefaultTTL() uint8 {
+	return 255
 }
 
 // MTU implements stack.NetworkEndpoint.MTU. It returns the link-layer MTU minus
@@ -84,26 +84,24 @@ func (e *endpoint) MaxHeaderLength() uint16 {
 }
 
 // WritePacket writes a packet to the given destination address and protocol.
-func (e *endpoint) WritePacket(r *stack.Route, hdr *buffer.Prependable, payload buffer.View, protocol tcpip.TransportProtocolNumber) *tcpip.Error {
-	length := uint16(hdr.UsedLength())
-	if payload != nil {
-		length += uint16(len(payload))
-	}
+func (e *endpoint) WritePacket(r *stack.Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.TransportProtocolNumber, ttl uint8) *tcpip.Error {
+	length := uint16(hdr.UsedLength() + payload.Size())
 	ip := header.IPv6(hdr.Prepend(header.IPv6MinimumSize))
 	ip.Encode(&header.IPv6Fields{
 		PayloadLength: length,
 		NextHeader:    uint8(protocol),
-		HopLimit:      65,
-		SrcAddr:       tcpip.Address(e.address[:]),
+		HopLimit:      ttl,
+		SrcAddr:       r.LocalAddress,
 		DstAddr:       r.RemoteAddress,
 	})
+	r.Stats().IP.PacketsSent.Increment()
 
 	return e.linkEP.WritePacket(r, hdr, payload, ProtocolNumber)
 }
 
 // HandlePacket is called by the link layer when new ipv6 packets arrive for
 // this endpoint.
-func (e *endpoint) HandlePacket(r *stack.Route, vv *buffer.VectorisedView) {
+func (e *endpoint) HandlePacket(r *stack.Route, vv buffer.VectorisedView) {
 	h := header.IPv6(vv.First())
 	if !h.IsValid(vv.Size()) {
 		return
@@ -118,6 +116,7 @@ func (e *endpoint) HandlePacket(r *stack.Route, vv *buffer.VectorisedView) {
 		return
 	}
 
+	r.Stats().IP.PacketsDelivered.Increment()
 	e.dispatcher.DeliverTransportPacket(r, p, vv)
 }
 
@@ -152,7 +151,13 @@ func (*protocol) ParseAddresses(v buffer.View) (src, dst tcpip.Address) {
 
 // NewEndpoint creates a new ipv6 endpoint.
 func (p *protocol) NewEndpoint(nicid tcpip.NICID, addr tcpip.Address, linkAddrCache stack.LinkAddressCache, dispatcher stack.TransportDispatcher, linkEP stack.LinkEndpoint) (stack.NetworkEndpoint, *tcpip.Error) {
-	return newEndpoint(nicid, addr, dispatcher, linkEP), nil
+	return &endpoint{
+		nicid:         nicid,
+		id:            stack.NetworkEndpointID{LocalAddress: addr},
+		linkEP:        linkEP,
+		linkAddrCache: linkAddrCache,
+		dispatcher:    dispatcher,
+	}, nil
 }
 
 // SetOption implements NetworkProtocol.SetOption.

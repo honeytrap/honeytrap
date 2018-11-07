@@ -1,4 +1,4 @@
-// Copyright 2018 Google Inc.
+// Copyright 2018 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -113,6 +113,8 @@ type EntryCallback interface {
 // Entry represents a waiter that can be add to the a wait queue. It can
 // only be in one queue at a time, and is added "intrusively" to the queue with
 // no extra memory allocations.
+//
+// +stateify savable
 type Entry struct {
 	// Context stores any state the waiter may wish to store in the entry
 	// itself, which may be used at wake up time.

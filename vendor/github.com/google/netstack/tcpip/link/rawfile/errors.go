@@ -1,4 +1,4 @@
-// Copyright 2018 Google Inc.
+// Copyright 2018 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -41,6 +41,8 @@ var translations = map[syscall.Errno]*tcpip.Error{
 	syscall.ENOTCONN:      tcpip.ErrNotConnected,
 	syscall.ECONNRESET:    tcpip.ErrConnectionReset,
 	syscall.ECONNABORTED:  tcpip.ErrConnectionAborted,
+	syscall.EMSGSIZE:      tcpip.ErrMessageTooLong,
+	syscall.ENOBUFS:       tcpip.ErrNoBufferSpace,
 }
 
 // TranslateErrno translate an errno from the syscall package into a
