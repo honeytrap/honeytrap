@@ -1,6 +1,16 @@
-// Copyright 2017 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2018 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 // Package waitable provides the implementation of data-link layer endpoints
 // that wrap other endpoints, and can wait for inflight calls to WritePacket or
@@ -41,12 +51,12 @@ func New(lower tcpip.LinkEndpointID) (tcpip.LinkEndpointID, *Endpoint) {
 // It is called by the link-layer endpoint being wrapped when a packet arrives,
 // and only forwards to the actual dispatcher if Wait or WaitDispatch haven't
 // been called.
-func (e *Endpoint) DeliverNetworkPacket(linkEP stack.LinkEndpoint, remoteLinkAddr tcpip.LinkAddress, protocol tcpip.NetworkProtocolNumber, vv *buffer.VectorisedView) {
+func (e *Endpoint) DeliverNetworkPacket(linkEP stack.LinkEndpoint, remoteLinkAddr, localLinkAddress tcpip.LinkAddress, protocol tcpip.NetworkProtocolNumber, vv buffer.VectorisedView) {
 	if !e.dispatchGate.Enter() {
 		return
 	}
 
-	e.dispatcher.DeliverNetworkPacket(e, remoteLinkAddr, protocol, vv)
+	e.dispatcher.DeliverNetworkPacket(e, remoteLinkAddr, localLinkAddress, protocol, vv)
 	e.dispatchGate.Leave()
 }
 
@@ -90,7 +100,7 @@ func (e *Endpoint) LinkAddress() tcpip.LinkAddress {
 // WritePacket implements stack.LinkEndpoint.WritePacket. It is called by
 // higher-level protocols to write packets. It only forwards packets to the
 // lower endpoint if Wait or WaitWrite haven't been called.
-func (e *Endpoint) WritePacket(r *stack.Route, hdr *buffer.Prependable, payload buffer.View, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
+func (e *Endpoint) WritePacket(r *stack.Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
 	if !e.writeGate.Enter() {
 		return nil
 	}

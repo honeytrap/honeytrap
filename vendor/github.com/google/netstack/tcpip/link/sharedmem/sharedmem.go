@@ -1,6 +1,18 @@
-// Copyright 2016 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2018 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// +build linux
 
 // Package sharedmem provides the implemention of data-link layer endpoints
 // backed by shared memory.
@@ -132,6 +144,9 @@ func (e *endpoint) Attach(dispatcher stack.NetworkDispatcher) {
 	if !e.workerStarted && atomic.LoadUint32(&e.stopRequested) == 0 {
 		e.workerStarted = true
 		e.completed.Add(1)
+		// Link endpoints are not savable. When transportation endpoints
+		// are saved, they stop sending outgoing packets and all
+		// incoming packets are rejected.
 		go e.dispatchLoop(dispatcher)
 	}
 	e.mu.Unlock()
@@ -169,18 +184,24 @@ func (e *endpoint) LinkAddress() tcpip.LinkAddress {
 
 // WritePacket writes outbound packets to the file descriptor. If it is not
 // currently writable, the packet is dropped.
-func (e *endpoint) WritePacket(r *stack.Route, hdr *buffer.Prependable, payload buffer.View, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
+func (e *endpoint) WritePacket(r *stack.Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
 	// Add the ethernet header here.
 	eth := header.Ethernet(hdr.Prepend(header.EthernetMinimumSize))
-	eth.Encode(&header.EthernetFields{
+	ethHdr := &header.EthernetFields{
 		DstAddr: r.RemoteLinkAddress,
-		SrcAddr: e.addr,
 		Type:    protocol,
-	})
+	}
+	if r.LocalLinkAddress != "" {
+		ethHdr.SrcAddr = r.LocalLinkAddress
+	} else {
+		ethHdr.SrcAddr = e.addr
+	}
+	eth.Encode(ethHdr)
 
+	v := payload.ToView()
 	// Transmit the packet.
 	e.mu.Lock()
-	ok := e.tx.transmit(hdr.UsedBytes(), payload)
+	ok := e.tx.transmit(hdr.View(), v)
 	e.mu.Unlock()
 
 	if !ok {
@@ -211,8 +232,6 @@ func (e *endpoint) dispatchLoop(d stack.NetworkDispatcher) {
 
 	// Read in a loop until a stop is requested.
 	var rxb []queue.RxBuffer
-	views := []buffer.View{nil}
-	vv := buffer.NewVectorisedView(0, views)
 	for atomic.LoadUint32(&e.stopRequested) == 0 {
 		var n uint32
 		rxb, n = e.rx.postAndReceive(rxb, &e.stopRequested)
@@ -234,9 +253,7 @@ func (e *endpoint) dispatchLoop(d stack.NetworkDispatcher) {
 
 		// Send packet up the stack.
 		eth := header.Ethernet(b)
-		views[0] = b[header.EthernetMinimumSize:]
-		vv.SetSize(int(n) - header.EthernetMinimumSize)
-		d.DeliverNetworkPacket(e, eth.SourceAddress(), eth.Type(), &vv)
+		d.DeliverNetworkPacket(e, eth.SourceAddress(), eth.DestinationAddress(), eth.Type(), buffer.View(b[header.EthernetMinimumSize:]).ToVectorisedView())
 	}
 
 	// Clean state.

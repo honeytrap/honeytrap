@@ -42,17 +42,16 @@ type requestHandler interface {
 }
 
 type resultCodeHandler struct {
-	replyTypeID int64 // the overall type of the response, e.g. 1 is BindResponse
-	resultCode  int64 // the result code, i.e. 0 is success, 49 is invalid credentials, etc.
+	replyTypeID   int64 // the overall type of the response, e.g. 1 is BindResponse
+	resultCode    int64 // the result code, i.e. 0 is success, 49 is invalid credentials, etc.
+	matchedDN     string
+	diagnosticMsg string
 }
 
 //Handle: the message envelope
 func (h *resultCodeHandler) handle(p *ber.Packet, el eventLog) []*ber.Packet {
 
-	id, ok := el["ldap.message-id"].(int64)
-	if !ok {
-		id = -1
-	}
+	id, _ := messageID(p)
 
 	reply := replyEnvelope(id)
 
@@ -62,9 +61,9 @@ func (h *resultCodeHandler) handle(p *ber.Packet, el eventLog) []*ber.Packet {
 		ber.NewInteger(ber.ClassUniversal, ber.TypePrimitive, ber.TagEnumerated, h.resultCode, "Result Code"))
 	// per the spec these are "matchedDN" and "diagnosticMessage", but we don't need them for this
 	bindResult.AppendChild(
-		ber.NewString(ber.ClassUniversal, ber.TypePrimitive, ber.TagOctetString, "", "Unused"))
+		ber.NewString(ber.ClassUniversal, ber.TypePrimitive, ber.TagOctetString, h.matchedDN, "matched DN"))
 	bindResult.AppendChild(
-		ber.NewString(ber.ClassUniversal, ber.TypePrimitive, ber.TagOctetString, "", "Unused"))
+		ber.NewString(ber.ClassUniversal, ber.TypePrimitive, ber.TagOctetString, h.diagnosticMsg, "Diagnostic message"))
 
 	reply.AppendChild(bindResult)
 
@@ -89,7 +88,6 @@ func isUnbindRequest(p *ber.Packet) bool {
 			return true
 		}
 	}
-
 	return false
 }
 
@@ -98,17 +96,17 @@ func messageID(p *ber.Packet) (int64, error) {
 	// check overall packet header
 	err := checkPacket(p, ber.ClassUniversal, ber.TypeConstructed, ber.TagSequence)
 	if err != nil {
-		return -1, err
+		return 0, err
 	}
 
 	// check type of message id
 	if len(p.Children) < 1 {
-		return -1, errors.New("ldap: invalid request message")
+		return 0, errors.New("ldap: invalid request message")
 	}
 
 	err = checkPacket(p.Children[0], ber.ClassUniversal, ber.TypePrimitive, ber.TagInteger)
 	if err != nil {
-		return -1, err
+		return 0, err
 	}
 
 	// return the message id
@@ -164,6 +162,5 @@ func forceInt64(v interface{}) int64 {
 	default:
 		log.Panicf("forceInt64 doesn't understand values of type: %t", v)
 	}
-	// We shouldn't get here, but Go wants a return
 	return 0
 }

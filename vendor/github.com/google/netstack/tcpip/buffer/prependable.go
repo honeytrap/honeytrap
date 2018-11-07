@@ -1,6 +1,16 @@
-// Copyright 2016 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2018 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package buffer
 
@@ -22,6 +32,26 @@ func NewPrependable(size int) Prependable {
 	return Prependable{buf: NewView(size), usedIdx: size}
 }
 
+// NewPrependableFromView creates an entirely-used Prependable from a View.
+//
+// NewPrependableFromView takes ownership of v. Note that since the entire
+// prependable is used, further attempts to call Prepend will note that size >
+// p.usedIdx and return nil.
+func NewPrependableFromView(v View) Prependable {
+	return Prependable{buf: v, usedIdx: 0}
+}
+
+// View returns a View of the backing buffer that contains all prepended
+// data so far.
+func (p Prependable) View() View {
+	return p.buf[p.usedIdx:]
+}
+
+// UsedLength returns the number of bytes used so far.
+func (p Prependable) UsedLength() int {
+	return len(p.buf) - p.usedIdx
+}
+
 // Prepend reserves the requested space in front of the buffer, returning a
 // slice that represents the reserved space.
 func (p *Prependable) Prepend(size int) []byte {
@@ -30,24 +60,5 @@ func (p *Prependable) Prepend(size int) []byte {
 	}
 
 	p.usedIdx -= size
-	return p.buf[p.usedIdx:][:size:size]
-}
-
-// View returns a View of the backing buffer that contains all prepended
-// data so far.
-func (p *Prependable) View() View {
-	v := p.buf
-	v.TrimFront(p.usedIdx)
-	return v
-}
-
-// UsedBytes returns a slice of the backing buffer that contains all prepended
-// data so far.
-func (p *Prependable) UsedBytes() []byte {
-	return p.buf[p.usedIdx:]
-}
-
-// UsedLength returns the number of bytes used so far.
-func (p *Prependable) UsedLength() int {
-	return len(p.buf) - p.usedIdx
+	return p.View()[:size:size]
 }

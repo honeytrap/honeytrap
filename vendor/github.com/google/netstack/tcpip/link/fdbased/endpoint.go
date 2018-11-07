@@ -1,6 +1,18 @@
-// Copyright 2016 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2018 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// +build linux
 
 // Package fdbased provides the implemention of data-link layer endpoints
 // backed by boundary-preserving file descriptors (e.g., TUN devices,
@@ -45,10 +57,14 @@ type endpoint struct {
 	// its end of the communication pipe.
 	closed func(*tcpip.Error)
 
-	vv       *buffer.VectorisedView
-	iovecs   []syscall.Iovec
-	views    []buffer.View
-	attached bool
+	iovecs     []syscall.Iovec
+	views      []buffer.View
+	dispatcher stack.NetworkDispatcher
+
+	// handleLocal indicates whether packets destined to itself should be
+	// handled by the netstack internally (true) or be forwarded to the FD
+	// endpoint (false).
+	handleLocal bool
 }
 
 // Options specify the details about the fd-based endpoint to be created.
@@ -59,6 +75,9 @@ type Options struct {
 	ChecksumOffload bool
 	ClosedFunc      func(*tcpip.Error)
 	Address         tcpip.LinkAddress
+	SaveRestore     bool
+	DisconnectOk    bool
+	HandleLocal     bool
 }
 
 // New creates a new fd-based endpoint.
@@ -79,31 +98,41 @@ func New(opts *Options) tcpip.LinkEndpointID {
 		caps |= stack.CapabilityResolutionRequired
 	}
 
-	e := &endpoint{
-		fd:      opts.FD,
-		mtu:     opts.MTU,
-		caps:    caps,
-		closed:  opts.ClosedFunc,
-		addr:    opts.Address,
-		hdrSize: hdrSize,
-		views:   make([]buffer.View, len(BufConfig)),
-		iovecs:  make([]syscall.Iovec, len(BufConfig)),
+	if opts.SaveRestore {
+		caps |= stack.CapabilitySaveRestore
 	}
-	vv := buffer.NewVectorisedView(0, e.views)
-	e.vv = &vv
+
+	if opts.DisconnectOk {
+		caps |= stack.CapabilityDisconnectOk
+	}
+
+	e := &endpoint{
+		fd:          opts.FD,
+		mtu:         opts.MTU,
+		caps:        caps,
+		closed:      opts.ClosedFunc,
+		addr:        opts.Address,
+		hdrSize:     hdrSize,
+		views:       make([]buffer.View, len(BufConfig)),
+		iovecs:      make([]syscall.Iovec, len(BufConfig)),
+		handleLocal: opts.HandleLocal,
+	}
 	return stack.RegisterLinkEndpoint(e)
 }
 
 // Attach launches the goroutine that reads packets from the file descriptor and
 // dispatches them via the provided dispatcher.
 func (e *endpoint) Attach(dispatcher stack.NetworkDispatcher) {
-	e.attached = true
-	go e.dispatchLoop(dispatcher)
+	e.dispatcher = dispatcher
+	// Link endpoints are not savable. When transportation endpoints are
+	// saved, they stop sending outgoing packets and all incoming packets
+	// are rejected.
+	go e.dispatchLoop()
 }
 
 // IsAttached implements stack.LinkEndpoint.IsAttached.
 func (e *endpoint) IsAttached() bool {
-	return e.attached
+	return e.dispatcher != nil
 }
 
 // MTU implements stack.LinkEndpoint.MTU. It returns the value initialized
@@ -129,23 +158,37 @@ func (e *endpoint) LinkAddress() tcpip.LinkAddress {
 
 // WritePacket writes outbound packets to the file descriptor. If it is not
 // currently writable, the packet is dropped.
-func (e *endpoint) WritePacket(r *stack.Route, hdr *buffer.Prependable, payload buffer.View, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
+func (e *endpoint) WritePacket(r *stack.Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
+	if e.handleLocal && r.LocalAddress != "" && r.LocalAddress == r.RemoteAddress {
+		views := make([]buffer.View, 1, 1+len(payload.Views()))
+		views[0] = hdr.View()
+		views = append(views, payload.Views()...)
+		vv := buffer.NewVectorisedView(len(views[0])+payload.Size(), views)
+		e.dispatcher.DeliverNetworkPacket(e, r.RemoteLinkAddress, r.LocalLinkAddress, protocol, vv)
+		return nil
+	}
 	if e.hdrSize > 0 {
 		// Add ethernet header if needed.
 		eth := header.Ethernet(hdr.Prepend(header.EthernetMinimumSize))
-		eth.Encode(&header.EthernetFields{
+		ethHdr := &header.EthernetFields{
 			DstAddr: r.RemoteLinkAddress,
-			SrcAddr: e.addr,
 			Type:    protocol,
-		})
+		}
+
+		// Preserve the src address if it's set in the route.
+		if r.LocalLinkAddress != "" {
+			ethHdr.SrcAddr = r.LocalLinkAddress
+		} else {
+			ethHdr.SrcAddr = e.addr
+		}
+		eth.Encode(ethHdr)
 	}
 
-	if len(payload) == 0 {
-		return rawfile.NonBlockingWrite(e.fd, hdr.UsedBytes())
-
+	if payload.Size() == 0 {
+		return rawfile.NonBlockingWrite(e.fd, hdr.View())
 	}
 
-	return rawfile.NonBlockingWrite2(e.fd, hdr.UsedBytes(), payload)
+	return rawfile.NonBlockingWrite2(e.fd, hdr.View(), payload.ToView())
 }
 
 func (e *endpoint) capViews(n int, buffers []int) int {
@@ -160,22 +203,8 @@ func (e *endpoint) capViews(n int, buffers []int) int {
 	return len(buffers)
 }
 
-func (e *endpoint) allocateViews(bufConfig []int) {
-	for i, v := range e.views {
-		if v != nil {
-			break
-		}
-		b := buffer.NewView(bufConfig[i])
-		e.views[i] = b
-		e.iovecs[i] = syscall.Iovec{
-			Base: &b[0],
-			Len:  uint64(len(b)),
-		}
-	}
-}
-
 // dispatch reads one packet from the file descriptor and dispatches it.
-func (e *endpoint) dispatch(d stack.NetworkDispatcher, largeV buffer.View) (bool, *tcpip.Error) {
+func (e *endpoint) dispatch(largeV buffer.View) (bool, *tcpip.Error) {
 	e.allocateViews(BufConfig)
 
 	n, err := rawfile.BlockingReadv(e.fd, e.iovecs)
@@ -187,12 +216,15 @@ func (e *endpoint) dispatch(d stack.NetworkDispatcher, largeV buffer.View) (bool
 		return false, nil
 	}
 
-	var p tcpip.NetworkProtocolNumber
-	var addr tcpip.LinkAddress
+	var (
+		p                             tcpip.NetworkProtocolNumber
+		remoteLinkAddr, localLinkAddr tcpip.LinkAddress
+	)
 	if e.hdrSize > 0 {
 		eth := header.Ethernet(e.views[0])
 		p = eth.Type()
-		addr = eth.SourceAddress()
+		remoteLinkAddr = eth.SourceAddress()
+		localLinkAddr = eth.DestinationAddress()
 	} else {
 		// We don't get any indication of what the packet is, so try to guess
 		// if it's an IPv4 or IPv6 packet.
@@ -207,11 +239,10 @@ func (e *endpoint) dispatch(d stack.NetworkDispatcher, largeV buffer.View) (bool
 	}
 
 	used := e.capViews(n, BufConfig)
-	e.vv.SetViews(e.views[:used])
-	e.vv.SetSize(n)
-	e.vv.TrimFront(e.hdrSize)
+	vv := buffer.NewVectorisedView(n, e.views[:used])
+	vv.TrimFront(e.hdrSize)
 
-	d.DeliverNetworkPacket(e, addr, p, e.vv)
+	e.dispatcher.DeliverNetworkPacket(e, remoteLinkAddr, localLinkAddr, p, vv)
 
 	// Prepare e.views for another packet: release used views.
 	for i := 0; i < used; i++ {
@@ -223,10 +254,10 @@ func (e *endpoint) dispatch(d stack.NetworkDispatcher, largeV buffer.View) (bool
 
 // dispatchLoop reads packets from the file descriptor in a loop and dispatches
 // them to the network stack.
-func (e *endpoint) dispatchLoop(d stack.NetworkDispatcher) *tcpip.Error {
+func (e *endpoint) dispatchLoop() *tcpip.Error {
 	v := buffer.NewView(header.MaxIPPacketSize)
 	for {
-		cont, err := e.dispatch(d, v)
+		cont, err := e.dispatch(v)
 		if err != nil || !cont {
 			if e.closed != nil {
 				e.closed(err)
@@ -251,8 +282,8 @@ func (e *InjectableEndpoint) Attach(dispatcher stack.NetworkDispatcher) {
 }
 
 // Inject injects an inbound packet.
-func (e *InjectableEndpoint) Inject(protocol tcpip.NetworkProtocolNumber, vv *buffer.VectorisedView) {
-	e.dispatcher.DeliverNetworkPacket(e, "", protocol, vv)
+func (e *InjectableEndpoint) Inject(protocol tcpip.NetworkProtocolNumber, vv buffer.VectorisedView) {
+	e.dispatcher.DeliverNetworkPacket(e, "" /* remoteLinkAddr */, "" /* localLinkAddr */, protocol, vv)
 }
 
 // NewInjectable creates a new fd-based InjectableEndpoint.

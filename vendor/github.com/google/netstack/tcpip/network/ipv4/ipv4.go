@@ -1,6 +1,16 @@
-// Copyright 2016 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2018 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 // Package ipv4 contains the implementation of the ipv4 network protocol. To use
 // it in the networking stack, this package must be added to the project, and
@@ -57,11 +67,16 @@ func newEndpoint(nicid tcpip.NICID, addr tcpip.Address, dispatcher stack.Transpo
 		fragmentation: fragmentation.NewFragmentation(fragmentation.HighFragThreshold, fragmentation.LowFragThreshold, fragmentation.DefaultReassembleTimeout),
 	}
 	copy(e.address[:], addr)
-	e.id = stack.NetworkEndpointID{tcpip.Address(e.address[:])}
+	e.id = stack.NetworkEndpointID{LocalAddress: tcpip.Address(e.address[:])}
 
 	go e.echoReplier()
 
 	return e
+}
+
+// DefaultTTL is the default time-to-live value for this endpoint.
+func (e *endpoint) DefaultTTL() uint8 {
+	return 255
 }
 
 // MTU implements stack.NetworkEndpoint.MTU. It returns the link-layer MTU minus
@@ -92,9 +107,9 @@ func (e *endpoint) MaxHeaderLength() uint16 {
 }
 
 // WritePacket writes a packet to the given destination address and protocol.
-func (e *endpoint) WritePacket(r *stack.Route, hdr *buffer.Prependable, payload buffer.View, protocol tcpip.TransportProtocolNumber) *tcpip.Error {
+func (e *endpoint) WritePacket(r *stack.Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.TransportProtocolNumber, ttl uint8) *tcpip.Error {
 	ip := header.IPv4(hdr.Prepend(header.IPv4MinimumSize))
-	length := uint16(hdr.UsedLength() + len(payload))
+	length := uint16(hdr.UsedLength() + payload.Size())
 	id := uint32(0)
 	if length > header.IPv4MaximumHeaderSize+8 {
 		// Packets of 68 bytes or less are required by RFC 791 to not be
@@ -105,19 +120,20 @@ func (e *endpoint) WritePacket(r *stack.Route, hdr *buffer.Prependable, payload 
 		IHL:         header.IPv4MinimumSize,
 		TotalLength: length,
 		ID:          uint16(id),
-		TTL:         65,
+		TTL:         ttl,
 		Protocol:    uint8(protocol),
 		SrcAddr:     tcpip.Address(e.address[:]),
 		DstAddr:     r.RemoteAddress,
 	})
 	ip.SetChecksum(^ip.CalculateChecksum())
+	r.Stats().IP.PacketsSent.Increment()
 
 	return e.linkEP.WritePacket(r, hdr, payload, ProtocolNumber)
 }
 
 // HandlePacket is called by the link layer when new ipv4 packets arrive for
 // this endpoint.
-func (e *endpoint) HandlePacket(r *stack.Route, vv *buffer.VectorisedView) {
+func (e *endpoint) HandlePacket(r *stack.Route, vv buffer.VectorisedView) {
 	h := header.IPv4(vv.First())
 	if !h.IsValid(vv.Size()) {
 		return
@@ -132,17 +148,18 @@ func (e *endpoint) HandlePacket(r *stack.Route, vv *buffer.VectorisedView) {
 	if more || h.FragmentOffset() != 0 {
 		// The packet is a fragment, let's try to reassemble it.
 		last := h.FragmentOffset() + uint16(vv.Size()) - 1
-		tt, ready := e.fragmentation.Process(hash.IPv4FragmentHash(h), h.FragmentOffset(), last, more, vv)
+		var ready bool
+		vv, ready = e.fragmentation.Process(hash.IPv4FragmentHash(h), h.FragmentOffset(), last, more, vv)
 		if !ready {
 			return
 		}
-		vv = &tt
 	}
 	p := h.TransportProtocol()
 	if p == header.ICMPv4ProtocolNumber {
 		e.handleICMP(r, vv)
 		return
 	}
+	r.Stats().IP.PacketsDelivered.Increment()
 	e.dispatcher.DeliverTransportPacket(r, p, vv)
 }
 

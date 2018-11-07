@@ -1,6 +1,16 @@
-// Copyright 2016 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2018 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 // Package context provides a test context for use in tcp tests. It also
 // provides helper methods to assert/check certain behaviours.
@@ -129,7 +139,7 @@ type Context struct {
 // New allocates and initializes a test context containing a new
 // stack and a link-layer endpoint.
 func New(t *testing.T, mtu uint32) *Context {
-	s := stack.New(&tcpip.StdClock{}, []string{ipv4.ProtocolName, ipv6.ProtocolName}, []string{tcp.ProtocolName})
+	s := stack.New([]string{ipv4.ProtocolName, ipv6.ProtocolName}, []string{tcp.ProtocolName}, stack.Options{})
 
 	// Allow minimum send/receive buffer sizes to be 1 during tests.
 	if err := s.SetTransportProtocolOption(tcp.ProtocolNumber, tcp.SendBufferSizeOption{1, tcp.DefaultBufferSize, tcp.DefaultBufferSize * 10}); err != nil {
@@ -195,9 +205,11 @@ func (c *Context) Stack() *stack.Stack {
 // CheckNoPacketTimeout verifies that no packet is received during the time
 // specified by wait.
 func (c *Context) CheckNoPacketTimeout(errMsg string, wait time.Duration) {
+	c.t.Helper()
+
 	select {
 	case <-c.linkEP.C:
-		c.t.Fatalf(errMsg)
+		c.t.Fatal(errMsg)
 
 	case <-time.After(wait):
 	}
@@ -232,6 +244,27 @@ func (c *Context) GetPacket() []byte {
 	return nil
 }
 
+// GetPacketNonBlocking reads a packet from the link layer endpoint
+// and verifies that it is an IPv4 packet with the expected source
+// and destination address. If no packet is available it will return
+// nil immediately.
+func (c *Context) GetPacketNonBlocking() []byte {
+	select {
+	case p := <-c.linkEP.C:
+		if p.Proto != ipv4.ProtocolNumber {
+			c.t.Fatalf("Bad network protocol: got %v, wanted %v", p.Proto, ipv4.ProtocolNumber)
+		}
+		b := make([]byte, len(p.Header)+len(p.Payload))
+		copy(b, p.Header)
+		copy(b[len(p.Header):], p.Payload)
+
+		checker.IPv4(c.t, b, checker.SrcAddr(StackAddr), checker.DstAddr(TestAddr))
+		return b
+	default:
+		return nil
+	}
+}
+
 // SendICMPPacket builds and sends an ICMPv4 packet via the link layer endpoint.
 func (c *Context) SendICMPPacket(typ header.ICMPv4Type, code uint8, p1, p2 []byte, maxTotalSize int) {
 	// Allocate a buffer data and headers.
@@ -259,14 +292,11 @@ func (c *Context) SendICMPPacket(typ header.ICMPv4Type, code uint8, p1, p2 []byt
 	copy(icmp[header.ICMPv4MinimumSize+len(p1):], p2)
 
 	// Inject packet.
-	var views [1]buffer.View
-	vv := buf.ToVectorisedView(views)
-	c.linkEP.Inject(ipv4.ProtocolNumber, &vv)
+	c.linkEP.Inject(ipv4.ProtocolNumber, buf.ToVectorisedView())
 }
 
-// SendPacket builds and sends a TCP segment(with the provided payload & TCP
-// headers) in an IPv4 packet via the link layer endpoint.
-func (c *Context) SendPacket(payload []byte, h *Headers) {
+// BuildSegment builds a TCP segment based on the given Headers and payload.
+func (c *Context) BuildSegment(payload []byte, h *Headers) buffer.VectorisedView {
 	// Allocate a buffer for data and headers.
 	buf := buffer.NewView(header.TCPMinimumSize + header.IPv4MinimumSize + len(h.TCPOpts) + len(payload))
 	copy(buf[len(buf)-len(payload):], payload)
@@ -307,9 +337,19 @@ func (c *Context) SendPacket(payload []byte, h *Headers) {
 	t.SetChecksum(^t.CalculateChecksum(xsum, length))
 
 	// Inject packet.
-	var views [1]buffer.View
-	vv := buf.ToVectorisedView(views)
-	c.linkEP.Inject(ipv4.ProtocolNumber, &vv)
+	return buf.ToVectorisedView()
+}
+
+// SendSegment sends a TCP segment that has already been built and written to a
+// buffer.VectorisedView.
+func (c *Context) SendSegment(s buffer.VectorisedView) {
+	c.linkEP.Inject(ipv4.ProtocolNumber, s)
+}
+
+// SendPacket builds and sends a TCP segment(with the provided payload & TCP
+// headers) in an IPv4 packet via the link layer endpoint.
+func (c *Context) SendPacket(payload []byte, h *Headers) {
+	c.linkEP.Inject(ipv4.ProtocolNumber, c.BuildSegment(payload, h))
 }
 
 // SendAck sends an ACK packet.
@@ -343,6 +383,32 @@ func (c *Context) ReceiveAndCheckPacket(data []byte, offset, size int) {
 	if p := b[header.IPv4MinimumSize+header.TCPMinimumSize:]; bytes.Compare(pdata, p) != 0 {
 		c.t.Fatalf("Data is different: expected %v, got %v", pdata, p)
 	}
+}
+
+// ReceiveNonBlockingAndCheckPacket reads a packet from the link layer endpoint
+// and verifies that the packet packet payload of packet matches the slice of
+// data indicated by offset & size. It returns true if a packet was received and
+// processed.
+func (c *Context) ReceiveNonBlockingAndCheckPacket(data []byte, offset, size int) bool {
+	b := c.GetPacketNonBlocking()
+	if b == nil {
+		return false
+	}
+	checker.IPv4(c.t, b,
+		checker.PayloadLen(size+header.TCPMinimumSize),
+		checker.TCP(
+			checker.DstPort(TestPort),
+			checker.SeqNum(uint32(c.IRS.Add(seqnum.Size(1+offset)))),
+			checker.AckNum(uint32(seqnum.Value(testInitialSequenceNumber).Add(1))),
+			checker.TCPFlagsMatch(header.TCPFlagAck, ^uint8(header.TCPFlagPsh)),
+		),
+	)
+
+	pdata := data[offset:][:size]
+	if p := b[header.IPv4MinimumSize+header.TCPMinimumSize:]; bytes.Compare(pdata, p) != 0 {
+		c.t.Fatalf("Data is different: expected %v, got %v", pdata, p)
+	}
+	return true
 }
 
 // CreateV6Endpoint creates and initializes c.ep as a IPv6 Endpoint. If v6Only
@@ -426,9 +492,7 @@ func (c *Context) SendV6Packet(payload []byte, h *Headers) {
 	t.SetChecksum(^t.CalculateChecksum(xsum, length))
 
 	// Inject packet.
-	var views [1]buffer.View
-	vv := buf.ToVectorisedView(views)
-	c.linkEP.Inject(ipv6.ProtocolNumber, &vv)
+	c.linkEP.Inject(ipv6.ProtocolNumber, buf.ToVectorisedView())
 }
 
 // CreateConnected creates a connected TCP endpoint.

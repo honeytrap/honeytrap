@@ -1,6 +1,18 @@
-// Copyright 2016 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2018 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// +build linux,!arm
 
 // Package rawfile contains utilities for using the netstack with raw host
 // files on Linux hosts.
@@ -12,9 +24,6 @@ import (
 
 	"github.com/google/netstack/tcpip"
 )
-
-//go:noescape
-func blockingPoll(fds unsafe.Pointer, nfds int, timeout int64) (n int, err syscall.Errno)
 
 // GetMTU determines the MTU of a network interface device.
 func GetMTU(name string) (uint32, error) {
@@ -85,27 +94,10 @@ func NonBlockingWrite2(fd int, b1, b2 []byte) *tcpip.Error {
 	return nil
 }
 
-// NonBlockingWriteN writes up to N byte slices to a file descriptor in a
-// single syscall. It fails if partial data is written.
-func NonBlockingWriteN(fd int, bs ...[]byte) *tcpip.Error {
-	iovec := make([]syscall.Iovec, 0, len(bs))
-
-	for _, b := range bs {
-		if len(b) == 0 {
-			continue
-		}
-		iovec = append(iovec, syscall.Iovec{
-			Base: &b[0],
-			Len:  uint64(len(b)),
-		})
-	}
-
-	_, _, e := syscall.RawSyscall(syscall.SYS_WRITEV, uintptr(fd), uintptr(unsafe.Pointer(&iovec[0])), uintptr(len(iovec)))
-	if e != 0 {
-		return TranslateErrno(e)
-	}
-
-	return nil
+type pollEvent struct {
+	fd      int32
+	events  int16
+	revents int16
 }
 
 // BlockingRead reads from a file descriptor that is set up as non-blocking. If
@@ -118,16 +110,12 @@ func BlockingRead(fd int, b []byte) (int, *tcpip.Error) {
 			return int(n), nil
 		}
 
-		event := struct {
-			fd      int32
-			events  int16
-			revents int16
-		}{
+		event := pollEvent{
 			fd:     int32(fd),
 			events: 1, // POLLIN
 		}
 
-		_, e = blockingPoll(unsafe.Pointer(&event), 1, -1)
+		_, e = blockingPoll(&event, 1, -1)
 		if e != 0 && e != syscall.EINTR {
 			return 0, TranslateErrno(e)
 		}
@@ -144,16 +132,12 @@ func BlockingReadv(fd int, iovecs []syscall.Iovec) (int, *tcpip.Error) {
 			return int(n), nil
 		}
 
-		event := struct {
-			fd      int32
-			events  int16
-			revents int16
-		}{
+		event := pollEvent{
 			fd:     int32(fd),
 			events: 1, // POLLIN
 		}
 
-		_, e = blockingPoll(unsafe.Pointer(&event), 1, -1)
+		_, e = blockingPoll(&event, 1, -1)
 		if e != 0 && e != syscall.EINTR {
 			return 0, TranslateErrno(e)
 		}

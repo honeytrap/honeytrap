@@ -1,6 +1,16 @@
-// Copyright 2016 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2018 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 // Package ping contains the implementation of the ICMP and IPv6-ICMP transport
 // protocols for use in ping. To use it in the networking stack, this package
@@ -61,7 +71,7 @@ func (p *protocol) NewEndpoint(stack *stack.Stack, netProto tcpip.NetworkProtoco
 	if netProto != p.netProto() {
 		return nil, tcpip.ErrUnknownProtocol
 	}
-	return newEndpoint(stack, netProto, waiterQueue), nil
+	return newEndpoint(stack, netProto, p.number, waiterQueue), nil
 }
 
 // MinimumPacketSize returns the minimum valid ping packet size.
@@ -75,15 +85,21 @@ func (p *protocol) MinimumPacketSize() int {
 	panic(fmt.Sprint("unknown protocol number: ", p.number))
 }
 
-// ParsePorts returns the source and destination ports stored in the given udp
+// ParsePorts returns the source and destination ports stored in the given ping
 // packet.
-func (*protocol) ParsePorts(v buffer.View) (src, dst uint16, err *tcpip.Error) {
-	return 0, binary.BigEndian.Uint16(v[header.ICMPv4MinimumSize:]), nil
+func (p *protocol) ParsePorts(v buffer.View) (src, dst uint16, err *tcpip.Error) {
+	switch p.number {
+	case ProtocolNumber4:
+		return 0, binary.BigEndian.Uint16(v[header.ICMPv4MinimumSize:]), nil
+	case ProtocolNumber6:
+		return 0, binary.BigEndian.Uint16(v[header.ICMPv6MinimumSize:]), nil
+	}
+	panic(fmt.Sprint("unknown protocol number: ", p.number))
 }
 
 // HandleUnknownDestinationPacket handles packets targeted at this protocol but
 // that don't match any existing endpoint.
-func (p *protocol) HandleUnknownDestinationPacket(*stack.Route, stack.TransportEndpointID, *buffer.VectorisedView) bool {
+func (p *protocol) HandleUnknownDestinationPacket(*stack.Route, stack.TransportEndpointID, buffer.VectorisedView) bool {
 	return true
 }
 
@@ -102,5 +118,7 @@ func init() {
 		return &protocol{ProtocolNumber4}
 	})
 
-	// TODO: Support IPv6.
+	stack.RegisterTransportProtocolFactory(ProtocolName6, func() stack.TransportProtocol {
+		return &protocol{ProtocolNumber6}
+	})
 }

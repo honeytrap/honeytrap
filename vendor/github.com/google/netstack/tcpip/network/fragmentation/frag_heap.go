@@ -1,6 +1,16 @@
-// Copyright 2016 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2018 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package fragmentation
 
@@ -13,7 +23,7 @@ import (
 
 type fragment struct {
 	offset uint16
-	vv     *buffer.VectorisedView
+	vv     buffer.VectorisedView
 }
 
 type fragHeap []fragment
@@ -50,7 +60,7 @@ func (h *fragHeap) reassemble() (buffer.VectorisedView, error) {
 	size := curr.vv.Size()
 
 	if curr.offset != 0 {
-		return buffer.NewVectorisedView(0, nil), fmt.Errorf("offset of the first packet is != 0 (%d)", curr.offset)
+		return buffer.VectorisedView{}, fmt.Errorf("offset of the first packet is != 0 (%d)", curr.offset)
 	}
 
 	for h.Len() > 0 {
@@ -58,7 +68,7 @@ func (h *fragHeap) reassemble() (buffer.VectorisedView, error) {
 		if int(curr.offset) < size {
 			curr.vv.TrimFront(size - int(curr.offset))
 		} else if int(curr.offset) > size {
-			return buffer.NewVectorisedView(0, nil), fmt.Errorf("packet has a hole, expected offset %d, got %d", size, curr.offset)
+			return buffer.VectorisedView{}, fmt.Errorf("packet has a hole, expected offset %d, got %d", size, curr.offset)
 		}
 		size += curr.vv.Size()
 		views = append(views, curr.vv.Views()...)

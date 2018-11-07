@@ -37,16 +37,13 @@ import (
 	"net/mail"
 )
 
+// Message smtp message
 type Message struct {
-	From *mail.Address
-	To   []*mail.Address
-
-	Domain     string
-	RemoteAddr string
-
 	Header mail.Header
+
 	Buffer *bytes.Buffer
-	Body   *bytes.Buffer
+
+	Body *bytes.Buffer
 }
 
 func (m *Message) Read(r io.Reader) error {
