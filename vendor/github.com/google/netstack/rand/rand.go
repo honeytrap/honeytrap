@@ -1,4 +1,4 @@
-// Copyright 2018 Google Inc.
+// Copyright 2018 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,28 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// +build !linux
+
 // Package rand implements a cryptographically secure pseudorandom number
 // generator.
 package rand
 
-import (
-	"io"
-
-	"golang.org/x/sys/unix"
-)
-
-// reader implements an io.Reader that returns pseudorandom bytes.
-type reader struct{}
-
-// Read implements io.Reader.Read.
-func (reader) Read(p []byte) (int, error) {
-	return unix.Getrandom(p, 0)
-}
+import "crypto/rand"
 
 // Reader is the default reader.
-var Reader io.Reader = reader{}
+var Reader = rand.Reader
 
-// Read reads from the default reader.
+// Read implements io.Reader.Read.
 func Read(b []byte) (int, error) {
-	return io.ReadFull(Reader, b)
+	return rand.Read(b)
 }

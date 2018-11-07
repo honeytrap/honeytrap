@@ -1,4 +1,4 @@
-// Copyright 2018 Google Inc.
+// Copyright 2018 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -64,11 +64,11 @@ const (
 type TransportEndpoint interface {
 	// HandlePacket is called by the stack when new packets arrive to
 	// this transport endpoint.
-	HandlePacket(r *Route, id TransportEndpointID, vv *buffer.VectorisedView)
+	HandlePacket(r *Route, id TransportEndpointID, vv buffer.VectorisedView)
 
 	// HandleControlPacket is called by the stack when new control (e.g.,
 	// ICMP) packets arrive to this transport endpoint.
-	HandleControlPacket(id TransportEndpointID, typ ControlType, extra uint32, vv *buffer.VectorisedView)
+	HandleControlPacket(id TransportEndpointID, typ ControlType, extra uint32, vv buffer.VectorisedView)
 }
 
 // TransportProtocol is the interface that needs to be implemented by transport
@@ -95,7 +95,7 @@ type TransportProtocol interface {
 	//
 	// The return value indicates whether the packet was well-formed (for
 	// stats purposes only).
-	HandleUnknownDestinationPacket(r *Route, id TransportEndpointID, vv *buffer.VectorisedView) bool
+	HandleUnknownDestinationPacket(r *Route, id TransportEndpointID, vv buffer.VectorisedView) bool
 
 	// SetOption allows enabling/disabling protocol specific features.
 	// SetOption returns an error if the option is not supported or the
@@ -114,16 +114,20 @@ type TransportProtocol interface {
 type TransportDispatcher interface {
 	// DeliverTransportPacket delivers packets to the appropriate
 	// transport protocol endpoint.
-	DeliverTransportPacket(r *Route, protocol tcpip.TransportProtocolNumber, vv *buffer.VectorisedView)
+	DeliverTransportPacket(r *Route, protocol tcpip.TransportProtocolNumber, vv buffer.VectorisedView)
 
 	// DeliverTransportControlPacket delivers control packets to the
 	// appropriate transport protocol endpoint.
-	DeliverTransportControlPacket(local, remote tcpip.Address, net tcpip.NetworkProtocolNumber, trans tcpip.TransportProtocolNumber, typ ControlType, extra uint32, vv *buffer.VectorisedView)
+	DeliverTransportControlPacket(local, remote tcpip.Address, net tcpip.NetworkProtocolNumber, trans tcpip.TransportProtocolNumber, typ ControlType, extra uint32, vv buffer.VectorisedView)
 }
 
 // NetworkEndpoint is the interface that needs to be implemented by endpoints
 // of network layer protocols (e.g., ipv4, ipv6).
 type NetworkEndpoint interface {
+	// DefaultTTL is the default time-to-live value (or hop limit, in ipv6)
+	// for this endpoint.
+	DefaultTTL() uint8
+
 	// MTU is the maximum transmission unit for this endpoint. This is
 	// generally calculated as the MTU of the underlying data link endpoint
 	// minus the network endpoint max header length.
@@ -141,7 +145,7 @@ type NetworkEndpoint interface {
 
 	// WritePacket writes a packet to the given destination address and
 	// protocol.
-	WritePacket(r *Route, hdr *buffer.Prependable, payload buffer.View, protocol tcpip.TransportProtocolNumber) *tcpip.Error
+	WritePacket(r *Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.TransportProtocolNumber, ttl uint8) *tcpip.Error
 
 	// ID returns the network protocol endpoint ID.
 	ID() *NetworkEndpointID
@@ -151,7 +155,7 @@ type NetworkEndpoint interface {
 
 	// HandlePacket is called by the link layer when new packets arrive to
 	// this network endpoint.
-	HandlePacket(r *Route, vv *buffer.VectorisedView)
+	HandlePacket(r *Route, vv buffer.VectorisedView)
 
 	// Close is called when the endpoint is reomved from a stack.
 	Close()
@@ -192,7 +196,7 @@ type NetworkProtocol interface {
 type NetworkDispatcher interface {
 	// DeliverNetworkPacket finds the appropriate network protocol
 	// endpoint and hands the packet over for further processing.
-	DeliverNetworkPacket(linkEP LinkEndpoint, remoteLinkAddr tcpip.LinkAddress, protocol tcpip.NetworkProtocolNumber, vv *buffer.VectorisedView)
+	DeliverNetworkPacket(linkEP LinkEndpoint, dstLinkAddr, srcLinkAddr tcpip.LinkAddress, protocol tcpip.NetworkProtocolNumber, vv buffer.VectorisedView)
 }
 
 // LinkEndpointCapabilities is the type associated with the capabilities
@@ -234,7 +238,11 @@ type LinkEndpoint interface {
 
 	// WritePacket writes a packet with the given protocol through the given
 	// route.
-	WritePacket(r *Route, hdr *buffer.Prependable, payload buffer.View, protocol tcpip.NetworkProtocolNumber) *tcpip.Error
+	//
+	// To participate in transparent bridging, a LinkEndpoint implementation
+	// should call eth.Encode with header.EthernetFields.SrcAddr set to
+	// r.LocalLinkAddress if it is provided.
+	WritePacket(r *Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.NetworkProtocolNumber) *tcpip.Error
 
 	// Attach attaches the data link layer endpoint to the network-layer
 	// dispatcher of the stack.
@@ -281,7 +289,11 @@ type LinkAddressCache interface {
 	// registered with the network protocol, the cache attempts to resolve the address
 	// and returns ErrWouldBlock. Waker is notified when address resolution is
 	// complete (success or not).
-	GetLinkAddress(nicid tcpip.NICID, addr, localAddr tcpip.Address, protocol tcpip.NetworkProtocolNumber, w *sleep.Waker) (tcpip.LinkAddress, *tcpip.Error)
+	//
+	// If address resolution is required, ErrNoLinkAddress and a notification channel is
+	// returned for the top level caller to block. Channel is closed once address resolution
+	// is complete (success or not).
+	GetLinkAddress(nicid tcpip.NICID, addr, localAddr tcpip.Address, protocol tcpip.NetworkProtocolNumber, w *sleep.Waker) (tcpip.LinkAddress, <-chan struct{}, *tcpip.Error)
 
 	// RemoveWaker removes a waker that has been added in GetLinkAddress().
 	RemoveWaker(nicid tcpip.NICID, addr tcpip.Address, waker *sleep.Waker)

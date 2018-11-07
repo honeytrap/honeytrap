@@ -1,4 +1,4 @@
-// Copyright 2018 Google Inc.
+// Copyright 2018 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -147,7 +147,7 @@ func timeStampEnabledAccept(t *testing.T, cookieEnabled bool, wndScale int, wndS
 	view := buffer.NewView(len(data))
 	copy(view, data)
 
-	if _, err := c.EP.Write(tcpip.SlicePayload(view), tcpip.WriteOptions{}); err != nil {
+	if _, _, err := c.EP.Write(tcpip.SlicePayload(view), tcpip.WriteOptions{}); err != nil {
 		t.Fatalf("Unexpected error from Write: %v", err)
 	}
 
@@ -210,7 +210,7 @@ func timeStampDisabledAccept(t *testing.T, cookieEnabled bool, wndScale int, wnd
 	view := buffer.NewView(len(data))
 	copy(view, data)
 
-	if _, err := c.EP.Write(tcpip.SlicePayload(view), tcpip.WriteOptions{}); err != nil {
+	if _, _, err := c.EP.Write(tcpip.SlicePayload(view), tcpip.WriteOptions{}); err != nil {
 		t.Fatalf("Unexpected error from Write: %v", err)
 	}
 
@@ -267,8 +267,8 @@ func TestSegmentDropWhenTimestampMissing(t *testing.T) {
 	c.WQ.EventRegister(&we, waiter.EventIn)
 	defer c.WQ.EventUnregister(&we)
 
-	stk := c.Stack()
-	droppedPackets := stk.Stats().DroppedPackets
+	droppedPacketsStat := c.Stack().Stats().DroppedPackets
+	droppedPackets := droppedPacketsStat.Value()
 	data := []byte{1, 2, 3}
 	// Save the sequence number as we will reset it later down
 	// in the test.
@@ -283,11 +283,11 @@ func TestSegmentDropWhenTimestampMissing(t *testing.T) {
 	}
 
 	// Assert that DroppedPackets was incremented by 1.
-	if got, want := stk.Stats().DroppedPackets, droppedPackets+1; got != want {
+	if got, want := droppedPacketsStat.Value(), droppedPackets+1; got != want {
 		t.Fatalf("incorrect number of dropped packets, got: %v, want: %v", got, want)
 	}
 
-	droppedPackets = stk.Stats().DroppedPackets
+	droppedPackets = droppedPacketsStat.Value()
 	// Reset the sequence number so that the other endpoint accepts
 	// this segment and does not treat it like an out of order delivery.
 	rep.NextSeqNum = savedSeqNum
@@ -301,7 +301,7 @@ func TestSegmentDropWhenTimestampMissing(t *testing.T) {
 	}
 
 	// Assert that DroppedPackets was not incremented by 1.
-	if got, want := stk.Stats().DroppedPackets, droppedPackets; got != want {
+	if got, want := droppedPacketsStat.Value(), droppedPackets; got != want {
 		t.Fatalf("incorrect number of dropped packets, got: %v, want: %v", got, want)
 	}
 

@@ -1,4 +1,4 @@
-// Copyright 2018 Google Inc.
+// Copyright 2018 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@ package tcp
 
 import (
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/google/netstack/rand"
@@ -171,7 +170,7 @@ func (h *handshake) checkAck(s *segment) bool {
 		// incoming segment acknowledges something not yet sent. The
 		// connection remains in the same state.
 		ack := s.sequenceNumber.Add(s.logicalLen())
-		h.ep.sendRaw(nil, flagRst|flagAck, s.ackNumber, ack, 0)
+		h.ep.sendRaw(buffer.VectorisedView{}, flagRst|flagAck, s.ackNumber, ack, 0)
 		return false
 	}
 
@@ -219,7 +218,7 @@ func (h *handshake) synSentState(s *segment) *tcpip.Error {
 	// and the handshake is completed.
 	if s.flagIsSet(flagAck) {
 		h.state = handshakeCompleted
-		h.ep.sendRaw(nil, flagAck, h.iss+1, h.ackNum, h.rcvWnd>>h.effectiveRcvWndScale())
+		h.ep.sendRaw(buffer.VectorisedView{}, flagAck, h.iss+1, h.ackNum, h.rcvWnd>>h.effectiveRcvWndScale())
 		return nil
 	}
 
@@ -268,7 +267,7 @@ func (h *handshake) synRcvdState(s *segment) *tcpip.Error {
 		if s.flagIsSet(flagAck) {
 			seq = s.ackNumber
 		}
-		h.ep.sendRaw(nil, flagRst|flagAck, seq, ack, 0)
+		h.ep.sendRaw(buffer.VectorisedView{}, flagRst|flagAck, seq, ack, 0)
 
 		if !h.active {
 			return tcpip.ErrInvalidEndpointState
@@ -296,7 +295,7 @@ func (h *handshake) synRcvdState(s *segment) *tcpip.Error {
 		// not carry a timestamp option then the segment must be dropped
 		// as per https://tools.ietf.org/html/rfc7323#section-3.2.
 		if h.ep.sendTSOk && !s.parsedOptions.TS {
-			atomic.AddUint64(&h.ep.stack.MutableStats().DroppedPackets, 1)
+			h.ep.stack.Stats().DroppedPackets.Increment()
 			return nil
 		}
 
@@ -370,7 +369,7 @@ func (h *handshake) resolveRoute() *tcpip.Error {
 	for {
 		switch index {
 		case wakerForResolution:
-			if err := h.ep.route.Resolve(resolutionWaker); err != tcpip.ErrWouldBlock {
+			if _, err := h.ep.route.Resolve(resolutionWaker); err != tcpip.ErrWouldBlock {
 				// Either success (err == nil) or failure.
 				return err
 			}
@@ -568,14 +567,14 @@ func sendSynTCP(r *stack.Route, id stack.TransportEndpointID, flags byte, seq, a
 	}
 
 	options := makeSynOptions(opts)
-	err := sendTCPWithOptions(r, id, nil, flags, seq, ack, rcvWnd, options)
+	err := sendTCP(r, id, buffer.VectorisedView{}, r.DefaultTTL(), flags, seq, ack, rcvWnd, options)
 	putOptions(options)
 	return err
 }
 
-// sendTCPWithOptions sends a TCP segment with the provided options via the
-// provided network endpoint and under the provided identity.
-func sendTCPWithOptions(r *stack.Route, id stack.TransportEndpointID, data buffer.View, flags byte, seq, ack seqnum.Value, rcvWnd seqnum.Size, opts []byte) *tcpip.Error {
+// sendTCP sends a TCP segment with the provided options via the provided
+// network endpoint and under the provided identity.
+func sendTCP(r *stack.Route, id stack.TransportEndpointID, data buffer.VectorisedView, ttl uint8, flags byte, seq, ack seqnum.Value, rcvWnd seqnum.Size, opts []byte) *tcpip.Error {
 	optLen := len(opts)
 	// Allocate a buffer for the TCP header.
 	hdr := buffer.NewPrependable(header.TCPMinimumSize + int(r.MaxHeaderLength()) + optLen)
@@ -599,54 +598,21 @@ func sendTCPWithOptions(r *stack.Route, id stack.TransportEndpointID, data buffe
 
 	// Only calculate the checksum if offloading isn't supported.
 	if r.Capabilities()&stack.CapabilityChecksumOffload == 0 {
-		length := uint16(hdr.UsedLength())
+		length := uint16(hdr.UsedLength() + data.Size())
 		xsum := r.PseudoHeaderChecksum(ProtocolNumber)
-		if data != nil {
-			length += uint16(len(data))
-			xsum = header.Checksum(data, xsum)
+		for _, v := range data.Views() {
+			xsum = header.Checksum(v, xsum)
 		}
 
 		tcp.SetChecksum(^tcp.CalculateChecksum(xsum, length))
 	}
 
-	return r.WritePacket(&hdr, data, ProtocolNumber)
-}
-
-// sendTCP sends a TCP segment via the provided network endpoint and under the
-// provided identity.
-func sendTCP(r *stack.Route, id stack.TransportEndpointID, data buffer.View, flags byte, seq, ack seqnum.Value, rcvWnd seqnum.Size) *tcpip.Error {
-	// Allocate a buffer for the TCP header.
-	hdr := buffer.NewPrependable(header.TCPMinimumSize + int(r.MaxHeaderLength()))
-
-	if rcvWnd > 0xffff {
-		rcvWnd = 0xffff
+	r.Stats().TCP.SegmentsSent.Increment()
+	if (flags & flagRst) != 0 {
+		r.Stats().TCP.ResetsSent.Increment()
 	}
 
-	// Initialize the header.
-	tcp := header.TCP(hdr.Prepend(header.TCPMinimumSize))
-	tcp.Encode(&header.TCPFields{
-		SrcPort:    id.LocalPort,
-		DstPort:    id.RemotePort,
-		SeqNum:     uint32(seq),
-		AckNum:     uint32(ack),
-		DataOffset: header.TCPMinimumSize,
-		Flags:      flags,
-		WindowSize: uint16(rcvWnd),
-	})
-
-	// Only calculate the checksum if offloading isn't supported.
-	if r.Capabilities()&stack.CapabilityChecksumOffload == 0 {
-		length := uint16(hdr.UsedLength())
-		xsum := r.PseudoHeaderChecksum(ProtocolNumber)
-		if data != nil {
-			length += uint16(len(data))
-			xsum = header.Checksum(data, xsum)
-		}
-
-		tcp.SetChecksum(^tcp.CalculateChecksum(xsum, length))
-	}
-
-	return r.WritePacket(&hdr, data, ProtocolNumber)
+	return r.WritePacket(hdr, data, ProtocolNumber, ttl)
 }
 
 // makeOptions makes an options slice.
@@ -689,18 +655,13 @@ func (e *endpoint) makeOptions(sackBlocks []header.SACKBlock) []byte {
 }
 
 // sendRaw sends a TCP segment to the endpoint's peer.
-func (e *endpoint) sendRaw(data buffer.View, flags byte, seq, ack seqnum.Value, rcvWnd seqnum.Size) *tcpip.Error {
+func (e *endpoint) sendRaw(data buffer.VectorisedView, flags byte, seq, ack seqnum.Value, rcvWnd seqnum.Size) *tcpip.Error {
 	var sackBlocks []header.SACKBlock
 	if e.state == stateConnected && e.rcv.pendingBufSize > 0 && (flags&flagAck != 0) {
 		sackBlocks = e.sack.Blocks[:e.sack.NumBlocks]
 	}
 	options := e.makeOptions(sackBlocks)
-	if len(options) > 0 {
-		err := sendTCPWithOptions(&e.route, e.id, data, flags, seq, ack, rcvWnd, options)
-		putOptions(options)
-		return err
-	}
-	err := sendTCP(&e.route, e.id, data, flags, seq, ack, rcvWnd)
+	err := sendTCP(&e.route, e.id, data, e.route.DefaultTTL(), flags, seq, ack, rcvWnd, options)
 	putOptions(options)
 	return err
 }
@@ -746,7 +707,7 @@ func (e *endpoint) handleClose() *tcpip.Error {
 // state with the given error code. This method must only be called from the
 // protocol goroutine.
 func (e *endpoint) resetConnectionLocked(err *tcpip.Error) {
-	e.sendRaw(nil, flagAck|flagRst, e.snd.sndUna, e.rcv.rcvNxt, 0)
+	e.sendRaw(buffer.VectorisedView{}, flagAck|flagRst, e.snd.sndUna, e.rcv.rcvNxt, 0)
 
 	e.state = stateError
 	e.hardError = err
@@ -797,7 +758,7 @@ func (e *endpoint) handleSegments() *tcpip.Error {
 			// must be dropped as per
 			// https://tools.ietf.org/html/rfc7323#section-3.2.
 			if e.sendTSOk && !s.parsedOptions.TS {
-				atomic.AddUint64(&e.stack.MutableStats().DroppedPackets, 1)
+				e.stack.Stats().DroppedPackets.Increment()
 				s.decRef()
 				continue
 			}
@@ -822,7 +783,54 @@ func (e *endpoint) handleSegments() *tcpip.Error {
 		e.snd.sendAck()
 	}
 
+	e.resetKeepaliveTimer(true)
+
 	return nil
+}
+
+// keepaliveTimerExpired is called when the keepaliveTimer fires. We send TCP
+// keepalive packets periodically when the connection is idle. If we don't hear
+// from the other side after a number of tries, we terminate the connection.
+func (e *endpoint) keepaliveTimerExpired() *tcpip.Error {
+	e.keepalive.Lock()
+	if !e.keepalive.enabled || !e.keepalive.timer.checkExpiration() {
+		e.keepalive.Unlock()
+		return nil
+	}
+
+	if e.keepalive.unacked >= e.keepalive.count {
+		e.keepalive.Unlock()
+		return tcpip.ErrConnectionReset
+	}
+
+	// RFC1122 4.2.3.6: TCP keepalive is a dataless ACK with
+	// seg.seq = snd.nxt-1.
+	e.keepalive.unacked++
+	e.keepalive.Unlock()
+	e.snd.sendSegment(buffer.VectorisedView{}, flagAck, e.snd.sndNxt-1)
+	e.resetKeepaliveTimer(false)
+	return nil
+}
+
+// resetKeepaliveTimer restarts or stops the keepalive timer, depending on
+// whether it is enabled for this endpoint.
+func (e *endpoint) resetKeepaliveTimer(receivedData bool) {
+	e.keepalive.Lock()
+	defer e.keepalive.Unlock()
+	if receivedData {
+		e.keepalive.unacked = 0
+	}
+	// Start the keepalive timer IFF it's enabled and there is no pending
+	// data to send.
+	if !e.keepalive.enabled || e.snd == nil || e.snd.sndUna != e.snd.sndNxt {
+		e.keepalive.timer.disable()
+		return
+	}
+	if e.keepalive.unacked > 0 {
+		e.keepalive.timer.enable(e.keepalive.interval)
+	} else {
+		e.keepalive.timer.enable(e.keepalive.idle)
+	}
 }
 
 // protocolMainLoop is the main loop of the TCP protocol. It runs in its own
@@ -887,6 +895,9 @@ func (e *endpoint) protocolMainLoop(handshake bool) *tcpip.Error {
 		e.rcvListMu.Unlock()
 	}
 
+	e.keepalive.timer.init(&e.keepalive.waker)
+	defer e.keepalive.timer.cleanup()
+
 	// Tell waiters that the endpoint is connected and writable.
 	e.mu.Lock()
 	e.state = stateConnected
@@ -933,6 +944,10 @@ func (e *endpoint) protocolMainLoop(handshake bool) *tcpip.Error {
 			},
 		},
 		{
+			w: &e.keepalive.waker,
+			f: e.keepaliveTimerExpired,
+		},
+		{
 			w: &e.notificationWaker,
 			f: func() *tcpip.Error {
 				n := e.fetchNotifications()
@@ -975,6 +990,10 @@ func (e *endpoint) protocolMainLoop(handshake bool) *tcpip.Error {
 					}
 					close(e.drainDone)
 					<-e.undrain
+				}
+
+				if n&notifyKeepaliveChanged != 0 {
+					e.resetKeepaliveTimer(true)
 				}
 
 				return nil

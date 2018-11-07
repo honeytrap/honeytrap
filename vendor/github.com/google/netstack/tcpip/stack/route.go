@@ -1,4 +1,4 @@
-// Copyright 2018 Google Inc.
+// Copyright 2018 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -70,6 +70,11 @@ func (r *Route) MaxHeaderLength() uint16 {
 	return r.ref.ep.MaxHeaderLength()
 }
 
+// Stats returns a mutable copy of current stats.
+func (r *Route) Stats() tcpip.Stats {
+	return r.ref.nic.stack.Stats()
+}
+
 // PseudoHeaderChecksum forwards the call to the network endpoint's
 // implementation.
 func (r *Route) PseudoHeaderChecksum(protocol tcpip.TransportProtocolNumber) uint16 {
@@ -84,11 +89,15 @@ func (r *Route) Capabilities() LinkEndpointCapabilities {
 // Resolve attempts to resolve the link address if necessary. Returns ErrWouldBlock in
 // case address resolution requires blocking, e.g. wait for ARP reply. Waker is
 // notified when address resolution is complete (success or not).
-func (r *Route) Resolve(waker *sleep.Waker) *tcpip.Error {
+//
+// If address resolution is required, ErrNoLinkAddress and a notification channel is
+// returned for the top level caller to block. Channel is closed once address resolution
+// is complete (success or not).
+func (r *Route) Resolve(waker *sleep.Waker) (<-chan struct{}, *tcpip.Error) {
 	if !r.IsResolutionRequired() {
 		// Nothing to do if there is no cache (which does the resolution on cache miss) or
 		// link address is already known.
-		return nil
+		return nil, nil
 	}
 
 	nextAddr := r.NextHop
@@ -96,16 +105,16 @@ func (r *Route) Resolve(waker *sleep.Waker) *tcpip.Error {
 		// Local link address is already known.
 		if r.RemoteAddress == r.LocalAddress {
 			r.RemoteLinkAddress = r.LocalLinkAddress
-			return nil
+			return nil, nil
 		}
 		nextAddr = r.RemoteAddress
 	}
-	linkAddr, err := r.ref.linkCache.GetLinkAddress(r.ref.nic.ID(), nextAddr, r.LocalAddress, r.NetProto, waker)
+	linkAddr, ch, err := r.ref.linkCache.GetLinkAddress(r.ref.nic.ID(), nextAddr, r.LocalAddress, r.NetProto, waker)
 	if err != nil {
-		return err
+		return ch, err
 	}
 	r.RemoteLinkAddress = linkAddr
-	return nil
+	return nil, nil
 }
 
 // RemoveWaker removes a waker that has been added in Resolve().
@@ -124,8 +133,17 @@ func (r *Route) IsResolutionRequired() bool {
 }
 
 // WritePacket writes the packet through the given route.
-func (r *Route) WritePacket(hdr *buffer.Prependable, payload buffer.View, protocol tcpip.TransportProtocolNumber) *tcpip.Error {
-	return r.ref.ep.WritePacket(r, hdr, payload, protocol)
+func (r *Route) WritePacket(hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.TransportProtocolNumber, ttl uint8) *tcpip.Error {
+	err := r.ref.ep.WritePacket(r, hdr, payload, protocol, ttl)
+	if err == tcpip.ErrNoRoute {
+		r.Stats().IP.OutgoingPacketErrors.Increment()
+	}
+	return err
+}
+
+// DefaultTTL returns the default TTL of the underlying network endpoint.
+func (r *Route) DefaultTTL() uint8 {
+	return r.ref.ep.DefaultTTL()
 }
 
 // MTU returns the MTU of the underlying network endpoint.

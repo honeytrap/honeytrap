@@ -1,4 +1,4 @@
-// Copyright 2018 Google Inc.
+// Copyright 2018 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -129,7 +129,10 @@ func (c *cubicState) Update(packetsAcked int) {
 			return
 		}
 	} else {
-		c.s.sndCwnd = c.getCwnd(packetsAcked, c.s.sndCwnd, c.s.srtt)
+		c.s.rtt.Lock()
+		srtt := c.s.rtt.srtt
+		c.s.rtt.Unlock()
+		c.s.sndCwnd = c.getCwnd(packetsAcked, c.s.sndCwnd, srtt)
 	}
 }
 

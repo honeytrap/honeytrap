@@ -1,4 +1,4 @@
-// Copyright 2018 Google Inc.
+// Copyright 2018 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -72,18 +72,16 @@ func (*endpoint) LinkAddress() tcpip.LinkAddress {
 
 // WritePacket implements stack.LinkEndpoint.WritePacket. It delivers outbound
 // packets to the network-layer dispatcher.
-func (e *endpoint) WritePacket(_ *stack.Route, hdr *buffer.Prependable, payload buffer.View, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
-	if len(payload) == 0 {
-		// We don't have a payload, so just use the buffer from the
-		// header as the full packet.
-		v := hdr.View()
-		vv := v.ToVectorisedView([1]buffer.View{})
-		e.dispatcher.DeliverNetworkPacket(e, "", protocol, &vv)
-	} else {
-		views := []buffer.View{hdr.View(), payload}
-		vv := buffer.NewVectorisedView(len(views[0])+len(views[1]), views)
-		e.dispatcher.DeliverNetworkPacket(e, "", protocol, &vv)
-	}
+func (e *endpoint) WritePacket(_ *stack.Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
+	views := make([]buffer.View, 1, 1+len(payload.Views()))
+	views[0] = hdr.View()
+	views = append(views, payload.Views()...)
+	vv := buffer.NewVectorisedView(len(views[0])+payload.Size(), views)
+
+	// Because we're immediately turning around and writing the packet back to the
+	// rx path, we intentionally don't preserve the remote and local link
+	// addresses from the stack.Route we're passed.
+	e.dispatcher.DeliverNetworkPacket(e, "" /* remoteLinkAddr */, "" /* localLinkAddr */, protocol, vv)
 
 	return nil
 }

@@ -175,7 +175,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:df35d81c8d3c3030e2e97a08daa4b9a285439766cdf3315a7b35d067b3d94eb4"
+  digest = "1:f0e2a1853ca151e488065562747e06dd8a7a163f16fdbd54387d7e8ca4a29952"
   name = "github.com/google/netstack"
   packages = [
     "ilist",
@@ -202,7 +202,7 @@
     "waiter",
   ]
   pruneopts = ""
-  revision = "dc4634714ee66442e442176fa93167adcce1cb27"
+  revision = "f6acab5d41900b58fc727ce27908f60b45ba3f7a"
   source = "github.com/honeytrap/netstack"
 
 [[projects]]
@@ -505,6 +505,7 @@
     "github.com/google/netstack/tcpip",
     "github.com/google/netstack/tcpip/adapters/gonet",
     "github.com/google/netstack/tcpip/buffer",
+    "github.com/google/netstack/tcpip/header",
     "github.com/google/netstack/tcpip/link/fdbased",
     "github.com/google/netstack/tcpip/link/rawfile",
     "github.com/google/netstack/tcpip/link/sniffer",

@@ -1,4 +1,4 @@
-// Copyright 2018 Google Inc.
+// Copyright 2018 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,9 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// +build linux
+
 package fdbased
 
 import (
+	"bytes"
 	"fmt"
 	"math/rand"
 	"reflect"
@@ -26,6 +29,13 @@ import (
 	"github.com/google/netstack/tcpip/buffer"
 	"github.com/google/netstack/tcpip/header"
 	"github.com/google/netstack/tcpip/stack"
+)
+
+const (
+	mtu   = 1500
+	laddr = tcpip.LinkAddress("\x11\x22\x33\x44\x55\x66")
+	raddr = tcpip.LinkAddress("\x77\x88\x99\xaa\xbb\xcc")
+	proto = 10
 )
 
 type packetInfo struct {
@@ -75,12 +85,11 @@ func (c *context) cleanup() {
 	syscall.Close(c.fds[1])
 }
 
-func (c *context) DeliverNetworkPacket(linkEP stack.LinkEndpoint, remoteLinkAddr tcpip.LinkAddress, protocol tcpip.NetworkProtocolNumber, vv *buffer.VectorisedView) {
+func (c *context) DeliverNetworkPacket(linkEP stack.LinkEndpoint, remoteLinkAddr tcpip.LinkAddress, localLinkAddr tcpip.LinkAddress, protocol tcpip.NetworkProtocolNumber, vv buffer.VectorisedView) {
 	c.ch <- packetInfo{remoteLinkAddr, protocol, vv.ToView()}
 }
 
 func TestNoEthernetProperties(t *testing.T) {
-	const mtu = 1500
 	c := newContext(t, &Options{MTU: mtu})
 	defer c.cleanup()
 
@@ -94,7 +103,6 @@ func TestNoEthernetProperties(t *testing.T) {
 }
 
 func TestEthernetProperties(t *testing.T) {
-	const mtu = 1500
 	c := newContext(t, &Options{EthernetHeader: true, MTU: mtu})
 	defer c.cleanup()
 
@@ -108,7 +116,6 @@ func TestEthernetProperties(t *testing.T) {
 }
 
 func TestAddress(t *testing.T) {
-	const mtu = 1500
 	addrs := []tcpip.LinkAddress{"", "abc", "def"}
 	for _, a := range addrs {
 		t.Run(fmt.Sprintf("Address: %q", a), func(t *testing.T) {
@@ -123,13 +130,6 @@ func TestAddress(t *testing.T) {
 }
 
 func TestWritePacket(t *testing.T) {
-	const (
-		mtu   = 1500
-		laddr = tcpip.LinkAddress("\x11\x22\x33\x44\x55\x66")
-		raddr = tcpip.LinkAddress("\x77\x88\x99\xaa\xbb\xcc")
-		proto = 10
-	)
-
 	lengths := []int{0, 100, 1000}
 	eths := []bool{true, false}
 
@@ -150,13 +150,13 @@ func TestWritePacket(t *testing.T) {
 					b[i] = uint8(rand.Intn(256))
 				}
 
-				// Buiild payload and write.
-				payload := make([]byte, plen)
+				// Build payload and write.
+				payload := make(buffer.View, plen)
 				for i := range payload {
 					payload[i] = uint8(rand.Intn(256))
 				}
-				want := append(hdr.UsedBytes(), payload...)
-				if err := c.ep.WritePacket(r, &hdr, payload, proto); err != nil {
+				want := append(hdr.View(), payload...)
+				if err := c.ep.WritePacket(r, hdr, payload.ToVectorisedView(), proto); err != nil {
 					t.Fatalf("WritePacket failed: %v", err)
 				}
 
@@ -186,7 +186,7 @@ func TestWritePacket(t *testing.T) {
 				if len(b) != len(want) {
 					t.Fatalf("Read returned %v bytes, want %v", len(b), len(want))
 				}
-				if !reflect.DeepEqual(b, want) {
+				if !bytes.Equal(b, want) {
 					t.Fatalf("Read returned %x, want %x", b, want)
 				}
 			})
@@ -194,14 +194,40 @@ func TestWritePacket(t *testing.T) {
 	}
 }
 
-func TestDeliverPacket(t *testing.T) {
-	const (
-		mtu   = 1500
-		laddr = tcpip.LinkAddress("\x11\x22\x33\x44\x55\x66")
-		raddr = tcpip.LinkAddress("\x77\x88\x99\xaa\xbb\xcc")
-		proto = 10
-	)
+func TestPreserveSrcAddress(t *testing.T) {
+	baddr := tcpip.LinkAddress("\xcc\xbb\xaa\x77\x88\x99")
 
+	c := newContext(t, &Options{Address: laddr, MTU: mtu, EthernetHeader: true})
+	defer c.cleanup()
+
+	// Set LocalLinkAddress in route to the value of the bridged address.
+	r := &stack.Route{
+		RemoteLinkAddress: raddr,
+		LocalLinkAddress:  baddr,
+	}
+
+	// WritePacket panics given a prependable with anything less than
+	// the minimum size of the ethernet header.
+	hdr := buffer.NewPrependable(header.EthernetMinimumSize)
+	if err := c.ep.WritePacket(r, hdr, buffer.VectorisedView{}, proto); err != nil {
+		t.Fatalf("WritePacket failed: %v", err)
+	}
+
+	// Read from the FD, then compare with what we wrote.
+	b := make([]byte, mtu)
+	n, err := syscall.Read(c.fds[0], b)
+	if err != nil {
+		t.Fatalf("Read failed: %v", err)
+	}
+	b = b[:n]
+	h := header.Ethernet(b)
+
+	if a := h.SourceAddress(); a != baddr {
+		t.Fatalf("SourceAddress() = %v, want %v", a, baddr)
+	}
+}
+
+func TestDeliverPacket(t *testing.T) {
 	lengths := []int{100, 1000}
 	eths := []bool{true, false}
 

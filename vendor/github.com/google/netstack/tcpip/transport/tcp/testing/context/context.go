@@ -1,4 +1,4 @@
-// Copyright 2018 Google Inc.
+// Copyright 2018 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -205,9 +205,11 @@ func (c *Context) Stack() *stack.Stack {
 // CheckNoPacketTimeout verifies that no packet is received during the time
 // specified by wait.
 func (c *Context) CheckNoPacketTimeout(errMsg string, wait time.Duration) {
+	c.t.Helper()
+
 	select {
 	case <-c.linkEP.C:
-		c.t.Fatalf(errMsg)
+		c.t.Fatal(errMsg)
 
 	case <-time.After(wait):
 	}
@@ -290,14 +292,11 @@ func (c *Context) SendICMPPacket(typ header.ICMPv4Type, code uint8, p1, p2 []byt
 	copy(icmp[header.ICMPv4MinimumSize+len(p1):], p2)
 
 	// Inject packet.
-	var views [1]buffer.View
-	vv := buf.ToVectorisedView(views)
-	c.linkEP.Inject(ipv4.ProtocolNumber, &vv)
+	c.linkEP.Inject(ipv4.ProtocolNumber, buf.ToVectorisedView())
 }
 
-// SendPacket builds and sends a TCP segment(with the provided payload & TCP
-// headers) in an IPv4 packet via the link layer endpoint.
-func (c *Context) SendPacket(payload []byte, h *Headers) {
+// BuildSegment builds a TCP segment based on the given Headers and payload.
+func (c *Context) BuildSegment(payload []byte, h *Headers) buffer.VectorisedView {
 	// Allocate a buffer for data and headers.
 	buf := buffer.NewView(header.TCPMinimumSize + header.IPv4MinimumSize + len(h.TCPOpts) + len(payload))
 	copy(buf[len(buf)-len(payload):], payload)
@@ -338,9 +337,19 @@ func (c *Context) SendPacket(payload []byte, h *Headers) {
 	t.SetChecksum(^t.CalculateChecksum(xsum, length))
 
 	// Inject packet.
-	var views [1]buffer.View
-	vv := buf.ToVectorisedView(views)
-	c.linkEP.Inject(ipv4.ProtocolNumber, &vv)
+	return buf.ToVectorisedView()
+}
+
+// SendSegment sends a TCP segment that has already been built and written to a
+// buffer.VectorisedView.
+func (c *Context) SendSegment(s buffer.VectorisedView) {
+	c.linkEP.Inject(ipv4.ProtocolNumber, s)
+}
+
+// SendPacket builds and sends a TCP segment(with the provided payload & TCP
+// headers) in an IPv4 packet via the link layer endpoint.
+func (c *Context) SendPacket(payload []byte, h *Headers) {
+	c.linkEP.Inject(ipv4.ProtocolNumber, c.BuildSegment(payload, h))
 }
 
 // SendAck sends an ACK packet.
@@ -483,9 +492,7 @@ func (c *Context) SendV6Packet(payload []byte, h *Headers) {
 	t.SetChecksum(^t.CalculateChecksum(xsum, length))
 
 	// Inject packet.
-	var views [1]buffer.View
-	vv := buf.ToVectorisedView(views)
-	c.linkEP.Inject(ipv6.ProtocolNumber, &vv)
+	c.linkEP.Inject(ipv6.ProtocolNumber, buf.ToVectorisedView())
 }
 
 // CreateConnected creates a connected TCP endpoint.

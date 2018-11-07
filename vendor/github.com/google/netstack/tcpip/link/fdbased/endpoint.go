@@ -1,4 +1,4 @@
-// Copyright 2018 Google Inc.
+// Copyright 2018 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,6 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
+// +build linux
 
 // Package fdbased provides the implemention of data-link layer endpoints
 // backed by boundary-preserving file descriptors (e.g., TUN devices,
@@ -55,7 +57,6 @@ type endpoint struct {
 	// its end of the communication pipe.
 	closed func(*tcpip.Error)
 
-	vv         *buffer.VectorisedView
 	iovecs     []syscall.Iovec
 	views      []buffer.View
 	dispatcher stack.NetworkDispatcher
@@ -116,8 +117,6 @@ func New(opts *Options) tcpip.LinkEndpointID {
 		iovecs:      make([]syscall.Iovec, len(BufConfig)),
 		handleLocal: opts.HandleLocal,
 	}
-	vv := buffer.NewVectorisedView(0, e.views)
-	e.vv = &vv
 	return stack.RegisterLinkEndpoint(e)
 }
 
@@ -159,28 +158,37 @@ func (e *endpoint) LinkAddress() tcpip.LinkAddress {
 
 // WritePacket writes outbound packets to the file descriptor. If it is not
 // currently writable, the packet is dropped.
-func (e *endpoint) WritePacket(r *stack.Route, hdr *buffer.Prependable, payload buffer.View, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
+func (e *endpoint) WritePacket(r *stack.Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
 	if e.handleLocal && r.LocalAddress != "" && r.LocalAddress == r.RemoteAddress {
-		hdrView := hdr.View()
-		vv := buffer.NewVectorisedView(len(hdrView)+len(payload), []buffer.View{hdrView, payload})
-		e.dispatcher.DeliverNetworkPacket(e, r.RemoteLinkAddress, protocol, &vv)
+		views := make([]buffer.View, 1, 1+len(payload.Views()))
+		views[0] = hdr.View()
+		views = append(views, payload.Views()...)
+		vv := buffer.NewVectorisedView(len(views[0])+payload.Size(), views)
+		e.dispatcher.DeliverNetworkPacket(e, r.RemoteLinkAddress, r.LocalLinkAddress, protocol, vv)
 		return nil
 	}
 	if e.hdrSize > 0 {
 		// Add ethernet header if needed.
 		eth := header.Ethernet(hdr.Prepend(header.EthernetMinimumSize))
-		eth.Encode(&header.EthernetFields{
+		ethHdr := &header.EthernetFields{
 			DstAddr: r.RemoteLinkAddress,
-			SrcAddr: e.addr,
 			Type:    protocol,
-		})
+		}
+
+		// Preserve the src address if it's set in the route.
+		if r.LocalLinkAddress != "" {
+			ethHdr.SrcAddr = r.LocalLinkAddress
+		} else {
+			ethHdr.SrcAddr = e.addr
+		}
+		eth.Encode(ethHdr)
 	}
 
-	if len(payload) == 0 {
-		return rawfile.NonBlockingWrite(e.fd, hdr.UsedBytes())
+	if payload.Size() == 0 {
+		return rawfile.NonBlockingWrite(e.fd, hdr.View())
 	}
 
-	return rawfile.NonBlockingWrite2(e.fd, hdr.UsedBytes(), payload)
+	return rawfile.NonBlockingWrite2(e.fd, hdr.View(), payload.ToView())
 }
 
 func (e *endpoint) capViews(n int, buffers []int) int {
@@ -208,12 +216,15 @@ func (e *endpoint) dispatch(largeV buffer.View) (bool, *tcpip.Error) {
 		return false, nil
 	}
 
-	var p tcpip.NetworkProtocolNumber
-	var addr tcpip.LinkAddress
+	var (
+		p                             tcpip.NetworkProtocolNumber
+		remoteLinkAddr, localLinkAddr tcpip.LinkAddress
+	)
 	if e.hdrSize > 0 {
 		eth := header.Ethernet(e.views[0])
 		p = eth.Type()
-		addr = eth.SourceAddress()
+		remoteLinkAddr = eth.SourceAddress()
+		localLinkAddr = eth.DestinationAddress()
 	} else {
 		// We don't get any indication of what the packet is, so try to guess
 		// if it's an IPv4 or IPv6 packet.
@@ -228,11 +239,10 @@ func (e *endpoint) dispatch(largeV buffer.View) (bool, *tcpip.Error) {
 	}
 
 	used := e.capViews(n, BufConfig)
-	e.vv.SetViews(e.views[:used])
-	e.vv.SetSize(n)
-	e.vv.TrimFront(e.hdrSize)
+	vv := buffer.NewVectorisedView(n, e.views[:used])
+	vv.TrimFront(e.hdrSize)
 
-	e.dispatcher.DeliverNetworkPacket(e, addr, p, e.vv)
+	e.dispatcher.DeliverNetworkPacket(e, remoteLinkAddr, localLinkAddr, p, vv)
 
 	// Prepare e.views for another packet: release used views.
 	for i := 0; i < used; i++ {
@@ -272,8 +282,8 @@ func (e *InjectableEndpoint) Attach(dispatcher stack.NetworkDispatcher) {
 }
 
 // Inject injects an inbound packet.
-func (e *InjectableEndpoint) Inject(protocol tcpip.NetworkProtocolNumber, vv *buffer.VectorisedView) {
-	e.dispatcher.DeliverNetworkPacket(e, "", protocol, vv)
+func (e *InjectableEndpoint) Inject(protocol tcpip.NetworkProtocolNumber, vv buffer.VectorisedView) {
+	e.dispatcher.DeliverNetworkPacket(e, "" /* remoteLinkAddr */, "" /* localLinkAddr */, protocol, vv)
 }
 
 // NewInjectable creates a new fd-based InjectableEndpoint.

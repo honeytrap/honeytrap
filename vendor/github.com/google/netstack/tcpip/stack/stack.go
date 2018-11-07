@@ -1,4 +1,4 @@
-// Copyright 2018 Google Inc.
+// Copyright 2018 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,7 +26,6 @@ package stack
 
 import (
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/google/netstack/sleep"
@@ -49,7 +48,7 @@ const (
 
 type transportProtocolState struct {
 	proto          TransportProtocol
-	defaultHandler func(*Route, TransportEndpointID, *buffer.VectorisedView) bool
+	defaultHandler func(*Route, TransportEndpointID, buffer.VectorisedView) bool
 }
 
 // TCPProbeFunc is the expected function type for a TCP probe function to be
@@ -284,8 +283,9 @@ type Stack struct {
 
 	linkAddrCache *linkAddrCache
 
-	mu   sync.RWMutex
-	nics map[tcpip.NICID]*NIC
+	mu         sync.RWMutex
+	nics       map[tcpip.NICID]*NIC
+	forwarding bool
 
 	// route is the route table passed in by the user via SetRouteTable(),
 	// it is used by FindRoute() to build a route for a specific
@@ -308,6 +308,9 @@ type Options struct {
 	//
 	// If no Clock is specified, the clock source will be time.Now.
 	Clock tcpip.Clock
+
+	// Stats are optional statistic counters.
+	Stats tcpip.Stats
 }
 
 // New allocates a new networking stack with only the requested networking and
@@ -331,6 +334,7 @@ func New(network []string, transport []string, opts Options) *Stack {
 		linkAddrCache:      newLinkAddrCache(ageLimit, resolutionTimeout, resolutionAttempts),
 		PortManager:        ports.NewPortManager(),
 		clock:              clock,
+		stats:              opts.Stats.FillIn(),
 	}
 
 	// Add specified network protocols.
@@ -425,7 +429,7 @@ func (s *Stack) TransportProtocolOption(transport tcpip.TransportProtocolNumber,
 //
 // It must be called only during initialization of the stack. Changing it as the
 // stack is operating is not supported.
-func (s *Stack) SetTransportProtocolHandler(p tcpip.TransportProtocolNumber, h func(*Route, TransportEndpointID, *buffer.VectorisedView) bool) {
+func (s *Stack) SetTransportProtocolHandler(p tcpip.TransportProtocolNumber, h func(*Route, TransportEndpointID, buffer.VectorisedView) bool) {
 	state := s.transportProtocols[p]
 	if state != nil {
 		state.defaultHandler = h
@@ -437,27 +441,28 @@ func (s *Stack) NowNanoseconds() int64 {
 	return s.clock.NowNanoseconds()
 }
 
-// Stats returns a snapshot of the current stats.
-//
-// NOTE: The underlying stats are updated using atomic instructions as a result
-// the snapshot returned does not represent the value of all the stats at any
-// single given point of time.
-// TODO: Make stats available in sentry for debugging/diag.
-func (s *Stack) Stats() tcpip.Stats {
-	return tcpip.Stats{
-		UnknownProtocolRcvdPackets:        atomic.LoadUint64(&s.stats.UnknownProtocolRcvdPackets),
-		UnknownNetworkEndpointRcvdPackets: atomic.LoadUint64(&s.stats.UnknownNetworkEndpointRcvdPackets),
-		MalformedRcvdPackets:              atomic.LoadUint64(&s.stats.MalformedRcvdPackets),
-		DroppedPackets:                    atomic.LoadUint64(&s.stats.DroppedPackets),
-	}
-}
-
-// MutableStats returns a mutable copy of the current stats.
+// Stats returns a mutable copy of the current stats.
 //
 // This is not generally exported via the public interface, but is available
 // internally.
-func (s *Stack) MutableStats() *tcpip.Stats {
-	return &s.stats
+func (s *Stack) Stats() tcpip.Stats {
+	return s.stats
+}
+
+// SetForwarding enables or disables the packet forwarding between NICs.
+func (s *Stack) SetForwarding(enable bool) {
+	// TODO: Expose via /proc/sys/net/ipv4/ip_forward.
+	s.mu.Lock()
+	s.forwarding = enable
+	s.mu.Unlock()
+}
+
+// Forwarding returns if the packet forwarding between NICs is enabled.
+func (s *Stack) Forwarding() bool {
+	// TODO: Expose via /proc/sys/net/ipv4/ip_forward.
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.forwarding
 }
 
 // SetRouteTable assigns the route table to be used by this stack. It
@@ -467,6 +472,13 @@ func (s *Stack) SetRouteTable(table []tcpip.Route) {
 	defer s.mu.Unlock()
 
 	s.routeTable = table
+}
+
+// GetRouteTable returns the route table which is currently in use.
+func (s *Stack) GetRouteTable() []tcpip.Route {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]tcpip.Route(nil), s.routeTable...)
 }
 
 // NewEndpoint creates a new transport layer endpoint of the given protocol.
@@ -612,6 +624,12 @@ type NICStateFlags struct {
 
 // AddAddress adds a new network-layer address to the specified NIC.
 func (s *Stack) AddAddress(id tcpip.NICID, protocol tcpip.NetworkProtocolNumber, addr tcpip.Address) *tcpip.Error {
+	return s.AddAddressWithOptions(id, protocol, addr, CanBePrimaryEndpoint)
+}
+
+// AddAddressWithOptions is the same as AddAddress, but allows you to specify
+// whether the new endpoint can be primary or not.
+func (s *Stack) AddAddressWithOptions(id tcpip.NICID, protocol tcpip.NetworkProtocolNumber, addr tcpip.Address, peb PrimaryEndpointBehavior) *tcpip.Error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -620,7 +638,7 @@ func (s *Stack) AddAddress(id tcpip.NICID, protocol tcpip.NetworkProtocolNumber,
 		return tcpip.ErrUnknownNICID
 	}
 
-	return nic.AddAddress(protocol, addr)
+	return nic.AddAddressWithOptions(protocol, addr, peb)
 }
 
 // AddSubnet adds a subnet range to the specified NIC.
@@ -628,13 +646,38 @@ func (s *Stack) AddSubnet(id tcpip.NICID, protocol tcpip.NetworkProtocolNumber, 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	nic := s.nics[id]
-	if nic == nil {
-		return tcpip.ErrUnknownNICID
+	if nic, ok := s.nics[id]; ok {
+		nic.AddSubnet(protocol, subnet)
+		return nil
 	}
 
-	nic.AddSubnet(protocol, subnet)
-	return nil
+	return tcpip.ErrUnknownNICID
+}
+
+// RemoveSubnet removes the subnet range from the specified NIC.
+func (s *Stack) RemoveSubnet(id tcpip.NICID, subnet tcpip.Subnet) *tcpip.Error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if nic, ok := s.nics[id]; ok {
+		nic.RemoveSubnet(subnet)
+		return nil
+	}
+
+	return tcpip.ErrUnknownNICID
+}
+
+// ContainsSubnet reports whether the specified NIC contains the specified
+// subnet.
+func (s *Stack) ContainsSubnet(id tcpip.NICID, subnet tcpip.Subnet) (bool, *tcpip.Error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if nic, ok := s.nics[id]; ok {
+		return nic.ContainsSubnet(subnet), nil
+	}
+
+	return false, tcpip.ErrUnknownNICID
 }
 
 // RemoveAddress removes an existing network-layer address from the specified
@@ -643,12 +686,26 @@ func (s *Stack) RemoveAddress(id tcpip.NICID, addr tcpip.Address) *tcpip.Error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	nic := s.nics[id]
-	if nic == nil {
-		return tcpip.ErrUnknownNICID
+	if nic, ok := s.nics[id]; ok {
+		return nic.RemoveAddress(addr)
 	}
 
-	return nic.RemoveAddress(addr)
+	return tcpip.ErrUnknownNICID
+}
+
+// GetMainNICAddress returns the first primary address (and the subnet that
+// contains it) for the given NIC and protocol. Returns an arbitrary endpoint's
+// address if no primary addresses exist. Returns an error if the NIC doesn't
+// exist or has no endpoints.
+func (s *Stack) GetMainNICAddress(id tcpip.NICID, protocol tcpip.NetworkProtocolNumber) (tcpip.Address, tcpip.Subnet, *tcpip.Error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if nic, ok := s.nics[id]; ok {
+		return nic.getMainNICAddress(protocol)
+	}
+
+	return "", tcpip.Subnet{}, tcpip.ErrUnknownNICID
 }
 
 // FindRoute creates a route to the given destination address, leaving through
@@ -669,7 +726,7 @@ func (s *Stack) FindRoute(id tcpip.NICID, localAddr, remoteAddr tcpip.Address, n
 
 		var ref *referencedNetworkEndpoint
 		if len(localAddr) != 0 {
-			ref = nic.findEndpoint(netProto, localAddr)
+			ref = nic.findEndpoint(netProto, localAddr, CanBePrimaryEndpoint)
 		} else {
 			ref = nic.primaryEndpoint(netProto)
 		}
@@ -712,7 +769,7 @@ func (s *Stack) CheckLocalAddress(nicid tcpip.NICID, protocol tcpip.NetworkProto
 			return 0
 		}
 
-		ref := nic.findEndpoint(protocol, addr)
+		ref := nic.findEndpoint(protocol, addr, CanBePrimaryEndpoint)
 		if ref == nil {
 			return 0
 		}
@@ -724,7 +781,7 @@ func (s *Stack) CheckLocalAddress(nicid tcpip.NICID, protocol tcpip.NetworkProto
 
 	// Go through all the NICs.
 	for _, nic := range s.nics {
-		ref := nic.findEndpoint(protocol, addr)
+		ref := nic.findEndpoint(protocol, addr, CanBePrimaryEndpoint)
 		if ref != nil {
 			ref.decRef()
 			return nic.id
@@ -769,18 +826,17 @@ func (s *Stack) SetSpoofing(nicID tcpip.NICID, enable bool) *tcpip.Error {
 func (s *Stack) AddLinkAddress(nicid tcpip.NICID, addr tcpip.Address, linkAddr tcpip.LinkAddress) {
 	fullAddr := tcpip.FullAddress{NIC: nicid, Addr: addr}
 	s.linkAddrCache.add(fullAddr, linkAddr)
-	// TODO: provide a way for a
-	// transport endpoint to receive a signal that AddLinkAddress
-	// for a particular address has been called.
+	// TODO: provide a way for a transport endpoint to receive a signal
+	// that AddLinkAddress for a particular address has been called.
 }
 
 // GetLinkAddress implements LinkAddressCache.GetLinkAddress.
-func (s *Stack) GetLinkAddress(nicid tcpip.NICID, addr, localAddr tcpip.Address, protocol tcpip.NetworkProtocolNumber, waker *sleep.Waker) (tcpip.LinkAddress, *tcpip.Error) {
+func (s *Stack) GetLinkAddress(nicid tcpip.NICID, addr, localAddr tcpip.Address, protocol tcpip.NetworkProtocolNumber, waker *sleep.Waker) (tcpip.LinkAddress, <-chan struct{}, *tcpip.Error) {
 	s.mu.RLock()
 	nic := s.nics[nicid]
 	if nic == nil {
 		s.mu.RUnlock()
-		return "", tcpip.ErrUnknownNICID
+		return "", nil, tcpip.ErrUnknownNICID
 	}
 	s.mu.RUnlock()
 
@@ -892,4 +948,15 @@ func (s *Stack) RemoveTCPProbe() {
 	s.mu.Lock()
 	s.tcpProbeFunc = nil
 	s.mu.Unlock()
+}
+
+// JoinGroup joins the given multicast group on the given NIC.
+func (s *Stack) JoinGroup(protocol tcpip.NetworkProtocolNumber, nicID tcpip.NICID, multicastAddr tcpip.Address) *tcpip.Error {
+	// TODO: notify network of subscription via igmp protocol.
+	return s.AddAddressWithOptions(nicID, protocol, multicastAddr, NeverPrimaryEndpoint)
+}
+
+// LeaveGroup leaves the given multicast group on the given NIC.
+func (s *Stack) LeaveGroup(protocol tcpip.NetworkProtocolNumber, nicID tcpip.NICID, multicastAddr tcpip.Address) *tcpip.Error {
+	return s.RemoveAddress(nicID, multicastAddr)
 }
