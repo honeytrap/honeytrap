@@ -68,14 +68,14 @@ func TestChannelsKafkaSend(t *testing.T) {
 		P toml.Primitive
 	}{}
 
-	_, err := toml.Decode(fmt.Sprintf(config, seedBroker.Addr()), &s)
+	md, err := toml.Decode(fmt.Sprintf(config, seedBroker.Addr()), &s)
 
 	if err != nil {
 		t.Error(err)
 	}
 
 	c, err := New(
-		pushers.WithConfig(s.P),
+		pushers.WithConfig(s.P, &md),
 	)
 
 	if err != nil {

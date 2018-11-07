@@ -59,9 +59,13 @@ func WithDataDir(dataDir string) func(*web) error {
 	}
 }
 
-func WithConfig(c toml.Primitive) func(*web) error {
+type TomlDecoder interface {
+	PrimitiveDecode(primValue toml.Primitive, v interface{}) error
+}
+
+func WithConfig(c toml.Primitive, decoder TomlDecoder) func(*web) error {
 	return func(d *web) error {
-		err := toml.PrimitiveDecode(c, d)
+		err := decoder.PrimitiveDecode(c, d)
 		return err
 	}
 }
