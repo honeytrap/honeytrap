@@ -324,7 +324,7 @@ func compareAddr(addr1 net.Addr, addr2 net.Addr) bool {
 			return false
 		}
 
-		if ua2.Port != ua2.Port {
+		if ua1.Port != ua2.Port {
 			return false
 		}
 
