@@ -159,6 +159,7 @@ func (s *snmpService) Handle(_ context.Context, conn net.Conn) error {
 	))
 
 	if !s.limiter.Allow(conn.RemoteAddr()) {
+		log.Warningf("Rate limit exceeded for host: %s", conn.RemoteAddr())
 		return nil
 	}
 

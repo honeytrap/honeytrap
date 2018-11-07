@@ -109,6 +109,7 @@ func (s *memcachedService) Handle(ctx context.Context, conn net.Conn) error {
 		// we return errors for udp connections, to prevent udp amplification
 		if conn.RemoteAddr().Network() != "udp" {
 		} else if !s.limiter.Allow(conn.RemoteAddr()) {
+			log.Warningf("Rate limit exceeded for host: %s", conn.RemoteAddr())
 			return nil
 		}
 
