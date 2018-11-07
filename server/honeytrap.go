@@ -592,7 +592,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		}
 
 		for _, portStr := range ports {
-			addr, _, port, err := ToAddr(portStr)
+			addr, _, _, err := ToAddr(portStr)
 			if err != nil {
 				log.Error("Error parsing port string: %s", err.Error())
 				continue
@@ -628,7 +628,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			}
 
 			if found {
-				log.Error("Port tcp/%d was already defined, ignoring the newer definition", port)
+				log.Error("Port %s was already defined, ignoring the newer definition", portStr)
 				continue
 			}
 
