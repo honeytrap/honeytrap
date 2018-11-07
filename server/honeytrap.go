@@ -317,7 +317,7 @@ func compareAddr(addr1 net.Addr, addr2 net.Addr) bool {
 
 		return true
 	} else if ua1, ok := addr1.(*net.UDPAddr); ok {
-		ua2, ok := addr2.(*net.TCPAddr)
+		ua2, ok := addr2.(*net.UDPAddr)
 		if !ok {
 			return false
 		}
