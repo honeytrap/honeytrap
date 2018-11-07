@@ -18,6 +18,14 @@
   version = "v0.3.0"
 
 [[projects]]
+  branch = "master"
+  digest = "1:8b0e08ae13b73f3295112b6966ac44532bc414de205640cbb5fd1d5bb913699c"
+  name = "github.com/Logicalis/asn1"
+  packages = ["."]
+  pruneopts = ""
+  revision = "c9c836c1a3cd4b4696c1adf57ab887c36fc06fae"
+
+[[projects]]
   digest = "1:753470f0f21d2482b86734111a485dc5eb03c0824e403a48303c87a1ce31affa"
   name = "github.com/Shopify/sarama"
   packages = ["."]
@@ -486,6 +494,7 @@
   analyzer-version = 1
   input-imports = [
     "github.com/BurntSushi/toml",
+    "github.com/Logicalis/asn1",
     "github.com/Shopify/sarama",
     "github.com/boltdb/bolt",
     "github.com/dgraph-io/badger",
