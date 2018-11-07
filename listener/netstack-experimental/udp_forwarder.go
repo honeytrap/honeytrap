@@ -31,7 +31,6 @@
 package netstack
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/google/netstack/tcpip"
@@ -81,8 +80,6 @@ func (f *UDPForwarder) HandlePacket(r *stack.Route, id stack.TransportEndpointID
 		// Malformed packet.
 		return false
 	}
-
-	fmt.Printf("route=%#+v nicid=%d\n", r, r.NICID())
 
 	vv.TrimFront(header.UDPMinimumSize)
 
