@@ -1,6 +1,16 @@
-// Copyright 2016 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2018 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package ping
 
@@ -16,6 +26,7 @@ import (
 	"github.com/google/netstack/waiter"
 )
 
+// +stateify savable
 type pingPacket struct {
 	pingPacketEntry
 	senderAddress tcpip.FullAddress
@@ -45,6 +56,7 @@ type endpoint struct {
 	// change throughout the lifetime of the endpoint.
 	stack       *stack.Stack
 	netProto    tcpip.NetworkProtocolNumber
+	transProto  tcpip.TransportProtocolNumber
 	waiterQueue *waiter.Queue
 
 	// The following fields are used to manage the receive queue, and are
@@ -60,18 +72,21 @@ type endpoint struct {
 	// The following fields are protected by the mu mutex.
 	mu         sync.RWMutex
 	sndBufSize int
-	id         stack.TransportEndpointID
-	state      endpointState
-	bindNICID  tcpip.NICID
-	bindAddr   tcpip.Address
-	regNICID   tcpip.NICID
-	route      stack.Route
+	// shutdownFlags represent the current shutdown state of the endpoint.
+	shutdownFlags tcpip.ShutdownFlags
+	id            stack.TransportEndpointID
+	state         endpointState
+	bindNICID     tcpip.NICID
+	bindAddr      tcpip.Address
+	regNICID      tcpip.NICID
+	route         stack.Route
 }
 
-func newEndpoint(stack *stack.Stack, netProto tcpip.NetworkProtocolNumber, waiterQueue *waiter.Queue) *endpoint {
+func newEndpoint(stack *stack.Stack, netProto tcpip.NetworkProtocolNumber, transProto tcpip.TransportProtocolNumber, waiterQueue *waiter.Queue) *endpoint {
 	return &endpoint{
 		stack:         stack,
 		netProto:      netProto,
+		transProto:    transProto,
 		waiterQueue:   waiterQueue,
 		rcvBufSizeMax: 32 * 1024,
 		sndBufSize:    32 * 1024,
@@ -82,11 +97,10 @@ func newEndpoint(stack *stack.Stack, netProto tcpip.NetworkProtocolNumber, waite
 // associated with it.
 func (e *endpoint) Close() {
 	e.mu.Lock()
-	defer e.mu.Unlock()
-
+	e.shutdownFlags = tcpip.ShutdownRead | tcpip.ShutdownWrite
 	switch e.state {
 	case stateBound, stateConnected:
-		e.stack.UnregisterTransportEndpoint(e.regNICID, []tcpip.NetworkProtocolNumber{e.netProto}, ProtocolNumber4, e.id)
+		e.stack.UnregisterTransportEndpoint(e.regNICID, []tcpip.NetworkProtocolNumber{e.netProto}, e.transProto, e.id)
 	}
 
 	// Close the receive list and drain it.
@@ -103,6 +117,10 @@ func (e *endpoint) Close() {
 
 	// Update the state.
 	e.state = stateClosed
+
+	e.mu.Unlock()
+
+	e.waiterQueue.Notify(waiter.EventHUp | waiter.EventErr | waiter.EventIn | waiter.EventOut)
 }
 
 // Read reads data from the endpoint. This method does not block if
@@ -180,10 +198,10 @@ func (e *endpoint) prepareForWrite(to *tcpip.FullAddress) (retry bool, err *tcpi
 
 // Write writes data to the endpoint's peer. This method does not block
 // if the data cannot be written.
-func (e *endpoint) Write(p tcpip.Payload, opts tcpip.WriteOptions) (uintptr, *tcpip.Error) {
+func (e *endpoint) Write(p tcpip.Payload, opts tcpip.WriteOptions) (uintptr, <-chan struct{}, *tcpip.Error) {
 	// MSG_MORE is unimplemented. (This also means that MSG_EOR is a no-op.)
 	if opts.More {
-		return 0, tcpip.ErrInvalidOptionValue
+		return 0, nil, tcpip.ErrInvalidOptionValue
 	}
 
 	to := opts.To
@@ -191,11 +209,16 @@ func (e *endpoint) Write(p tcpip.Payload, opts tcpip.WriteOptions) (uintptr, *tc
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
+	// If we've shutdown with SHUT_WR we are in an invalid state for sending.
+	if e.shutdownFlags&tcpip.ShutdownWrite != 0 {
+		return 0, nil, tcpip.ErrClosedForSend
+	}
+
 	// Prepare for write.
 	for {
 		retry, err := e.prepareForWrite(to)
 		if err != nil {
-			return 0, err
+			return 0, nil, err
 		}
 
 		if !retry {
@@ -218,7 +241,7 @@ func (e *endpoint) Write(p tcpip.Payload, opts tcpip.WriteOptions) (uintptr, *tc
 
 			// Recheck state after lock was re-acquired.
 			if e.state != stateConnected {
-				return 0, tcpip.ErrInvalidEndpointState
+				return 0, nil, tcpip.ErrInvalidEndpointState
 			}
 		}
 	} else {
@@ -227,7 +250,7 @@ func (e *endpoint) Write(p tcpip.Payload, opts tcpip.WriteOptions) (uintptr, *tc
 		nicid := to.NIC
 		if e.bindNICID != 0 {
 			if nicid != 0 && nicid != e.bindNICID {
-				return 0, tcpip.ErrNoRoute
+				return 0, nil, tcpip.ErrNoRoute
 			}
 
 			nicid = e.bindNICID
@@ -237,13 +260,13 @@ func (e *endpoint) Write(p tcpip.Payload, opts tcpip.WriteOptions) (uintptr, *tc
 		to = &toCopy
 		netProto, err := e.checkV4Mapped(to, true)
 		if err != nil {
-			return 0, err
+			return 0, nil, err
 		}
 
 		// Find the enpoint.
 		r, err := e.stack.FindRoute(nicid, e.bindAddr, to.Addr, netProto)
 		if err != nil {
-			return 0, err
+			return 0, nil, err
 		}
 		defer r.Release()
 
@@ -252,23 +275,20 @@ func (e *endpoint) Write(p tcpip.Payload, opts tcpip.WriteOptions) (uintptr, *tc
 
 	if route.IsResolutionRequired() {
 		waker := &sleep.Waker{}
-		if err := route.Resolve(waker); err != nil {
+		if ch, err := route.Resolve(waker); err != nil {
 			if err == tcpip.ErrWouldBlock {
 				// Link address needs to be resolved. Resolution was triggered the
 				// background. Better luck next time.
-				//
-				// TODO: queue up the request and send after link address
-				// is resolved.
 				route.RemoveWaker(waker)
-				return 0, tcpip.ErrNoLinkAddress
+				return 0, ch, tcpip.ErrNoLinkAddress
 			}
-			return 0, err
+			return 0, nil, err
 		}
 	}
 
 	v, err := p.Get(p.Size())
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 
 	switch e.netProto {
@@ -276,10 +296,10 @@ func (e *endpoint) Write(p tcpip.Payload, opts tcpip.WriteOptions) (uintptr, *tc
 		err = sendPing4(route, e.id.LocalPort, v)
 
 	case header.IPv6ProtocolNumber:
-		// TODO: Support IPv6.
+		err = sendPing6(route, e.id.LocalPort, v)
 	}
 
-	return uintptr(len(v)), err
+	return uintptr(len(v)), nil, err
 }
 
 // Peek only returns data from a single datagram, so do nothing here.
@@ -361,7 +381,31 @@ func sendPing4(r *stack.Route, ident uint16, data buffer.View) *tcpip.Error {
 	icmpv4.SetChecksum(0)
 	icmpv4.SetChecksum(^header.Checksum(icmpv4, header.Checksum(data, 0)))
 
-	return r.WritePacket(&hdr, data, header.ICMPv4ProtocolNumber)
+	return r.WritePacket(hdr, data.ToVectorisedView(), header.ICMPv4ProtocolNumber, r.DefaultTTL())
+}
+
+func sendPing6(r *stack.Route, ident uint16, data buffer.View) *tcpip.Error {
+	if len(data) < header.ICMPv6EchoMinimumSize {
+		return tcpip.ErrInvalidEndpointState
+	}
+
+	// Set the ident. Sequence number is provided by the user.
+	binary.BigEndian.PutUint16(data[header.ICMPv6MinimumSize:], ident)
+
+	hdr := buffer.NewPrependable(header.ICMPv6EchoMinimumSize + int(r.MaxHeaderLength()))
+
+	icmpv6 := header.ICMPv6(hdr.Prepend(header.ICMPv6EchoMinimumSize))
+	copy(icmpv6, data)
+	data = data[header.ICMPv6EchoMinimumSize:]
+
+	if icmpv6.Type() != header.ICMPv6EchoRequest || icmpv6.Code() != 0 {
+		return tcpip.ErrInvalidEndpointState
+	}
+
+	icmpv6.SetChecksum(0)
+	icmpv6.SetChecksum(^header.Checksum(icmpv6, header.Checksum(data, 0)))
+
+	return r.WritePacket(hdr, data.ToVectorisedView(), header.ICMPv6ProtocolNumber, r.DefaultTTL())
 }
 
 func (e *endpoint) checkV4Mapped(addr *tcpip.FullAddress, allowMismatch bool) (tcpip.NetworkProtocolNumber, *tcpip.Error) {
@@ -451,8 +495,9 @@ func (*endpoint) ConnectEndpoint(tcpip.Endpoint) *tcpip.Error {
 // Shutdown closes the read and/or write end of the endpoint connection
 // to its peer.
 func (e *endpoint) Shutdown(flags tcpip.ShutdownFlags) *tcpip.Error {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.shutdownFlags |= flags
 
 	if e.state != stateConnected {
 		return tcpip.ErrNotConnected
@@ -486,14 +531,14 @@ func (e *endpoint) registerWithStack(nicid tcpip.NICID, netProtos []tcpip.Networ
 	if id.LocalPort != 0 {
 		// The endpoint already has a local port, just attempt to
 		// register it.
-		err := e.stack.RegisterTransportEndpoint(nicid, netProtos, ProtocolNumber4, id, e)
+		err := e.stack.RegisterTransportEndpoint(nicid, netProtos, e.transProto, id, e)
 		return id, err
 	}
 
 	// We need to find a port for the endpoint.
 	_, err := e.stack.PickEphemeralPort(func(p uint16) (bool, *tcpip.Error) {
 		id.LocalPort = p
-		err := e.stack.RegisterTransportEndpoint(nicid, netProtos, ProtocolNumber4, id, e)
+		err := e.stack.RegisterTransportEndpoint(nicid, netProtos, e.transProto, id, e)
 		switch err {
 		case nil:
 			return true, nil
@@ -542,7 +587,7 @@ func (e *endpoint) bindLocked(addr tcpip.FullAddress, commit func() *tcpip.Error
 	if commit != nil {
 		if err := commit(); err != nil {
 			// Unregister, the commit failed.
-			e.stack.UnregisterTransportEndpoint(addr.NIC, netProtos, ProtocolNumber4, id)
+			e.stack.UnregisterTransportEndpoint(addr.NIC, netProtos, e.transProto, id)
 			return err
 		}
 	}
@@ -625,7 +670,7 @@ func (e *endpoint) Readiness(mask waiter.EventMask) waiter.EventMask {
 
 // HandlePacket is called by the stack when new packets arrive to this transport
 // endpoint.
-func (e *endpoint) HandlePacket(r *stack.Route, id stack.TransportEndpointID, vv *buffer.VectorisedView) {
+func (e *endpoint) HandlePacket(r *stack.Route, id stack.TransportEndpointID, vv buffer.VectorisedView) {
 	e.rcvMu.Lock()
 
 	// Drop the packet if our buffer is currently full.
@@ -661,5 +706,5 @@ func (e *endpoint) HandlePacket(r *stack.Route, id stack.TransportEndpointID, vv
 }
 
 // HandleControlPacket implements stack.TransportEndpoint.HandleControlPacket.
-func (e *endpoint) HandleControlPacket(id stack.TransportEndpointID, typ stack.ControlType, extra uint32, vv *buffer.VectorisedView) {
+func (e *endpoint) HandleControlPacket(id stack.TransportEndpointID, typ stack.ControlType, extra uint32, vv buffer.VectorisedView) {
 }

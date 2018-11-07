@@ -1,6 +1,16 @@
-// Copyright 2016 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2018 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package fragmentation
 
@@ -68,7 +78,7 @@ func (r *reassembler) updateHoles(first, last uint16, more bool) bool {
 	return used
 }
 
-func (r *reassembler) process(first, last uint16, more bool, vv *buffer.VectorisedView) (buffer.VectorisedView, bool, int) {
+func (r *reassembler) process(first, last uint16, more bool, vv buffer.VectorisedView) (buffer.VectorisedView, bool, int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	consumed := 0
@@ -76,18 +86,17 @@ func (r *reassembler) process(first, last uint16, more bool, vv *buffer.Vectoris
 		// A concurrent goroutine might have already reassembled
 		// the packet and emptied the heap while this goroutine
 		// was waiting on the mutex. We don't have to do anything in this case.
-		return buffer.NewVectorisedView(0, nil), false, consumed
+		return buffer.VectorisedView{}, false, consumed
 	}
 	if r.updateHoles(first, last, more) {
 		// We store the incoming packet only if it filled some holes.
-		uu := vv.Clone(nil)
-		heap.Push(&r.heap, fragment{offset: first, vv: &uu})
+		heap.Push(&r.heap, fragment{offset: first, vv: vv.Clone(nil)})
 		consumed = vv.Size()
 		r.size += consumed
 	}
 	// Check if all the holes have been deleted and we are ready to reassamble.
 	if r.deleted < len(r.holes) {
-		return buffer.NewVectorisedView(0, nil), false, consumed
+		return buffer.VectorisedView{}, false, consumed
 	}
 	res, err := r.heap.reassemble()
 	if err != nil {

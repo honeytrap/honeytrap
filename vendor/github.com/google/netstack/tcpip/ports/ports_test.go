@@ -1,6 +1,16 @@
-// Copyright 2016 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2018 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package ports
 
@@ -68,8 +78,8 @@ func TestPortReservation(t *testing.T) {
 		if err != test.want {
 			t.Fatalf("ReservePort(.., .., %s, %d) = %v, want %v", test.ip, test.port, err, test.want)
 		}
-		if test.port == 0 && (gotPort == 0 || gotPort < firstEphemeral) {
-			t.Fatalf("ReservePort(.., .., .., 0) = %d, want port number >= %d to be picked", gotPort, firstEphemeral)
+		if test.port == 0 && (gotPort == 0 || gotPort < FirstEphemeral) {
+			t.Fatalf("ReservePort(.., .., .., 0) = %d, want port number >= %d to be picked", gotPort, FirstEphemeral)
 		}
 	}
 
@@ -108,17 +118,17 @@ func TestPickEphemeralPort(t *testing.T) {
 		{
 			name: "only-port-16042-available",
 			f: func(port uint16) (bool, *tcpip.Error) {
-				if port == firstEphemeral+42 {
+				if port == FirstEphemeral+42 {
 					return true, nil
 				}
 				return false, nil
 			},
-			wantPort: firstEphemeral + 42,
+			wantPort: FirstEphemeral + 42,
 		},
 		{
 			name: "only-port-under-16000-available",
 			f: func(port uint16) (bool, *tcpip.Error) {
-				if port < firstEphemeral {
+				if port < FirstEphemeral {
 					return true, nil
 				}
 				return false, nil

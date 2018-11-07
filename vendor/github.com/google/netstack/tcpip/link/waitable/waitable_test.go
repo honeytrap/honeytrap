@@ -1,6 +1,16 @@
-// Copyright 2017 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2018 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package waitable
 
@@ -25,7 +35,7 @@ type countedEndpoint struct {
 	dispatcher stack.NetworkDispatcher
 }
 
-func (e *countedEndpoint) DeliverNetworkPacket(linkEP stack.LinkEndpoint, remoteLinkAddr tcpip.LinkAddress, protocol tcpip.NetworkProtocolNumber, vv *buffer.VectorisedView) {
+func (e *countedEndpoint) DeliverNetworkPacket(linkEP stack.LinkEndpoint, remoteLinkAddr, localLinkAddr tcpip.LinkAddress, protocol tcpip.NetworkProtocolNumber, vv buffer.VectorisedView) {
 	e.dispatchCount++
 }
 
@@ -55,7 +65,7 @@ func (e *countedEndpoint) LinkAddress() tcpip.LinkAddress {
 	return e.linkAddr
 }
 
-func (e *countedEndpoint) WritePacket(r *stack.Route, hdr *buffer.Prependable, payload buffer.View, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
+func (e *countedEndpoint) WritePacket(r *stack.Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
 	e.writeCount++
 	return nil
 }
@@ -65,21 +75,21 @@ func TestWaitWrite(t *testing.T) {
 	_, wep := New(stack.RegisterLinkEndpoint(ep))
 
 	// Write and check that it goes through.
-	wep.WritePacket(nil, nil, nil, 0)
+	wep.WritePacket(nil, buffer.Prependable{}, buffer.VectorisedView{}, 0)
 	if want := 1; ep.writeCount != want {
 		t.Fatalf("Unexpected writeCount: got=%v, want=%v", ep.writeCount, want)
 	}
 
 	// Wait on dispatches, then try to write. It must go through.
 	wep.WaitDispatch()
-	wep.WritePacket(nil, nil, nil, 0)
+	wep.WritePacket(nil, buffer.Prependable{}, buffer.VectorisedView{}, 0)
 	if want := 2; ep.writeCount != want {
 		t.Fatalf("Unexpected writeCount: got=%v, want=%v", ep.writeCount, want)
 	}
 
 	// Wait on writes, then try to write. It must not go through.
 	wep.WaitWrite()
-	wep.WritePacket(nil, nil, nil, 0)
+	wep.WritePacket(nil, buffer.Prependable{}, buffer.VectorisedView{}, 0)
 	if want := 2; ep.writeCount != want {
 		t.Fatalf("Unexpected writeCount: got=%v, want=%v", ep.writeCount, want)
 	}
@@ -96,21 +106,21 @@ func TestWaitDispatch(t *testing.T) {
 	}
 
 	// Dispatch and check that it goes through.
-	ep.dispatcher.DeliverNetworkPacket(ep, "", 0, nil)
+	ep.dispatcher.DeliverNetworkPacket(ep, "", "", 0, buffer.VectorisedView{})
 	if want := 1; ep.dispatchCount != want {
 		t.Fatalf("Unexpected dispatchCount: got=%v, want=%v", ep.dispatchCount, want)
 	}
 
 	// Wait on writes, then try to dispatch. It must go through.
 	wep.WaitWrite()
-	ep.dispatcher.DeliverNetworkPacket(ep, "", 0, nil)
+	ep.dispatcher.DeliverNetworkPacket(ep, "", "", 0, buffer.VectorisedView{})
 	if want := 2; ep.dispatchCount != want {
 		t.Fatalf("Unexpected dispatchCount: got=%v, want=%v", ep.dispatchCount, want)
 	}
 
 	// Wait on dispatches, then try to dispatch. It must not go through.
 	wep.WaitDispatch()
-	ep.dispatcher.DeliverNetworkPacket(ep, "", 0, nil)
+	ep.dispatcher.DeliverNetworkPacket(ep, "", "", 0, buffer.VectorisedView{})
 	if want := 2; ep.dispatchCount != want {
 		t.Fatalf("Unexpected dispatchCount: got=%v, want=%v", ep.dispatchCount, want)
 	}

@@ -1,6 +1,16 @@
-// Copyright 2016 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2018 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package header
 
@@ -83,6 +93,12 @@ const (
 
 	// IPv4Version is the version of the ipv4 protocol.
 	IPv4Version = 4
+
+	// IPv4Broadcast is the broadcast address of the IPv4 procotol.
+	IPv4Broadcast tcpip.Address = "\xff\xff\xff\xff"
+
+	// IPv4Any is the non-routable IPv4 "any" meta address.
+	IPv4Any tcpip.Address = "\x00\x00\x00\x00"
 )
 
 // Flags that may be set in an IPv4 packet.
@@ -248,4 +264,14 @@ func (b IPv4) IsValid(pktSize int) bool {
 	}
 
 	return true
+}
+
+// IsV4MulticastAddress determines if the provided address is an IPv4 multicast
+// address (range 224.0.0.0 to 239.255.255.255). The four most significant bits
+// will be 1110 = 0xe0.
+func IsV4MulticastAddress(addr tcpip.Address) bool {
+	if len(addr) != IPv4AddressSize {
+		return false
+	}
+	return (addr[0] & 0xf0) == 0xe0
 }

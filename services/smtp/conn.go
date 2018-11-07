@@ -215,19 +215,20 @@ func loopState(c *conn) stateFn {
 	} else if isCommand(line, "STARTTLS") {
 		c.PrintfLine("220 Ready to start TLS")
 
-		if c.server.tlsConfig != nil {
-			tlsConn := tls.Server(c.rwc, c.server.tlsConfig)
-
-			if err := tlsConn.Handshake(); err != nil {
-				log.Error("Error during tls handshake: %s", err.Error())
-				return nil
-			}
-
-			c.Text = textproto.NewConn(tlsConn)
+		if c.server.tlsConfig == nil {
+			c.PrintfLine("500 5.3.3. Unrecognized Command.")
 			return helloState
 		}
-		log.Error("TLS not available")
-		return nil
+
+		tlsConn := tls.Server(c.rwc, c.server.tlsConfig)
+
+		if err := tlsConn.Handshake(); err != nil {
+			log.Error("Error during tls handshake: %s", err.Error())
+			return nil
+		}
+
+		c.Text = textproto.NewConn(tlsConn)
+		return helloState
 	} else if isCommand(line, "RSET") {
 		c.msg = c.newMessage()
 		c.PrintfLine("250 Ok")
@@ -282,7 +283,11 @@ func helloState(c *conn) stateFn {
 		c.PrintfLine("250-Hello %s", domain)
 		c.PrintfLine("250-SIZE 35882577")
 		c.PrintfLine("250-8BITMIME")
-		c.PrintfLine("250-STARTTLS")
+
+		if c.server.tlsConfig != nil {
+			c.PrintfLine("250-STARTTLS")
+		}
+
 		c.PrintfLine("250-ENHANCEDSTATUSCODES")
 		c.PrintfLine("250-PIPELINING")
 		c.PrintfLine("250-CHUNKING")

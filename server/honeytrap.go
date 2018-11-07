@@ -51,6 +51,7 @@ import (
 	"github.com/honeytrap/honeytrap/director"
 	_ "github.com/honeytrap/honeytrap/director/forward"
 	_ "github.com/honeytrap/honeytrap/director/lxc"
+
 	// _ "github.com/honeytrap/honeytrap/director/qemu"
 	// Import your directors here.
 
@@ -85,6 +86,7 @@ import (
 	"github.com/honeytrap/honeytrap/server/profiler"
 
 	_ "github.com/honeytrap/honeytrap/pushers/console"
+	_ "github.com/honeytrap/honeytrap/pushers/dshield"
 	_ "github.com/honeytrap/honeytrap/pushers/elasticsearch"
 	_ "github.com/honeytrap/honeytrap/pushers/file"
 	_ "github.com/honeytrap/honeytrap/pushers/kafka"
@@ -117,8 +119,7 @@ type Honeytrap struct {
 	dataDir string
 
 	// Maps a port and a protocol to an array of pointers to services
-	tcpPorts map[int][]*ServiceMap
-	udpPorts map[int][]*ServiceMap
+	ports map[net.Addr][]*ServiceMap
 }
 
 // New returns a new instance of a Honeytrap struct.
@@ -187,29 +188,20 @@ var (
  */
 func (hc *Honeytrap) findService(conn net.Conn) (*ServiceMap, net.Conn, error) {
 	localAddr := conn.LocalAddr()
-	var port int
+
 	var serviceCandidates []*ServiceMap
-	// Todo(capacitorset): implement port "any"?
-	switch a := localAddr.(type) {
-	case *net.TCPAddr:
-		port = a.Port
-		tmp, ok := hc.tcpPorts[port]
-		if !ok {
-			return nil, nil, ErrNoServicesGivenPort
+
+	for k, sc := range hc.ports {
+		if !compareAddr(k, localAddr) {
+			continue
 		}
-		serviceCandidates = tmp // prevent variable shadowing and "unused variable" error
-	case *net.UDPAddr:
-		port = a.Port
-		tmp, ok := hc.udpPorts[port]
-		if !ok {
-			return nil, nil, ErrNoServicesGivenPort
-		}
-		serviceCandidates = tmp
-	default:
-		return nil, nil, fmt.Errorf("unknown address type %T", a)
+
+		serviceCandidates = sc
 	}
 
-	if len(serviceCandidates) == 1 {
+	if len(serviceCandidates) == 0 {
+		return nil, nil, fmt.Errorf("No service configured for the given port")
+	} else if len(serviceCandidates) == 1 {
 		return serviceCandidates[0], conn, nil
 	}
 
@@ -269,23 +261,28 @@ func ToAddr(input string) (net.Addr, string, int, error) {
 	parts := strings.Split(input, "/")
 
 	if len(parts) != 2 {
-		return nil, "", 0, fmt.Errorf("wrong format (needs to be \"protocol/port\")")
+		return nil, "", 0, fmt.Errorf("wrong format (needs to be \"protocol/(host:)port\")")
 	}
 
 	proto := parts[0]
-	portStr := parts[1]
-	portUint16, err := strconv.ParseUint(portStr, 10, 16)
+
+	host, port, err := net.SplitHostPort(parts[1])
+	if err != nil {
+		port = parts[1]
+	}
+
+	portUint16, err := strconv.ParseUint(port, 10, 16)
 	if err != nil {
 		return nil, "", 0, fmt.Errorf("error parsing port value: %s", err.Error())
 	}
-	port := int(portUint16)
+
 	switch proto {
 	case "tcp":
-		addr, err := net.ResolveTCPAddr("tcp", ":"+portStr)
-		return addr, proto, port, err
+		addr, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(host, port))
+		return addr, proto, int(portUint16), err
 	case "udp":
-		addr, err := net.ResolveUDPAddr("udp", ":"+portStr)
-		return addr, proto, port, err
+		addr, err := net.ResolveUDPAddr("udp", net.JoinHostPort(host, port))
+		return addr, proto, int(portUint16), err
 	default:
 		return nil, "", 0, fmt.Errorf("unknown protocol %s", proto)
 	}
@@ -295,6 +292,46 @@ func IsTerminal(f *os.File) bool {
 	if isatty.IsTerminal(f.Fd()) {
 		return true
 	} else if isatty.IsCygwinTerminal(f.Fd()) {
+		return true
+	}
+
+	return false
+}
+
+func compareAddr(addr1 net.Addr, addr2 net.Addr) bool {
+	if ta1, ok := addr1.(*net.TCPAddr); ok {
+		ta2, ok := addr2.(*net.TCPAddr)
+		if !ok {
+			return false
+		}
+
+		if ta1.Port != ta2.Port {
+			return false
+		}
+
+		if ta1.IP == nil {
+		} else if ta2.IP == nil {
+		} else if !ta1.IP.Equal(ta2.IP) {
+			return false
+		}
+
+		return true
+	} else if ua1, ok := addr1.(*net.UDPAddr); ok {
+		ua2, ok := addr2.(*net.UDPAddr)
+		if !ok {
+			return false
+		}
+
+		if ua2.Port != ua2.Port {
+			return false
+		}
+
+		if ua1.IP == nil {
+		} else if ua2.IP == nil {
+		} else if !ua1.IP.Equal(ua2.IP) {
+			return false
+		}
+
 		return true
 	}
 
@@ -365,6 +402,11 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			isChannelUsed[key] = false
 		}
 	}
+
+	// subscribe default to global bus
+	// maybe we can rewrite pushers / channels to use global bus instead
+	bc := pushers.NewBusChannel()
+	hc.bus.Subscribe(bc)
 
 	for _, s := range hc.config.Filters {
 		x := struct {
@@ -524,8 +566,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		log.Fatalf("Error initializing listener %s: %s", x.Type, err)
 	}
 
-	hc.tcpPorts = make(map[int][]*ServiceMap)
-	hc.udpPorts = make(map[int][]*ServiceMap)
+	hc.ports = make(map[net.Addr][]*ServiceMap)
 	for _, s := range hc.config.Ports {
 		x := struct {
 			Port     string   `toml:"port"`
@@ -557,7 +598,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		}
 
 		for _, portStr := range ports {
-			addr, proto, port, err := ToAddr(portStr)
+			addr, _, _, err := ToAddr(portStr)
 			if err != nil {
 				log.Error("Error parsing port string: %s", err.Error())
 				continue
@@ -572,28 +613,32 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			for _, serviceName := range x.Services {
 				ptr, ok := serviceList[serviceName]
 				if !ok {
-					log.Error("Unknown service '%s' in ports", serviceName)
+					log.Error("Unknown service '%s' for port %s", serviceName, portStr)
+					continue
 				}
 				servicePtrs = append(servicePtrs, ptr)
 				isServiceUsed[serviceName] = true
 			}
-			switch proto {
-			case "tcp":
-				if _, ok := hc.tcpPorts[port]; ok {
-					log.Error("Port tcp/%d was already defined, ignoring the newer definition", port)
-					continue
-				}
-				hc.tcpPorts[port] = servicePtrs
-			case "udp":
-				if _, ok := hc.udpPorts[port]; ok {
-					log.Error("Port udp/%d was already defined, ignoring the newer definition", port)
-					continue
-				}
-				hc.udpPorts[port] = servicePtrs
-			default:
-				log.Errorf("Unknown protocol %s", proto)
+			if len(servicePtrs) == 0 {
+				log.Errorf("Port %s has no valid services, it won't be listened on", portStr)
 				continue
 			}
+
+			found := false
+			for k, _ := range hc.ports {
+				if !compareAddr(k, addr) {
+					continue
+				}
+
+				found = true
+			}
+
+			if found {
+				log.Error("Port %s was already defined, ignoring the newer definition", portStr)
+				continue
+			}
+
+			hc.ports[addr] = servicePtrs
 
 			a, ok := l.(listener.AddAddresser)
 			if !ok {
@@ -631,6 +676,10 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			}
 
 			incoming <- conn
+
+			// in case of goroutine starvation
+			// with many connection and single procs
+			runtime.Gosched()
 		}
 	}()
 
@@ -642,36 +691,6 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			go hc.handle(conn)
 		}
 	}
-}
-
-func TimeoutConn(conn net.Conn, duration time.Duration) net.Conn {
-	return &timeoutConn{
-		conn,
-		time.Duration(duration),
-		time.Duration(duration),
-	}
-}
-
-type timeoutConn struct {
-	net.Conn
-	ReadTimeout  time.Duration
-	WriteTimeout time.Duration
-}
-
-func (c *timeoutConn) Read(b []byte) (int, error) {
-	err := c.Conn.SetReadDeadline(time.Now().Add(c.ReadTimeout))
-	if err != nil {
-		return 0, err
-	}
-	return c.Conn.Read(b)
-}
-
-func (c *timeoutConn) Write(b []byte) (int, error) {
-	err := c.Conn.SetWriteDeadline(time.Now().Add(c.WriteTimeout))
-	if err != nil {
-		return 0, err
-	}
-	return c.Conn.Write(b)
 }
 
 func (hc *Honeytrap) handle(conn net.Conn) {
@@ -717,6 +736,8 @@ func (hc *Honeytrap) handle(conn net.Conn) {
 	}
 
 	log.Debug("Handling connection for %s => %s %s(%s)", conn.RemoteAddr(), conn.LocalAddr(), sm.Name, sm.Type)
+
+	newConn = TimeoutConn(newConn, time.Second*30)
 
 	ctx := context.Background()
 	if err := sm.Service.Handle(ctx, newConn); err != nil {

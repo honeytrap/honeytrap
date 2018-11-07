@@ -226,7 +226,7 @@ func (l *netstackListener) Start(ctx context.Context) error {
 
 			routes = append(routes, tcpip.Route{
 				Destination: ipToAddress(net.IPv4zero),
-				Mask:        ipToAddress(net.IP(net.IPMask(net.IPv4zero))),
+				Mask:        tcpip.AddressMask(net.IPv4zero),
 				Gateway:     ipToAddress(r.Gw),
 			})
 			continue
@@ -237,13 +237,11 @@ func (l *netstackListener) Start(ctx context.Context) error {
 		}
 		routes = append(routes, tcpip.Route{
 			Destination: ipToAddress(r.Dst.IP.Mask(r.Dst.Mask)),
-			Mask:        ipToAddress(net.IP(net.IPMask(r.Dst.Mask))),
+			Mask:        tcpip.AddressMask(r.Dst.Mask),
 		})
 	}
 
-	clock := &tcpip.StdClock{}
-
-	s := stack.New(clock, []string{ipv4.ProtocolName, ipv6.ProtocolName}, []string{tcp.ProtocolName, udp.ProtocolName})
+	s := stack.New([]string{ipv4.ProtocolName, ipv6.ProtocolName}, []string{tcp.ProtocolName, udp.ProtocolName}, stack.Options{})
 	if err := s.SetTransportProtocolOption(tcp.ProtocolNumber, tcp.RSTDisabled(true)); err != nil {
 		return fmt.Errorf("Could not set transport protocol option: %s", err.String())
 	}

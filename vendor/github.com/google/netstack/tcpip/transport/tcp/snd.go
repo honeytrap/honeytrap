@@ -1,11 +1,22 @@
-// Copyright 2016 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2018 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package tcp
 
 import (
 	"math"
+	"sync"
 	"time"
 
 	"github.com/google/netstack/sleep"
@@ -21,9 +32,36 @@ const (
 
 	// InitialCwnd is the initial congestion window.
 	InitialCwnd = 10
+
+	// nDupAckThreshold is the number of duplicate ACK's required
+	// before fast-retransmit is entered.
+	nDupAckThreshold = 3
 )
 
+// congestionControl is an interface that must be implemented by any supported
+// congestion control algorithm.
+type congestionControl interface {
+	// HandleNDupAcks is invoked when sender.dupAckCount >= nDupAckThreshold
+	// just before entering fast retransmit.
+	HandleNDupAcks()
+
+	// HandleRTOExpired is invoked when the retransmit timer expires.
+	HandleRTOExpired()
+
+	// Update is invoked when processing inbound acks. It's passed the
+	// number of packet's that were acked by the most recent cumulative
+	// acknowledgement.
+	Update(packetsAcked int)
+
+	// PostRecovery is invoked when the sender is exiting a fast retransmit/
+	// recovery phase. This provides congestion control algorithms a way
+	// to adjust their state when exiting recovery.
+	PostRecovery()
+}
+
 // sender holds the state necessary to send TCP segments.
+//
+// +stateify savable
 type sender struct {
 	ep *endpoint
 
@@ -79,11 +117,10 @@ type sender struct {
 	resendTimer timer
 	resendWaker sleep.Waker
 
-	// srtt, rttvar & rto are the "smoothed round-trip time", "round-trip
-	// time variation" and "retransmit timeout", as defined in section 2 of
-	// RFC 6298.
-	srtt       time.Duration
-	rttvar     time.Duration
+	// rtt.srtt, rtt.rttvar, and rto are the "smoothed round-trip time",
+	// "round-trip time variation" and "retransmit timeout", as defined in
+	// section 2 of RFC 6298.
+	rtt        rtt
 	rto        time.Duration
 	srttInited bool
 
@@ -97,9 +134,25 @@ type sender struct {
 
 	// maxSentAck is the maxium acknowledgement actually sent.
 	maxSentAck seqnum.Value
+
+	// cc is the congestion control algorithm in use for this sender.
+	cc congestionControl
+}
+
+// rtt is a synchronization wrapper used to appease stateify. See the comment
+// in sender, where it is used.
+//
+// +stateify savable
+type rtt struct {
+	sync.Mutex
+
+	srtt   time.Duration
+	rttvar time.Duration
 }
 
 // fastRecovery holds information related to fast recovery from a packet loss.
+//
+// +stateify savable
 type fastRecovery struct {
 	// active whether the endpoint is in fast recovery. The following fields
 	// are only meaningful when active is true.
@@ -121,7 +174,7 @@ func newSender(ep *endpoint, iss, irs seqnum.Value, sndWnd seqnum.Size, mss uint
 	s := &sender{
 		ep:               ep,
 		sndCwnd:          InitialCwnd,
-		sndSsthresh:      math.MaxInt64,
+		sndSsthresh:      math.MaxInt32,
 		sndWnd:           sndWnd,
 		sndUna:           iss + 1,
 		sndNxt:           iss + 1,
@@ -137,6 +190,8 @@ func newSender(ep *endpoint, iss, irs seqnum.Value, sndWnd seqnum.Size, mss uint
 		},
 	}
 
+	s.cc = s.initCongestionControl(ep.cc)
+
 	// A negative sndWndScale means that no scaling is in use, otherwise we
 	// store the scaling value.
 	if sndWndScale > 0 {
@@ -148,6 +203,17 @@ func newSender(ep *endpoint, iss, irs seqnum.Value, sndWnd seqnum.Size, mss uint
 	s.resendTimer.init(&s.resendWaker)
 
 	return s
+}
+
+func (s *sender) initCongestionControl(congestionControlName CongestionControlOption) congestionControl {
+	switch congestionControlName {
+	case ccCubic:
+		return newCubicCC(s)
+	case ccReno:
+		fallthrough
+	default:
+		return newRenoCC(s)
+	}
 }
 
 // updateMaxPayloadSize updates the maximum payload size based on the given
@@ -204,26 +270,57 @@ func (s *sender) updateMaxPayloadSize(mtu, count int) {
 
 // sendAck sends an ACK segment.
 func (s *sender) sendAck() {
-	s.sendSegment(nil, flagAck, s.sndNxt)
+	s.sendSegment(buffer.VectorisedView{}, flagAck, s.sndNxt)
 }
 
 // updateRTO updates the retransmit timeout when a new roud-trip time is
 // available. This is done in accordance with section 2 of RFC 6298.
 func (s *sender) updateRTO(rtt time.Duration) {
+	s.rtt.Lock()
 	if !s.srttInited {
-		s.rttvar = rtt / 2
-		s.srtt = rtt
+		s.rtt.rttvar = rtt / 2
+		s.rtt.srtt = rtt
 		s.srttInited = true
 	} else {
-		diff := s.srtt - rtt
+		diff := s.rtt.srtt - rtt
 		if diff < 0 {
 			diff = -diff
 		}
-		s.rttvar = (3*s.rttvar + diff) / 4
-		s.srtt = (7*s.srtt + rtt) / 8
+		// Use RFC6298 standard algorithm to update rttvar and srtt when
+		// no timestamps are available.
+		if !s.ep.sendTSOk {
+			s.rtt.rttvar = (3*s.rtt.rttvar + diff) / 4
+			s.rtt.srtt = (7*s.rtt.srtt + rtt) / 8
+		} else {
+			// When we are taking RTT measurements of every ACK then
+			// we need to use a modified method as specified in
+			// https://tools.ietf.org/html/rfc7323#appendix-G
+			if s.outstanding == 0 {
+				s.rtt.Unlock()
+				return
+			}
+			// Netstack measures congestion window/inflight all in
+			// terms of packets and not bytes. This is similar to
+			// how linux also does cwnd and inflight. In practice
+			// this approximation works as expected.
+			expectedSamples := math.Ceil(float64(s.outstanding) / 2)
+
+			// alpha & beta values are the original values as recommended in
+			// https://tools.ietf.org/html/rfc6298#section-2.3.
+			const alpha = 0.125
+			const beta = 0.25
+
+			alphaPrime := alpha / expectedSamples
+			betaPrime := beta / expectedSamples
+			rttVar := (1-betaPrime)*s.rtt.rttvar.Seconds() + betaPrime*diff.Seconds()
+			srtt := (1-alphaPrime)*s.rtt.srtt.Seconds() + alphaPrime*rtt.Seconds()
+			s.rtt.rttvar = time.Duration(rttVar * float64(time.Second))
+			s.rtt.srtt = time.Duration(srtt * float64(time.Second))
+		}
 	}
 
-	s.rto = s.srtt + 4*s.rttvar
+	s.rto = s.rtt.srtt + 4*s.rtt.rttvar
+	s.rtt.Unlock()
 	if s.rto < minRTO {
 		s.rto = minRTO
 	}
@@ -237,16 +334,7 @@ func (s *sender) resendSegment() {
 
 	// Resend the segment.
 	if seg := s.writeList.Front(); seg != nil {
-		s.sendSegment(&seg.data, seg.flags, seg.sequenceNumber)
-	}
-}
-
-// reduceSlowStartThreshold reduces the slow-start threshold per RFC 5681,
-// page 6, eq. 4. It is called when we detect congestion in the network.
-func (s *sender) reduceSlowStartThreshold() {
-	s.sndSsthresh = s.outstanding / 2
-	if s.sndSsthresh < 2 {
-		s.sndSsthresh = 2
+		s.sendSegment(seg.data, seg.flags, seg.sequenceNumber)
 	}
 }
 
@@ -282,13 +370,7 @@ func (s *sender) retransmitTimerExpired() bool {
 	// we were not in fast recovery.
 	s.fr.last = s.sndNxt - 1
 
-	// We lost a packet, so reduce ssthresh.
-	s.reduceSlowStartThreshold()
-
-	// Reduce the congestion window to 1, i.e., enter slow-start. Per
-	// RFC 5681, page 7, we must use 1 regardless of the value of the
-	// initial congestion window.
-	s.sndCwnd = 1
+	s.cc.HandleRTOExpired()
 
 	// Mark the next segment to be sent as the first unacknowledged one and
 	// start sending again. Set the number of outstanding packets to 0 so
@@ -333,28 +415,17 @@ func (s *sender) sendData() {
 
 		var segEnd seqnum.Value
 		if seg.data.Size() == 0 {
-			seg.flags = flagAck
-
-			s.ep.rcvListMu.Lock()
-			rcvBufUsed := s.ep.rcvBufUsed
-			s.ep.rcvListMu.Unlock()
-
-			s.ep.mu.Lock()
-			// We're sending a FIN by default
-			fl := flagFin
-			segEnd = seg.sequenceNumber
-			if (s.ep.shutdownFlags&tcpip.ShutdownRead) != 0 && rcvBufUsed > 0 {
-				// If there is unread data we must send a RST.
-				// For more information see RFC 2525 section 2.17.
-				fl = flagRst
-			} else {
-				segEnd = seg.sequenceNumber.Add(1)
+			if s.writeList.Back() != seg {
+				panic("FIN segments must be the final segment in the write list.")
 			}
-
-			s.ep.mu.Unlock()
-			seg.flags |= uint8(fl)
+			seg.flags = flagAck | flagFin
+			segEnd = seg.sequenceNumber.Add(1)
 		} else {
 			// We're sending a non-FIN segment.
+			if seg.flags&flagFin != 0 {
+				panic("Netstack queues FIN segments without data.")
+			}
+
 			if !seg.sequenceNumber.LessThan(end) {
 				break
 			}
@@ -377,7 +448,7 @@ func (s *sender) sendData() {
 			segEnd = seg.sequenceNumber.Add(seqnum.Size(seg.data.Size()))
 		}
 
-		s.sendSegment(&seg.data, seg.flags, seg.sequenceNumber)
+		s.sendSegment(seg.data, seg.flags, seg.sequenceNumber)
 
 		// Update sndNxt if we actually sent new data (as opposed to
 		// retransmitting some previously sent data).
@@ -393,11 +464,14 @@ func (s *sender) sendData() {
 	if !s.resendTimer.enabled() && s.sndUna != s.sndNxt {
 		s.resendTimer.enable(s.rto)
 	}
+	// If we have no more pending data, start the keepalive timer.
+	if s.sndUna == s.sndNxt {
+		s.ep.resetKeepaliveTimer(false)
+	}
 }
 
 func (s *sender) enterFastRecovery() {
-	// Save state to reflect we're now in fast recovery.
-	s.reduceSlowStartThreshold()
+	s.fr.active = true
 	// Save state to reflect we're now in fast recovery.
 	// See : https://tools.ietf.org/html/rfc5681#section-3.2 Step 3.
 	// We inflat the cwnd by 3 to account for the 3 packets which triggered
@@ -406,7 +480,6 @@ func (s *sender) enterFastRecovery() {
 	s.fr.first = s.sndUna
 	s.fr.last = s.sndNxt - 1
 	s.fr.maxCwnd = s.sndCwnd + s.outstanding
-	s.fr.active = true
 }
 
 func (s *sender) leaveFastRecovery() {
@@ -418,12 +491,13 @@ func (s *sender) leaveFastRecovery() {
 
 	// Deflate cwnd. It had been artificially inflated when new dups arrived.
 	s.sndCwnd = s.sndSsthresh
+	s.cc.PostRecovery()
 }
 
 // checkDuplicateAck is called when an ack is received. It manages the state
 // related to duplicate acks and determines if a retransmit is needed according
 // to the rules in RFC 6582 (NewReno).
-func (s *sender) checkDuplicateAck(seg *segment) bool {
+func (s *sender) checkDuplicateAck(seg *segment) (rtx bool) {
 	ack := seg.ackNumber
 	if s.fr.active {
 		// We are in fast recovery mode. Ignore the ack if it's out of
@@ -463,6 +537,7 @@ func (s *sender) checkDuplicateAck(seg *segment) bool {
 		//
 		// N.B. The retransmit timer will be reset by the caller.
 		s.fr.first = ack
+		s.dupAckCount = 0
 		return true
 	}
 
@@ -475,9 +550,9 @@ func (s *sender) checkDuplicateAck(seg *segment) bool {
 		return false
 	}
 
-	// Enter fast recovery when we reach 3 dups.
 	s.dupAckCount++
-	if s.dupAckCount != 3 {
+	// Do not enter fast recovery until we reach nDupAckThreshold.
+	if s.dupAckCount < nDupAckThreshold {
 		return false
 	}
 
@@ -490,44 +565,18 @@ func (s *sender) checkDuplicateAck(seg *segment) bool {
 		s.dupAckCount = 0
 		return false
 	}
+
+	s.cc.HandleNDupAcks()
 	s.enterFastRecovery()
 	s.dupAckCount = 0
 	return true
-}
-
-// updateCwnd updates the congestion window based on the number of packets that
-// were acknowledged.
-func (s *sender) updateCwnd(packetsAcked int) {
-	if s.sndCwnd < s.sndSsthresh {
-		// Don't let the congestion window cross into the congestion
-		// avoidance range.
-		newcwnd := s.sndCwnd + packetsAcked
-		if newcwnd >= s.sndSsthresh {
-			newcwnd = s.sndSsthresh
-			s.sndCAAckCount = 0
-		}
-
-		packetsAcked -= newcwnd - s.sndCwnd
-		s.sndCwnd = newcwnd
-		if packetsAcked == 0 {
-			// We've consumed all ack'd packets.
-			return
-		}
-	}
-
-	// Consume the packets in congestion avoidance mode.
-	s.sndCAAckCount += packetsAcked
-	if s.sndCAAckCount >= s.sndCwnd {
-		s.sndCwnd += s.sndCAAckCount / s.sndCwnd
-		s.sndCAAckCount = s.sndCAAckCount % s.sndCwnd
-	}
 }
 
 // handleRcvdSegment is called when a segment is received; it is responsible for
 // updating the send-related state.
 func (s *sender) handleRcvdSegment(seg *segment) {
 	// Check if we can extract an RTT measurement from this ack.
-	if s.rttMeasureSeqNum.LessThan(seg.ackNumber) {
+	if !s.ep.sendTSOk && s.rttMeasureSeqNum.LessThan(seg.ackNumber) {
 		s.updateRTO(time.Now().Sub(s.rttMeasureTime))
 		s.rttMeasureSeqNum = s.sndNxt
 	}
@@ -544,10 +593,25 @@ func (s *sender) handleRcvdSegment(seg *segment) {
 	// Ignore ack if it doesn't acknowledge any new data.
 	ack := seg.ackNumber
 	if (ack - 1).InRange(s.sndUna, s.sndNxt) {
+		s.dupAckCount = 0
 		// When an ack is received we must reset the timer. We stop it
 		// here and it will be restarted later if needed.
 		s.resendTimer.disable()
 
+		// See : https://tools.ietf.org/html/rfc1323#section-3.3.
+		// Specifically we should only update the RTO using TSEcr if the
+		// following condition holds:
+		//
+		//    A TSecr value received in a segment is used to update the
+		//    averaged RTT measurement only if the segment acknowledges
+		//    some new data, i.e., only if it advances the left edge of
+		//    the send window.
+		if s.ep.sendTSOk && seg.parsedOptions.TSEcr != 0 {
+			// TSVal/Ecr values sent by Netstack are at a millisecond
+			// granularity.
+			elapsed := time.Duration(s.ep.timestamp()-seg.parsedOptions.TSEcr) * time.Millisecond
+			s.updateRTO(elapsed)
+		}
 		// Remove all acknowledged data from the write list.
 		acked := s.sndUna.Size(ack)
 		s.sndUna = ack
@@ -581,7 +645,7 @@ func (s *sender) handleRcvdSegment(seg *segment) {
 		// If we are not in fast recovery then update the congestion
 		// window based on the number of acknowledged packets.
 		if !s.fr.active {
-			s.updateCwnd(originalOutstanding - s.outstanding)
+			s.cc.Update(originalOutstanding - s.outstanding)
 		}
 
 		// It is possible for s.outstanding to drop below zero if we get
@@ -607,7 +671,7 @@ func (s *sender) handleRcvdSegment(seg *segment) {
 
 // sendSegment sends a new segment containing the given payload, flags and
 // sequence number.
-func (s *sender) sendSegment(data *buffer.VectorisedView, flags byte, seq seqnum.Value) *tcpip.Error {
+func (s *sender) sendSegment(data buffer.VectorisedView, flags byte, seq seqnum.Value) *tcpip.Error {
 	s.lastSendTime = time.Now()
 	if seq == s.rttMeasureSeqNum {
 		s.rttMeasureTime = s.lastSendTime
@@ -618,13 +682,5 @@ func (s *sender) sendSegment(data *buffer.VectorisedView, flags byte, seq seqnum
 	// Remember the max sent ack.
 	s.maxSentAck = rcvNxt
 
-	if data == nil {
-		return s.ep.sendRaw(nil, flags, seq, rcvNxt, rcvWnd)
-	}
-
-	if len(data.Views()) > 1 {
-		panic("send path does not support views with multiple buffers")
-	}
-
-	return s.ep.sendRaw(data.First(), flags, seq, rcvNxt, rcvWnd)
+	return s.ep.sendRaw(data, flags, seq, rcvNxt, rcvWnd)
 }

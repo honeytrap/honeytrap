@@ -1,6 +1,16 @@
-// Copyright 2016 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2018 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 // Package tcp contains the implementation of the TCP transport protocol. To use
 // it in the networking stack, this package must be added to the project, and
@@ -63,6 +73,11 @@ type ReceiveBufferSizeOption struct {
 	Max     int
 }
 
+const (
+	ccReno  = "reno"
+	ccCubic = "cubic"
+)
+
 // CongestionControlOption sets the current congestion control algorithm.
 type CongestionControlOption string
 
@@ -110,7 +125,7 @@ func (*protocol) ParsePorts(v buffer.View) (src, dst uint16, err *tcpip.Error) {
 // a reset is sent in response to any incoming segment except another reset. In
 // particular, SYNs addressed to a non-existent connection are rejected by this
 // means."
-func (p *protocol) HandleUnknownDestinationPacket(r *stack.Route, id stack.TransportEndpointID, vv *buffer.VectorisedView) bool {
+func (p *protocol) HandleUnknownDestinationPacket(r *stack.Route, id stack.TransportEndpointID, vv buffer.VectorisedView) bool {
 	s := newSegment(r, id, vv)
 	defer s.decRef()
 
@@ -140,7 +155,7 @@ func replyWithReset(s *segment) {
 
 	ack := s.sequenceNumber.Add(s.logicalLen())
 
-	sendTCP(&s.route, s.id, nil, flagRst|flagAck, seq, ack, 0)
+	sendTCP(&s.route, s.id, buffer.VectorisedView{}, s.route.DefaultTTL(), flagRst|flagAck, seq, ack, 0, nil)
 }
 
 // SetOption implements TransportProtocol.SetOption.
@@ -237,8 +252,8 @@ func init() {
 		return &protocol{
 			sendBufferSize:             SendBufferSizeOption{minBufferSize, DefaultBufferSize, maxBufferSize},
 			recvBufferSize:             ReceiveBufferSizeOption{minBufferSize, DefaultBufferSize, maxBufferSize},
-			congestionControl:          "reno",
-			availableCongestionControl: []string{"reno"},
+			congestionControl:          ccReno,
+			availableCongestionControl: []string{ccReno, ccCubic},
 		}
 	})
 }

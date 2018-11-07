@@ -40,7 +40,11 @@ import (
 	"github.com/vishvananda/netlink"
 
 	"github.com/honeytrap/honeytrap/listener"
+	"github.com/honeytrap/honeytrap/listener/netstack-experimental/arp"
+	udpf "github.com/honeytrap/honeytrap/listener/netstack-experimental/udp"
 	"github.com/honeytrap/honeytrap/pushers"
+
+	"math/big"
 
 	"github.com/google/netstack/tcpip"
 	"github.com/google/netstack/tcpip/adapters/gonet"
@@ -59,16 +63,25 @@ import (
 // todo
 // port /whitelist filtering (8022)
 // custom (irs )
+// arp
+// detect half open syn scans
+// check listening addresses / port (ip:port in service config)
 
 type netstackConfig struct {
 	Addresses []net.Addr
 
-	Addr       string   `toml:"addr"`
+	Addr       []string `toml:"addr"`
 	Interfaces []string `toml:"interfaces"`
+
+	// use https://github.com/goccmack/gocc for filter?
+	// Filter expression: !1.2.3.4 and !22
+	// https://blog.gopheracademy.com/advent-2014/parsers-lexers/
+	Filter []string `toml:"filter"`
 
 	Debug bool `toml:"debug"`
 }
 
+// should be AddPort?
 func (nc *netstackConfig) AddAddress(a net.Addr) {
 	nc.Addresses = append(nc.Addresses, a)
 }
@@ -205,6 +218,10 @@ func (l *netstackListener) Start(ctx context.Context) error {
 		linkID = sniffer.New(linkID)
 	}
 
+	// linkID = NewFilter(linkID)
+
+	nicID := tcpip.NICID(1)
+
 	routes := []tcpip.Route{}
 
 	link := ifaceLink
@@ -227,7 +244,7 @@ func (l *netstackListener) Start(ctx context.Context) error {
 
 			routes = append(routes, tcpip.Route{
 				Destination: ipToAddress(net.IPv4zero),
-				Mask:        ipToAddress(net.IP(net.IPMask(net.IPv4zero))),
+				Mask:        tcpip.AddressMask(net.IPv4zero),
 				Gateway:     ipToAddress(r.Gw),
 			})
 			continue
@@ -238,13 +255,12 @@ func (l *netstackListener) Start(ctx context.Context) error {
 		}
 		routes = append(routes, tcpip.Route{
 			Destination: ipToAddress(r.Dst.IP.Mask(r.Dst.Mask)),
-			Mask:        ipToAddress(net.IP(net.IPMask(r.Dst.Mask))),
+			Mask:        tcpip.AddressMask(r.Dst.Mask),
+			NIC:         nicID,
 		})
 	}
 
-	clock := &tcpip.StdClock{}
-
-	s := stack.New(clock, []string{ipv4.ProtocolName, ipv6.ProtocolName}, []string{tcp.ProtocolName, udp.ProtocolName})
+	s := stack.New([]string{ipv4.ProtocolName, ipv6.ProtocolName, arp.ProtocolName}, []string{tcp.ProtocolName, udp.ProtocolName}, stack.Options{})
 	if err := s.SetTransportProtocolOption(tcp.ProtocolNumber, tcp.RSTDisabled(true)); err != nil {
 		return fmt.Errorf("Could not set transport protocol option: %s", err.String())
 	}
@@ -254,11 +270,111 @@ func (l *netstackListener) Start(ctx context.Context) error {
 
 	s.SetRouteTable(routes)
 
-	fwd := tcp.NewForwarder(s, 30000, 10, func(r *tcp.ForwarderRequest) {
+	filterAddrs := []tcpip.Subnet{}
+	for _, s := range l.Filter {
+		_, net, err := net.ParseCIDR(s)
+		if err != nil {
+			log.Fatalf("Could not parse filter address: %s: %s", s, err.Error())
+		}
+
+		mask := tcpip.AddressMask([]byte{255, 255, 255, 255})
+		if net != nil {
+			mask = tcpip.AddressMask(net.Mask)
+		}
+
+		subnet, err := tcpip.NewSubnet(tcpip.Address(net.IP).To4(), mask)
+		if err != nil {
+			log.Fatalf("Could not create subnet: %s: %s", s, err.Error())
+		}
+
+		filterAddrs = append(filterAddrs, subnet)
+	}
+
+	canHandle := func(addr2 net.Addr) bool {
+		for _, addr := range l.Addresses {
+			if ta, ok := addr.(*net.TCPAddr); ok {
+				ta2, ok := addr2.(*net.TCPAddr)
+				if !ok {
+					// compare apples with pears
+					continue
+				}
+
+				if ta.Port != ta2.Port {
+					continue
+				}
+
+				if ta.IP == nil {
+				} else if !ta.IP.Equal(ta2.IP) {
+					continue
+				}
+
+				return true
+			} else if ua, ok := addr.(*net.UDPAddr); ok {
+				ua2, ok := addr2.(*net.UDPAddr)
+				if !ok {
+					// compare apples with pears
+					continue
+				}
+				if ua.Port != ua2.Port {
+					continue
+				}
+
+				if ua.IP == nil {
+				} else if !ua.IP.Equal(ua2.IP) {
+					continue
+				}
+
+				return true
+			}
+		}
+
+		return false
+	}
+
+	shouldFilter := func(id stack.TransportEndpointID) bool {
+		for _, addr := range filterAddrs {
+			// don't respond to filtered addresses
+			if addr.Contains(id.RemoteAddress) {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	tcpForwarder := tcp.NewForwarder(s, 30000, 5000, func(r *tcp.ForwarderRequest) {
+		// got syn
+		// check for ports to ignore
+		id := r.ID()
+
+		if !canHandle(&net.TCPAddr{
+			IP:   net.IP(id.LocalAddress),
+			Port: int(id.LocalPort),
+		}) {
+			// catch all?
+			// not listening to
+			r.Complete(false)
+			return
+		}
+
+		if shouldFilter(id) {
+			// not listening to
+			r.Complete(false)
+			return
+		}
+
+		// should check here if port is being supported
+		// do we have a port mapping for this service?
+
+		// l.ch <- Accepter()
+		// accepter.Accept() -> will run CreateEndpoint
+
+		// perform handshake
 		var wq waiter.Queue
+
 		ep, err := r.CreateEndpoint(&wq)
 		if err != nil {
-			// cleanup
+			// handshake failed, cleanup
 			r.Complete(false)
 
 			log.Errorf("Error creating endpoint: %s", err)
@@ -271,45 +387,147 @@ func (l *netstackListener) Start(ctx context.Context) error {
 		l.ch <- c
 	})
 
-	s.SetTransportProtocolHandler(tcp.ProtocolNumber, fwd.HandlePacket)
+	s.SetTransportProtocolHandler(tcp.ProtocolNumber, tcpForwarder.HandlePacket)
 
-	if err := s.CreateNIC(1, linkID); err != nil {
+	udpForwarder := udpf.NewForwarder(s, func(fr *udpf.ForwarderRequest) {
+		id := fr.ID()
+
+		if !canHandle(
+			&net.UDPAddr{
+				IP:   net.IP(id.LocalAddress),
+				Port: int(id.LocalPort),
+			}) {
+			return
+		}
+
+		if shouldFilter(id) {
+			// not listening to
+			return
+		}
+
+		l.ch <- &listener.DummyUDPConn{
+			Buffer: fr.Payload(),
+			Laddr: &net.UDPAddr{
+				IP:   net.IP(id.LocalAddress),
+				Port: int(id.LocalPort),
+			},
+			Raddr: &net.UDPAddr{
+				IP:   net.IP(id.RemoteAddress),
+				Port: int(id.RemotePort),
+			},
+			Fn: fr.Write,
+		}
+
+	})
+
+	s.SetTransportProtocolHandler(udp.ProtocolNumber, udpForwarder.HandlePacket)
+
+	if err := s.CreateNIC(nicID, linkID); err != nil {
 		return fmt.Errorf(err.String())
 	}
+
+	// use address list
+	ips := []net.IP{}
 
 	addrs, err := netlink.AddrList(link, netlink.FAMILY_V4)
 	if err != nil {
 		return fmt.Errorf("Error retrieving interface ip addresses: %s", err.Error())
 	}
 
-	if l.Addr != "" {
-		if addr, err := netlink.ParseAddr(l.Addr); err == nil {
-			addrs = []netlink.Addr{*addr}
-		} else {
-			return fmt.Errorf("Bad IP address: %v: %s", l.Addr, err)
+	for _, addr := range addrs {
+		ips = append(ips, addr.IP)
+	}
+
+	if len(l.Addr) != 0 {
+		// l.Addr will override network configuration
+		ips = []net.IP{}
+
+		for _, s := range l.Addr {
+			parts := strings.Split(s, "-")
+
+			ip4ToNumber := func(ip net.IP) *big.Int {
+				b := &big.Int{}
+				b.SetBytes(ip.To4())
+				return b
+			}
+
+			numberToIP4 := func(b *big.Int) net.IP {
+				return net.IP(b.Bytes())
+			}
+
+			var ip1 *big.Int
+			if ip := net.ParseIP(parts[0]); ip == nil {
+				log.Errorf("Bad IP address: %v", s, ip)
+				continue
+			} else {
+				ip1 = ip4ToNumber(ip)
+			}
+
+			ip2 := &big.Int{}
+			ip2.Set(ip1)
+
+			if len(parts) == 1 {
+			} else if ip := net.ParseIP(parts[1]); ip == nil {
+				log.Errorf("Bad IP address: %v", s)
+				continue
+			} else {
+				ip2 = ip4ToNumber(ip)
+			}
+
+			ip := &big.Int{}
+			ip.Set(ip1)
+
+			for {
+				log.Debug(numberToIP4(ip).String())
+
+				ips = append(ips, numberToIP4(ip))
+
+				ip.Add(ip, big.NewInt(1))
+				if ip.Cmp(ip2) >= 0 {
+					break
+				}
+			}
 		}
 	}
 
-	for _, parsedAddr := range addrs {
+	for _, ip := range ips {
 		var addr tcpip.Address
 		var proto tcpip.NetworkProtocolNumber
 
-		if _, bits := parsedAddr.Mask.Size(); bits == 32 {
-			addr = tcpip.Address(parsedAddr.IP)
-			proto = ipv4.ProtocolNumber
-		} else if _, bits := parsedAddr.Mask.Size(); bits == 256 {
-			addr = tcpip.Address(parsedAddr.IP)
-			proto = ipv6.ProtocolNumber
-		} else {
-			return fmt.Errorf("Unknown IP type: %v, bits=%d", l.Addr, bits)
+		addr = tcpip.Address(ip).To4()
+		proto = ipv4.ProtocolNumber
+
+		/*
+			if _, bits := parsedAddr.Mask.Size(); bits == 32 {
+				addr = tcpip.Address(ip).To4()
+				proto = ipv4.ProtocolNumber
+			} else if _, bits := parsedAddr.Mask.Size(); bits == 256 {
+				addr = tcpip.Address(parsedAddr.IP)
+				proto = ipv6.ProtocolNumber
+			} else {
+				return fmt.Errorf("Unknown IP type: %v, bits=%d", l.Addr, bits)
+			}
+		*/
+
+		if err := s.AddAddress(nicID, proto, addr); err != nil {
+			return fmt.Errorf("Error listening on: %s: %s", addr.String(), err.String())
 		}
 
-		log.Debugf("Listening on: %s (%d)\n", parsedAddr.String(), proto)
+		log.Debugf("Listening on: %s (%d)", ip.String(), proto)
+	}
 
-		// s.AddSubnet()
-		if err := s.AddAddress(1, proto, addr); err != nil {
-			return fmt.Errorf(err.String())
+	_ = addrs
+
+	/*
+		if err := s.AddAddress(nicID, ipv4.ProtocolNumber, tcpip.Address(net.ParseIP("145.220.137.242")).To4()); err != nil {
+			log.Fatalf("Could not register custom ip: %s", err.String())
 		}
+	*/
+
+	// add l.addresses too
+	// by importing our own arp handler, we're overriding default netstack behaviour
+	if err := s.AddAddress(nicID, arp.ProtocolNumber, arp.ProtocolAddress); err != nil {
+		log.Fatalf("Could not register arp handler: %s", err.String())
 	}
 
 	s.SetSpoofing(1, true)

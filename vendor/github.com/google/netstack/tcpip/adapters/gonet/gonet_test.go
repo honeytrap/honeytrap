@@ -1,6 +1,16 @@
-// Copyright 2016 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2018 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package gonet
 
@@ -47,7 +57,7 @@ func TestTimeouts(t *testing.T) {
 
 func newLoopbackStack() (*stack.Stack, *tcpip.Error) {
 	// Create the stack and add a NIC.
-	s := stack.New(&tcpip.StdClock{}, []string{ipv4.ProtocolName, ipv6.ProtocolName}, []string{tcp.ProtocolName, udp.ProtocolName})
+	s := stack.New([]string{ipv4.ProtocolName, ipv6.ProtocolName}, []string{tcp.ProtocolName, udp.ProtocolName}, stack.Options{})
 
 	if err := s.CreateNIC(NICID, loopback.New()); err != nil {
 		return nil, err
@@ -58,7 +68,7 @@ func newLoopbackStack() (*stack.Stack, *tcpip.Error) {
 		// IPv4
 		{
 			Destination: tcpip.Address(strings.Repeat("\x00", 4)),
-			Mask:        tcpip.Address(strings.Repeat("\x00", 4)),
+			Mask:        tcpip.AddressMask(strings.Repeat("\x00", 4)),
 			Gateway:     "",
 			NIC:         NICID,
 		},
@@ -66,7 +76,7 @@ func newLoopbackStack() (*stack.Stack, *tcpip.Error) {
 		// IPv6
 		{
 			Destination: tcpip.Address(strings.Repeat("\x00", 16)),
-			Mask:        tcpip.Address(strings.Repeat("\x00", 16)),
+			Mask:        tcpip.AddressMask(strings.Repeat("\x00", 16)),
 			Gateway:     "",
 			NIC:         NICID,
 		},

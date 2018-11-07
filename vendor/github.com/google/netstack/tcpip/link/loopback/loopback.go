@@ -1,6 +1,16 @@
-// Copyright 2016 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2018 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 // Package loopback provides the implemention of loopback data-link layer
 // endpoints. Such endpoints just turn outbound packets into inbound ones.
@@ -46,7 +56,7 @@ func (*endpoint) MTU() uint32 {
 // Capabilities implements stack.LinkEndpoint.Capabilities. Loopback advertises
 // itself as supporting checksum offload, but in reality it's just omitted.
 func (*endpoint) Capabilities() stack.LinkEndpointCapabilities {
-	return stack.CapabilityChecksumOffload
+	return stack.CapabilityChecksumOffload | stack.CapabilitySaveRestore | stack.CapabilityLoopback
 }
 
 // MaxHeaderLength implements stack.LinkEndpoint.MaxHeaderLength. Given that the
@@ -62,18 +72,16 @@ func (*endpoint) LinkAddress() tcpip.LinkAddress {
 
 // WritePacket implements stack.LinkEndpoint.WritePacket. It delivers outbound
 // packets to the network-layer dispatcher.
-func (e *endpoint) WritePacket(_ *stack.Route, hdr *buffer.Prependable, payload buffer.View, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
-	if len(payload) == 0 {
-		// We don't have a payload, so just use the buffer from the
-		// header as the full packet.
-		v := hdr.View()
-		vv := v.ToVectorisedView([1]buffer.View{})
-		e.dispatcher.DeliverNetworkPacket(e, "", protocol, &vv)
-	} else {
-		views := []buffer.View{hdr.View(), payload}
-		vv := buffer.NewVectorisedView(len(views[0])+len(views[1]), views)
-		e.dispatcher.DeliverNetworkPacket(e, "", protocol, &vv)
-	}
+func (e *endpoint) WritePacket(_ *stack.Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
+	views := make([]buffer.View, 1, 1+len(payload.Views()))
+	views[0] = hdr.View()
+	views = append(views, payload.Views()...)
+	vv := buffer.NewVectorisedView(len(views[0])+payload.Size(), views)
+
+	// Because we're immediately turning around and writing the packet back to the
+	// rx path, we intentionally don't preserve the remote and local link
+	// addresses from the stack.Route we're passed.
+	e.dispatcher.DeliverNetworkPacket(e, "" /* remoteLinkAddr */, "" /* localLinkAddr */, protocol, vv)
 
 	return nil
 }

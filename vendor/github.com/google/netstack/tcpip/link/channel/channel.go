@@ -1,6 +1,16 @@
-// Copyright 2016 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2018 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 // Package channel provides the implemention of channel-based data-link layer
 // endpoints. Such endpoints allow injection of inbound packets and store
@@ -56,9 +66,13 @@ func (e *Endpoint) Drain() int {
 }
 
 // Inject injects an inbound packet.
-func (e *Endpoint) Inject(protocol tcpip.NetworkProtocolNumber, vv *buffer.VectorisedView) {
-	uu := vv.Clone(nil)
-	e.dispatcher.DeliverNetworkPacket(e, "", protocol, &uu)
+func (e *Endpoint) Inject(protocol tcpip.NetworkProtocolNumber, vv buffer.VectorisedView) {
+	e.InjectLinkAddr(protocol, "", vv)
+}
+
+// InjectLinkAddr injects an inbound packet with a remote link address.
+func (e *Endpoint) InjectLinkAddr(protocol tcpip.NetworkProtocolNumber, remoteLinkAddr tcpip.LinkAddress, vv buffer.VectorisedView) {
+	e.dispatcher.DeliverNetworkPacket(e, remoteLinkAddr, "" /* localLinkAddr */, protocol, vv.Clone(nil))
 }
 
 // Attach saves the stack network-layer dispatcher for use later when packets
@@ -95,15 +109,11 @@ func (e *Endpoint) LinkAddress() tcpip.LinkAddress {
 }
 
 // WritePacket stores outbound packets into the channel.
-func (e *Endpoint) WritePacket(_ *stack.Route, hdr *buffer.Prependable, payload buffer.View, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
+func (e *Endpoint) WritePacket(_ *stack.Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
 	p := PacketInfo{
-		Header: hdr.View(),
-		Proto:  protocol,
-	}
-
-	if payload != nil {
-		p.Payload = make(buffer.View, len(payload))
-		copy(p.Payload, payload)
+		Header:  hdr.View(),
+		Proto:   protocol,
+		Payload: payload.ToView(),
 	}
 
 	select {
