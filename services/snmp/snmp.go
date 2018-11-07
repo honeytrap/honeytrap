@@ -33,6 +33,7 @@ package snmp
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"net"
 	"strings"
 
@@ -138,22 +139,13 @@ func (s *snmpService) Handle(_ context.Context, conn net.Conn) error {
 	case SetRequestPdu:
 		packetType = "set-request"
 		oids = getOIDs(Pdu(pdu))
-		/*
-			if rw {
-		*/
 		res = processPdu(Pdu(pdu), false, true)
-		/*
-			} else {
-				res = GetResponsePdu(pdu)
-				res.ErrorIndex = 1
-				res.ErrorStatus = NoSuchName
-			}
-		*/
 	default:
 		// SNMPv2 PDUs are ignored
 		log.Errorf("Unsupported PDU: %T", request.Pdu)
 		return nil
 	}
+
 	s.c.Send(event.New(
 		services.EventOptions,
 		event.Category("snmp"),
@@ -177,14 +169,14 @@ func (s *snmpService) Handle(_ context.Context, conn net.Conn) error {
 
 	responseBytes, err := ctx.Encode(response)
 	if err != nil {
-		log.Error(err.Error())
 		return err
 	}
 
 	_, err = conn.Write(responseBytes)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("Error writing response: %s: %s", conn.RemoteAddr().String(), err.Error())
 	}
+
 	return nil
 }
 
