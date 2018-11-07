@@ -58,9 +58,13 @@ func Register(key string, fn ChannelFunc) ChannelFunc {
 	return fn
 }
 
-func WithConfig(c toml.Primitive) func(Channel) error {
+type TomlDecoder interface {
+	PrimitiveDecode(primValue toml.Primitive, v interface{}) error
+}
+
+func WithConfig(c toml.Primitive, decoder TomlDecoder) func(Channel) error {
 	return func(d Channel) error {
-		err := toml.PrimitiveDecode(c, d)
+		err := decoder.PrimitiveDecode(c, d)
 		return err
 	}
 }

@@ -84,9 +84,13 @@ func WithChannel(channel pushers.Channel) func(Director) error {
 	}
 }
 
-func WithConfig(c toml.Primitive) func(Director) error {
+type TomlDecoder interface {
+	PrimitiveDecode(primValue toml.Primitive, v interface{}) error
+}
+
+func WithConfig(c toml.Primitive, decoder TomlDecoder) func(Director) error {
 	return func(d Director) error {
-		err := toml.PrimitiveDecode(c, d)
+		err := decoder.PrimitiveDecode(c, d)
 		return err
 	}
 }

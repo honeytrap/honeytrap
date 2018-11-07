@@ -364,7 +364,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 	w, err := web.New(
 		web.WithEventBus(hc.bus),
 		web.WithDataDir(hc.dataDir),
-		web.WithConfig(hc.config.Web),
+		web.WithConfig(hc.config.Web, hc.config),
 	)
 	if err != nil {
 		log.Error("Error parsing configuration of web: %s", err.Error())
@@ -395,7 +395,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		if channelFunc, ok := pushers.Get(x.Type); !ok {
 			log.Error("Channel %s not supported on platform (%s)", x.Type, key)
 		} else if d, err := channelFunc(
-			pushers.WithConfig(s),
+			pushers.WithConfig(s, hc.config),
 		); err != nil {
 			log.Fatalf("Error initializing channel %s(%s): %s", key, x.Type, err)
 		} else {
@@ -476,7 +476,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			log.Error("Director type=%s not supported on platform (director=%s). Available directors: %s", x.Type, key, strings.Join(availableDirectorNames, ", "))
 		} else if d, err := directorFunc(
 			director.WithChannel(hc.bus),
-			director.WithConfig(s),
+			director.WithConfig(s, hc.config),
 		); err != nil {
 			log.Fatalf("Error initializing director %s(%s): %s", key, x.Type, err)
 		} else {
@@ -561,7 +561,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 
 	l, err := listenerFunc(
 		listener.WithChannel(hc.bus),
-		listener.WithConfig(hc.config.Listener),
+		listener.WithConfig(hc.config.Listener, hc.config),
 	)
 	if err != nil {
 		log.Fatalf("Error initializing listener %s: %s", x.Type, err)
