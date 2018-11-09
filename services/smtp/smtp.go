@@ -44,7 +44,7 @@ import (
 	logging "github.com/op/go-logging"
 )
 
-const readDeadline = 5 // connection deadline in minutes
+const readDeadline = 10 // connection deadline in minutes
 
 var (
 	_   = services.Register("smtp", SMTP)
