@@ -73,11 +73,11 @@ func (mux *ServeMux) Serve(msg Message) error {
 }
 
 type Server struct {
-	Banner string
-
+	Banner  string
 	Handler Handler
 
-	tlsConfig *tls.Config
+	implicitTLS bool
+	tlsConfig   *tls.Config
 }
 
 func (s *Server) newConn(rwc net.Conn, recv chan string) *conn {

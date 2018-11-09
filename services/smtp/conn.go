@@ -213,6 +213,12 @@ func loopState(c *conn) stateFn {
 		c.PrintfLine("250 Ok")
 		return mailFromState
 	} else if isCommand(line, "STARTTLS") {
+		// with implicit tls there is no starttls command
+		// no tlsconfig implies no starttls
+		if c.server.implicitTLS || c.server.tlsConfig == nil {
+			return unrecognizedState
+		}
+
 		c.PrintfLine("220 Ready to start TLS")
 
 		if c.server.tlsConfig == nil {
@@ -289,7 +295,7 @@ func helloState(c *conn) stateFn {
 		c.PrintfLine("250-SIZE 35882577")
 		c.PrintfLine("250-8BITMIME")
 
-		if c.server.tlsConfig != nil {
+		if c.server.tlsConfig != nil || !c.server.implicitTLS {
 			c.PrintfLine("250-STARTTLS")
 		}
 

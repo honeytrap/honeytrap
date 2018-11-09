@@ -30,8 +30,40 @@
  */
 package smtp
 
+/*
+  config options:
+
+	[service.smtp]
+	type="smtp"
+	host="smtp.mailer.org"
+	name="HT SMTP-E v2.3.0.1b"
+	banner-fmt='{{.Host}} {{.Name}} - Ready'
+
+	# Standard smtp server port
+	[[port]]
+	port="tcp/25"
+	services=["smtp"]
+
+	# Standard smtp client port
+	[[port]]
+	port="tcp/587"
+	services=["smtp"]
+
+	[service.smtps]
+	type="smtp"
+	name="SMTPS"
+	implicit_tls = true
+	banner-fmt='{{.Host}} {{.Name}} ready'
+
+	# Standard smtps port (Can only connect with tls)
+	[[port]]
+	port="tcp/465"
+	services=["smtps"]
+*/
+
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"net"
 	"strings"
@@ -55,6 +87,7 @@ var (
 func SMTP(options ...services.ServicerFunc) services.Servicer {
 
 	s := &Service{
+		ImplicitTLS: false,
 		Config: Config{
 			bannerData: bannerData{
 				BannerTemplate: "{{.Host}} {{.Name}} Ready",
@@ -72,6 +105,8 @@ func SMTP(options ...services.ServicerFunc) services.Servicer {
 	for _, o := range options {
 		o(s)
 	}
+
+	s.srv.implicitTLS = s.ImplicitTLS
 
 	if store, err := getStorage(); err != nil {
 		log.Errorf("Could not initialize storage: %s", err.Error())
@@ -123,6 +158,8 @@ type Config struct {
 type Service struct {
 	Config
 
+	ImplicitTLS bool `toml:"implicit_tls"` //true: no STARTTLS
+
 	ch pushers.Channel
 }
 
@@ -131,11 +168,24 @@ func (s *Service) SetChannel(c pushers.Channel) {
 }
 
 func (s *Service) Handle(ctx context.Context, conn net.Conn) error {
-	defer conn.Close()
 
 	if err := conn.SetReadDeadline(time.Now().Add(time.Minute * readDeadline)); err != nil {
 		return errors.New("Can't set ReadDeadline on connection")
 	}
+
+	// Handle implicit tls (port 465)
+	if s.srv.implicitTLS {
+		tlsconn := tls.Server(conn, s.srv.tlsConfig)
+
+		if err := tlsconn.Handshake(); err != nil {
+			log.Errorf("Error during tls handshake: %s", err.Error())
+			return err
+		}
+
+		conn = tlsconn
+	}
+
+	defer conn.Close()
 
 	rcvLine := make(chan string)
 
