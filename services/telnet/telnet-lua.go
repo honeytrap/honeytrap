@@ -32,46 +32,24 @@ package telnet
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net"
 
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/services"
-	logging "github.com/op/go-logging"
 	"github.com/rs/xid"
-)
 
-var log = logging.MustGetLogger("services:telnet")
-
-var (
-	_ = services.Register("telnet", Telnet)
+	lua "github.com/yuin/gopher-lua"
 )
 
 var (
-	motd = `********************************************************************************
-*             Copyright(C) 2008-2015 Huawei Technologies Co., Ltd.             *
-*                             All rights reserved                              *
-*                  Without the owner's prior written consent,                  *
-*           no decompiling or reverse-engineering shall be allowed.            *
-* Notice:                                                                      *
-*                   This is a private communication system.                    *
-*             Unauthorized access or use may lead to prosecution.              *
-********************************************************************************
-
-Warning: Telnet is not a secure protocol, and it is recommended to use STelnet. 
-
-Login authentication
-
-
-`
-	prompt = `$ `
+	_ = services.Register("telnet-lua", TelnetLua)
 )
 
-// Telnet is a placeholder
-func Telnet(options ...services.ServicerFunc) services.Servicer {
-	s := &telnetService{
+// TelnetLua is a placeholder
+func TelnetLua(options ...services.ServicerFunc) services.Servicer {
+	s := &telnetLuaService{
 		MOTD:   motd,
 		Prompt: prompt,
 	}
@@ -83,18 +61,20 @@ func Telnet(options ...services.ServicerFunc) services.Servicer {
 	return s
 }
 
-type telnetService struct {
+type telnetLuaService struct {
 	c pushers.Channel
+
+	File string `toml:"file"`
 
 	Prompt string `toml:"prompt"`
 	MOTD   string `toml:"motd"`
 }
 
-func (s *telnetService) SetChannel(c pushers.Channel) {
+func (s *telnetLuaService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
-func (s *telnetService) Handle(ctx context.Context, conn net.Conn) error {
+func (s *telnetLuaService) Handle(ctx context.Context, conn net.Conn) error {
 	id := xid.New()
 
 	defer conn.Close()
@@ -107,7 +87,7 @@ func (s *telnetService) Handle(ctx context.Context, conn net.Conn) error {
 
 	s.c.Send(event.New(
 		services.EventOptions,
-		event.Category("telnet"),
+		event.Category("telnet-lua"),
 		event.Type("connect"),
 		connOptions,
 		event.SourceAddr(conn.RemoteAddr()),
@@ -136,7 +116,7 @@ func (s *telnetService) Handle(ctx context.Context, conn net.Conn) error {
 
 	s.c.Send(event.New(
 		services.EventOptions,
-		event.Category("telnet"),
+		event.Category("telnet-lua"),
 		event.Type("password-authentication"),
 		connOptions,
 		event.SourceAddr(conn.RemoteAddr()),
@@ -148,29 +128,109 @@ func (s *telnetService) Handle(ctx context.Context, conn net.Conn) error {
 
 	term.SetPrompt(s.Prompt)
 
-	for {
-		line, err := term.ReadLine()
-		if err == io.EOF {
-			return nil
-		} else if err != nil {
-			return err
-		}
+	L := lua.NewState()
 
-		s.c.Send(event.New(
-			services.EventOptions,
-			event.Category("telnet"),
-			event.Type("session"),
-			connOptions,
-			event.SourceAddr(conn.RemoteAddr()),
-			event.DestinationAddr(conn.LocalAddr()),
-			event.Custom("telnet.sessionid", id.String()),
-			event.Custom("telnet.command", line),
-		))
+	mt := L.NewTypeMetatable("terminal")
+	L.SetGlobal("terminal", mt)
 
-		if line == "" {
-			continue
-		}
+	L.SetField(mt, "__index", L.SetFuncs(L.NewTable(),
+		map[string]lua.LGFunction{
+			"read_line": func(L *lua.LState) int {
+				ud := L.CheckUserData(1)
 
-		term.Write([]byte(fmt.Sprintf("sh: %s: command not found\n", line)))
+				term, ok := ud.Value.(*Terminal)
+				if !ok {
+					L.ArgError(1, "terminal expected")
+					return 1
+				}
+
+				line, err := term.ReadLine()
+				if err == io.EOF {
+					return 0
+				} else if err != nil {
+					return 0
+				}
+
+				var connOptions event.Option = nil
+
+				if ec, ok := term.Conn.(*event.Conn); ok {
+					connOptions = ec.Options()
+				}
+
+				s.c.Send(event.New(
+					services.EventOptions,
+					event.Category("telnet-lua"),
+					event.Type("session"),
+					connOptions,
+					event.SourceAddr(term.RemoteAddr()),
+					event.DestinationAddr(term.LocalAddr()),
+					event.Custom("telnet.sessionid", id),
+					event.Custom("telnet.command", line),
+				))
+
+				L.Push(lua.LString(line))
+				return 1
+			},
+			"write": func(L *lua.LState) int {
+				ud := L.CheckUserData(1)
+
+				term, ok := ud.Value.(*Terminal)
+				if !ok {
+					L.ArgError(1, "terminal expected")
+					return 0
+				}
+
+				if L.GetTop() != 2 {
+					L.ArgError(1, "string expected")
+					return 0
+				}
+
+				log.Info(L.Get(2).String())
+				term.Write([]byte(L.Get(2).String()))
+				return 0
+			},
+			"write_line": func(L *lua.LState) int {
+				ud := L.CheckUserData(1)
+
+				term, ok := ud.Value.(*Terminal)
+				if !ok {
+					L.ArgError(1, "terminal expected")
+					return 0
+				}
+
+				if L.GetTop() != 2 {
+					L.ArgError(1, "string expected")
+					return 0
+				}
+
+				log.Info(L.Get(2).String())
+				term.Write([]byte(L.Get(2).String()))
+				term.Write([]byte("\n"))
+				return 0
+			},
+		}))
+
+	if err := L.DoFile(s.File); err != nil {
+		return err
 	}
+
+	ud := L.NewUserData()
+	ud.Value = term
+	L.SetMetatable(ud, L.GetTypeMetatable("terminal"))
+
+	if err := L.CallByParam(lua.P{
+		Fn:      L.GetGlobal("handle"),
+		NRet:    1,
+		Protect: true,
+	}, ud); err != nil {
+		log.Error("Error calling lua method: %s", err.Error())
+		return err
+	}
+
+	ret := L.Get(-1)
+	L.Pop(1)
+
+	_ = ret
+
+	return nil
 }
