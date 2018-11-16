@@ -415,6 +415,19 @@
 
 [[projects]]
   branch = "master"
+  digest = "1:18d82d5070c23e604a017ff951fb23f971f5495af3f02932c0b622f2a8746042"
+  name = "github.com/yuin/gopher-lua"
+  packages = [
+    ".",
+    "ast",
+    "parse",
+    "pm",
+  ]
+  pruneopts = ""
+  revision = "a0dfe84f6227cda1c5f975bf3e35d55ae0d3df61"
+
+[[projects]]
+  branch = "master"
   digest = "1:6ef14be530be39b6b9d75d54ce1d546ae9231e652d9e3eef198cbb19ce8ed3e7"
   name = "golang.org/x/crypto"
   packages = [
@@ -541,6 +554,7 @@
     "github.com/songgao/water",
     "github.com/streadway/amqp",
     "github.com/vishvananda/netlink",
+    "github.com/yuin/gopher-lua",
     "golang.org/x/crypto/chacha20poly1305",
     "golang.org/x/crypto/curve25519",
     "golang.org/x/crypto/ssh",
