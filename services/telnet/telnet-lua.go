@@ -32,6 +32,7 @@ package telnet
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net"
 
@@ -135,6 +136,51 @@ func (s *telnetLuaService) Handle(ctx context.Context, conn net.Conn) error {
 
 	L.SetField(mt, "__index", L.SetFuncs(L.NewTable(),
 		map[string]lua.LGFunction{
+			"log_event": func(L *lua.LState) int {
+				ud := L.CheckUserData(1)
+
+				term, ok := ud.Value.(*Terminal)
+				if !ok {
+					L.ArgError(1, "terminal expected")
+					return 1
+				}
+
+				var connOptions event.Option = nil
+
+				if ec, ok := term.Conn.(*event.Conn); ok {
+					connOptions = ec.Options()
+				}
+
+				opts := []event.Option{}
+
+				if L.GetTop() != 2 {
+					L.ArgError(1, "table expected")
+					return 0
+				}
+
+				params, ok := FromLUA(L.Get(2)).(map[string]interface{})
+				if !ok {
+					log.Errorf("Unexpected type: %#+v", FromLUA(L.Get(2)))
+					return 0
+				}
+
+				for k, v := range params {
+					opts = append(opts, event.Custom(fmt.Sprintf("telnet.%s", k), v))
+				}
+
+				s.c.Send(event.New(
+					services.EventOptions,
+					event.Category("telnet-lua"),
+					event.Type("session"),
+					connOptions,
+					event.SourceAddr(term.RemoteAddr()),
+					event.DestinationAddr(term.LocalAddr()),
+					event.Custom("telnet.sessionid", id),
+					event.NewWith(opts...),
+				))
+
+				return 0
+			},
 			"read_line": func(L *lua.LState) int {
 				ud := L.CheckUserData(1)
 
