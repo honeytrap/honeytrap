@@ -1,15 +1,6 @@
 package smtp
 
-import (
-	"fmt"
-	"net"
-	"os"
-	"testing"
-
-	"github.com/honeytrap/honeytrap/pushers"
-	"github.com/honeytrap/honeytrap/storage"
-)
-
+/*
 const (
 	hostname  = "testing.com"
 	sender    = "sender@testing.com"
@@ -102,5 +93,5 @@ func TestSMTP(t *testing.T) {
 		}
 		// Check if data is received.
 		// with file channel?
-	*/
 }
+*/
