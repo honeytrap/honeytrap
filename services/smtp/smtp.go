@@ -65,6 +65,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
+	"fmt"
 	"net"
 	"strings"
 
@@ -173,7 +174,7 @@ func (b bufferedConn) Read(p []byte) (int, error) {
 	return b.r.Read(p)
 }
 
-func smtpConn(c net.Conn, srv *Server) net.Conn {
+func smtpConn(c net.Conn, srv *Server) (net.Conn, error) {
 	sconn := bufferedConn{
 		bufio.NewReader(c),
 		c,
@@ -183,32 +184,31 @@ func smtpConn(c net.Conn, srv *Server) net.Conn {
 	buf, err := sconn.Peek(3)
 	if err != nil {
 		log.Debug(err.Error())
-		return sconn
+		return nil, err
 	}
-
-	log.Debugf("Peeked bytes %#v", buf)
 
 	// validate header byte 0 [record type], 1 [version major], 2 [version minor]
 	if len(buf) == 3 && buf[0] == 0x16 && buf[1] == 0x03 && buf[2] <= 0x03 {
 
-		log.Debug("TLS detected")
 		// Most likely tls
 		tlsconn := tls.Server(sconn, srv.tlsConfig)
 		if err := tlsconn.Handshake(); err != nil {
-			log.Debugf("TLS detected, but handshake errors: %s", err.Error())
-			return sconn
+			return nil, fmt.Errorf("TLS detected, but handshake errors: %s", err.Error())
 		}
 
-		return tlsconn
+		return tlsconn, nil
 	}
 
-	return sconn
+	return sconn, nil
 }
 
 func (s *Service) Handle(ctx context.Context, conn net.Conn) error {
 
 	// Check for tls
-	sc := smtpConn(conn, s.srv)
+	sc, err := smtpConn(conn, s.srv)
+	if err != nil {
+		return err
+	}
 	defer sc.Close()
 
 	rcvLine := make(chan string)
