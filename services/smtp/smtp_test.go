@@ -1,6 +1,18 @@
 package smtp
 
-/*
+import (
+	"context"
+	"crypto/tls"
+	"fmt"
+	"net"
+	"net/smtp"
+	"os"
+	"testing"
+
+	"github.com/honeytrap/honeytrap/pushers"
+	"github.com/honeytrap/honeytrap/storage"
+)
+
 const (
 	hostname  = "testing.com"
 	sender    = "sender@testing.com"
@@ -17,7 +29,6 @@ func TestSMTP(t *testing.T) {
 	//Create a pipe
 	client, server := net.Pipe()
 	defer client.Close()
-	defer server.Close()
 
 	//Create Servicer
 	s := SMTP().(*Service)
@@ -26,72 +37,101 @@ func TestSMTP(t *testing.T) {
 	dc, _ := pushers.Dummy()
 	s.SetChannel(dc)
 
-	// Handle the connection
-	go func(conn net.Conn) {
+	done := make(chan bool)
 
-		for {
-			if err := s.Handle(nil, conn); err != nil {
-				t.Errorf("Handler error: %s", err.Error())
-				break
-			}
+	go func() {
+		ctx := context.Background()
+		err := s.handle(ctx, server)
+		if err != nil {
+			t.Errorf("Handling error: %s", err.Error())
 		}
-	}(server)
+		done <- true
+	}()
 
-	n, err := fmt.Fprintf(client, "EHLO test")
+	//Create smtp client
+	smtpClient, err := smtp.NewClient(client, hostname)
 	if err != nil {
 		t.Error(err)
-	} else if n != 9 {
-		t.Errorf("wrong number %d: %s", n, err.Error())
 	}
 
-	/*
-		fmt.Println("Creating smtp client...")
+	// check connection
+	err = smtpClient.Noop()
+	if err != nil {
+		t.Errorf("Can not create client: %s", err.Error())
+	}
 
-		//Create smtp client
-		smtpClient, err := smtp.NewClient(client, hostname)
-		if err != nil {
-			t.Error(err)
-		}
+	// Set the sender and recipient first
+	err = smtpClient.Mail(sender)
+	if err != nil {
+		t.Error(err)
+	}
+	err = smtpClient.Rcpt(recipient)
+	if err != nil {
+		t.Error(err)
+	}
 
-		fmt.Println("Client created")
+	// Send the email body.
+	wc, err := smtpClient.Data()
+	if err != nil {
+		t.Error(err)
+	}
+	_, err = fmt.Fprintf(wc, body)
+	if err != nil {
+		t.Error(err)
+	}
+	err = wc.Close()
+	if err != nil {
+		t.Error(err)
+	}
 
-		// check connection
-		err = smtpClient.Noop()
-		if err != nil {
-			t.Fatalf("Can not create client: %s", err.Error())
-		}
+	// Send the QUIT command and close the connection.
+	err = smtpClient.Quit()
+	if err != nil {
+		t.Errorf("QUIT Error: %s", err.Error())
+	}
 
-		// Set the sender and recipient first
-		err = smtpClient.Mail(sender)
-		if err != nil {
-			t.Error(err)
-		}
-		err = smtpClient.Rcpt(recipient)
-		if err != nil {
-			t.Error(err)
-		}
-
-		// Send the email body.
-		wc, err := smtpClient.Data()
-		if err != nil {
-			t.Error(err)
-		}
-		_, err = fmt.Fprintf(wc, body)
-		if err != nil {
-			t.Error(err)
-		}
-		err = wc.Close()
-		if err != nil {
-			t.Error(err)
-		}
-
-		//BUG: reading/writing from closed pipe, only in testing
-		// Send the QUIT command and close the connection.
-		err = smtpClient.Quit()
-		if err != nil {
-			t.Error(err)
-		}
-		// Check if data is received.
-		// with file channel?
+	<-done
 }
-*/
+
+func TestStartTLS(t *testing.T) {
+	//Create a pipe
+	client, server := net.Pipe()
+	defer client.Close()
+
+	//Create Servicer
+	s := SMTP().(*Service)
+
+	// Create channel
+	dc, _ := pushers.Dummy()
+	s.SetChannel(dc)
+
+	done := make(chan bool)
+
+	go func() {
+		ctx := context.Background()
+		err := s.handle(ctx, server)
+		if err != nil {
+			t.Errorf("Handling error: %s", err.Error())
+		}
+		done <- true
+	}()
+
+	//Create smtp client
+	smtpClient, err := smtp.NewClient(client, hostname)
+	if err != nil {
+		t.Error(err)
+	}
+
+	err = smtpClient.StartTLS(&tls.Config{InsecureSkipVerify: true})
+	if err != nil {
+		t.Errorf("No StartTLS: %s", err.Error())
+	}
+
+	if state, ok := smtpClient.TLSConnectionState(); !ok {
+		t.Errorf("TLS Connection state %v", state)
+	}
+
+	err = smtpClient.Close()
+
+	<-done
+}

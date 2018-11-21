@@ -52,7 +52,6 @@ package smtp
 	[service.smtps]
 	type="smtp"
 	name="SMTPS"
-	implicit_tls = true
 	banner-fmt='{{.Host}} {{.Name}} ready'
 
 	# Standard smtps port (Can only connect with tls)
@@ -209,8 +208,11 @@ func (s *Service) Handle(ctx context.Context, conn net.Conn) error {
 	if err != nil {
 		return err
 	}
-	defer sc.Close()
 
+	return s.handle(ctx, sc)
+}
+
+func (s *Service) handle(ctx context.Context, conn net.Conn) error {
 	rcvLine := make(chan string)
 	done := make(chan struct{})
 
@@ -261,7 +263,7 @@ func (s *Service) Handle(ctx context.Context, conn net.Conn) error {
 	}()
 
 	//Create new smtp server connection
-	c := s.srv.newConn(sc, rcvLine)
+	c := s.srv.newConn(conn, rcvLine)
 	// Start server loop
 	c.serve()
 
