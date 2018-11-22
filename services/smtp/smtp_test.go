@@ -28,7 +28,6 @@ func TestMain(m *testing.M) {
 func TestSMTP(t *testing.T) {
 	//Create a pipe
 	client, server := net.Pipe()
-	defer client.Close()
 
 	//Create Servicer
 	s := SMTP().(*Service)
@@ -96,7 +95,6 @@ func TestSMTP(t *testing.T) {
 func TestStartTLS(t *testing.T) {
 	//Create a pipe
 	client, server := net.Pipe()
-	defer client.Close()
 
 	//Create Servicer
 	s := SMTP().(*Service)
@@ -132,6 +130,45 @@ func TestStartTLS(t *testing.T) {
 	}
 
 	err = smtpClient.Close()
+
+	<-done
+}
+
+func TestSmtpConn(t *testing.T) {
+	//Create a pipe
+	client, server := net.Pipe()
+	defer server.Close()
+
+	//Create Servicer
+	s := SMTP().(*Service)
+
+	// Create channel
+	dc, _ := pushers.Dummy()
+	s.SetChannel(dc)
+
+	done := make(chan bool)
+
+	go func() {
+		ctx := context.Background()
+		err := s.Handle(ctx, server)
+		if err != nil {
+			t.Errorf("Handling error: %s", err.Error())
+		}
+		done <- true
+	}()
+
+	tconn := tls.Client(client, &tls.Config{InsecureSkipVerify: true})
+	defer tconn.Close()
+
+	//Create smtp client
+	smtpClient, err := smtp.NewClient(tconn, hostname)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if err := smtpClient.Close(); err != nil {
+		t.Errorf("Can not close tls client: %s", err.Error())
+	}
 
 	<-done
 }
