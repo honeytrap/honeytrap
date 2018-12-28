@@ -47,9 +47,8 @@ func New() *EventBus {
 }
 
 // Subscribe adds the giving channel to the list of subscribers for the giving bus.
-func (eb *EventBus) Subscribe(channel pushers.Channel) error {
+func (eb *EventBus) Subscribe(channel pushers.Channel) {
 	eb.subscribers = append(eb.subscribers, channel)
-	return nil
 }
 
 // Send deliverers the slice of messages to all subscribers.

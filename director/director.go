@@ -54,14 +54,6 @@ func Get(key string) (func(...func(Director) error) (Director, error), bool) {
 	return nil, false
 }
 
-func GetAvailableDirectorNames() []string {
-	var out []string
-	for key := range directors {
-		out = append(out, key)
-	}
-	return out
-}
-
 // Director defines an interface which exposes an interface to allow structures that
 // implement this interface allow us to control containers which they provide.
 type Director interface {
