@@ -28,50 +28,29 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package services
+package filters
 
 import (
-	"bufio"
-	"context"
-	"net"
-
 	"github.com/honeytrap/honeytrap/event"
-	"github.com/honeytrap/honeytrap/pushers"
+	"github.com/honeytrap/honeytrap/transforms"
+	"regexp"
 )
 
-// Dummy is a placeholder
-func Dummy(options ...ServicerFunc) Servicer {
-	s := &dummyService{}
-	for _, o := range options {
-		o(s)
+// FieldRegex filters by applying a regex to a field.
+func FieldRegex(field string, expressions []string) transforms.TransformFunc {
+	matchers := make([]*regexp.Regexp, len(expressions))
+
+	for i, match := range expressions {
+		matchers[i] = regexp.MustCompile(match)
 	}
-	return s
-}
 
-type dummyService struct {
-	c pushers.Channel
-}
-
-func (s *dummyService) SetChannel(c pushers.Channel) {
-	s.c = c
-}
-
-func (s *dummyService) Handle(ctx context.Context, conn net.Conn) error {
-	b := bufio.NewReader(conn)
-	for {
-		line, err := b.ReadBytes('\n')
-		if err != nil { // EOF, or worse
-			break
+	return func(state transforms.State, e event.Event, send func(event.Event)) {
+		for _, rx := range matchers {
+			val := e.Get(field)
+			if rx.MatchString(val) {
+				send(e)
+				return
+			}
 		}
-
-		s.c.Send(event.New(
-			SensorLow,
-			event.Category("echo"),
-			event.Payload([]byte(line)),
-		))
-
-		conn.Write(line)
 	}
-
-	return nil
 }
