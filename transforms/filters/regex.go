@@ -28,86 +28,29 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package pushers
+package filters
 
 import (
-	"regexp"
-
 	"github.com/honeytrap/honeytrap/event"
+	"github.com/honeytrap/honeytrap/transforms"
+	"regexp"
 )
 
-//==========================================================================================
-
-// Filter defines an interface which exposes a method for filtering specific
-// messages by specific boundaries.
-type Filter interface {
-	Filter(event.Event) bool
-}
-
-type filterChannel struct {
-	Channel
-
-	FilterFn FilterFunc
-}
-
-// Send delivers the slice of PushMessages and using the internal filters
-// to filter out the desired messages allowed for all registered backends.
-func (mc filterChannel) Send(e event.Event) {
-	if !mc.FilterFn(e) {
-		return
-	}
-
-	mc.Channel.Send(e)
-}
-
-// FilterFunc defines a function for event filtering.
-type FilterFunc func(event.Event) bool
-
-// RegexFilterFunc returns a function for filtering event values.
-func RegexFilterFunc(field string, expressions []string) FilterFunc {
+// FieldRegex filters by applying a regex to a field.
+func FieldRegex(field string, expressions []string) transforms.TransformFunc {
 	matchers := make([]*regexp.Regexp, len(expressions))
 
 	for i, match := range expressions {
 		matchers[i] = regexp.MustCompile(match)
 	}
 
-	return func(e event.Event) bool {
+	return func(e event.Event, send func(event.Event)) {
 		for _, rx := range matchers {
 			val := e.Get(field)
-			// Only return on successful match, continue loop otherwise
 			if rx.MatchString(val) {
-				return true
+				send(e)
+				return
 			}
 		}
-		return false
-	}
-}
-
-// FilterChannel defines a struct which handles the delivery of giving
-// messages to a specific sets of backend channels based on specific criteria.
-func FilterChannel(channel Channel, fn FilterFunc) Channel {
-	return filterChannel{
-		Channel:  channel,
-		FilterFn: fn,
-	}
-}
-
-type tokenChannel struct {
-	Channel
-
-	Token string
-}
-
-// Send delivers the slice of PushMessages and using the internal filters
-// to filter out the desired messages allowed for all registered backends.
-func (mc tokenChannel) Send(e event.Event) {
-	mc.Channel.Send(event.Apply(e, event.Token(mc.Token)))
-}
-
-// TokenChannel returns a Channel to set token value.
-func TokenChannel(channel Channel, token string) Channel {
-	return tokenChannel{
-		Channel: channel,
-		Token:   token,
 	}
 }
