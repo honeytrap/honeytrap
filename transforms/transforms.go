@@ -28,50 +28,61 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
-package services
+package transforms
 
 import (
-	"bufio"
-	"context"
-	"net"
-
+	"fmt"
 	"github.com/honeytrap/honeytrap/event"
+	"github.com/honeytrap/honeytrap/plugins"
 	"github.com/honeytrap/honeytrap/pushers"
 )
 
-// Dummy is a placeholder
-func Dummy(options ...ServicerFunc) Servicer {
-	s := &dummyService{}
-	for _, o := range options {
-		o(s)
-	}
-	return s
+type transformChannel struct {
+	destination pushers.Channel
+	fn          TransformFunc
 }
 
-type dummyService struct {
-	c pushers.Channel
+func (c transformChannel) Send(input event.Event) {
+	c.fn(input, c.destination.Send)
 }
 
-func (s *dummyService) SetChannel(c pushers.Channel) {
-	s.c = c
+func Transform(dest pushers.Channel, fn TransformFunc) pushers.Channel {
+	return transformChannel{destination: dest, fn: fn}
 }
 
-func (s *dummyService) Handle(ctx context.Context, conn net.Conn) error {
-	b := bufio.NewReader(conn)
-	for {
-		line, err := b.ReadBytes('\n')
-		if err != nil { // EOF, or worse
-			break
-		}
+type TransformFunc func(e event.Event, send func(event.Event))
 
-		s.c.Send(event.New(
-			SensorLow,
-			event.Category("echo"),
-			event.Payload([]byte(line)),
-		))
+var staticTransforms = make(map[string]TransformFunc)
 
-		conn.Write(line)
+// Registers a static transform.
+func Register(name string, fn TransformFunc) int {
+	staticTransforms[name] = fn
+	// The return value is unused, but it allows for `var _ = Register("name", handler)`
+	return 0
+}
+
+// Gets a static or dynamic transform, giving priority to static ones.
+func Get(name, folder string) (TransformFunc, error) {
+	staticPl, ok := staticTransforms[name]
+	if ok {
+		return staticPl, nil
 	}
 
-	return nil
+	// todo: add Lua support (issue #272)
+	sym, found, err := plugins.Get(name, "Transform", folder)
+	if !found {
+		return nil, fmt.Errorf("Transform %s not found", name)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return sym.(func() TransformFunc)(), nil
+}
+
+func MustGet(name, folder string) TransformFunc {
+	out, err := Get(name, folder)
+	if err != nil {
+		panic(err.Error())
+	}
+	return out
 }
