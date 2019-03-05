@@ -57,7 +57,6 @@ import (
 
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/pushers/eventbus"
-
 	"github.com/honeytrap/honeytrap/services"
 	_ "github.com/honeytrap/honeytrap/services/bannerfmt"
 	_ "github.com/honeytrap/honeytrap/services/elasticsearch"
@@ -67,6 +66,7 @@ import (
 	_ "github.com/honeytrap/honeytrap/services/ipp"
 	_ "github.com/honeytrap/honeytrap/services/ldap"
 	_ "github.com/honeytrap/honeytrap/services/redis"
+	_ "github.com/honeytrap/honeytrap/services/s7comm"
 	_ "github.com/honeytrap/honeytrap/services/smtp"
 	_ "github.com/honeytrap/honeytrap/services/snmp"
 	_ "github.com/honeytrap/honeytrap/services/ssh"
