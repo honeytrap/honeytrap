@@ -35,6 +35,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"net"
 
 	"github.com/honeytrap/honeytrap/pushers"
@@ -106,20 +107,15 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 				_, _ = conn.Write(response)
 				COTPCONNECTED = true
 				log.Info("COTP handshake confirmed")
-			} else {
-				log.Info("Unkown packet received:\t %x", b)
 			}
 		}
 
 		/* Handling S7 packets */
 		if COTPCONNECTED {
-			isS7, P := unpackS7(b)
+			P, isS7 := unpackS7(b)
 
 			if isS7 {
 
-				if P.COTP.PDUType == com.CR {
-					_, _ = conn.Write(com.Cotp.ConnConfirm)
-				}
 				if P.S7.Parameter.SetupCom.Function == com.S7ConReq {
 					_, _ = conn.Write(com.S7comm.SetupComConf)
 				}
@@ -130,7 +126,7 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 
 				if P.S7.Data.SZLID == 0x001c {
 					_, _ = conn.Write(com.Scan.SecondaryBasicResp)
-					_, t := unpackS7(com.Scan.SecondaryBasicResp)
+					t, _ := unpackS7(com.Scan.SecondaryBasicResp)
 					log.Info("Version number: " + string(t.S7.Data.SZLDataTree[1].MlfB))
 					_ = conn.Close()
 				}
@@ -141,11 +137,14 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 	return err
 }
 
+/* unpacking incoming packet, checking if it contains a COTP Connection Request and create a response */
 func unpackCOTP(m []byte) (response []byte) {
 	if len(m) > 0 {
 		var P com.Packet
-		P.TPKT = createTPTKpacket(&m)
-		if P.TPKT.Version == 0x03 && P.TPKT.Reserved == 0x00 && P.TPKT.Length == 0x16 {
+		var TPKTcheck bool
+		P.TPKT, TPKTcheck = createTPTKpacket(&m)
+		fmt.Printf("\nTPKT check: \t %v \n", TPKTcheck)
+		if TPKTcheck && P.TPKT.Length == 0x16 {
 			response := createCOTPCon(m, P)
 
 			if response != nil {
@@ -157,33 +156,39 @@ func unpackCOTP(m []byte) (response []byte) {
 	return nil
 }
 
-func unpackS7(m []byte) (isS7 bool, P com.Packet) {
-	if len(m) > 0 {
-		P.TPKT = createTPTKpacket(&m)
-		if P.TPKT.Version == 0x03 && P.TPKT.Reserved == 0x00 {
+/* unpacking incoming packet and loading it into a Packet variable */
+func unpackS7(m []byte) (P com.Packet, isS7 bool) {
+	if len(m) >= 4 {
+		var TPKTcheck bool
+		P.TPKT, TPKTcheck = createTPTKpacket(&m)
+
+		if TPKTcheck {
 			P.COTP = createCOTPpacket(&m)
 			if P.COTP.PDUType == com.COTPData {
 				P.S7.Header = createS7Header(&m)
 				P.S7.Parameter = createS7Parameters(&m, P.S7.Header)
 				P.S7.Data = createS7Data(&m, P.S7.Header, P.S7.Parameter)
 			}
-			return true, P
+			return P, true
 		}
 	}
-	return false, P
+	return P, false
 
 }
 
-func createTPTKpacket(m *[]byte) (TPKT com.TPKTPacket) {
+func createTPTKpacket(m *[]byte) (TPKT com.TPKTPacket, verify bool) {
 	Reserved := binary.BigEndian.Uint16((*m)[1:3])
 	TPKT = com.TPKTPacket{
 		Version:  (*m)[0],
 		Reserved: Reserved, //d.Int16((*m)[1:3]),
 		Length:   (*m)[3],
 	}
-	(*m) = (*m)[4:]
 
-	return
+	if TPKT.Version == 0x03 && TPKT.Reserved == 0x00 && int(TPKT.Length)-len(*m) == 0 {
+		(*m) = (*m)[4:]
+		return TPKT, true
+	}
+	return TPKT, false
 }
 
 func createCOTPpacket(m *[]byte) (COTP com.COTPPacket) {
@@ -194,6 +199,7 @@ func createCOTPpacket(m *[]byte) (COTP com.COTPPacket) {
 			DestRef: (*m)[2],
 		}
 		(*m) = (*m)[3:]
+		return
 	}
 	return
 }
