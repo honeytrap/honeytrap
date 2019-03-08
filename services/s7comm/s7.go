@@ -84,6 +84,7 @@ func (s *s7commService) SetChannel(c pushers.Channel) {
 func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 	var err error
 	COTPCONNECTED := false
+	S7CONNECTED := false
 	for {
 		/* reading TCP buffer and storing into a local one */
 		b := make([]byte, 4096)
@@ -101,7 +102,7 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 
 		/* Creating a COTP connection with client */
 		if !COTPCONNECTED {
-			response := unpackCOTP(b)
+			response := generateCOTPConResp(b)
 
 			if response != nil {
 				_, _ = conn.Write(response)
@@ -114,11 +115,17 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 		if COTPCONNECTED {
 			P, isS7 := unpackS7(b)
 
-			if isS7 {
-
+			if isS7 && !S7CONNECTED {
 				if P.S7.Parameter.SetupCom.Function == com.S7ConReq {
-					_, _ = conn.Write(com.S7comm.SetupComConf)
+
+					response := generateS7ConResp(P)
+					_, _ = conn.Write(response)
+					S7CONNECTED = true
+					log.Info("S7 Job confirmed")
 				}
+			}
+
+			if isS7 && S7CONNECTED {
 
 				if P.S7.Data.SZLID == 0x0011 {
 					_, _ = conn.Write(com.Scan.PrimaryBasicResp)
@@ -137,8 +144,48 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 	return err
 }
 
+func generateS7ConResp(P com.Packet) (response []byte) {
+
+	var resPara = com.S7SetupCom{
+		Function:      P.S7.Parameter.SetupCom.Function,
+		Reserved:      P.S7.Parameter.SetupCom.Reserved,
+		MaxAmQCalling: P.S7.Parameter.SetupCom.MaxAmQCalling,
+		MaxAmQCalled:  P.S7.Parameter.SetupCom.MaxAmQCalled,
+		PDULength:     0xf0,
+	}
+	var resHead = com.S7Header{
+		ProtocolID:  0x32,
+		MessageType: com.AckData,
+		Reserved:    P.S7.Header.Reserved,
+		PDURef:      P.S7.Header.PDURef,
+		ParamLength: P.S7.Header.ParamLength,
+		DataLength:  P.S7.Header.DataLength,
+		ErrorClass:  0x00,
+		ErrorCode:   0x00,
+	}
+	/* No need for rebuilding COTP */
+
+	var TPKT = com.TPKTPacket{
+		Version:  P.TPKT.Version,
+		Reserved: P.TPKT.Reserved,
+		Length:   P.TPKT.Length + 0x02,
+	}
+
+	/* Building response buffer */
+	buf := &bytes.Buffer{}
+	TPKTErr := binary.Write(buf, binary.BigEndian, TPKT)
+	COTPErr := binary.Write(buf, binary.BigEndian, P.COTP)
+	S7HeadErr := binary.Write(buf, binary.BigEndian, resHead)
+	S7ParaErr := binary.Write(buf, binary.BigEndian, resPara)
+
+	if TPKTErr == nil && COTPErr == nil && S7HeadErr == nil && S7ParaErr == nil {
+		return buf.Bytes()
+	}
+	return nil
+}
+
 /* unpacking incoming packet, checking if it contains a COTP Connection Request and create a response */
-func unpackCOTP(m []byte) (response []byte) {
+func generateCOTPConResp(m []byte) (response []byte) {
 	if len(m) > 0 {
 		var P com.Packet
 		var TPKTcheck bool
