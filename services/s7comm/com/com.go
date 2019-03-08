@@ -13,6 +13,40 @@ const (
 	COTPData       = 0xf0
 )
 
+type COTPConnectRequest struct {
+	Length        uint8
+	PDUType       uint8
+	DestRef       uint16
+	SourceRef     uint16
+	Reserved      uint8
+	ParamSrcTSAP  uint8
+	ParamSrcLen   uint8
+	SourceTSAP    uint16
+	ParamDstTSAP  uint8
+	ParamDstLen   uint8
+	DestTSAP      uint16
+	ParamTPDUSize uint8
+	ParamTPDULen  uint8
+	TPDUSize      uint8
+}
+
+type COTPConnectConfirm struct {
+	Length        uint8
+	PDUType       uint8
+	DestRef       uint16
+	SourceRef     uint16
+	Reserved      uint8
+	ParamTPDUSize uint8
+	ParamTPDULen  uint8
+	TPDUSize      uint8
+	ParamSrcTSAP  uint8
+	ParamSrcLen   uint8
+	SourceTSAP    uint16
+	ParamDstTSAP  uint8
+	ParamDstLen   uint8
+	DestTSAP      uint16
+}
+
 type Packet struct {
 	TPKT TPKTPacket
 	COTP COTPPacket
