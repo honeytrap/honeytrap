@@ -35,7 +35,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"fmt"
 	"net"
 	"strconv"
 	"strings"
@@ -86,58 +85,68 @@ func (s *s7commService) SetChannel(c pushers.Channel) {
 
 func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 
+	var cotp, s7 bool = false, false
 	var err error
-	COTPCONNECTED := false
-	S7CONNECTED := false
 	for {
-		/* reading TCP buffer and storing into a local one */
 		b := make([]byte, 4096)
 		bl, err := conn.Read(b)
 		b = b[:bl]
 
-		/* Handing unknown input */
-		if handleError(err) {
-			return err
+		if errCk(err) {
+			break
 		}
 
 		if len(b) < 1 {
 			break
 		}
 
-		/* Creating a COTP connection with client */
-		if !COTPCONNECTED {
-			response := generateCOTPConResp(b)
+		if !cotp {
+			response := COTPConResp(b)
 
 			if response != nil {
-				_, _ = conn.Write(response)
-				COTPCONNECTED = true
-				log.Info("COTP handshake confirmed")
+				_, err = conn.Write(response)
+				cotp = true
 			}
 		}
 
-		/* Handling S7 packets */
-		if COTPCONNECTED {
+		if cotp {
 			P, isS7 := unpackS7(b)
 
-			if isS7 && !S7CONNECTED {
+			if isS7 && !s7 {
 				if P.S7.Parameter.SetupCom.Function == com.S7ConReq {
 
-					response := generateS7ConResp(P)
-					_, _ = conn.Write(response)
-					S7CONNECTED = true
-					log.Info("S7 Job confirmed")
+					response := S7ConResp(P)
+					len, err := conn.Write(response)
+
+					if err != nil || len < 1 {
+						break
+					}
+
+					s7 = true
 				}
 			}
 
-			if isS7 && S7CONNECTED {
+			if isS7 && s7 {
 
 				if P.S7.Data.SZLID == 0x0011 {
-					_, _ = conn.Write(s.generateS7DataPacket2(P))
+					len, err := conn.Write(s.primRes(P))
+
+					if err != nil || len < 1 {
+						break
+					}
 				}
 
 				if P.S7.Data.SZLID == 0x001c {
-					_, _ = conn.Write(s.generateS7DataPacket(P))
-					_ = conn.Close()
+					len, err := conn.Write(s.secRes(P))
+
+					if err != nil || len < 1 {
+						break
+					}
+					err = conn.Close()
+
+					if err != nil {
+						break
+					}
 				}
 			}
 		}
@@ -146,7 +155,7 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 	return err
 }
 
-func generateS7ConResp(P com.Packet) (response []byte) {
+func S7ConResp(P com.Packet) (response []byte) {
 
 	var resPara = com.S7SetupCom{
 		Function:      P.S7.Parameter.SetupCom.Function,
@@ -165,15 +174,12 @@ func generateS7ConResp(P com.Packet) (response []byte) {
 		ErrorClass:  0x00,
 		ErrorCode:   0x00,
 	}
-	/* No need for rebuilding COTP */
-
 	var TPKT = com.TPKTPacket{
 		Version:  P.TPKT.Version,
 		Reserved: P.TPKT.Reserved,
 		Length:   P.TPKT.Length + 0x02,
 	}
 
-	/* Building response buffer */
 	buf := &bytes.Buffer{}
 	TPKTErr := binary.Write(buf, binary.BigEndian, TPKT)
 	COTPErr := binary.Write(buf, binary.BigEndian, P.COTP)
@@ -186,12 +192,11 @@ func generateS7ConResp(P com.Packet) (response []byte) {
 	return nil
 }
 
-func generateCOTPConResp(m []byte) (response []byte) {
+func COTPConResp(m []byte) (response []byte) {
 	if len(m) > 0 {
 		var P com.Packet
 		var TPKTcheck bool
 		P.TPKT, TPKTcheck = createTPTKpacket(&m)
-		fmt.Printf("\nTPKT check: \t %v \n", TPKTcheck)
 		if TPKTcheck && P.TPKT.Length == 0x16 {
 			response := createCOTPCon(m, P)
 
@@ -200,11 +205,9 @@ func generateCOTPConResp(m []byte) (response []byte) {
 			}
 		}
 	}
-
 	return nil
 }
 
-/* unpacking incoming packet and loading it into a Packet variable */
 func unpackS7(m []byte) (P com.Packet, isS7 bool) {
 	if len(m) >= 4 {
 		var TPKTcheck bool
@@ -221,7 +224,6 @@ func unpackS7(m []byte) (P com.Packet, isS7 bool) {
 		}
 	}
 	return P, false
-
 }
 
 func createTPTKpacket(m *[]byte) (TPKT com.TPKTPacket, verify bool) {
@@ -252,7 +254,7 @@ func createCOTPpacket(m *[]byte) (COTP com.COTPPacket) {
 	return
 }
 
-func (s *s7commService) generateS7DataPacket(P com.Packet) (response []byte) {
+func (s *s7commService) secRes(P com.Packet) (response []byte) {
 	partialResp, maxVal := s.generateSZL1()
 
 	var Data = com.S7DataNoSZL{
@@ -293,6 +295,7 @@ func (s *s7commService) generateS7DataPacket(P com.Packet) (response []byte) {
 		Reserved: 0x00,
 		Length:   Head.DataLength + 28,
 	}
+
 	buf := &bytes.Buffer{}
 	_ = binary.Write(buf, binary.BigEndian, TPKT)
 	_ = binary.Write(buf, binary.BigEndian, COTP)
@@ -301,12 +304,10 @@ func (s *s7commService) generateS7DataPacket(P com.Packet) (response []byte) {
 	_ = binary.Write(buf, binary.BigEndian, Data)
 	_ = binary.Write(buf, binary.BigEndian, partialResp)
 
-	fmt.Printf("\n BUFFER:\t %x \n", buf.Bytes())
-
 	return buf.Bytes()
 }
 
-func (s *s7commService) generateS7DataPacket2(P com.Packet) (response []byte) {
+func (s *s7commService) primRes(P com.Packet) (response []byte) {
 
 	vA := strings.Split(s.Version, ".")
 	vS := make([]byte, 3)
@@ -316,7 +317,6 @@ func (s *s7commService) generateS7DataPacket2(P com.Packet) (response []byte) {
 	}
 
 	SZL1 := append([]byte{0x00, 0x01}, []byte(s.Mod)...)
-
 	SZL1 = append(SZL1, []byte{0x20, 0x20, 0x20, 0x00, 0x01, 0x20, 0x20}...)
 
 	SZL2 := append([]byte{0x00, 0x06}, []byte(s.Mod)...)
@@ -558,7 +558,7 @@ func createS7Data(mp *[]byte, H com.S7Header, P com.S7Parameter) (D com.S7Data) 
 	return
 }
 
-func handleError(err error) bool {
+func errCk(err error) bool {
 	if err != nil {
 		if err.Error() == "EOF" {
 			return true
