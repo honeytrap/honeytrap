@@ -37,6 +37,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
+	"strconv"
+	"strings"
 
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/services"
@@ -62,7 +64,7 @@ func S7(options ...services.ServicerFunc) services.Servicer {
 }
 
 type s7commServiceConfig struct {
-	HardWare  string `toml:"basic_hardware"`
+	Hardware  string `toml:"basic_hardware"`
 	SysName   string `toml:"system_name"`
 	Copyright string `toml:"copyright"`
 	Version   string `toml:"version"`
@@ -70,6 +72,7 @@ type s7commServiceConfig struct {
 	Mod       string `toml:"module"`
 	SerialNum string `toml:"serial_number"`
 	PlantID   string `toml:"plant_identification"`
+	CPUType   string `toml:"cpu_type"`
 }
 
 type s7commService struct {
@@ -82,6 +85,7 @@ func (s *s7commService) SetChannel(c pushers.Channel) {
 }
 
 func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
+
 	var err error
 	COTPCONNECTED := false
 	S7CONNECTED := false
@@ -128,13 +132,11 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 			if isS7 && S7CONNECTED {
 
 				if P.S7.Data.SZLID == 0x0011 {
-					_, _ = conn.Write(com.Scan.PrimaryBasicResp)
+					_, _ = conn.Write(s.generateS7DataPacket2(P))
 				}
 
 				if P.S7.Data.SZLID == 0x001c {
-					_, _ = conn.Write(com.Scan.SecondaryBasicResp)
-					t, _ := unpackS7(com.Scan.SecondaryBasicResp)
-					log.Info("Version number: " + string(t.S7.Data.SZLDataTree[1].MlfB))
+					_, _ = conn.Write(s.generateS7DataPacket(P))
 					_ = conn.Close()
 				}
 			}
@@ -184,7 +186,6 @@ func generateS7ConResp(P com.Packet) (response []byte) {
 	return nil
 }
 
-/* unpacking incoming packet, checking if it contains a COTP Connection Request and create a response */
 func generateCOTPConResp(m []byte) (response []byte) {
 	if len(m) > 0 {
 		var P com.Packet
@@ -224,11 +225,11 @@ func unpackS7(m []byte) (P com.Packet, isS7 bool) {
 }
 
 func createTPTKpacket(m *[]byte) (TPKT com.TPKTPacket, verify bool) {
-	Reserved := binary.BigEndian.Uint16((*m)[1:3])
+	Length := binary.BigEndian.Uint16((*m)[2:4])
 	TPKT = com.TPKTPacket{
 		Version:  (*m)[0],
-		Reserved: Reserved, //d.Int16((*m)[1:3]),
-		Length:   (*m)[3],
+		Reserved: (*m)[1],
+		Length:   Length,
 	}
 
 	if TPKT.Version == 0x03 && TPKT.Reserved == 0x00 && int(TPKT.Length)-len(*m) == 0 {
@@ -249,6 +250,181 @@ func createCOTPpacket(m *[]byte) (COTP com.COTPPacket) {
 		return
 	}
 	return
+}
+
+func (s *s7commService) generateS7DataPacket(P com.Packet) (response []byte) {
+	partialResp, maxVal := s.generateSZL1()
+
+	var Data = com.S7DataNoSZL{
+		ReturnCode:    0xff,
+		TransportSize: 0x09,                         //no idea
+		Length:        uint16(len(partialResp) + 8), //could be six, could be something else
+		SZLID:         0x001c,
+		SZLIndex:      0x0000,
+		SZLListLength: uint16(maxVal),
+		SZLListCount:  0x0a,
+	}
+	var Param = com.UserDataSmallHead{
+		ParamHead:    0x112,
+		ParamLength:  0x08,
+		Method:       0x12,
+		MethodType:   0x84,
+		SubFunction:  0x01,
+		SequenceNum:  P.S7.Parameter.UserData.SequenceNum + 1,
+		DataRefNum:   0x03,
+		LastDataUnit: 0x01,
+		ErrorCode:    0x0000,
+	}
+	var Head = com.S7CustomHead{
+		ProtocolID:  0x32,
+		MessageType: 0x07,
+		Reserved:    0x0000,
+		PDURef:      0x00,
+		ParamLength: 0x000c,
+		DataLength:  Data.Length + 4,
+	}
+	var COTP = com.COTPPacket{
+		Length:  0x02,
+		PDUType: 0xf0,
+		DestRef: P.COTP.DestRef,
+	}
+	var TPKT = com.TPKTPacket{
+		Version:  0x03,
+		Reserved: 0x00,
+		Length:   Head.DataLength + 28,
+	}
+	buf := &bytes.Buffer{}
+	_ = binary.Write(buf, binary.BigEndian, TPKT)
+	_ = binary.Write(buf, binary.BigEndian, COTP)
+	_ = binary.Write(buf, binary.BigEndian, Head)
+	_ = binary.Write(buf, binary.BigEndian, Param)
+	_ = binary.Write(buf, binary.BigEndian, Data)
+	_ = binary.Write(buf, binary.BigEndian, partialResp)
+
+	fmt.Printf("\n BUFFER:\t %x \n", buf.Bytes())
+
+	return buf.Bytes()
+}
+
+func (s *s7commService) generateS7DataPacket2(P com.Packet) (response []byte) {
+
+	vA := strings.Split(s.Version, ".")
+	vS := make([]byte, 3)
+	for i := 0; i < len(vA); i++ {
+		val, _ := strconv.Atoi(vA[i])
+		vS[i] = byte(val)
+	}
+
+	SZL1 := append([]byte{0x00, 0x01}, []byte(s.Mod)...)
+
+	SZL1 = append(SZL1, []byte{0x20, 0x20, 0x20, 0x00, 0x01, 0x20, 0x20}...)
+
+	SZL2 := append([]byte{0x00, 0x06}, []byte(s.Mod)...)
+	SZL2 = append(SZL2, []byte{0x20, 0x20, 0x20, 0x00, 0x01, 0x20, 0x20}...)
+
+	SZL3 := append([]byte{0x00, 0x07}, []byte(s.Mod)...)
+	SZL3 = append(SZL3, []byte{0x20, 0x20, 0x20, 0x56}...)
+	SZL3 = append(SZL3, vS...)
+
+	tb := &bytes.Buffer{}
+	_ = binary.Write(tb, binary.BigEndian, SZL1)
+	_ = binary.Write(tb, binary.BigEndian, SZL2)
+	_ = binary.Write(tb, binary.BigEndian, SZL3)
+
+	masterbuf := tb.Bytes()
+
+	var Data = com.S7DataNoSZL{
+		ReturnCode:    0xff,
+		TransportSize: 0x09,                       //no idea
+		Length:        uint16(len(masterbuf) + 8), //could be six, could be something else
+		SZLID:         0x0011,
+		SZLIndex:      0x0001,
+		SZLListLength: 0x005c,
+		SZLListCount:  0x03,
+	}
+	var Param = com.UserDataSmallHead{
+		ParamHead:    0x112,
+		ParamLength:  0x08,
+		Method:       0x12,
+		MethodType:   0x84,
+		SubFunction:  0x01,
+		SequenceNum:  P.S7.Parameter.UserData.SequenceNum + 1,
+		DataRefNum:   0x00,
+		LastDataUnit: 0x00,
+		ErrorCode:    0x0000,
+	}
+	var Head = com.S7CustomHead{
+		ProtocolID:  0x32,
+		MessageType: 0x07,
+		Reserved:    0x0000,
+		PDURef:      0x00,
+		ParamLength: 0x000c,
+		DataLength:  Data.Length + 4,
+	}
+	var COTP = com.COTPPacket{
+		Length:  0x02,
+		PDUType: 0xf0,
+		DestRef: P.COTP.DestRef,
+	}
+	var TPKT = com.TPKTPacket{
+		Version:  0x03,
+		Reserved: 0x00,
+		Length:   uint16(Head.DataLength + 28),
+	}
+
+	buf := &bytes.Buffer{}
+	_ = binary.Write(buf, binary.BigEndian, TPKT)
+	_ = binary.Write(buf, binary.BigEndian, COTP)
+	_ = binary.Write(buf, binary.BigEndian, Head)
+	_ = binary.Write(buf, binary.BigEndian, Param)
+	_ = binary.Write(buf, binary.BigEndian, Data)
+	_ = binary.Write(buf, binary.BigEndian, masterbuf)
+
+	return buf.Bytes()
+}
+
+func (s *s7commService) generateSZL1() (partialresp []byte, SZLLen int) {
+
+	InputLen := []string{s.SysName, s.ModType, s.PlantID, s.Copyright, s.SerialNum, s.CPUType}
+
+	var lo string
+
+	for _, cu := range InputLen {
+		if len(cu) > len(lo) {
+			lo = cu
+		}
+	}
+
+	maxVal := 0x22
+	Sys := append([]byte{0x00, 0x01}, s.SysName...)
+	bufferFiller(&Sys, maxVal)
+	Mtp := append([]byte{0x00, 0x02}, s.ModType...)
+	bufferFiller(&Mtp, maxVal)
+	PID := append([]byte{0x00, 0x03}, s.PlantID...)
+	bufferFiller(&PID, maxVal)
+	Cpr := append([]byte{0x00, 0x04}, s.Copyright...)
+	bufferFiller(&Cpr, maxVal)
+	Snr := append([]byte{0x00, 0x05}, s.SerialNum...)
+	bufferFiller(&Snr, maxVal)
+	CPU := append([]byte{0x00, 0x07}, s.CPUType...)
+	bufferFiller(&CPU, maxVal)
+
+	var masterbuf []byte
+
+	masterbuf = append(Sys, Mtp...)
+	masterbuf = append(masterbuf, PID...)
+	masterbuf = append(masterbuf, Cpr...)
+	masterbuf = append(masterbuf, Snr...)
+	masterbuf = append(masterbuf, CPU...)
+
+	return masterbuf, maxVal
+
+}
+
+func bufferFiller(m *[]byte, tl int) {
+	tl = tl - len((*m))
+	a := make([]byte, tl)
+	(*m) = append((*m), a...)
 }
 
 func createS7Header(mp *[]byte) (H com.S7Header) {
