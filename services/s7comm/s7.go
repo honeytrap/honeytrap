@@ -1,206 +1,26 @@
-/*
-* Honeytrap
-* Copyright (C) 2016-2017 DutchSec (https://dutchsec.com/)
-*
-* This program is free software; you can redistribute it and/or modify it under
-* the terms of the GNU Affero General Public License version 3 as published by the
-* Free Software Foundation.
-*
-* This program is distributed in the hope that it will be useful, but WITHOUT
-* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-* FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
-* details.
-*
-* You should have received a copy of the GNU Affero General Public License
-* version 3 along with this program in the file "LICENSE".  If not, see
-* <http://www.gnu.org/licenses/agpl-3.0.txt>.
-*
-* See https://honeytrap.io/ for more details. All requests should be sent to
-* licensing@honeytrap.io
-*
-* The interactive user interfaces in modified source and object code versions
-* of this program must display Appropriate Legal Notices, as required under
-* Section 5 of the GNU Affero General Public License version 3.
-*
-* In accordance with Section 7(b) of the GNU Affero General Public License version 3,
-* these Appropriate Legal Notices must retain the display of the "Powered by
-* Honeytrap" logo and retain the original copyright notice. If the display of the
-* logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
-* must display the words "Powered by Honeytrap" and retain the original copyright notice.
- */
-
 package s7comm
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
-	"net"
 	"strconv"
 	"strings"
 
-	"github.com/honeytrap/honeytrap/pushers"
-	"github.com/honeytrap/honeytrap/services"
 	"github.com/honeytrap/honeytrap/services/s7comm/com"
-	logging "github.com/op/go-logging"
 )
 
-var (
-	_ = services.Register("s7comm", S7)
-)
-
-var log = logging.MustGetLogger("services")
-
-func S7(options ...services.ServicerFunc) services.Servicer {
-	s := &s7commService{
-		s7commServiceConfig: s7commServiceConfig{},
-	}
-
-	for _, o := range options {
-		_ = o(s)
-	}
-	return s
+type S7Packet struct {
+	T         TPKT
+	C         COTP
+	Header    com.S7Header
+	Parameter com.S7Parameter
+	Data      com.S7Data
+	ui        userinput
 }
 
-type s7commServiceConfig struct {
-	Hardware  string `toml:"basic_hardware"`
-	SysName   string `toml:"system_name"`
-	Copyright string `toml:"copyright"`
-	Version   string `toml:"version"`
-	ModType   string `toml:"module_type"`
-	Mod       string `toml:"module"`
-	SerialNum string `toml:"serial_number"`
-	PlantID   string `toml:"plant_identification"`
-	CPUType   string `toml:"cpu_type"`
-}
+func (s7 *S7Packet) secRes(P com.Packet) (response []byte) {
+	partialResp, maxVal := s7.generateSZL1()
 
-type s7commService struct {
-	s7commServiceConfig
-	c pushers.Channel
-}
-
-func (s *s7commService) SetChannel(c pushers.Channel) {
-	s.c = c
-}
-
-func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
-
-	var cotp, s7 bool = false, false
-	var err error
-	var C COTP
-	for {
-		b := make([]byte, 4096)
-		bl, err := conn.Read(b)
-		b = b[:bl]
-		if errCk(err) {
-			break
-		}
-		if len(b) < 1 {
-			break
-		}
-		if !cotp {
-
-			response := C.connect(b)
-			if response != nil {
-				len, err := conn.Write(response)
-				if err != nil || len < 1 {
-					break
-				}
-				cotp = true
-			}
-		}
-		if cotp {
-			P, isS7 := unpackS7(b)
-
-			if isS7 && !s7 {
-
-				if P.S7.Parameter.SetupCom.Function == com.S7ConReq {
-					response := S7ConResp(P)
-					len, err := conn.Write(response)
-					if err != nil || len < 1 {
-						break
-					}
-					s7 = true
-				}
-			}
-			if isS7 && s7 {
-				if P.S7.Data.SZLID == 0x0011 {
-					len, err := conn.Write(s.primRes(P))
-					if err != nil || len < 1 {
-						break
-					}
-				}
-				if P.S7.Data.SZLID == 0x001c {
-					len, err := conn.Write(s.secRes(P))
-					if err != nil || len < 1 {
-						break
-					}
-					err = conn.Close()
-					if err != nil {
-						break
-					}
-				}
-			}
-		}
-	}
-	return err
-}
-
-func S7ConResp(P com.Packet) (response []byte) {
-	var T TPKT
-	var C COTP
-	var resPara = com.S7SetupCom{
-		Function:      P.S7.Parameter.SetupCom.Function,
-		Reserved:      P.S7.Parameter.SetupCom.Reserved,
-		MaxAmQCalling: P.S7.Parameter.SetupCom.MaxAmQCalling,
-		MaxAmQCalled:  P.S7.Parameter.SetupCom.MaxAmQCalled,
-		PDULength:     0xf0,
-	}
-	var resHead = com.S7Header{
-		ProtocolID:  0x32,
-		MessageType: com.AckData,
-		Reserved:    P.S7.Header.Reserved,
-		PDURef:      P.S7.Header.PDURef,
-		ParamLength: P.S7.Header.ParamLength,
-		DataLength:  P.S7.Header.DataLength,
-		ErrorClass:  0x00,
-		ErrorCode:   0x00,
-	}
-	buf := &bytes.Buffer{}
-	S7HeadErr := binary.Write(buf, binary.BigEndian, resHead)
-	S7ParaErr := binary.Write(buf, binary.BigEndian, resPara)
-
-	if S7HeadErr == nil && S7ParaErr == nil {
-		return T.serialize(C.serialize(buf.Bytes()))
-	}
-	return nil
-}
-
-func unpackS7(m []byte) (P com.Packet, isS7 bool) {
-	if len(m) >= 4 {
-
-		var T TPKT
-		var C COTP
-
-		chk := T.deserialize(&m)
-
-		if chk {
-			C.deserialize(&m)
-			if C.PDUType == com.COTPData {
-				P.S7.Header = createS7Header(&m)
-				P.S7.Parameter = createS7Parameters(&m, P.S7.Header)
-				P.S7.Data = createS7Data(&m, P.S7.Header, P.S7.Parameter)
-			}
-			return P, true
-		}
-	}
-	return P, false
-}
-func (s *s7commService) secRes(P com.Packet) (response []byte) {
-	partialResp, maxVal := s.generateSZL1()
-
-	var T TPKT
-	var C COTP
 	var Data = com.S7DataNoSZL{
 		ReturnCode:    0xff,
 		TransportSize: 0x09,                         //no idea
@@ -236,24 +56,24 @@ func (s *s7commService) secRes(P com.Packet) (response []byte) {
 	_ = binary.Write(buf, binary.BigEndian, Data)
 	_ = binary.Write(buf, binary.BigEndian, partialResp)
 
-	return T.serialize(C.serialize(buf.Bytes()))
+	return s7.T.serialize(s7.C.serialize(buf.Bytes()))
 }
 
-func (s *s7commService) primRes(P com.Packet) (response []byte) {
-	vA := strings.Split(s.Version, ".")
+func (s7 *S7Packet) primRes(P com.Packet) (response []byte) {
+	vA := strings.Split(s7.ui.Version, ".")
 	vS := make([]byte, 3)
 	for i := 0; i < len(vA); i++ {
 		val, _ := strconv.Atoi(vA[i])
 		vS[i] = byte(val)
 	}
 
-	SZL1 := append([]byte{0x00, 0x01}, []byte(s.Mod)...)
+	SZL1 := append([]byte{0x00, 0x01}, []byte(s7.ui.Mod)...)
 	SZL1 = append(SZL1, []byte{0x20, 0x20, 0x20, 0x00, 0x01, 0x20, 0x20}...)
 
-	SZL2 := append([]byte{0x00, 0x06}, []byte(s.Mod)...)
+	SZL2 := append([]byte{0x00, 0x06}, []byte(s7.ui.Mod)...)
 	SZL2 = append(SZL2, []byte{0x20, 0x20, 0x20, 0x00, 0x01, 0x20, 0x20}...)
 
-	SZL3 := append([]byte{0x00, 0x07}, []byte(s.Mod)...)
+	SZL3 := append([]byte{0x00, 0x07}, []byte(s7.ui.Mod)...)
 	SZL3 = append(SZL3, []byte{0x20, 0x20, 0x20, 0x56}...)
 	SZL3 = append(SZL3, vS...)
 
@@ -297,15 +117,12 @@ func (s *s7commService) primRes(P com.Packet) (response []byte) {
 	_ = binary.Write(buf, binary.BigEndian, Param)
 	_ = binary.Write(buf, binary.BigEndian, Data)
 	_ = binary.Write(buf, binary.BigEndian, masterbuf)
-	var C COTP
-	var T TPKT
 
-	return T.serialize(C.serialize(buf.Bytes()))
+	return s7.T.serialize(s7.C.serialize(buf.Bytes()))
 }
+func (s7 *S7Packet) generateSZL1() (partialresp []byte, SZLLen int) {
 
-func (s *s7commService) generateSZL1() (partialresp []byte, SZLLen int) {
-
-	InputLen := []string{s.SysName, s.ModType, s.PlantID, s.Copyright, s.SerialNum, s.CPUType}
+	InputLen := []string{s7.ui.SysName, s7.ui.ModType, s7.ui.PlantID, s7.ui.Copyright, s7.ui.SerialNum, s7.ui.CPUType}
 
 	var lo string
 
@@ -316,17 +133,17 @@ func (s *s7commService) generateSZL1() (partialresp []byte, SZLLen int) {
 	}
 
 	maxVal := 0x22
-	Sys := append([]byte{0x00, 0x01}, s.SysName...)
+	Sys := append([]byte{0x00, 0x01}, s7.ui.SysName...)
 	bufferFiller(&Sys, maxVal)
-	Mtp := append([]byte{0x00, 0x02}, s.ModType...)
+	Mtp := append([]byte{0x00, 0x02}, s7.ui.ModType...)
 	bufferFiller(&Mtp, maxVal)
-	PID := append([]byte{0x00, 0x03}, s.PlantID...)
+	PID := append([]byte{0x00, 0x03}, s7.ui.PlantID...)
 	bufferFiller(&PID, maxVal)
-	Cpr := append([]byte{0x00, 0x04}, s.Copyright...)
+	Cpr := append([]byte{0x00, 0x04}, s7.ui.Copyright...)
 	bufferFiller(&Cpr, maxVal)
-	Snr := append([]byte{0x00, 0x05}, s.SerialNum...)
+	Snr := append([]byte{0x00, 0x05}, s7.ui.SerialNum...)
 	bufferFiller(&Snr, maxVal)
-	CPU := append([]byte{0x00, 0x07}, s.CPUType...)
+	CPU := append([]byte{0x00, 0x07}, s7.ui.CPUType...)
 	bufferFiller(&CPU, maxVal)
 
 	var masterbuf []byte
@@ -341,12 +158,60 @@ func (s *s7commService) generateSZL1() (partialresp []byte, SZLLen int) {
 
 }
 
+func unpackS7(m []byte) (P com.Packet, isS7 bool) {
+	if len(m) >= 4 {
+
+		var T TPKT
+		var C COTP
+
+		chk := T.deserialize(&m)
+
+		if chk {
+			C.deserialize(&m)
+			if C.PDUType == com.COTPData {
+				P.S7.Header = createS7Header(&m)
+				P.S7.Parameter = createS7Parameters(&m, P.S7.Header)
+				P.S7.Data = createS7Data(&m, P.S7.Header, P.S7.Parameter)
+			}
+			return P, true
+		}
+	}
+	return P, false
+}
+func S7ConResp(P com.Packet) (response []byte) {
+	var T TPKT
+	var C COTP
+	var resPara = com.S7SetupCom{
+		Function:      P.S7.Parameter.SetupCom.Function,
+		Reserved:      P.S7.Parameter.SetupCom.Reserved,
+		MaxAmQCalling: P.S7.Parameter.SetupCom.MaxAmQCalling,
+		MaxAmQCalled:  P.S7.Parameter.SetupCom.MaxAmQCalled,
+		PDULength:     0xf0,
+	}
+	var resHead = com.S7Header{
+		ProtocolID:  0x32,
+		MessageType: com.AckData,
+		Reserved:    P.S7.Header.Reserved,
+		PDURef:      P.S7.Header.PDURef,
+		ParamLength: P.S7.Header.ParamLength,
+		DataLength:  P.S7.Header.DataLength,
+		ErrorClass:  0x00,
+		ErrorCode:   0x00,
+	}
+	buf := &bytes.Buffer{}
+	S7HeadErr := binary.Write(buf, binary.BigEndian, resHead)
+	S7ParaErr := binary.Write(buf, binary.BigEndian, resPara)
+
+	if S7HeadErr == nil && S7ParaErr == nil {
+		return T.serialize(C.serialize(buf.Bytes()))
+	}
+	return nil
+}
 func bufferFiller(m *[]byte, tl int) {
 	tl = tl - len((*m))
 	a := make([]byte, tl)
 	(*m) = append((*m), a...)
 }
-
 func createS7Header(mp *[]byte) (H com.S7Header) {
 	var m = (*mp)
 	if m[0] == 0x32 {
@@ -376,7 +241,6 @@ func createS7Header(mp *[]byte) (H com.S7Header) {
 	}
 	return
 }
-
 func createS7Parameters(mp *[]byte, H com.S7Header) (P com.S7Parameter) {
 	var m = (*mp)
 	if H.MessageType == com.Request {
@@ -420,7 +284,6 @@ func createS7Parameters(mp *[]byte, H com.S7Header) (P com.S7Parameter) {
 	(*mp) = (*mp)[8:]
 	return
 }
-
 func createS7Data(mp *[]byte, H com.S7Header, P com.S7Parameter) (D com.S7Data) {
 	var m = (*mp)
 	if H.MessageType == com.UserData {
@@ -478,12 +341,14 @@ func createS7Data(mp *[]byte, H com.S7Header, P com.S7Parameter) (D com.S7Data) 
 	return
 }
 
-func errCk(err error) bool {
-	if err != nil {
-		if err.Error() == "EOF" {
-			return true
-		}
-	}
-
-	return false
+type userinput struct {
+	Hardware  string
+	SysName   string
+	Copyright string
+	Version   string
+	ModType   string
+	Mod       string
+	SerialNum string
+	PlantID   string
+	CPUType   string
 }
