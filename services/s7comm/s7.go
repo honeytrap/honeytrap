@@ -35,6 +35,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"net"
 	"strconv"
 	"strings"
@@ -87,76 +88,70 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 
 	var cotp, s7 bool = false, false
 	var err error
+	var C COTP
 	for {
 		b := make([]byte, 4096)
 		bl, err := conn.Read(b)
 		b = b[:bl]
-
 		if errCk(err) {
 			break
 		}
-
 		if len(b) < 1 {
 			break
 		}
-
 		if !cotp {
-			response := COTPConResp(b)
 
+			response := C.connect(b)
 			if response != nil {
-				_, err = conn.Write(response)
+				fmt.Println("COTP CONNECTED")
+				len, err := conn.Write(response)
+				if err != nil || len < 1 {
+					break
+				}
 				cotp = true
 			}
 		}
-
 		if cotp {
 			P, isS7 := unpackS7(b)
 
 			if isS7 && !s7 {
-				if P.S7.Parameter.SetupCom.Function == com.S7ConReq {
 
+				if P.S7.Parameter.SetupCom.Function == com.S7ConReq {
 					response := S7ConResp(P)
 					len, err := conn.Write(response)
-
 					if err != nil || len < 1 {
+						fmt.Println("WOWIE ERROR FOUND!")
 						break
 					}
-
 					s7 = true
 				}
 			}
-
 			if isS7 && s7 {
-
 				if P.S7.Data.SZLID == 0x0011 {
 					len, err := conn.Write(s.primRes(P))
-
 					if err != nil || len < 1 {
 						break
 					}
 				}
-
 				if P.S7.Data.SZLID == 0x001c {
 					len, err := conn.Write(s.secRes(P))
-
 					if err != nil || len < 1 {
 						break
 					}
 					err = conn.Close()
-
 					if err != nil {
 						break
 					}
 				}
 			}
 		}
-
 	}
 	return err
 }
 
 func S7ConResp(P com.Packet) (response []byte) {
-
+	var T TPKT
+	var C COTP
 	var resPara = com.S7SetupCom{
 		Function:      P.S7.Parameter.SetupCom.Function,
 		Reserved:      P.S7.Parameter.SetupCom.Reserved,
@@ -174,48 +169,27 @@ func S7ConResp(P com.Packet) (response []byte) {
 		ErrorClass:  0x00,
 		ErrorCode:   0x00,
 	}
-	var TPKT = com.TPKTPacket{
-		Version:  P.TPKT.Version,
-		Reserved: P.TPKT.Reserved,
-		Length:   P.TPKT.Length + 0x02,
-	}
-
 	buf := &bytes.Buffer{}
-	TPKTErr := binary.Write(buf, binary.BigEndian, TPKT)
-	COTPErr := binary.Write(buf, binary.BigEndian, P.COTP)
 	S7HeadErr := binary.Write(buf, binary.BigEndian, resHead)
 	S7ParaErr := binary.Write(buf, binary.BigEndian, resPara)
 
-	if TPKTErr == nil && COTPErr == nil && S7HeadErr == nil && S7ParaErr == nil {
-		return buf.Bytes()
-	}
-	return nil
-}
-
-func COTPConResp(m []byte) (response []byte) {
-	if len(m) > 0 {
-		var P com.Packet
-		var TPKTcheck bool
-		P.TPKT, TPKTcheck = createTPTKpacket(&m)
-		if TPKTcheck && P.TPKT.Length == 0x16 {
-			response := createCOTPCon(m, P)
-
-			if response != nil {
-				return response
-			}
-		}
+	if S7HeadErr == nil && S7ParaErr == nil {
+		return T.serialize(C.serialize(buf.Bytes()))
 	}
 	return nil
 }
 
 func unpackS7(m []byte) (P com.Packet, isS7 bool) {
 	if len(m) >= 4 {
-		var TPKTcheck bool
-		P.TPKT, TPKTcheck = createTPTKpacket(&m)
 
-		if TPKTcheck {
-			P.COTP = createCOTPpacket(&m)
-			if P.COTP.PDUType == com.COTPData {
+		var T TPKT
+		var C COTP
+
+		chk := T.deserialize(&m)
+
+		if chk {
+			C.deserialize(&m)
+			if C.PDUType == com.COTPData {
 				P.S7.Header = createS7Header(&m)
 				P.S7.Parameter = createS7Parameters(&m, P.S7.Header)
 				P.S7.Data = createS7Data(&m, P.S7.Header, P.S7.Parameter)
@@ -225,38 +199,11 @@ func unpackS7(m []byte) (P com.Packet, isS7 bool) {
 	}
 	return P, false
 }
-
-func createTPTKpacket(m *[]byte) (TPKT com.TPKTPacket, verify bool) {
-	Length := binary.BigEndian.Uint16((*m)[2:4])
-	TPKT = com.TPKTPacket{
-		Version:  (*m)[0],
-		Reserved: (*m)[1],
-		Length:   Length,
-	}
-
-	if TPKT.Version == 0x03 && TPKT.Reserved == 0x00 && int(TPKT.Length)-len(*m) == 0 {
-		(*m) = (*m)[4:]
-		return TPKT, true
-	}
-	return TPKT, false
-}
-
-func createCOTPpacket(m *[]byte) (COTP com.COTPPacket) {
-	if (*m)[0] == 0x02 {
-		COTP = com.COTPPacket{
-			Length:  (*m)[0],
-			PDUType: (*m)[1],
-			DestRef: (*m)[2],
-		}
-		(*m) = (*m)[3:]
-		return
-	}
-	return
-}
-
 func (s *s7commService) secRes(P com.Packet) (response []byte) {
 	partialResp, maxVal := s.generateSZL1()
 
+	var T TPKT
+	var C COTP
 	var Data = com.S7DataNoSZL{
 		ReturnCode:    0xff,
 		TransportSize: 0x09,                         //no idea
@@ -285,30 +232,17 @@ func (s *s7commService) secRes(P com.Packet) (response []byte) {
 		ParamLength: 0x000c,
 		DataLength:  Data.Length + 4,
 	}
-	var COTP = com.COTPPacket{
-		Length:  0x02,
-		PDUType: 0xf0,
-		DestRef: P.COTP.DestRef,
-	}
-	var TPKT = com.TPKTPacket{
-		Version:  0x03,
-		Reserved: 0x00,
-		Length:   Head.DataLength + 28,
-	}
 
 	buf := &bytes.Buffer{}
-	_ = binary.Write(buf, binary.BigEndian, TPKT)
-	_ = binary.Write(buf, binary.BigEndian, COTP)
 	_ = binary.Write(buf, binary.BigEndian, Head)
 	_ = binary.Write(buf, binary.BigEndian, Param)
 	_ = binary.Write(buf, binary.BigEndian, Data)
 	_ = binary.Write(buf, binary.BigEndian, partialResp)
 
-	return buf.Bytes()
+	return T.serialize(C.serialize(buf.Bytes()))
 }
 
 func (s *s7commService) primRes(P com.Packet) (response []byte) {
-
 	vA := strings.Split(s.Version, ".")
 	vS := make([]byte, 3)
 	for i := 0; i < len(vA); i++ {
@@ -361,26 +295,22 @@ func (s *s7commService) primRes(P com.Packet) (response []byte) {
 		ParamLength: 0x000c,
 		DataLength:  Data.Length + 4,
 	}
-	var COTP = com.COTPPacket{
-		Length:  0x02,
-		PDUType: 0xf0,
-		DestRef: P.COTP.DestRef,
-	}
-	var TPKT = com.TPKTPacket{
-		Version:  0x03,
-		Reserved: 0x00,
-		Length:   uint16(Head.DataLength + 28),
-	}
-
+	/*
+		var COTP = com.COTP{
+			Length:  0x02,
+			PDUType: 0xf0,
+			DestRef: P.COTP.DestRef,
+		}
+	*/
 	buf := &bytes.Buffer{}
-	_ = binary.Write(buf, binary.BigEndian, TPKT)
-	_ = binary.Write(buf, binary.BigEndian, COTP)
 	_ = binary.Write(buf, binary.BigEndian, Head)
 	_ = binary.Write(buf, binary.BigEndian, Param)
 	_ = binary.Write(buf, binary.BigEndian, Data)
 	_ = binary.Write(buf, binary.BigEndian, masterbuf)
+	var C COTP
+	var T TPKT
 
-	return buf.Bytes()
+	return T.serialize(C.serialize(buf.Bytes()))
 }
 
 func (s *s7commService) generateSZL1() (partialresp []byte, SZLLen int) {
@@ -566,58 +496,4 @@ func errCk(err error) bool {
 	}
 
 	return false
-}
-
-func createCOTPCon(m []byte, P com.Packet) (response []byte) {
-
-	if len(m) == 0x12 {
-		DestRef := binary.BigEndian.Uint16(m[2:4])
-		SourceRef := binary.BigEndian.Uint16(m[4:6])
-		SourceTSAP := binary.BigEndian.Uint16(m[9:11])
-		DestTSAP := binary.BigEndian.Uint16(m[13:15])
-
-		var COTPRequest = com.COTPConnectRequest{
-			Length:        m[0],
-			PDUType:       m[1],
-			DestRef:       DestRef,
-			SourceRef:     SourceRef,
-			Reserved:      m[6],
-			ParamSrcTSAP:  m[7],
-			ParamSrcLen:   m[8],
-			SourceTSAP:    SourceTSAP,
-			ParamDstTSAP:  m[11],
-			ParamDstLen:   m[12],
-			DestTSAP:      DestTSAP,
-			ParamTPDUSize: m[15],
-			ParamTPDULen:  m[16],
-			TPDUSize:      m[17],
-		}
-
-		var COTPResponse = com.COTPConnectConfirm{
-			Length:        COTPRequest.Length,
-			PDUType:       com.CC,
-			DestRef:       COTPRequest.SourceRef,
-			SourceRef:     0x02,
-			Reserved:      COTPRequest.Reserved,
-			ParamTPDUSize: COTPRequest.ParamTPDUSize,
-			ParamTPDULen:  COTPRequest.ParamTPDULen,
-			TPDUSize:      COTPRequest.TPDUSize,
-			ParamSrcTSAP:  COTPRequest.ParamSrcTSAP,
-			ParamSrcLen:   COTPRequest.ParamSrcLen,
-			SourceTSAP:    COTPRequest.SourceTSAP,
-			ParamDstTSAP:  COTPRequest.ParamDstTSAP,
-			ParamDstLen:   COTPRequest.ParamDstLen,
-			DestTSAP:      COTPRequest.DestTSAP,
-		}
-
-		/* Building response buffer */
-		buf := &bytes.Buffer{}
-		TPKTerr := binary.Write(buf, binary.BigEndian, P.TPKT)
-		COTPerr := binary.Write(buf, binary.BigEndian, COTPResponse)
-
-		if TPKTerr == nil && COTPerr == nil {
-			return buf.Bytes()
-		}
-	}
-	return nil
 }

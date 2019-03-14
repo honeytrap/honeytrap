@@ -22,45 +22,16 @@ type ModInfo struct {
 	RSV       []byte
 	CPUType   []byte
 }
-
-type COTPConnectRequest struct {
-	Length        uint8
-	PDUType       uint8
-	DestRef       uint16
-	SourceRef     uint16
-	Reserved      uint8
-	ParamSrcTSAP  uint8
-	ParamSrcLen   uint8
-	SourceTSAP    uint16
-	ParamDstTSAP  uint8
-	ParamDstLen   uint8
-	DestTSAP      uint16
-	ParamTPDUSize uint8
-	ParamTPDULen  uint8
-	TPDUSize      uint8
-}
-
-type COTPConnectConfirm struct {
-	Length        uint8
-	PDUType       uint8
-	DestRef       uint16
-	SourceRef     uint16
-	Reserved      uint8
-	ParamTPDUSize uint8
-	ParamTPDULen  uint8
-	TPDUSize      uint8
-	ParamSrcTSAP  uint8
-	ParamSrcLen   uint8
-	SourceTSAP    uint16
-	ParamDstTSAP  uint8
-	ParamDstLen   uint8
-	DestTSAP      uint16
-}
-
 type Packet struct {
-	TPKT TPKTPacket
-	COTP COTPPacket
+	TPKT TPKT
+	COTP COTP
 	S7   S7Packet
+}
+
+type TPKT struct {
+	Version  uint8
+	Reserved uint8
+	Length   uint16
 }
 
 type S7Packet struct {
@@ -161,37 +132,8 @@ func (sd *S7Data) AddSLZDataTree(dt SLZDataTree) {
 	sd.SZLDataTree = append(sd.SZLDataTree, dt)
 }
 
-type TPKTPacket struct {
-	Version  uint8
-	Reserved uint8
-	Length   uint16
-}
-
-type COTPPacket struct {
+type COTP struct {
 	Length  uint8
 	PDUType uint8
 	DestRef uint8
-}
-
-type Cotpstruc struct {
-	ConnConfirm []byte
-	ConnReqHead []byte
-	Default     []byte
-}
-
-type S7commstruc struct {
-	SetupComReq  []byte
-	SetupComConf []byte
-	Error        []byte
-}
-
-type Unknownstruc struct {
-	Shodan []byte
-}
-
-type Scannerstruc struct {
-	PrimaryReq         []byte
-	SecondaryReq       []byte
-	PrimaryBasicResp   []byte
-	SecondaryBasicResp []byte
 }
