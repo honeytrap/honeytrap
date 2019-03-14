@@ -35,7 +35,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"fmt"
 	"net"
 	"strconv"
 	"strings"
@@ -103,7 +102,6 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 
 			response := C.connect(b)
 			if response != nil {
-				fmt.Println("COTP CONNECTED")
 				len, err := conn.Write(response)
 				if err != nil || len < 1 {
 					break
@@ -120,7 +118,6 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 					response := S7ConResp(P)
 					len, err := conn.Write(response)
 					if err != nil || len < 1 {
-						fmt.Println("WOWIE ERROR FOUND!")
 						break
 					}
 					s7 = true
@@ -295,13 +292,6 @@ func (s *s7commService) primRes(P com.Packet) (response []byte) {
 		ParamLength: 0x000c,
 		DataLength:  Data.Length + 4,
 	}
-	/*
-		var COTP = com.COTP{
-			Length:  0x02,
-			PDUType: 0xf0,
-			DestRef: P.COTP.DestRef,
-		}
-	*/
 	buf := &bytes.Buffer{}
 	_ = binary.Write(buf, binary.BigEndian, Head)
 	_ = binary.Write(buf, binary.BigEndian, Param)

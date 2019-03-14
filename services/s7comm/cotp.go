@@ -3,7 +3,6 @@ package s7comm
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 
 	"github.com/honeytrap/honeytrap/services/s7comm/com"
 )
@@ -32,7 +31,6 @@ type COTPConnect struct {
 }
 
 func (C *COTP) serialize(m []byte) (r []byte) {
-	fmt.Println("Serialize")
 	C.Length = 0x02
 	C.PDUType = 0xf0
 	C.DestRef = 0x80
@@ -49,11 +47,9 @@ func (C *COTP) serialize(m []byte) (r []byte) {
 }
 
 func (C *COTP) deserialize(m *[]byte) (verified bool) {
-	fmt.Println("Deserialize")
 	C.Length = (*m)[0]
 	C.PDUType = (*m)[1]
 	C.DestRef = (*m)[2]
-	fmt.Printf("COTP VERIFY: %v\n", C.verify())
 	if C.verify() == 0x01 {
 		*m = (*m)[3:]
 		return true
@@ -130,11 +126,6 @@ func createCOTPCon(m []byte) (response []byte) {
 		if Cerr == nil {
 			return T.serialize(buf.Bytes())
 		}
-		//COTPerr := binary.Write(buf, binary.BigEndian, COTPResponse)
-
-		//if TPKTerr == nil && COTPerr == nil {
-		//	return buf.Bytes()
-		//}
 	}
 	return nil
 }
