@@ -3,32 +3,7 @@ package s7comm
 import (
 	"bytes"
 	"encoding/binary"
-
-	"github.com/honeytrap/honeytrap/services/s7comm/com"
 )
-
-type COTP struct {
-	Length  uint8
-	PDUType uint8
-	DestRef uint8
-}
-
-type COTPConnect struct {
-	Length        uint8
-	PDUType       uint8
-	DestRef       uint16
-	SourceRef     uint16
-	Reserved      uint8
-	ParamTPDUSize uint8
-	ParamTPDULen  uint8
-	TPDUSize      uint8
-	ParamSrcTSAP  uint8
-	ParamSrcLen   uint8
-	SourceTSAP    uint16
-	ParamDstTSAP  uint8
-	ParamDstLen   uint8
-	DestTSAP      uint16
-}
 
 func (C *COTP) serialize(m []byte) (r []byte) {
 	C.Length = 0x02
@@ -105,7 +80,7 @@ func createCOTPCon(m []byte) (response []byte) {
 
 		var COTPResponse = COTPConnectConfirm{
 			Length:        COTPRequest.Length,
-			PDUType:       com.CC,
+			PDUType:       CC,
 			DestRef:       COTPRequest.SourceRef,
 			SourceRef:     0x02,
 			Reserved:      COTPRequest.Reserved,
@@ -128,6 +103,29 @@ func createCOTPCon(m []byte) (response []byte) {
 		}
 	}
 	return nil
+}
+
+type COTP struct {
+	Length  uint8
+	PDUType uint8
+	DestRef uint8
+}
+
+type COTPConnect struct {
+	Length        uint8
+	PDUType       uint8
+	DestRef       uint16
+	SourceRef     uint16
+	Reserved      uint8
+	ParamTPDUSize uint8
+	ParamTPDULen  uint8
+	TPDUSize      uint8
+	ParamSrcTSAP  uint8
+	ParamSrcLen   uint8
+	SourceTSAP    uint16
+	ParamDstTSAP  uint8
+	ParamDstLen   uint8
+	DestTSAP      uint16
 }
 
 type COTPConnectRequest struct {

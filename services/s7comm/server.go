@@ -37,7 +37,6 @@ import (
 
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/services"
-	"github.com/honeytrap/honeytrap/services/s7comm/com"
 	logging "github.com/op/go-logging"
 )
 
@@ -106,12 +105,12 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 			}
 		}
 		if cotp {
-			P, isS7 := unpackS7(b)
+			P, isS7 := s.S.deserialize(b)
 
 			if isS7 && !s7 {
 
-				if P.S7.Parameter.SetupCom.Function == com.S7ConReq {
-					response := S7ConResp(P)
+				if P.S7.Parameter.SetupCom.Function == S7ConReq {
+					response := s.S.connect(P)
 					len, err := conn.Write(response)
 					if err != nil || len < 1 {
 						break
@@ -142,16 +141,6 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 	return err
 }
 
-func errCk(err error) bool {
-	if err != nil {
-		if err.Error() == "EOF" {
-			return true
-		}
-	}
-
-	return false
-}
-
 func (s *s7commService) parseUserInput() {
 	s.S.ui.Hardware = s.Hardware
 	s.S.ui.SysName = s.SysName
@@ -163,4 +152,14 @@ func (s *s7commService) parseUserInput() {
 	s.S.ui.PlantID = s.PlantID
 	s.S.ui.CPUType = s.CPUType
 	return
+}
+
+func errCk(err error) bool {
+	if err != nil {
+		if err.Error() == "EOF" {
+			return true
+		}
+	}
+
+	return false
 }
