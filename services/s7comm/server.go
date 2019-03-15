@@ -33,7 +33,6 @@ package s7comm
 
 import (
 	"context"
-	"encoding/hex"
 	"net"
 	"strconv"
 
@@ -108,7 +107,7 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 					event.SourceAddr(conn.RemoteAddr()),
 					event.DestinationAddr(conn.LocalAddr()),
 					event.Custom("request.type", "COTP connection request"),
-					event.Custom("payload.hex", hex.EncodeToString(b)),
+					event.Payload(b),
 				))
 
 				len, err := conn.Write(response)
@@ -131,7 +130,7 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 						event.SourceAddr(conn.RemoteAddr()),
 						event.DestinationAddr(conn.LocalAddr()),
 						event.Custom("request.type", "S7comm job request"),
-						event.Custom("payload.hex", hex.EncodeToString(b)),
+						event.Payload(b),
 					))
 
 					response := s.S.connect(P)
@@ -187,7 +186,7 @@ func (s *s7commService) handleEvent(reqID uint16, conn net.Conn, b []byte) (r []
 		event.DestinationAddr(conn.LocalAddr()),
 		event.Custom("request.ID", strconv.Itoa(int(reqID))),
 		event.Custom("request.type", rt),
-		event.Custom("payload.hex", hex.EncodeToString(b)),
+		event.Payload(b),
 	))
 
 	return resp
