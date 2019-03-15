@@ -119,20 +119,16 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 				}
 			}
 			if isS7 && s7 {
-				if P.S7.Data.SZLID == 0x0011 {
-					len, err := conn.Write(s.S.primRes(P))
-					if err != nil || len < 1 {
-						break
-					}
-				}
-				if P.S7.Data.SZLID == 0x001c {
-					len, err := conn.Write(s.S.secRes(P))
-					if err != nil || len < 1 {
-						break
-					}
-					err = conn.Close()
-					if err != nil {
-						break
+
+				reqID := P.S7.Data.SZLID
+
+				if reqID != 0 {
+					r := s.S.handleEvent(reqID, P)
+					if r != nil {
+						len, err := conn.Write(r)
+						if err != nil || len < 1 {
+							break
+						}
 					}
 				}
 			}
