@@ -33,8 +33,11 @@ package s7comm
 
 import (
 	"context"
+	"encoding/hex"
 	"net"
+	"strconv"
 
+	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/services"
 	logging "github.com/op/go-logging"
@@ -73,6 +76,7 @@ type s7commService struct {
 	s7commServiceConfig
 	c pushers.Channel
 	S S7Packet
+	P Packet
 }
 
 func (s *s7commService) SetChannel(c pushers.Channel) {
@@ -94,9 +98,19 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 			break
 		}
 		if !cotp {
-
 			response := s.S.C.connect(b)
 			if response != nil {
+
+				s.c.Send(event.New(
+					services.EventOptions,
+					event.Category("s7comm"),
+					event.Type("ics"),
+					event.SourceAddr(conn.RemoteAddr()),
+					event.DestinationAddr(conn.LocalAddr()),
+					event.Custom("request.type", "COTP connection request"),
+					event.Custom("payload.hex", hex.EncodeToString(b)),
+				))
+
 				len, err := conn.Write(response)
 				if err != nil || len < 1 {
 					break
@@ -108,8 +122,18 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 			P, isS7 := s.S.deserialize(b)
 
 			if isS7 && !s7 {
-
 				if P.S7.Parameter.SetupCom.Function == S7ConReq {
+
+					s.c.Send(event.New(
+						services.EventOptions,
+						event.Category("s7comm"),
+						event.Type("ics"),
+						event.SourceAddr(conn.RemoteAddr()),
+						event.DestinationAddr(conn.LocalAddr()),
+						event.Custom("request.type", "S7comm job request"),
+						event.Custom("payload.hex", hex.EncodeToString(b)),
+					))
+
 					response := s.S.connect(P)
 					len, err := conn.Write(response)
 					if err != nil || len < 1 {
@@ -119,11 +143,9 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 				}
 			}
 			if isS7 && s7 {
-
 				reqID := P.S7.Data.SZLID
-
 				if reqID != 0 {
-					r := s.S.handleEvent(reqID, P)
+					r := s.handleEvent(reqID, conn, b)
 					if r != nil {
 						len, err := conn.Write(r)
 						if err != nil || len < 1 {
@@ -135,6 +157,40 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 		}
 	}
 	return err
+}
+
+func (s *s7commService) handleEvent(reqID uint16, conn net.Conn, b []byte) (r []byte) {
+
+	var rt string
+	var resp []byte
+
+	switch reqID {
+	case 0x11:
+		log.Info("Module ID list requested")
+		rt = "module ID request"
+		resp = s.S.primRes(s.P)
+	case 0x1c:
+		log.Info("Component ID list requested")
+		rt = "component ID request"
+		resp = s.S.secRes(s.P)
+	default:
+		log.Info("Received unknown request")
+		rt = "unknown request"
+		resp = nil
+	}
+
+	s.c.Send(event.New(
+		services.EventOptions,
+		event.Category("s7comm"),
+		event.Type("ics"),
+		event.SourceAddr(conn.RemoteAddr()),
+		event.DestinationAddr(conn.LocalAddr()),
+		event.Custom("request.ID", strconv.Itoa(int(reqID))),
+		event.Custom("request.type", rt),
+		event.Custom("payload.hex", hex.EncodeToString(b)),
+	))
+
+	return resp
 }
 
 func (s *s7commService) parseUserInput() {

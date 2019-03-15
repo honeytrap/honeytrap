@@ -7,20 +7,6 @@ import (
 	"strings"
 )
 
-func (s7 *S7Packet) handleEvent(reqID uint16, P Packet) (r []byte) {
-	switch reqID {
-	case 0x11:
-		log.Info("Module ID list requested")
-		return s7.primRes(P)
-	case 0x1c:
-		log.Info("Component ID list requested")
-		return s7.secRes(P)
-	default:
-		log.Info("Received unknown request")
-		return nil
-	}
-}
-
 func (s7 *S7Packet) deserialize(m []byte) (P Packet, isS7 bool) {
 	if len(m) >= 4 {
 		chk := s7.T.deserialize(&m)
