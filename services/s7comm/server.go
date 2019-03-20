@@ -154,7 +154,20 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 				}
 			}
 		}
+		if !cotp && !s7 {
+			s.c.Send(event.New(
+				services.EventOptions,
+				event.Category("s7comm"),
+				event.Type("ics"),
+				event.SourceAddr(conn.RemoteAddr()),
+				event.DestinationAddr(conn.LocalAddr()),
+				event.Custom("request.type", "unkown command"),
+				event.Payload(b),
+			))
+
+		}
 	}
+
 	return err
 }
 
