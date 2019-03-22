@@ -33,6 +33,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"github.com/honeytrap/honeytrap/transforms/yara"
 	"net"
 	"os"
 	"runtime"
@@ -99,6 +100,8 @@ import (
 	_ "github.com/honeytrap/honeytrap/pushers/slack"
 	_ "github.com/honeytrap/honeytrap/pushers/splunk"
 
+	"github.com/honeytrap/honeytrap/transforms"
+	"github.com/honeytrap/honeytrap/transforms/filters"
 	"github.com/op/go-logging"
 )
 
@@ -374,9 +377,8 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 	w.Start()
 
 	channels := map[string]pushers.Channel{}
+	channels["web"] = w
 	isChannelUsed := make(map[string]bool)
-	// sane defaults!
-
 	for key, s := range hc.config.Channels {
 		x := struct {
 			Type string `toml:"type"`
@@ -393,8 +395,8 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			continue
 		}
 
-		if channelFunc, ok := pushers.Get(x.Type); !ok {
-			log.Error("Channel %s not supported on platform (%s)", x.Type, key)
+		if channelFunc, err := pushers.Get(x.Type, hc.dataDir); err != nil {
+			log.Error("Couldn't load type %s for channel %s: %s", x.Type, key, err.Error())
 		} else if d, err := channelFunc(
 			pushers.WithConfig(s, hc.config),
 		); err != nil {
@@ -415,6 +417,8 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			Channels   []string `toml:"channel"`
 			Services   []string `toml:"services"`
 			Categories []string `toml:"categories"`
+			Plugin     string   `toml:"plugin"`
+			Yara       string   `toml:"yara"`
 		}{}
 
 		err := hc.config.PrimitiveDecode(s, &x)
@@ -434,11 +438,23 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			channel = pushers.TokenChannel(channel, hc.token)
 
 			if len(x.Categories) != 0 {
-				channel = pushers.FilterChannel(channel, pushers.RegexFilterFunc("category", x.Categories))
+				channel = transforms.Transform(channel, filters.FieldRegex("category", x.Categories))
 			}
 
 			if len(x.Services) != 0 {
-				channel = pushers.FilterChannel(channel, pushers.RegexFilterFunc("service", x.Services))
+				channel = transforms.Transform(channel, filters.FieldRegex("service", x.Services))
+			}
+
+			if len(x.Plugin) != 0 {
+				t, err := transforms.Get(x.Plugin, hc.dataDir)
+				if err != nil {
+					log.Errorf("Couldn't load plugin %s: %s", x.Plugin, err.Error())
+				}
+				channel = transforms.Transform(channel, t)
+			}
+
+			if len(x.Yara) != 0 {
+				channel = transforms.Transform(channel, yara.Yara(x.Yara))
 			}
 
 			if err := hc.bus.Subscribe(channel); err != nil {
@@ -538,9 +554,9 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			continue
 		}
 
-		fn, ok := services.Get(x.Type)
-		if !ok {
-			log.Error(color.RedString("Could not find type %s for service %s", x.Type, key))
+		fn, err := services.Get(x.Type, hc.dataDir)
+		if err != nil {
+			log.Error(color.RedString("Error loading type %s for service %s: %s", x.Type, key, err.Error()))
 			continue
 		}
 

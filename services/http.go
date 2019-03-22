@@ -103,10 +103,10 @@ func (s *httpService) SetChannel(c pushers.Channel) {
 	s.c = c
 }
 
-func Headers(headers map[string][]string) event.Option {
+func Headers(headers http.Header) event.Option {
 	return func(m event.Event) {
-		for name, h := range headers {
-			m.Store(fmt.Sprintf("http.header.%s", strings.ToLower(name)), h)
+		for name := range headers {
+			m.Store(fmt.Sprintf("http.header.%s", strings.ToLower(name)), headers.Get(name))
 		}
 	}
 }
