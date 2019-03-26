@@ -37,13 +37,13 @@ func (C *COTP) verify() (isCOTP int) {
 		return 0x01
 	} else if C.PDUType == 0xd0 || C.PDUType == 0xe0 {
 		return 0x02
+	} else if C.PDUType == 0xf0 {
 	}
 	return 0x00
 }
 
 func (C *COTP) connect(m []byte) (response []byte) {
 	var T TPKT
-
 	if T.deserialize(&m) {
 		r := createCOTPCon(m)
 		if r != nil {
@@ -55,11 +55,9 @@ func (C *COTP) connect(m []byte) (response []byte) {
 
 func createCOTPCon(m []byte) (response []byte) {
 	var T TPKT
-	if len(m) == 0x12 {
+	if len(m) > 0x11 {
 		DestRef := binary.BigEndian.Uint16(m[2:4])
 		SourceRef := binary.BigEndian.Uint16(m[4:6])
-		SourceTSAP := binary.BigEndian.Uint16(m[9:11])
-		DestTSAP := binary.BigEndian.Uint16(m[13:15])
 
 		var COTPRequest = COTPConnectRequest{
 			Length:        m[0],
@@ -69,20 +67,20 @@ func createCOTPCon(m []byte) (response []byte) {
 			Reserved:      m[6],
 			ParamSrcTSAP:  m[7],
 			ParamSrcLen:   m[8],
-			SourceTSAP:    SourceTSAP,
-			ParamDstTSAP:  m[11],
-			ParamDstLen:   m[12],
-			DestTSAP:      DestTSAP,
-			ParamTPDUSize: m[15],
-			ParamTPDULen:  m[16],
-			TPDUSize:      m[17],
+			SourceTSAP:    m[9 : 9+m[8]],
+			ParamDstTSAP:  m[9+m[8]],
+			ParamDstLen:   m[10+m[8]],
+			DestTSAP:      m[11+m[8] : 11+m[8]+m[10+m[8]]],
+			ParamTPDUSize: m[len(m)-3],
+			ParamTPDULen:  m[len(m)-2],
+			TPDUSize:      m[len(m)-1],
 		}
 
 		var COTPResponse = COTPConnectConfirm{
 			Length:        COTPRequest.Length,
 			PDUType:       CC,
 			DestRef:       COTPRequest.SourceRef,
-			SourceRef:     0x02,
+			SourceRef:     COTPRequest.DestRef,
 			Reserved:      COTPRequest.Reserved,
 			ParamTPDUSize: COTPRequest.ParamTPDUSize,
 			ParamTPDULen:  COTPRequest.ParamTPDULen,
@@ -95,12 +93,22 @@ func createCOTPCon(m []byte) (response []byte) {
 			DestTSAP:      COTPRequest.DestTSAP,
 		}
 
-		/* Building response buffer */
 		buf := &bytes.Buffer{}
-		Cerr := binary.Write(buf, binary.BigEndian, COTPResponse)
-		if Cerr == nil {
-			return T.serialize(buf.Bytes())
-		}
+		_ = binary.Write(buf, binary.BigEndian, COTPResponse.Length)
+		_ = binary.Write(buf, binary.BigEndian, COTPResponse.PDUType)
+		_ = binary.Write(buf, binary.BigEndian, COTPResponse.DestRef)
+		_ = binary.Write(buf, binary.BigEndian, COTPResponse.SourceRef)
+		_ = binary.Write(buf, binary.BigEndian, COTPResponse.Reserved)
+		_ = binary.Write(buf, binary.BigEndian, COTPResponse.ParamTPDUSize)
+		_ = binary.Write(buf, binary.BigEndian, COTPResponse.ParamTPDULen)
+		_ = binary.Write(buf, binary.BigEndian, COTPResponse.TPDUSize)
+		_ = binary.Write(buf, binary.BigEndian, COTPResponse.ParamSrcTSAP)
+		_ = binary.Write(buf, binary.BigEndian, COTPResponse.ParamSrcLen)
+		_ = binary.Write(buf, binary.BigEndian, COTPResponse.SourceTSAP)
+		_ = binary.Write(buf, binary.BigEndian, COTPResponse.ParamDstTSAP)
+		_ = binary.Write(buf, binary.BigEndian, COTPResponse.ParamDstLen)
+		_ = binary.Write(buf, binary.BigEndian, COTPResponse.DestTSAP)
+		return T.serialize(buf.Bytes())
 	}
 	return nil
 }
@@ -122,7 +130,7 @@ type COTPConnect struct {
 	TPDUSize      uint8
 	ParamSrcTSAP  uint8
 	ParamSrcLen   uint8
-	SourceTSAP    uint16
+	SourceTSAP    uint16 //should be byte array probably
 	ParamDstTSAP  uint8
 	ParamDstLen   uint8
 	DestTSAP      uint16
@@ -136,10 +144,10 @@ type COTPConnectRequest struct {
 	Reserved      uint8
 	ParamSrcTSAP  uint8
 	ParamSrcLen   uint8
-	SourceTSAP    uint16
+	SourceTSAP    []byte
 	ParamDstTSAP  uint8
 	ParamDstLen   uint8
-	DestTSAP      uint16
+	DestTSAP      []byte
 	ParamTPDUSize uint8
 	ParamTPDULen  uint8
 	TPDUSize      uint8
@@ -156,8 +164,8 @@ type COTPConnectConfirm struct {
 	TPDUSize      uint8
 	ParamSrcTSAP  uint8
 	ParamSrcLen   uint8
-	SourceTSAP    uint16
+	SourceTSAP    []byte
 	ParamDstTSAP  uint8
 	ParamDstLen   uint8
-	DestTSAP      uint16
+	DestTSAP      []byte
 }
