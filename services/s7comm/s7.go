@@ -87,8 +87,8 @@ func (s7 *S7Packet) secRes(P Packet) (response []byte) {
 
 	var Data = S7DataNoSZL{
 		ReturnCode:    0xff,
-		TransportSize: 0x09,                       //no idea
-		Length:        uint16(len(masterbuf) + 8), //could be six, could be something else
+		TransportSize: 0x09,
+		Length:        uint16(len(masterbuf) + 8),
 		SZLID:         0x001c,
 		SZLIndex:      0x0000,
 		SZLListLength: uint16(maxVal),

@@ -17,7 +17,6 @@ func (T *TPKT) serialize(m []byte) (r []byte) {
 	mErr := binary.Write(rb, binary.BigEndian, m)
 
 	if TErr != nil || mErr != nil {
-		/* Print error message to console */
 		return nil
 	}
 	return rb.Bytes()
