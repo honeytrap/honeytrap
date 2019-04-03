@@ -28,6 +28,10 @@
 * logo is not reasonably feasible for technical reasons, the Appropriate Legal Notices
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
+/* Metadata:
+name = "redis"
+description = "The Redis service will simulate a redis server. Currently the INFO command has been implemented."
+*/
 package redis
 
 import (
@@ -64,9 +68,9 @@ func REDIS(options ...services.ServicerFunc) services.Servicer {
 }
 
 type redisServiceConfig struct {
-	Version string `toml:"version"`
+	Version string `toml:"version" default:"4.0.6"`
 
-	Os string `toml:"os"`
+	Os string `toml:"os" default:"Linux 4.9.49-moby x86_64"`
 }
 
 type redisService struct {
