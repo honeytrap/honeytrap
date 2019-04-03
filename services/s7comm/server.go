@@ -29,6 +29,27 @@
 * must display the words "Powered by Honeytrap" and retain the original copyright notice.
  */
 
+/* BRIEF EXPLANATION OF THE S7COMM PROTOCOL
+
+                                       +--------+-------+------------+----------+
+ S7 Telegram / PDU                     | HEADER | PARAM | PARAM DATA | DATA     |
+                                       +--------+-------+------------+----------+
+                                       ^                                        ^
+                         +------+------+----------------------------------------+
+ ISO on TCP              | TKTP | COTP |            S7 PDU                      |
+                         +------+------+----------------------------------------+
+                         ^                                                      ^
+              +----------+------------------------------------------------------+
+ TCP/IP       | HEADER   |  ISO TCP TELEGRAM                                    |
+              +----------+------------------------------------------------------+
+
+source: http://gmiru.com/article/s7comm/
+
+COTP: RFC905
+TPKT: RFC1006
+
+*/
+
 package s7comm
 
 import (
