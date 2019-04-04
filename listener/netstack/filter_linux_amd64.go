@@ -32,9 +32,9 @@ type filterEndpoint struct {
 
 // WritePacket writes outbound packets to the file descriptor. If it is not
 // currently writable, the packet is dropped.
-func (e *filterEndpoint) WritePacket(r *stack.Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
+func (e *filterEndpoint) WritePacket(r *stack.Route, gso *stack.GSO, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
 	// https://godoc.org/golang.org/x/net/bpf
-	return e.lower.WritePacket(r, hdr, payload, protocol)
+	return e.lower.WritePacket(r, gso, hdr, payload, protocol)
 }
 
 // Attach implements the stack.LinkEndpoint interface. It saves the dispatcher

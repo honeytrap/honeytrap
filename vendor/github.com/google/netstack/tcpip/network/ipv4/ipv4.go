@@ -38,40 +38,33 @@ const (
 	// ProtocolNumber is the ipv4 protocol number.
 	ProtocolNumber = header.IPv4ProtocolNumber
 
-	// maxTotalSize is maximum size that can be encoded in the 16-bit
+	// MaxTotalSize is maximum size that can be encoded in the 16-bit
 	// TotalLength field of the ipv4 header.
-	maxTotalSize = 0xffff
+	MaxTotalSize = 0xffff
 
 	// buckets is the number of identifier buckets.
 	buckets = 2048
 )
 
-type address [header.IPv4AddressSize]byte
-
 type endpoint struct {
 	nicid         tcpip.NICID
 	id            stack.NetworkEndpointID
-	address       address
 	linkEP        stack.LinkEndpoint
 	dispatcher    stack.TransportDispatcher
-	echoRequests  chan echoRequest
 	fragmentation *fragmentation.Fragmentation
 }
 
-func newEndpoint(nicid tcpip.NICID, addr tcpip.Address, dispatcher stack.TransportDispatcher, linkEP stack.LinkEndpoint) *endpoint {
+// NewEndpoint creates a new ipv4 endpoint.
+func (p *protocol) NewEndpoint(nicid tcpip.NICID, addr tcpip.Address, linkAddrCache stack.LinkAddressCache, dispatcher stack.TransportDispatcher, linkEP stack.LinkEndpoint) (stack.NetworkEndpoint, *tcpip.Error) {
 	e := &endpoint{
 		nicid:         nicid,
+		id:            stack.NetworkEndpointID{LocalAddress: addr},
 		linkEP:        linkEP,
 		dispatcher:    dispatcher,
-		echoRequests:  make(chan echoRequest, 10),
 		fragmentation: fragmentation.NewFragmentation(fragmentation.HighFragThreshold, fragmentation.LowFragThreshold, fragmentation.DefaultReassembleTimeout),
 	}
-	copy(e.address[:], addr)
-	e.id = stack.NetworkEndpointID{LocalAddress: tcpip.Address(e.address[:])}
 
-	go e.echoReplier()
-
-	return e
+	return e, nil
 }
 
 // DefaultTTL is the default time-to-live value for this endpoint.
@@ -106,8 +99,16 @@ func (e *endpoint) MaxHeaderLength() uint16 {
 	return e.linkEP.MaxHeaderLength() + header.IPv4MinimumSize
 }
 
+// GSOMaxSize returns the maximum GSO packet size.
+func (e *endpoint) GSOMaxSize() uint32 {
+	if gso, ok := e.linkEP.(stack.GSOEndpoint); ok {
+		return gso.GSOMaxSize()
+	}
+	return 0
+}
+
 // WritePacket writes a packet to the given destination address and protocol.
-func (e *endpoint) WritePacket(r *stack.Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.TransportProtocolNumber, ttl uint8) *tcpip.Error {
+func (e *endpoint) WritePacket(r *stack.Route, gso *stack.GSO, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.TransportProtocolNumber, ttl uint8, loop stack.PacketLooping) *tcpip.Error {
 	ip := header.IPv4(hdr.Prepend(header.IPv4MinimumSize))
 	length := uint16(hdr.UsedLength() + payload.Size())
 	id := uint32(0)
@@ -122,19 +123,31 @@ func (e *endpoint) WritePacket(r *stack.Route, hdr buffer.Prependable, payload b
 		ID:          uint16(id),
 		TTL:         ttl,
 		Protocol:    uint8(protocol),
-		SrcAddr:     tcpip.Address(e.address[:]),
+		SrcAddr:     r.LocalAddress,
 		DstAddr:     r.RemoteAddress,
 	})
 	ip.SetChecksum(^ip.CalculateChecksum())
-	r.Stats().IP.PacketsSent.Increment()
 
-	return e.linkEP.WritePacket(r, hdr, payload, ProtocolNumber)
+	if loop&stack.PacketLoop != 0 {
+		views := make([]buffer.View, 1, 1+len(payload.Views()))
+		views[0] = hdr.View()
+		views = append(views, payload.Views()...)
+		vv := buffer.NewVectorisedView(len(views[0])+payload.Size(), views)
+		e.HandlePacket(r, vv)
+	}
+	if loop&stack.PacketOut == 0 {
+		return nil
+	}
+
+	r.Stats().IP.PacketsSent.Increment()
+	return e.linkEP.WritePacket(r, gso, hdr, payload, ProtocolNumber)
 }
 
 // HandlePacket is called by the link layer when new ipv4 packets arrive for
 // this endpoint.
 func (e *endpoint) HandlePacket(r *stack.Route, vv buffer.VectorisedView) {
-	h := header.IPv4(vv.First())
+	headerView := vv.First()
+	h := header.IPv4(headerView)
 	if !h.IsValid(vv.Size()) {
 		return
 	}
@@ -156,17 +169,16 @@ func (e *endpoint) HandlePacket(r *stack.Route, vv buffer.VectorisedView) {
 	}
 	p := h.TransportProtocol()
 	if p == header.ICMPv4ProtocolNumber {
-		e.handleICMP(r, vv)
+		headerView.CapLength(hlen)
+		e.handleICMP(r, headerView, vv)
 		return
 	}
 	r.Stats().IP.PacketsDelivered.Increment()
-	e.dispatcher.DeliverTransportPacket(r, p, vv)
+	e.dispatcher.DeliverTransportPacket(r, p, headerView, vv)
 }
 
 // Close cleans up resources associated with the endpoint.
-func (e *endpoint) Close() {
-	close(e.echoRequests)
-}
+func (e *endpoint) Close() {}
 
 type protocol struct{}
 
@@ -194,11 +206,6 @@ func (*protocol) ParseAddresses(v buffer.View) (src, dst tcpip.Address) {
 	return h.SourceAddress(), h.DestinationAddress()
 }
 
-// NewEndpoint creates a new ipv4 endpoint.
-func (p *protocol) NewEndpoint(nicid tcpip.NICID, addr tcpip.Address, linkAddrCache stack.LinkAddressCache, dispatcher stack.TransportDispatcher, linkEP stack.LinkEndpoint) (stack.NetworkEndpoint, *tcpip.Error) {
-	return newEndpoint(nicid, addr, dispatcher, linkEP), nil
-}
-
 // SetOption implements NetworkProtocol.SetOption.
 func (p *protocol) SetOption(option interface{}) *tcpip.Error {
 	return tcpip.ErrUnknownProtocolOption
@@ -212,8 +219,8 @@ func (p *protocol) Option(option interface{}) *tcpip.Error {
 // calculateMTU calculates the network-layer payload MTU based on the link-layer
 // payload mtu.
 func calculateMTU(mtu uint32) uint32 {
-	if mtu > maxTotalSize {
-		mtu = maxTotalSize
+	if mtu > MaxTotalSize {
+		mtu = MaxTotalSize
 	}
 	return mtu - header.IPv4MinimumSize
 }

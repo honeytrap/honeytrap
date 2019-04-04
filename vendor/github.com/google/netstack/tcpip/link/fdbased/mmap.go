@@ -1,4 +1,4 @@
-// Copyright 2018 Google LLC
+// Copyright 2019 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,13 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build linux,amd64
+// +build !linux !amd64
 
-package rawfile
+package fdbased
 
-import (
-	"syscall"
-)
+import "github.com/google/netstack/tcpip"
 
-//go:noescape
-func blockingPoll(fds *pollEvent, nfds int, timeout int64) (int, syscall.Errno)
+// Stubbed out versions for non-linux/non-amd64 platforms.
+
+func (e *endpoint) setupPacketRXRing() error {
+	return nil
+}
+
+func (e *endpoint) readMMappedPacket() ([]byte, *tcpip.Error) {
+	return nil, nil
+}
+
+func (e *endpoint) packetMMapDispatch() (bool, *tcpip.Error) {
+	return false, nil
+}

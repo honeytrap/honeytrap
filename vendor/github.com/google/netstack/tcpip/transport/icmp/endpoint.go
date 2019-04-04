@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package ping
+package icmp
 
 import (
 	"encoding/binary"
@@ -27,12 +27,11 @@ import (
 )
 
 // +stateify savable
-type pingPacket struct {
-	pingPacketEntry
+type icmpPacket struct {
+	icmpPacketEntry
 	senderAddress tcpip.FullAddress
 	data          buffer.VectorisedView
 	timestamp     int64
-	hasTimestamp  bool
 	// views is used as buffer for data when its length is large
 	// enough to store a VectorisedView.
 	views [8]buffer.View
@@ -47,13 +46,15 @@ const (
 	stateClosed
 )
 
-// endpoint represents a ping endpoint. This struct serves as the interface
+// endpoint represents an ICMP endpoint. This struct serves as the interface
 // between users of the endpoint and the protocol implementation; it is legal to
 // have concurrent goroutines make calls into the endpoint, they are properly
 // synchronized.
+//
+// +stateify savable
 type endpoint struct {
-	// The following fields are initialized at creation time and do not
-	// change throughout the lifetime of the endpoint.
+	// The following fields are initialized at creation time and are
+	// immutable.
 	stack       *stack.Stack
 	netProto    tcpip.NetworkProtocolNumber
 	transProto  tcpip.TransportProtocolNumber
@@ -63,11 +64,10 @@ type endpoint struct {
 	// protected by rcvMu.
 	rcvMu         sync.Mutex
 	rcvReady      bool
-	rcvList       pingPacketList
+	rcvList       icmpPacketList
 	rcvBufSizeMax int
 	rcvBufSize    int
 	rcvClosed     bool
-	rcvTimestamp  bool
 
 	// The following fields are protected by the mu mutex.
 	mu         sync.RWMutex
@@ -76,13 +76,18 @@ type endpoint struct {
 	shutdownFlags tcpip.ShutdownFlags
 	id            stack.TransportEndpointID
 	state         endpointState
-	bindNICID     tcpip.NICID
-	bindAddr      tcpip.Address
-	regNICID      tcpip.NICID
-	route         stack.Route
+	// bindNICID and bindAddr are set via calls to Bind(). They are used to
+	// reject attempts to send data or connect via a different NIC or
+	// address
+	bindNICID tcpip.NICID
+	bindAddr  tcpip.Address
+	// regNICID is the default NIC to be used when callers don't specify a
+	// NIC.
+	regNICID tcpip.NICID
+	route    stack.Route
 }
 
-func newEndpoint(stack *stack.Stack, netProto tcpip.NetworkProtocolNumber, transProto tcpip.TransportProtocolNumber, waiterQueue *waiter.Queue) *endpoint {
+func newEndpoint(stack *stack.Stack, netProto tcpip.NetworkProtocolNumber, transProto tcpip.TransportProtocolNumber, waiterQueue *waiter.Queue) (tcpip.Endpoint, *tcpip.Error) {
 	return &endpoint{
 		stack:         stack,
 		netProto:      netProto,
@@ -90,7 +95,7 @@ func newEndpoint(stack *stack.Stack, netProto tcpip.NetworkProtocolNumber, trans
 		waiterQueue:   waiterQueue,
 		rcvBufSizeMax: 32 * 1024,
 		sndBufSize:    32 * 1024,
-	}
+	}, nil
 }
 
 // Close puts the endpoint in a closed state and frees all resources
@@ -100,7 +105,7 @@ func (e *endpoint) Close() {
 	e.shutdownFlags = tcpip.ShutdownRead | tcpip.ShutdownWrite
 	switch e.state {
 	case stateBound, stateConnected:
-		e.stack.UnregisterTransportEndpoint(e.regNICID, []tcpip.NetworkProtocolNumber{e.netProto}, e.transProto, e.id)
+		e.stack.UnregisterTransportEndpoint(e.regNICID, []tcpip.NetworkProtocolNumber{e.netProto}, e.transProto, e.id, e)
 	}
 
 	// Close the receive list and drain it.
@@ -140,7 +145,6 @@ func (e *endpoint) Read(addr *tcpip.FullAddress) (buffer.View, tcpip.ControlMess
 	p := e.rcvList.Front()
 	e.rcvList.Remove(p)
 	e.rcvBufSize -= p.data.Size()
-	ts := e.rcvTimestamp
 
 	e.rcvMu.Unlock()
 
@@ -148,12 +152,7 @@ func (e *endpoint) Read(addr *tcpip.FullAddress) (buffer.View, tcpip.ControlMess
 		*addr = p.senderAddress
 	}
 
-	if ts && !p.hasTimestamp {
-		// Linux uses the current time.
-		p.timestamp = e.stack.NowNanoseconds()
-	}
-
-	return p.data.ToView(), tcpip.ControlMessages{HasTimestamp: ts, Timestamp: p.timestamp}, nil
+	return p.data.ToView(), tcpip.ControlMessages{HasTimestamp: true, Timestamp: p.timestamp}, nil
 }
 
 // prepareForWrite prepares the endpoint for sending data. In particular, it
@@ -189,7 +188,7 @@ func (e *endpoint) prepareForWrite(to *tcpip.FullAddress) (retry bool, err *tcpi
 	}
 
 	// The state is still 'initial', so try to bind the endpoint.
-	if err := e.bindLocked(tcpip.FullAddress{}, nil); err != nil {
+	if err := e.bindLocked(tcpip.FullAddress{}); err != nil {
 		return false, err
 	}
 
@@ -231,8 +230,9 @@ func (e *endpoint) Write(p tcpip.Payload, opts tcpip.WriteOptions) (uintptr, <-c
 		route = &e.route
 
 		if route.IsResolutionRequired() {
-			// Promote lock to exclusive if using a shared route, given that it may
-			// need to change in Route.Resolve() call below.
+			// Promote lock to exclusive if using a shared route,
+			// given that it may need to change in Route.Resolve()
+			// call below.
 			e.mu.RUnlock()
 			defer e.mu.RLock()
 
@@ -264,7 +264,7 @@ func (e *endpoint) Write(p tcpip.Payload, opts tcpip.WriteOptions) (uintptr, <-c
 		}
 
 		// Find the enpoint.
-		r, err := e.stack.FindRoute(nicid, e.bindAddr, to.Addr, netProto)
+		r, err := e.stack.FindRoute(nicid, e.bindAddr, to.Addr, netProto, false /* multicastLoop */)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -277,8 +277,9 @@ func (e *endpoint) Write(p tcpip.Payload, opts tcpip.WriteOptions) (uintptr, <-c
 		waker := &sleep.Waker{}
 		if ch, err := route.Resolve(waker); err != nil {
 			if err == tcpip.ErrWouldBlock {
-				// Link address needs to be resolved. Resolution was triggered the
-				// background. Better luck next time.
+				// Link address needs to be resolved.
+				// Resolution was triggered the background.
+				// Better luck next time.
 				route.RemoveWaker(waker)
 				return 0, ch, tcpip.ErrNoLinkAddress
 			}
@@ -293,13 +294,17 @@ func (e *endpoint) Write(p tcpip.Payload, opts tcpip.WriteOptions) (uintptr, <-c
 
 	switch e.netProto {
 	case header.IPv4ProtocolNumber:
-		err = sendPing4(route, e.id.LocalPort, v)
+		err = e.send4(route, v)
 
 	case header.IPv6ProtocolNumber:
-		err = sendPing6(route, e.id.LocalPort, v)
+		err = send6(route, e.id.LocalPort, v)
 	}
 
-	return uintptr(len(v)), nil, err
+	if err != nil {
+		return 0, nil, err
+	}
+
+	return uintptr(len(v)), nil, nil
 }
 
 // Peek only returns data from a single datagram, so do nothing here.
@@ -309,12 +314,6 @@ func (e *endpoint) Peek([][]byte) (uintptr, tcpip.ControlMessages, *tcpip.Error)
 
 // SetSockOpt sets a socket option. Currently not supported.
 func (e *endpoint) SetSockOpt(opt interface{}) *tcpip.Error {
-	switch v := opt.(type) {
-	case tcpip.TimestampOption:
-		e.rcvMu.Lock()
-		e.rcvTimestamp = v != 0
-		e.rcvMu.Unlock()
-	}
 	return nil
 }
 
@@ -347,25 +346,23 @@ func (e *endpoint) GetSockOpt(opt interface{}) *tcpip.Error {
 		e.rcvMu.Unlock()
 		return nil
 
-	case *tcpip.TimestampOption:
-		e.rcvMu.Lock()
+	case *tcpip.KeepaliveEnabledOption:
 		*o = 0
-		if e.rcvTimestamp {
-			*o = 1
-		}
-		e.rcvMu.Unlock()
-	}
+		return nil
 
-	return tcpip.ErrUnknownProtocolOption
+	default:
+		return tcpip.ErrUnknownProtocolOption
+	}
 }
 
-func sendPing4(r *stack.Route, ident uint16, data buffer.View) *tcpip.Error {
+func (e *endpoint) send4(r *stack.Route, data buffer.View) *tcpip.Error {
 	if len(data) < header.ICMPv4EchoMinimumSize {
 		return tcpip.ErrInvalidEndpointState
 	}
 
-	// Set the ident. Sequence number is provided by the user.
-	binary.BigEndian.PutUint16(data[header.ICMPv4MinimumSize:], ident)
+	// Set the ident to the user-specified port. Sequence number should
+	// already be set by the user.
+	binary.BigEndian.PutUint16(data[header.ICMPv4MinimumSize:], e.id.LocalPort)
 
 	hdr := buffer.NewPrependable(header.ICMPv4EchoMinimumSize + int(r.MaxHeaderLength()))
 
@@ -381,10 +378,10 @@ func sendPing4(r *stack.Route, ident uint16, data buffer.View) *tcpip.Error {
 	icmpv4.SetChecksum(0)
 	icmpv4.SetChecksum(^header.Checksum(icmpv4, header.Checksum(data, 0)))
 
-	return r.WritePacket(hdr, data.ToVectorisedView(), header.ICMPv4ProtocolNumber, r.DefaultTTL())
+	return r.WritePacket(nil /* gso */, hdr, data.ToVectorisedView(), header.ICMPv4ProtocolNumber, r.DefaultTTL())
 }
 
-func sendPing6(r *stack.Route, ident uint16, data buffer.View) *tcpip.Error {
+func send6(r *stack.Route, ident uint16, data buffer.View) *tcpip.Error {
 	if len(data) < header.ICMPv6EchoMinimumSize {
 		return tcpip.ErrInvalidEndpointState
 	}
@@ -405,7 +402,7 @@ func sendPing6(r *stack.Route, ident uint16, data buffer.View) *tcpip.Error {
 	icmpv6.SetChecksum(0)
 	icmpv6.SetChecksum(^header.Checksum(icmpv6, header.Checksum(data, 0)))
 
-	return r.WritePacket(hdr, data.ToVectorisedView(), header.ICMPv6ProtocolNumber, r.DefaultTTL())
+	return r.WritePacket(nil /* gso */, hdr, data.ToVectorisedView(), header.ICMPv6ProtocolNumber, r.DefaultTTL())
 }
 
 func (e *endpoint) checkV4Mapped(addr *tcpip.FullAddress, allowMismatch bool) (tcpip.NetworkProtocolNumber, *tcpip.Error) {
@@ -452,7 +449,7 @@ func (e *endpoint) Connect(addr tcpip.FullAddress) *tcpip.Error {
 	}
 
 	// Find a route to the desired destination.
-	r, err := e.stack.FindRoute(nicid, e.bindAddr, addr.Addr, netProto)
+	r, err := e.stack.FindRoute(nicid, e.bindAddr, addr.Addr, netProto, false /* multicastLoop */)
 	if err != nil {
 		return err
 	}
@@ -531,14 +528,14 @@ func (e *endpoint) registerWithStack(nicid tcpip.NICID, netProtos []tcpip.Networ
 	if id.LocalPort != 0 {
 		// The endpoint already has a local port, just attempt to
 		// register it.
-		err := e.stack.RegisterTransportEndpoint(nicid, netProtos, e.transProto, id, e)
+		err := e.stack.RegisterTransportEndpoint(nicid, netProtos, e.transProto, id, e, false)
 		return id, err
 	}
 
 	// We need to find a port for the endpoint.
 	_, err := e.stack.PickEphemeralPort(func(p uint16) (bool, *tcpip.Error) {
 		id.LocalPort = p
-		err := e.stack.RegisterTransportEndpoint(nicid, netProtos, e.transProto, id, e)
+		err := e.stack.RegisterTransportEndpoint(nicid, netProtos, e.transProto, id, e, false)
 		switch err {
 		case nil:
 			return true, nil
@@ -552,7 +549,7 @@ func (e *endpoint) registerWithStack(nicid tcpip.NICID, netProtos []tcpip.Networ
 	return id, err
 }
 
-func (e *endpoint) bindLocked(addr tcpip.FullAddress, commit func() *tcpip.Error) *tcpip.Error {
+func (e *endpoint) bindLocked(addr tcpip.FullAddress) *tcpip.Error {
 	// Don't allow binding once endpoint is not in the initial state
 	// anymore.
 	if e.state != stateInitial {
@@ -584,13 +581,6 @@ func (e *endpoint) bindLocked(addr tcpip.FullAddress, commit func() *tcpip.Error
 	if err != nil {
 		return err
 	}
-	if commit != nil {
-		if err := commit(); err != nil {
-			// Unregister, the commit failed.
-			e.stack.UnregisterTransportEndpoint(addr.NIC, netProtos, e.transProto, id)
-			return err
-		}
-	}
 
 	e.id = id
 	e.regNICID = addr.NIC
@@ -607,11 +597,11 @@ func (e *endpoint) bindLocked(addr tcpip.FullAddress, commit func() *tcpip.Error
 
 // Bind binds the endpoint to a specific local address and port.
 // Specifying a NIC is optional.
-func (e *endpoint) Bind(addr tcpip.FullAddress, commit func() *tcpip.Error) *tcpip.Error {
+func (e *endpoint) Bind(addr tcpip.FullAddress) *tcpip.Error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	err := e.bindLocked(addr, commit)
+	err := e.bindLocked(addr)
 	if err != nil {
 		return err
 	}
@@ -675,6 +665,7 @@ func (e *endpoint) HandlePacket(r *stack.Route, id stack.TransportEndpointID, vv
 
 	// Drop the packet if our buffer is currently full.
 	if !e.rcvReady || e.rcvClosed || e.rcvBufSize >= e.rcvBufSizeMax {
+		e.stack.Stats().DroppedPackets.Increment()
 		e.rcvMu.Unlock()
 		return
 	}
@@ -682,20 +673,19 @@ func (e *endpoint) HandlePacket(r *stack.Route, id stack.TransportEndpointID, vv
 	wasEmpty := e.rcvBufSize == 0
 
 	// Push new packet into receive list and increment the buffer size.
-	pkt := &pingPacket{
+	pkt := &icmpPacket{
 		senderAddress: tcpip.FullAddress{
 			NIC:  r.NICID(),
 			Addr: id.RemoteAddress,
 		},
 	}
-	pkt.data = vv.Clone(pkt.views[:])
-	e.rcvList.PushBack(pkt)
-	e.rcvBufSize += vv.Size()
 
-	if e.rcvTimestamp {
-		pkt.timestamp = e.stack.NowNanoseconds()
-		pkt.hasTimestamp = true
-	}
+	pkt.data = vv.Clone(pkt.views[:])
+
+	e.rcvList.PushBack(pkt)
+	e.rcvBufSize += pkt.data.Size()
+
+	pkt.timestamp = e.stack.NowNanoseconds()
 
 	e.rcvMu.Unlock()
 

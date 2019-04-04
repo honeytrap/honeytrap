@@ -89,18 +89,15 @@ type handshake struct {
 	rcvWndScale int
 }
 
-func newHandshake(ep *endpoint, rcvWnd seqnum.Size) (handshake, *tcpip.Error) {
+func newHandshake(ep *endpoint, rcvWnd seqnum.Size) handshake {
 	h := handshake{
 		ep:          ep,
 		active:      true,
 		rcvWnd:      rcvWnd,
 		rcvWndScale: FindWndScale(rcvWnd),
 	}
-	if err := h.resetState(); err != nil {
-		return handshake{}, err
-	}
-
-	return h, nil
+	h.resetState()
+	return h
 }
 
 // FindWndScale determines the window scale to use for the given maximum window
@@ -122,19 +119,17 @@ func FindWndScale(wnd seqnum.Size) int {
 
 // resetState resets the state of the handshake object such that it becomes
 // ready for a new 3-way handshake.
-func (h *handshake) resetState() *tcpip.Error {
+func (h *handshake) resetState() {
 	b := make([]byte, 4)
 	if _, err := rand.Read(b); err != nil {
 		panic(err)
 	}
 
 	h.state = handshakeSynSent
-	h.flags = flagSyn
+	h.flags = header.TCPFlagSyn
 	h.ackNum = 0
 	h.mss = 0
 	h.iss = seqnum.Value(uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<<16 | uint32(b[3])<<24)
-
-	return nil
 }
 
 // effectiveRcvWndScale returns the effective receive window scale to be used.
@@ -152,7 +147,7 @@ func (h *handshake) effectiveRcvWndScale() uint8 {
 func (h *handshake) resetToSynRcvd(iss seqnum.Value, irs seqnum.Value, opts *header.TCPSynOptions) {
 	h.active = false
 	h.state = handshakeSynRcvd
-	h.flags = flagSyn | flagAck
+	h.flags = header.TCPFlagSyn | header.TCPFlagAck
 	h.iss = iss
 	h.irs = irs
 	h.ackNum = irs + 1
@@ -164,13 +159,13 @@ func (h *handshake) resetToSynRcvd(iss seqnum.Value, irs seqnum.Value, opts *hea
 // a TCP 3-way handshake is valid. If it's not, a RST segment is sent back in
 // response.
 func (h *handshake) checkAck(s *segment) bool {
-	if s.flagIsSet(flagAck) && s.ackNumber != h.iss+1 {
+	if s.flagIsSet(header.TCPFlagAck) && s.ackNumber != h.iss+1 {
 		// RFC 793, page 36, states that a reset must be generated when
 		// the connection is in any non-synchronized state and an
 		// incoming segment acknowledges something not yet sent. The
 		// connection remains in the same state.
 		ack := s.sequenceNumber.Add(s.logicalLen())
-		h.ep.sendRaw(buffer.VectorisedView{}, flagRst|flagAck, s.ackNumber, ack, 0)
+		h.ep.sendRaw(buffer.VectorisedView{}, header.TCPFlagRst|header.TCPFlagAck, s.ackNumber, ack, 0)
 		return false
 	}
 
@@ -182,8 +177,8 @@ func (h *handshake) checkAck(s *segment) bool {
 func (h *handshake) synSentState(s *segment) *tcpip.Error {
 	// RFC 793, page 37, states that in the SYN-SENT state, a reset is
 	// acceptable if the ack field acknowledges the SYN.
-	if s.flagIsSet(flagRst) {
-		if s.flagIsSet(flagAck) && s.ackNumber == h.iss+1 {
+	if s.flagIsSet(header.TCPFlagRst) {
+		if s.flagIsSet(header.TCPFlagAck) && s.ackNumber == h.iss+1 {
 			return tcpip.ErrConnectionRefused
 		}
 		return nil
@@ -195,7 +190,7 @@ func (h *handshake) synSentState(s *segment) *tcpip.Error {
 
 	// We are in the SYN-SENT state. We only care about segments that have
 	// the SYN flag.
-	if !s.flagIsSet(flagSyn) {
+	if !s.flagIsSet(header.TCPFlagSyn) {
 		return nil
 	}
 
@@ -210,15 +205,15 @@ func (h *handshake) synSentState(s *segment) *tcpip.Error {
 
 	// Remember the sequence we'll ack from now on.
 	h.ackNum = s.sequenceNumber + 1
-	h.flags |= flagAck
+	h.flags |= header.TCPFlagAck
 	h.mss = rcvSynOpts.MSS
 	h.sndWndScale = rcvSynOpts.WS
 
 	// If this is a SYN ACK response, we only need to acknowledge the SYN
 	// and the handshake is completed.
-	if s.flagIsSet(flagAck) {
+	if s.flagIsSet(header.TCPFlagAck) {
 		h.state = handshakeCompleted
-		h.ep.sendRaw(buffer.VectorisedView{}, flagAck, h.iss+1, h.ackNum, h.rcvWnd>>h.effectiveRcvWndScale())
+		h.ep.sendRaw(buffer.VectorisedView{}, header.TCPFlagAck, h.iss+1, h.ackNum, h.rcvWnd>>h.effectiveRcvWndScale())
 		return nil
 	}
 
@@ -245,7 +240,7 @@ func (h *handshake) synSentState(s *segment) *tcpip.Error {
 // synRcvdState handles a segment received when the TCP 3-way handshake is in
 // the SYN-RCVD state.
 func (h *handshake) synRcvdState(s *segment) *tcpip.Error {
-	if s.flagIsSet(flagRst) {
+	if s.flagIsSet(header.TCPFlagRst) {
 		// RFC 793, page 37, states that in the SYN-RCVD state, a reset
 		// is acceptable if the sequence number is in the window.
 		if s.sequenceNumber.InWindow(h.ackNum, h.rcvWnd) {
@@ -258,24 +253,22 @@ func (h *handshake) synRcvdState(s *segment) *tcpip.Error {
 		return nil
 	}
 
-	if s.flagIsSet(flagSyn) && s.sequenceNumber != h.ackNum-1 {
+	if s.flagIsSet(header.TCPFlagSyn) && s.sequenceNumber != h.ackNum-1 {
 		// We received two SYN segments with different sequence
 		// numbers, so we reset this and restart the whole
 		// process, except that we don't reset the timer.
 		ack := s.sequenceNumber.Add(s.logicalLen())
 		seq := seqnum.Value(0)
-		if s.flagIsSet(flagAck) {
+		if s.flagIsSet(header.TCPFlagAck) {
 			seq = s.ackNumber
 		}
-		h.ep.sendRaw(buffer.VectorisedView{}, flagRst|flagAck, seq, ack, 0)
+		h.ep.sendRaw(buffer.VectorisedView{}, header.TCPFlagRst|header.TCPFlagAck, seq, ack, 0)
 
 		if !h.active {
 			return tcpip.ErrInvalidEndpointState
 		}
 
-		if err := h.resetState(); err != nil {
-			return err
-		}
+		h.resetState()
 		synOpts := header.TCPSynOptions{
 			WS:            h.rcvWndScale,
 			TS:            h.ep.sendTSOk,
@@ -289,7 +282,7 @@ func (h *handshake) synRcvdState(s *segment) *tcpip.Error {
 
 	// We have previously received (and acknowledged) the peer's SYN. If the
 	// peer acknowledges our SYN, the handshake is completed.
-	if s.flagIsSet(flagAck) {
+	if s.flagIsSet(header.TCPFlagAck) {
 
 		// If the timestamp option is negotiated and the segment does
 		// not carry a timestamp option then the segment must be dropped
@@ -300,8 +293,9 @@ func (h *handshake) synRcvdState(s *segment) *tcpip.Error {
 		}
 
 		// Update timestamp if required. See RFC7323, section-4.3.
-		h.ep.updateRecentTimestamp(s.parsedOptions.TSVal, h.ackNum, s.sequenceNumber)
-
+		if h.ep.sendTSOk && s.parsedOptions.TS {
+			h.ep.updateRecentTimestamp(s.parsedOptions.TSVal, h.ackNum, s.sequenceNumber)
+		}
 		h.state = handshakeCompleted
 		return nil
 	}
@@ -311,7 +305,7 @@ func (h *handshake) synRcvdState(s *segment) *tcpip.Error {
 
 func (h *handshake) handleSegment(s *segment) *tcpip.Error {
 	h.sndWnd = s.window
-	if !s.flagIsSet(flagSyn) && h.sndWndScale > 0 {
+	if !s.flagIsSet(header.TCPFlagSyn) && h.sndWndScale > 0 {
 		h.sndWnd <<= uint8(h.sndWndScale)
 	}
 
@@ -482,7 +476,7 @@ func (h *handshake) execute() *tcpip.Error {
 }
 
 func parseSynSegmentOptions(s *segment) header.TCPSynOptions {
-	synOpts := header.ParseSynOptions(s.options, s.flagIsSet(flagAck))
+	synOpts := header.ParseSynOptions(s.options, s.flagIsSet(header.TCPFlagAck))
 	if synOpts.TS {
 		s.parsedOptions.TSVal = synOpts.TSVal
 		s.parsedOptions.TSEcr = synOpts.TSEcr
@@ -567,14 +561,14 @@ func sendSynTCP(r *stack.Route, id stack.TransportEndpointID, flags byte, seq, a
 	}
 
 	options := makeSynOptions(opts)
-	err := sendTCP(r, id, buffer.VectorisedView{}, r.DefaultTTL(), flags, seq, ack, rcvWnd, options)
+	err := sendTCP(r, id, buffer.VectorisedView{}, r.DefaultTTL(), flags, seq, ack, rcvWnd, options, nil)
 	putOptions(options)
 	return err
 }
 
 // sendTCP sends a TCP segment with the provided options via the provided
 // network endpoint and under the provided identity.
-func sendTCP(r *stack.Route, id stack.TransportEndpointID, data buffer.VectorisedView, ttl uint8, flags byte, seq, ack seqnum.Value, rcvWnd seqnum.Size, opts []byte) *tcpip.Error {
+func sendTCP(r *stack.Route, id stack.TransportEndpointID, data buffer.VectorisedView, ttl uint8, flags byte, seq, ack seqnum.Value, rcvWnd seqnum.Size, opts []byte, gso *stack.GSO) *tcpip.Error {
 	optLen := len(opts)
 	// Allocate a buffer for the TCP header.
 	hdr := buffer.NewPrependable(header.TCPMinimumSize + int(r.MaxHeaderLength()) + optLen)
@@ -596,23 +590,26 @@ func sendTCP(r *stack.Route, id stack.TransportEndpointID, data buffer.Vectorise
 	})
 	copy(tcp[header.TCPMinimumSize:], opts)
 
+	length := uint16(hdr.UsedLength() + data.Size())
+	xsum := r.PseudoHeaderChecksum(ProtocolNumber, length)
 	// Only calculate the checksum if offloading isn't supported.
-	if r.Capabilities()&stack.CapabilityChecksumOffload == 0 {
-		length := uint16(hdr.UsedLength() + data.Size())
-		xsum := r.PseudoHeaderChecksum(ProtocolNumber)
-		for _, v := range data.Views() {
-			xsum = header.Checksum(v, xsum)
-		}
-
-		tcp.SetChecksum(^tcp.CalculateChecksum(xsum, length))
+	if gso != nil && gso.NeedsCsum {
+		// This is called CHECKSUM_PARTIAL in the Linux kernel. We
+		// calculate a checksum of the pseudo-header and save it in the
+		// TCP header, then the kernel calculate a checksum of the
+		// header and data and get the right sum of the TCP packet.
+		tcp.SetChecksum(xsum)
+	} else if r.Capabilities()&stack.CapabilityChecksumOffload == 0 {
+		xsum = header.ChecksumVV(data, xsum)
+		tcp.SetChecksum(^tcp.CalculateChecksum(xsum))
 	}
 
 	r.Stats().TCP.SegmentsSent.Increment()
-	if (flags & flagRst) != 0 {
+	if (flags & header.TCPFlagRst) != 0 {
 		r.Stats().TCP.ResetsSent.Increment()
 	}
 
-	return r.WritePacket(hdr, data, ProtocolNumber, ttl)
+	return r.WritePacket(gso, hdr, data, ProtocolNumber, ttl)
 }
 
 // makeOptions makes an options slice.
@@ -657,11 +654,11 @@ func (e *endpoint) makeOptions(sackBlocks []header.SACKBlock) []byte {
 // sendRaw sends a TCP segment to the endpoint's peer.
 func (e *endpoint) sendRaw(data buffer.VectorisedView, flags byte, seq, ack seqnum.Value, rcvWnd seqnum.Size) *tcpip.Error {
 	var sackBlocks []header.SACKBlock
-	if e.state == stateConnected && e.rcv.pendingBufSize > 0 && (flags&flagAck != 0) {
+	if e.state == stateConnected && e.rcv.pendingBufSize > 0 && (flags&header.TCPFlagAck != 0) {
 		sackBlocks = e.sack.Blocks[:e.sack.NumBlocks]
 	}
 	options := e.makeOptions(sackBlocks)
-	err := sendTCP(&e.route, e.id, data, e.route.DefaultTTL(), flags, seq, ack, rcvWnd, options)
+	err := sendTCP(&e.route, e.id, data, e.route.DefaultTTL(), flags, seq, ack, rcvWnd, options, e.gso)
 	putOptions(options)
 	return err
 }
@@ -707,7 +704,7 @@ func (e *endpoint) handleClose() *tcpip.Error {
 // state with the given error code. This method must only be called from the
 // protocol goroutine.
 func (e *endpoint) resetConnectionLocked(err *tcpip.Error) {
-	e.sendRaw(buffer.VectorisedView{}, flagAck|flagRst, e.snd.sndUna, e.rcv.rcvNxt, 0)
+	e.sendRaw(buffer.VectorisedView{}, header.TCPFlagAck|header.TCPFlagRst, e.snd.sndUna, e.rcv.rcvNxt, 0)
 
 	e.state = stateError
 	e.hardError = err
@@ -739,7 +736,7 @@ func (e *endpoint) handleSegments() *tcpip.Error {
 			e.probe(e.completeState())
 		}
 
-		if s.flagIsSet(flagRst) {
+		if s.flagIsSet(header.TCPFlagRst) {
 			if e.rcv.acceptable(s.sequenceNumber, 0) {
 				// RFC 793, page 37 states that "in all states
 				// except SYN-SENT, all reset (RST) segments are
@@ -748,20 +745,10 @@ func (e *endpoint) handleSegments() *tcpip.Error {
 				s.decRef()
 				return tcpip.ErrConnectionReset
 			}
-		} else if s.flagIsSet(flagAck) {
+		} else if s.flagIsSet(header.TCPFlagAck) {
 			// Patch the window size in the segment according to the
 			// send window scale.
 			s.window <<= e.snd.sndWndScale
-
-			// If the timestamp option is negotiated and the segment
-			// does not carry a timestamp option then the segment
-			// must be dropped as per
-			// https://tools.ietf.org/html/rfc7323#section-3.2.
-			if e.sendTSOk && !s.parsedOptions.TS {
-				e.stack.Stats().DroppedPackets.Increment()
-				s.decRef()
-				continue
-			}
 
 			// RFC 793, page 41 states that "once in the ESTABLISHED
 			// state all segments must carry current acknowledgment
@@ -807,7 +794,7 @@ func (e *endpoint) keepaliveTimerExpired() *tcpip.Error {
 	// seg.seq = snd.nxt-1.
 	e.keepalive.unacked++
 	e.keepalive.Unlock()
-	e.snd.sendSegment(buffer.VectorisedView{}, flagAck, e.snd.sndNxt-1)
+	e.snd.sendSegment(buffer.VectorisedView{}, header.TCPFlagAck, e.snd.sndNxt-1)
 	e.resetKeepaliveTimer(false)
 	return nil
 }
@@ -831,6 +818,13 @@ func (e *endpoint) resetKeepaliveTimer(receivedData bool) {
 	} else {
 		e.keepalive.timer.enable(e.keepalive.idle)
 	}
+}
+
+// disableKeepaliveTimer stops the keepalive timer.
+func (e *endpoint) disableKeepaliveTimer() {
+	e.keepalive.Lock()
+	e.keepalive.timer.disable()
+	e.keepalive.Unlock()
 }
 
 // protocolMainLoop is the main loop of the TCP protocol. It runs in its own
@@ -867,11 +861,8 @@ func (e *endpoint) protocolMainLoop(handshake bool) *tcpip.Error {
 		// This is an active connection, so we must initiate the 3-way
 		// handshake, and then inform potential waiters about its
 		// completion.
-		h, err := newHandshake(e, seqnum.Size(e.receiveBufferAvailable()))
-		if err == nil {
-			err = h.execute()
-		}
-		if err != nil {
+		h := newHandshake(e, seqnum.Size(e.receiveBufferAvailable()))
+		if err := h.execute(); err != nil {
 			e.lastErrorMu.Lock()
 			e.lastError = err
 			e.lastErrorMu.Unlock()
@@ -975,11 +966,23 @@ func (e *endpoint) protocolMainLoop(handshake bool) *tcpip.Error {
 					e.mu.Unlock()
 				}
 				if n&notifyClose != 0 && closeTimer == nil {
-					// Reset the connection 3 seconds after the
-					// endpoint has been closed.
+					// Reset the connection 3 seconds after
+					// the endpoint has been closed.
+					//
+					// The timer could fire in background
+					// when the endpoint is drained. That's
+					// OK as the loop here will not honor
+					// the firing until the undrain arrives.
 					closeTimer = time.AfterFunc(3*time.Second, func() {
 						closeWaker.Assert()
 					})
+				}
+
+				if n&notifyKeepaliveChanged != 0 {
+					// The timer could fire in background
+					// when the endpoint is drained. That's
+					// OK. See above.
+					e.resetKeepaliveTimer(true)
 				}
 
 				if n&notifyDrain != 0 {
@@ -988,12 +991,10 @@ func (e *endpoint) protocolMainLoop(handshake bool) *tcpip.Error {
 							return err
 						}
 					}
-					close(e.drainDone)
-					<-e.undrain
-				}
-
-				if n&notifyKeepaliveChanged != 0 {
-					e.resetKeepaliveTimer(true)
+					if e.state != stateError {
+						close(e.drainDone)
+						<-e.undrain
+					}
 				}
 
 				return nil
