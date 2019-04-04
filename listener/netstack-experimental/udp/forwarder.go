@@ -68,8 +68,6 @@ func (f *Forwarder) HandlePacket(r *stack.Route, id stack.TransportEndpointID, n
 		return false
 	}
 
-	fmt.Printf("route=%#+v nicid=%d\n", r, r.NICID())
-
 	vv.TrimFront(header.UDPMinimumSize)
 
 	var wq waiter.Queue
@@ -140,7 +138,10 @@ func (fr *ForwarderRequest) Write(b []byte, addr *net.UDPAddr) (int, error) {
 		}
 
 		n, _, err = fr.ep.Write(tcpip.SlicePayload(v), wopts)
-		return int(n), errors.New(err.String())
+		if err != nil {
+			return int(n), errors.New(err.String())
+		}
+		return int(n), nil
 	}
 
 	if err == tcpip.ErrWouldBlock {
