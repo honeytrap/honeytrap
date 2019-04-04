@@ -1,3 +1,5 @@
+// +build linux
+
 // Copyright 2016-2019 DutchSec (https://dutchsec.com/)
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,8 +22,9 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/honeytrap/honeytrap/event"
 	"bytes"
+
+	"github.com/honeytrap/honeytrap/event"
 )
 
 var (
