@@ -5,6 +5,7 @@
 // +build linux,cgo
 
 #include <stdbool.h>
+#include <string.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <errno.h>
@@ -52,6 +53,9 @@ bool go_lxc_want_close_all_fds(struct lxc_container *c, bool state) {
 }
 
 bool go_lxc_create(struct lxc_container *c, const char *t, const char *bdevtype, int flags, char * const argv[]) {
+	if (strncmp(t, "none", strlen(t)) == 0) {
+		return c->create(c, NULL, bdevtype, NULL, !!(flags & LXC_CREATE_QUIET), argv);
+	}
 	return c->create(c, t, bdevtype, NULL, !!(flags & LXC_CREATE_QUIET), argv);
 }
 
@@ -91,16 +95,24 @@ bool go_lxc_wait(struct lxc_container *c, const char *state, int timeout) {
 	return c->wait(c, state, timeout);
 }
 
-char* go_lxc_get_config_item(struct lxc_container *c, const char *key) {
+char *go_lxc_get_config_item(struct lxc_container *c, const char *key)
+{
+	char *value = NULL;
+
 	int len = c->get_config_item(c, key, NULL, 0);
-	if (len <= 0) {
+	if (len <= 0)
+		return NULL;
+
+again:
+	value = (char *)malloc(sizeof(char) * len + 1);
+	if (value == NULL)
+		goto again;
+
+	if (c->get_config_item(c, key, value, len + 1) != len) {
+		free(value);
 		return NULL;
 	}
 
-	char* value = (char*)malloc(sizeof(char)*len + 1);
-	if (c->get_config_item(c, key, value, len + 1) != len) {
-		return NULL;
-	}
 	return value;
 }
 
@@ -120,29 +132,45 @@ char* go_lxc_get_running_config_item(struct lxc_container *c, const char *key) {
 	return c->get_running_config_item(c, key);
 }
 
-char* go_lxc_get_keys(struct lxc_container *c, const char *key) {
+char *go_lxc_get_keys(struct lxc_container *c, const char *key)
+{
+	char *value = NULL;
+
 	int len = c->get_keys(c, key, NULL, 0);
-	if (len <= 0) {
+	if (len <= 0)
+		return NULL;
+
+again:
+	value = (char *)malloc(sizeof(char) * len + 1);
+	if (value == NULL)
+		goto again;
+
+	if (c->get_keys(c, key, value, len + 1) != len) {
+		free(value);
 		return NULL;
 	}
 
-	char* value = (char*)malloc(sizeof(char)*len + 1);
-	if (c->get_keys(c, key, value, len + 1) != len) {
-		return NULL;
-	}
 	return value;
 }
 
-char* go_lxc_get_cgroup_item(struct lxc_container *c, const char *key) {
+char *go_lxc_get_cgroup_item(struct lxc_container *c, const char *key)
+{
+	char *value = NULL;
+
 	int len = c->get_cgroup_item(c, key, NULL, 0);
-	if (len <= 0) {
+	if (len <= 0)
+		return NULL;
+
+again:
+	value = (char *)malloc(sizeof(char) * len + 1);
+	if (value == NULL)
+		goto again;
+
+	if (c->get_cgroup_item(c, key, value, len + 1) != len) {
+		free(value);
 		return NULL;
 	}
 
-	char* value = (char*)malloc(sizeof(char)*len + 1);
-	if (c->get_cgroup_item(c, key, value, len + 1) != len) {
-		return NULL;
-	}
 	return value;
 }
 
@@ -172,10 +200,12 @@ bool go_lxc_clone(struct lxc_container *c, const char *newname, const char *lxcp
 
 int go_lxc_console_getfd(struct lxc_container *c, int ttynum) {
 	int masterfd;
+	int ret = 0;
 
-	if (c->console_getfd(c, &ttynum, &masterfd) < 0) {
-		return -1;
-	}
+	ret = c->console_getfd(c, &ttynum, &masterfd);
+	if (ret < 0)
+		return ret;
+
 	return masterfd;
 }
 
@@ -251,7 +281,7 @@ int go_lxc_attach_no_wait(struct lxc_container *c,
 
 	ret = c->attach(c, lxc_attach_run_command, &command, &attach_options, attached_pid);
 	if (ret < 0)
-		return -1;
+		return ret;
 
 	return 0;
 }
@@ -301,16 +331,16 @@ int go_lxc_attach(struct lxc_container *c,
 
 	ret = c->attach(c, lxc_attach_run_shell, NULL, &attach_options, &pid);
 	if (ret < 0)
-		return -1;
+		return ret;
 
 	ret = wait_for_pid_status(pid);
 	if (ret < 0)
-		return -1;
+		return ret;
 
 	if (WIFEXITED(ret))
 		return WEXITSTATUS(ret);
 
-	return -1;
+	return ret;
 }
 
 int go_lxc_attach_run_wait(struct lxc_container *c,
@@ -462,6 +492,15 @@ int go_lxc_error_num(struct lxc_container *c)
 int go_lxc_console_log(struct lxc_container *c, struct lxc_console_log *log) {
 #if VERSION_AT_LEAST(3, 0, 0)
 	return c->console_log(c, log);
+#else
+	return false;
+#endif
+}
+
+bool go_lxc_has_api_extension(const char *extension)
+{
+#if VERSION_AT_LEAST(3, 1, 0)
+	return lxc_has_api_extension(extension);
 #else
 	return false;
 #endif
