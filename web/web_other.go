@@ -108,7 +108,7 @@ func New(options ...func(*web) error) (*web, error) {
 		start: time.Now(),
 
 		ListenAddress: "127.0.0.1:8089",
-		Enabled:       true,
+		Enabled:       false,
 
 		register:    make(chan *connection),
 		unregister:  make(chan *connection),
