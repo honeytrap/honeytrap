@@ -1,4 +1,5 @@
 // +build lxc
+// +build linux
 
 // Copyright 2016-2019 DutchSec (https://dutchsec.com/)
 //
