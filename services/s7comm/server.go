@@ -37,7 +37,9 @@ TPKT: RFC1006
 package s7comm
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"net"
 	"strconv"
 
@@ -231,4 +233,15 @@ func errCk(err error) bool {
 	}
 
 	return false
+}
+
+type errHandler struct {
+	err error
+}
+
+func (eh *errHandler) serializer(buf *bytes.Buffer, i interface{}) {
+	if eh.err != nil {
+		return
+	}
+	eh.err = binary.Write(buf, binary.BigEndian, i)
 }

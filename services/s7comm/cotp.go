@@ -26,14 +26,15 @@ func (C *COTP) serialize(m []byte) (r []byte) {
 	C.DestRef = 0x80
 
 	rb := &bytes.Buffer{}
-	CErr := binary.Write(rb, binary.BigEndian, C)
-	mErr := binary.Write(rb, binary.BigEndian, m)
+	var eh errHandler
 
-	if CErr != nil || mErr != nil {
-		/* Print error message to console */
-		return nil
+	eh.serializer(rb, C)
+	eh.serializer(rb, m)
+
+	if eh.err == nil {
+		return rb.Bytes()
 	}
-	return rb.Bytes()
+	return nil
 }
 
 func (C *COTP) deserialize(m *[]byte) (verified bool) {
@@ -107,23 +108,29 @@ func createCOTPCon(m []byte) (response []byte) {
 			ParamDstLen:   COTPRequest.ParamDstLen,
 			DestTSAP:      COTPRequest.DestTSAP,
 		}
-		/* This is a temporary fix for converting the COTP struct to a usable byte slice. This fix is used because the dynamic Dest & Source reference values cannot be written to binary via buf.Bytes()*/
+
 		buf := &bytes.Buffer{}
-		_ = binary.Write(buf, binary.BigEndian, COTPResponse.Length)
-		_ = binary.Write(buf, binary.BigEndian, COTPResponse.PDUType)
-		_ = binary.Write(buf, binary.BigEndian, COTPResponse.DestRef)
-		_ = binary.Write(buf, binary.BigEndian, COTPResponse.SourceRef)
-		_ = binary.Write(buf, binary.BigEndian, COTPResponse.Reserved)
-		_ = binary.Write(buf, binary.BigEndian, COTPResponse.ParamTPDUSize)
-		_ = binary.Write(buf, binary.BigEndian, COTPResponse.ParamTPDULen)
-		_ = binary.Write(buf, binary.BigEndian, COTPResponse.TPDUSize)
-		_ = binary.Write(buf, binary.BigEndian, COTPResponse.ParamSrcTSAP)
-		_ = binary.Write(buf, binary.BigEndian, COTPResponse.ParamSrcLen)
-		_ = binary.Write(buf, binary.BigEndian, COTPResponse.SourceTSAP)
-		_ = binary.Write(buf, binary.BigEndian, COTPResponse.ParamDstTSAP)
-		_ = binary.Write(buf, binary.BigEndian, COTPResponse.ParamDstLen)
-		_ = binary.Write(buf, binary.BigEndian, COTPResponse.DestTSAP)
-		return T.serialize(buf.Bytes())
+
+		var eh errHandler
+
+		eh.serializer(buf, COTPResponse.Length)
+		eh.serializer(buf, COTPResponse.PDUType)
+		eh.serializer(buf, COTPResponse.DestRef)
+		eh.serializer(buf, COTPResponse.SourceRef)
+		eh.serializer(buf, COTPResponse.Reserved)
+		eh.serializer(buf, COTPResponse.ParamTPDUSize)
+		eh.serializer(buf, COTPResponse.ParamTPDULen)
+		eh.serializer(buf, COTPResponse.TPDUSize)
+		eh.serializer(buf, COTPResponse.ParamSrcTSAP)
+		eh.serializer(buf, COTPResponse.ParamSrcLen)
+		eh.serializer(buf, COTPResponse.SourceTSAP)
+		eh.serializer(buf, COTPResponse.ParamDstTSAP)
+		eh.serializer(buf, COTPResponse.ParamDstLen)
+		eh.serializer(buf, COTPResponse.DestTSAP)
+
+		if eh.err == nil {
+			return T.serialize(buf.Bytes())
+		}
 	}
 	return nil
 }

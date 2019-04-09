@@ -117,12 +117,18 @@ func (s7 *S7Packet) secRes(P Packet) (response []byte) {
 	}
 
 	buf := &bytes.Buffer{}
-	_ = binary.Write(buf, binary.BigEndian, Head)
-	_ = binary.Write(buf, binary.BigEndian, Param)
-	_ = binary.Write(buf, binary.BigEndian, Data)
-	_ = binary.Write(buf, binary.BigEndian, sp)
+	var eh errHandler
 
-	return s7.T.serialize(s7.C.serialize(buf.Bytes()))
+	eh.serializer(buf, Head)
+	eh.serializer(buf, Param)
+	eh.serializer(buf, Data)
+	eh.serializer(buf, sp)
+
+	if eh.err == nil {
+		return s7.T.serialize(s7.C.serialize(buf.Bytes()))
+	}
+
+	return nil
 }
 
 func (s7 *S7Packet) primRes(P Packet) (response []byte) {
@@ -144,9 +150,10 @@ func (s7 *S7Packet) primRes(P Packet) (response []byte) {
 	SZL3 = append(SZL3, vS...)
 
 	tb := &bytes.Buffer{}
-	_ = binary.Write(tb, binary.BigEndian, SZL1)
-	_ = binary.Write(tb, binary.BigEndian, SZL2)
-	_ = binary.Write(tb, binary.BigEndian, SZL3)
+	var eh errHandler
+	eh.serializer(tb, SZL1)
+	eh.serializer(tb, SZL2)
+	eh.serializer(tb, SZL3)
 
 	sp := tb.Bytes()
 
@@ -179,12 +186,15 @@ func (s7 *S7Packet) primRes(P Packet) (response []byte) {
 		DataLength:  Data.Length + 4,
 	}
 	buf := &bytes.Buffer{}
-	_ = binary.Write(buf, binary.BigEndian, Head)
-	_ = binary.Write(buf, binary.BigEndian, Param)
-	_ = binary.Write(buf, binary.BigEndian, Data)
-	_ = binary.Write(buf, binary.BigEndian, sp)
 
-	return s7.T.serialize(s7.C.serialize(buf.Bytes()))
+	eh.serializer(buf, Head)
+	eh.serializer(buf, Param)
+	eh.serializer(buf, Data)
+	eh.serializer(buf, sp)
+	if eh.err == nil {
+		return s7.T.serialize(s7.C.serialize(buf.Bytes()))
+	}
+	return nil
 }
 
 func bufferFiller(m *[]byte, tl int) {
