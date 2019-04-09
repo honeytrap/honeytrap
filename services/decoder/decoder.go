@@ -138,8 +138,15 @@ func (d *Decode) Int32() int32 {
 	return int32(binary.BigEndian.Uint32(d.data[d.offset : d.offset+4]))
 }
 
+// Data read a length-value string with 2-byte length
 func (d *Decode) Data() string {
 	l := d.Int16()
+	return string(d.Copy(int(l)))
+}
+
+// Data1 read a length-value string with 1-byte length
+func (d *Decode) Data1() string {
+	l := d.Byte()
 	return string(d.Copy(int(l)))
 }
 

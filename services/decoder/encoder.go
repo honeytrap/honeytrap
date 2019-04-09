@@ -53,11 +53,20 @@ func (e *Encoder) WriteUint32(v int32) {
 
 // if zero is true, write zero length
 func (e *Encoder) WriteData(v string, zero bool) {
-
 	if zero {
 		e.WriteUint16(0)
 	} else {
 		e.WriteUint16(int16(len(v)))
+		e.Write([]byte(v))
+	}
+}
+
+//WriteData1 write bytes as length-value with 1-byte lenght value
+func (e *Encoder) WriteData1(v string, zero bool) {
+	if zero {
+		e.WriteUint8(0)
+	} else {
+		e.WriteUint8(byte(len(v)))
 		e.Write([]byte(v))
 	}
 }
