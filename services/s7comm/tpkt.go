@@ -74,8 +74,10 @@ func (T *TPKT) verify(m []byte) (isTPKT bool) {
 
 }
 
+/*
 type TPKT struct {
 	Version  uint8
 	Reserved uint8
 	Length   uint16
 }
+*/

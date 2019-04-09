@@ -87,6 +87,7 @@ func (C *COTP) connect(m []byte) (response []byte) {
 func createCOTPCon(m []byte) (response []byte) {
 	var T TPKT
 	if len(m) > 0x11 {
+
 		DestRef := binary.BigEndian.Uint16(m[2:4])
 		SourceRef := binary.BigEndian.Uint16(m[4:6])
 
@@ -106,7 +107,6 @@ func createCOTPCon(m []byte) (response []byte) {
 			ParamTPDULen:  m[len(m)-2],
 			TPDUSize:      m[len(m)-1],
 		}
-
 		var COTPResponse = COTPConnectConfirm{
 			Length:        COTPRequest.Length,
 			PDUType:       CC,
@@ -144,45 +144,13 @@ func createCOTPCon(m []byte) (response []byte) {
 	return nil
 }
 
+/*
 type COTP struct {
 	Length  uint8
 	PDUType uint8
 	DestRef uint8
 }
 
-type COTPConnect struct {
-	Length        uint8
-	PDUType       uint8
-	DestRef       uint16
-	SourceRef     uint16
-	Reserved      uint8
-	ParamTPDUSize uint8
-	ParamTPDULen  uint8
-	TPDUSize      uint8
-	ParamSrcTSAP  uint8
-	ParamSrcLen   uint8
-	SourceTSAP    uint16 //should be byte array probably
-	ParamDstTSAP  uint8
-	ParamDstLen   uint8
-	DestTSAP      uint16
-}
-
-type COTPConnectRequest struct {
-	Length        uint8
-	PDUType       uint8
-	DestRef       uint16
-	SourceRef     uint16
-	Reserved      uint8
-	ParamSrcTSAP  uint8
-	ParamSrcLen   uint8
-	SourceTSAP    []byte
-	ParamDstTSAP  uint8
-	ParamDstLen   uint8
-	DestTSAP      []byte
-	ParamTPDUSize uint8
-	ParamTPDULen  uint8
-	TPDUSize      uint8
-}
 
 type COTPConnectConfirm struct {
 	Length        uint8
@@ -200,3 +168,5 @@ type COTPConnectConfirm struct {
 	ParamDstLen   uint8
 	DestTSAP      []byte
 }
+
+*/
