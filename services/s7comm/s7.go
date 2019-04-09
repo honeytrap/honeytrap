@@ -20,6 +20,8 @@ import (
 	"encoding/binary"
 	"strconv"
 	"strings"
+
+	"github.com/honeytrap/honeytrap/services/decoder"
 )
 
 func (s7 *S7Packet) deserialize(m []byte) (P Packet, isS7 bool) {
@@ -55,11 +57,14 @@ func (s7 *S7Packet) connect(P Packet) (response []byte) {
 		ErrorClass:  0x00,
 		ErrorCode:   0x00,
 	}
-	buf := &bytes.Buffer{}
-	S7HeadErr := binary.Write(buf, binary.BigEndian, resHead)
-	S7ParaErr := binary.Write(buf, binary.BigEndian, resPara)
 
-	if S7HeadErr == nil && S7ParaErr == nil {
+	var eh errHandler
+	buf := &bytes.Buffer{}
+
+	eh.serializer(buf, resHead)
+	eh.serializer(buf, resPara)
+
+	if eh.err == nil {
 		return s7.T.serialize(s7.C.serialize(buf.Bytes()))
 	}
 	return nil
@@ -203,113 +208,99 @@ func bufferFiller(m *[]byte, tl int) {
 	(*m) = append((*m), a...)
 }
 
-func createS7Header(mp *[]byte) (H S7Header) {
-	var m = (*mp)
-	if m[0] == 0x32 {
-		Reserved := binary.BigEndian.Uint16(m[2:4])
-		PDURef := binary.LittleEndian.Uint16(m[4:6])
-		ParamLength := binary.BigEndian.Uint16(m[6:8])
-		DataLength := binary.BigEndian.Uint16(m[8:10])
+func createS7Header(m *[]byte) (H S7Header) {
 
+	if (*m)[0] == 0x32 {
+
+		dec := decoder.NewDecoder(*m)
 		H = S7Header{
-			ProtocolID:  m[0],
-			MessageType: m[1],
-			Reserved:    Reserved,
-			PDURef:      PDURef,
-			ParamLength: ParamLength,
-			DataLength:  DataLength,
+			ProtocolID:  dec.Byte(),
+			MessageType: dec.Byte(),
+			Reserved:    dec.Uint16(),
+			PDURef:      dec.Uint16Le(),
+			ParamLength: dec.Uint16(),
+			DataLength:  dec.Uint16(),
 		}
 
 		if H.MessageType == AckData {
-			H.ErrorClass = m[10]
-			H.ErrorCode = m[11]
-			(*mp) = (*mp)[12:]
+			H.ErrorClass = dec.Byte()
+			H.ErrorCode = dec.Byte()
+			(*m) = (*m)[12:]
 		} else {
-			(*mp) = (*mp)[10:]
+			(*m) = (*m)[10:]
 		}
-
-		return
 	}
 	return
 }
 
-func createS7Parameters(mp *[]byte, H S7Header) (P S7Parameter) {
-	var m = (*mp)
+func createS7Parameters(m *[]byte, H S7Header) (P S7Parameter) {
+	dec := decoder.NewDecoder(*m)
 	if H.MessageType == Request {
-		AmQCalling := binary.BigEndian.Uint16(m[2:4])
-		AmQCalled := binary.BigEndian.Uint16(m[4:6])
-		PDULen := binary.BigEndian.Uint16(m[6:8])
 		P = S7Parameter{
 			SetupCom: S7SetupCom{
-				Function:      m[0],
-				Reserved:      m[1],
-				MaxAmQCalling: AmQCalling,
-				MaxAmQCalled:  AmQCalled,
-				PDULength:     PDULen,
+				Function:      dec.Byte(),
+				Reserved:      dec.Byte(),
+				MaxAmQCalling: dec.Uint16(),
+				MaxAmQCalled:  dec.Uint16(),
+				PDULength:     dec.Uint16(),
 			},
 		}
 
 	} else if H.MessageType == UserData {
 
-		ParamHead := binary.BigEndian.Uint32(m[0:4]) >> 8
+		ph := append([]byte{0x00}, dec.Copy(3)...)
+		dec1 := decoder.NewDecoder(ph)
+		paraHead := dec1.Uint32()
+
 		P = S7Parameter{
 			UserData: S7UserData{
-				ParamHead:      ParamHead,
-				ParamLength:    m[3],
-				Method:         m[4],
-				MethodType:     m[5] >> 4,
-				MethodFunction: m[5] << 4 >> 4,
-				SubFunction:    m[6],
-				SequenceNum:    m[7],
+				ParamHead:   paraHead,
+				ParamLength: dec.Byte(),
+				Method:      dec.Byte(),
+				MethodType:  dec.Byte(),
+				SubFunction: dec.Byte(),
+				SequenceNum: dec.Byte(),
 			},
 		}
+		P.UserData.MethodFunction = P.UserData.MethodType << 4 >> 4
+		P.UserData.MethodType = P.UserData.MethodType >> 4
+
 		if P.UserData.MethodType == S7DataResponse {
-			P.UserData.DataRefNum = m[8]
-			P.UserData.LastDataUnit = m[9]
-			P.UserData.ErrorCode = binary.BigEndian.Uint16(m[10:12])
-			(*mp) = (*mp)[12:]
+			P.UserData.DataRefNum = dec.Byte()
+			P.UserData.LastDataUnit = dec.Byte()
+			P.UserData.ErrorCode = dec.Uint16()
+			(*m) = (*m)[12:]
 			return
 		}
 
 	}
 
-	(*mp) = (*mp)[8:]
+	(*m) = (*m)[8:]
 	return
 }
 
 func createS7Data(mp *[]byte, H S7Header, P S7Parameter) (D S7Data) {
+	dec := decoder.NewDecoder(*mp)
 	var m = (*mp)
 	if H.MessageType == UserData {
-
 		if P.UserData.MethodType == S7DataRequest {
-			Length := binary.BigEndian.Uint16(m[2:4])
-			SZLID := binary.BigEndian.Uint16(m[4:6])
-			SZLIndex := binary.BigEndian.Uint16(m[6:8])
-
 			D = S7Data{
-				ReturnCode:    m[0],
-				TransportSize: m[1],
-				Length:        Length,
-				SZLID:         SZLID,
-				SZLIndex:      SZLIndex,
+				ReturnCode:    dec.Byte(),
+				TransportSize: dec.Byte(),
+				Length:        dec.Uint16(),
+				SZLID:         dec.Uint16(),
+				SZLIndex:      dec.Uint16(),
 			}
 
 		} else if P.UserData.MethodType == S7DataResponse {
-
-			Length := binary.BigEndian.Uint16(m[2:4])
-			SZLID := binary.BigEndian.Uint16(m[4:6])
-			SZLIndex := binary.BigEndian.Uint16(m[6:8])
-			SZLListLength := binary.BigEndian.Uint16(m[8:10])
-			SZLListCount := binary.BigEndian.Uint16(m[10:12])
-
 			D = S7Data{
-				ReturnCode:    m[0],
-				TransportSize: m[1],
-				Length:        Length,
-				SZLID:         SZLID,
-				SZLIndex:      SZLIndex,
-				SZLListLength: SZLListLength,
-				SZLListCount:  SZLListCount,
+				ReturnCode:    dec.Byte(),
+				TransportSize: dec.Byte(),
+				Length:        dec.Uint16(),
+				SZLID:         dec.Uint16(),
+				SZLIndex:      dec.Uint16(),
+				SZLListLength: dec.Uint16(),
+				SZLListCount:  dec.Uint16(),
 			}
 			offset := int(D.SZLListLength)
 

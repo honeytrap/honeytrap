@@ -17,7 +17,8 @@ package s7comm
 
 import (
 	"bytes"
-	"encoding/binary"
+
+	"github.com/honeytrap/honeytrap/services/decoder"
 )
 
 func (C *COTP) serialize(m []byte) (r []byte) {
@@ -38,9 +39,12 @@ func (C *COTP) serialize(m []byte) (r []byte) {
 }
 
 func (C *COTP) deserialize(m *[]byte) (verified bool) {
-	C.Length = (*m)[0]
-	C.PDUType = (*m)[1]
-	C.DestRef = (*m)[2]
+
+	dec := decoder.NewDecoder(*m)
+
+	C.Length = dec.Byte()
+	C.PDUType = dec.Byte()
+	C.DestRef = dec.Byte()
 	if C.verify() == 0x01 {
 		*m = (*m)[3:]
 		return true
@@ -73,25 +77,23 @@ func createCOTPCon(m []byte) (response []byte) {
 	var T TPKT
 	if len(m) > 0x11 {
 
-		DestRef := binary.BigEndian.Uint16(m[2:4])
-		SourceRef := binary.BigEndian.Uint16(m[4:6])
+		dec := decoder.NewDecoder(m)
 
 		var COTPRequest = COTPConnectRequest{
-			Length:        m[0],
-			PDUType:       m[1],
-			DestRef:       DestRef,
-			SourceRef:     SourceRef,
-			Reserved:      m[6],
-			ParamSrcTSAP:  m[7],
-			ParamSrcLen:   m[8],
-			SourceTSAP:    m[9 : 9+m[8]],
-			ParamDstTSAP:  m[9+m[8]],
-			ParamDstLen:   m[10+m[8]],
-			DestTSAP:      m[11+m[8] : 11+m[8]+m[10+m[8]]],
-			ParamTPDUSize: m[len(m)-3],
-			ParamTPDULen:  m[len(m)-2],
-			TPDUSize:      m[len(m)-1],
+			Length:        dec.Byte(),
+			PDUType:       dec.Byte(),
+			DestRef:       dec.Uint16(),
+			SourceRef:     dec.Uint16(),
+			Reserved:      dec.Byte(),
+			ParamSrcTSAP:  dec.Byte(),
+			SourceTSAP:    dec.Copy(int(dec.Byte())),
+			ParamDstTSAP:  dec.Byte(),
+			DestTSAP:      dec.Copy(int(dec.Byte())),
+			ParamTPDUSize: dec.Byte(),
+			ParamTPDULen:  dec.Byte(),
+			TPDUSize:      dec.Byte(),
 		}
+
 		var COTPResponse = COTPConnectConfirm{
 			Length:        COTPRequest.Length,
 			PDUType:       CC,
@@ -102,10 +104,10 @@ func createCOTPCon(m []byte) (response []byte) {
 			ParamTPDULen:  COTPRequest.ParamTPDULen,
 			TPDUSize:      COTPRequest.TPDUSize,
 			ParamSrcTSAP:  COTPRequest.ParamSrcTSAP,
-			ParamSrcLen:   COTPRequest.ParamSrcLen,
+			ParamSrcLen:   uint8(len(COTPRequest.SourceTSAP)),
 			SourceTSAP:    COTPRequest.SourceTSAP,
 			ParamDstTSAP:  COTPRequest.ParamDstTSAP,
-			ParamDstLen:   COTPRequest.ParamDstLen,
+			ParamDstLen:   uint8(len(COTPRequest.DestTSAP)),
 			DestTSAP:      COTPRequest.DestTSAP,
 		}
 

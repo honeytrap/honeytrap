@@ -99,6 +99,32 @@ func (d *Decode) Int16() int16 {
 	return int16(binary.BigEndian.Uint16(d.data[d.offset : d.offset+2]))
 }
 
+func (d *Decode) Uint16() uint16 {
+	if err := d.HasBytes(2); err != nil {
+		d.lasterror = err
+		return 0
+	}
+
+	defer func() {
+		d.offset += 2
+	}()
+
+	return binary.BigEndian.Uint16(d.data[d.offset : d.offset+2])
+}
+
+func (d *Decode) Uint16Le() uint16 {
+	if err := d.HasBytes(2); err != nil {
+		d.lasterror = err
+		return 0
+	}
+
+	defer func() {
+		d.offset += 2
+	}()
+
+	return binary.LittleEndian.Uint16(d.data[d.offset : d.offset+2])
+}
+
 func (d *Decode) Uint32() uint32 {
 	if err := d.HasBytes(4); err != nil {
 		d.lasterror = err

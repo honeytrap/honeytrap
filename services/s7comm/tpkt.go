@@ -17,7 +17,8 @@ package s7comm
 
 import (
 	"bytes"
-	"encoding/binary"
+
+	"github.com/honeytrap/honeytrap/services/decoder"
 )
 
 func (T *TPKT) serialize(m []byte) (r []byte) {
@@ -28,20 +29,23 @@ func (T *TPKT) serialize(m []byte) (r []byte) {
 
 	rb := &bytes.Buffer{}
 
-	TErr := binary.Write(rb, binary.BigEndian, T)
-	mErr := binary.Write(rb, binary.BigEndian, m)
+	var eh errHandler
 
-	if TErr != nil || mErr != nil {
-		return nil
+	eh.serializer(rb, T)
+	eh.serializer(rb, m)
+
+	if eh.err == nil {
+		return rb.Bytes()
 	}
-	return rb.Bytes()
+	return nil
 }
 
 func (T *TPKT) deserialize(m *[]byte) (verified bool) {
-	Length := binary.BigEndian.Uint16((*m)[2:4])
-	T.Version = (*m)[0]
-	T.Reserved = (*m)[1]
-	T.Length = Length
+	dec := decoder.NewDecoder(*m)
+
+	T.Version = dec.Byte()
+	T.Reserved = dec.Byte()
+	T.Length = dec.Uint16()
 
 	if T.verify(*m) {
 		*m = (*m)[4:]
