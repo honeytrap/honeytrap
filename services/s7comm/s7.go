@@ -40,9 +40,7 @@ import (
 
 func (s7 *S7Packet) deserialize(m []byte) (P Packet, isS7 bool) {
 	if len(m) >= 4 {
-		chk := s7.T.deserialize(&m)
-
-		if chk {
+		if s7.T.deserialize(&m) {
 			s7.C.deserialize(&m)
 			if s7.C.PDUType == COTPData {
 				P.S7.Header = createS7Header(&m)
@@ -84,45 +82,34 @@ func (s7 *S7Packet) connect(P Packet) (response []byte) {
 }
 
 func (s7 *S7Packet) secRes(P Packet) (response []byte) {
-	InputLen := []string{s7.ui.SysName, s7.ui.ModType, s7.ui.PlantID, s7.ui.Copyright, s7.ui.SerialNum, s7.ui.CPUType}
 
-	var lo string
-
-	for _, cu := range InputLen {
-		if len(cu) > len(lo) {
-			lo = cu
-		}
-	}
-
-	maxVal := 0x22
+	maxLen := 0x22
 	Sys := append([]byte{0x00, 0x01}, s7.ui.SysName...)
-	bufferFiller(&Sys, maxVal)
+	bufferFiller(&Sys, maxLen)
 	Mtp := append([]byte{0x00, 0x02}, s7.ui.ModType...)
-	bufferFiller(&Mtp, maxVal)
+	bufferFiller(&Mtp, maxLen)
 	PID := append([]byte{0x00, 0x03}, s7.ui.PlantID...)
-	bufferFiller(&PID, maxVal)
+	bufferFiller(&PID, maxLen)
 	Cpr := append([]byte{0x00, 0x04}, s7.ui.Copyright...)
-	bufferFiller(&Cpr, maxVal)
+	bufferFiller(&Cpr, maxLen)
 	Snr := append([]byte{0x00, 0x05}, s7.ui.SerialNum...)
-	bufferFiller(&Snr, maxVal)
+	bufferFiller(&Snr, maxLen)
 	CPU := append([]byte{0x00, 0x07}, s7.ui.CPUType...)
-	bufferFiller(&CPU, maxVal)
+	bufferFiller(&CPU, maxLen)
 
-	var masterbuf []byte
-
-	masterbuf = append(Sys, Mtp...)
-	masterbuf = append(masterbuf, PID...)
-	masterbuf = append(masterbuf, Cpr...)
-	masterbuf = append(masterbuf, Snr...)
-	masterbuf = append(masterbuf, CPU...)
+	sp := append(Sys, Mtp...)
+	sp = append(sp, PID...)
+	sp = append(sp, Cpr...)
+	sp = append(sp, Snr...)
+	sp = append(sp, CPU...)
 
 	var Data = S7DataNoSZL{
 		ReturnCode:    0xff,
 		TransportSize: 0x09,
-		Length:        uint16(len(masterbuf) + 8),
+		Length:        uint16(len(sp) + 8),
 		SZLID:         0x001c,
 		SZLIndex:      0x0000,
-		SZLListLength: uint16(maxVal),
+		SZLListLength: uint16(maxLen),
 		SZLListCount:  0x0a,
 	}
 	var Param = UserDataSmallHead{
@@ -149,7 +136,7 @@ func (s7 *S7Packet) secRes(P Packet) (response []byte) {
 	_ = binary.Write(buf, binary.BigEndian, Head)
 	_ = binary.Write(buf, binary.BigEndian, Param)
 	_ = binary.Write(buf, binary.BigEndian, Data)
-	_ = binary.Write(buf, binary.BigEndian, masterbuf)
+	_ = binary.Write(buf, binary.BigEndian, sp)
 
 	return s7.T.serialize(s7.C.serialize(buf.Bytes()))
 }
@@ -177,12 +164,12 @@ func (s7 *S7Packet) primRes(P Packet) (response []byte) {
 	_ = binary.Write(tb, binary.BigEndian, SZL2)
 	_ = binary.Write(tb, binary.BigEndian, SZL3)
 
-	masterbuf := tb.Bytes()
+	sp := tb.Bytes()
 
 	var Data = S7DataNoSZL{
 		ReturnCode:    0xff,
-		TransportSize: 0x09,                       //no idea
-		Length:        uint16(len(masterbuf) + 8), //could be six, could be something else
+		TransportSize: 0x09,
+		Length:        uint16(len(sp) + 8),
 		SZLID:         0x0011,
 		SZLIndex:      0x0001,
 		SZLListLength: 0x005c,
@@ -211,7 +198,7 @@ func (s7 *S7Packet) primRes(P Packet) (response []byte) {
 	_ = binary.Write(buf, binary.BigEndian, Head)
 	_ = binary.Write(buf, binary.BigEndian, Param)
 	_ = binary.Write(buf, binary.BigEndian, Data)
-	_ = binary.Write(buf, binary.BigEndian, masterbuf)
+	_ = binary.Write(buf, binary.BigEndian, sp)
 
 	return s7.T.serialize(s7.C.serialize(buf.Bytes()))
 }
