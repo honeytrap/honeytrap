@@ -123,7 +123,7 @@ func createCOTPCon(m []byte) (response []byte) {
 			ParamDstLen:   COTPRequest.ParamDstLen,
 			DestTSAP:      COTPRequest.DestTSAP,
 		}
-		/* This is a temporary fix for converting the COTP struct to a usable byte slice. This fix is useb because the dynamic Dest & Source reference values cannot be written to binary via buf.Bytes()*/
+		/* This is a temporary fix for converting the COTP struct to a usable byte slice. This fix is used because the dynamic Dest & Source reference values cannot be written to binary via buf.Bytes()*/
 		buf := &bytes.Buffer{}
 		_ = binary.Write(buf, binary.BigEndian, COTPResponse.Length)
 		_ = binary.Write(buf, binary.BigEndian, COTPResponse.PDUType)
