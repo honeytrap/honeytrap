@@ -79,7 +79,7 @@ func (e *endpoint) MaxHeaderLength() uint16 {
 
 func (e *endpoint) Close() {}
 
-func (e *endpoint) WritePacket(r *stack.Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.TransportProtocolNumber, ttl uint8) *tcpip.Error {
+func (e *endpoint) WritePacket(*stack.Route, *stack.GSO, buffer.Prependable, buffer.VectorisedView, tcpip.TransportProtocolNumber, uint8, stack.PacketLooping) *tcpip.Error {
 	return tcpip.ErrNotSupported
 }
 
@@ -103,7 +103,7 @@ func (e *endpoint) HandlePacket(r *stack.Route, vv buffer.VectorisedView) {
 		copy(pkt.HardwareAddressSender(), r.LocalLinkAddress[:])
 		copy(pkt.ProtocolAddressSender(), h.ProtocolAddressTarget())
 		copy(pkt.ProtocolAddressTarget(), h.ProtocolAddressSender())
-		e.linkEP.WritePacket(r, hdr, buffer.VectorisedView{}, ProtocolNumber)
+		e.linkEP.WritePacket(r, nil /* gso */, hdr, buffer.VectorisedView{}, ProtocolNumber)
 		fallthrough // also fill the cache from requests
 	case header.ARPReply:
 		addr := tcpip.Address(h.ProtocolAddressSender())
@@ -155,13 +155,31 @@ func (*protocol) LinkAddressRequest(addr, localAddr tcpip.Address, linkEP stack.
 	copy(h.ProtocolAddressSender(), localAddr)
 	copy(h.ProtocolAddressTarget(), addr)
 
-	return linkEP.WritePacket(r, hdr, buffer.VectorisedView{}, ProtocolNumber)
+	return linkEP.WritePacket(r, nil /* gso */, hdr, buffer.VectorisedView{}, ProtocolNumber)
 }
 
 // ResolveStaticAddress implements stack.LinkAddressResolver.
 func (*protocol) ResolveStaticAddress(addr tcpip.Address) (tcpip.LinkAddress, bool) {
-	if addr == "\xff\xff\xff\xff" {
+	if addr == header.IPv4Broadcast {
 		return broadcastMAC, true
+	}
+	if header.IsV4MulticastAddress(addr) {
+		// RFC 1112 Host Extensions for IP Multicasting
+		//
+		// 6.4. Extensions to an Ethernet Local Network Module:
+		//
+		// An IP host group address is mapped to an Ethernet multicast
+		// address by placing the low-order 23-bits of the IP address
+		// into the low-order 23 bits of the Ethernet multicast address
+		// 01-00-5E-00-00-00 (hex).
+		return tcpip.LinkAddress([]byte{
+			0x01,
+			0x00,
+			0x5e,
+			addr[header.IPv4AddressSize-3] & 0x7f,
+			addr[header.IPv4AddressSize-2],
+			addr[header.IPv4AddressSize-1],
+		}), true
 	}
 	return "", false
 }

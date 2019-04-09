@@ -284,8 +284,11 @@ func TestTwoServers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dhcp: server endpoint: %v", err)
 	}
-	if err = ep.Bind(tcpip.FullAddress{Port: ServerPort}, nil); err != nil {
+	if err = ep.Bind(tcpip.FullAddress{Port: ServerPort}); err != nil {
 		t.Fatalf("dhcp: server bind: %v", err)
+	}
+	if err = ep.SetSockOpt(tcpip.BroadcastOption(1)); err != nil {
+		t.Fatalf("dhcp: setsockopt: %v", err)
 	}
 
 	serverCtx, cancel := context.WithCancel(context.Background())

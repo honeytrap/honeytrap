@@ -62,16 +62,23 @@ func (e *endpoint) handleControl(typ stack.ControlType, extra uint32, vv buffer.
 	e.dispatcher.DeliverTransportControlPacket(e.id.LocalAddress, h.DestinationAddress(), ProtocolNumber, p, typ, extra, vv)
 }
 
-func (e *endpoint) handleICMP(r *stack.Route, vv buffer.VectorisedView) {
+func (e *endpoint) handleICMP(r *stack.Route, netHeader buffer.View, vv buffer.VectorisedView) {
+	stats := r.Stats().ICMP
+	sent := stats.V6PacketsSent
+	received := stats.V6PacketsReceived
 	v := vv.First()
 	if len(v) < header.ICMPv6MinimumSize {
+		received.Invalid.Increment()
 		return
 	}
 	h := header.ICMPv6(v)
 
+	// TODO: Meaningfully handle all ICMP types.
 	switch h.Type() {
 	case header.ICMPv6PacketTooBig:
+		received.PacketTooBig.Increment()
 		if len(v) < header.ICMPv6PacketTooBigMinimumSize {
+			received.Invalid.Increment()
 			return
 		}
 		vv.TrimFront(header.ICMPv6PacketTooBigMinimumSize)
@@ -79,7 +86,9 @@ func (e *endpoint) handleICMP(r *stack.Route, vv buffer.VectorisedView) {
 		e.handleControl(stack.ControlPacketTooBig, calculateMTU(mtu), vv)
 
 	case header.ICMPv6DstUnreachable:
+		received.DstUnreachable.Increment()
 		if len(v) < header.ICMPv6DstUnreachableMinimumSize {
+			received.Invalid.Increment()
 			return
 		}
 		vv.TrimFront(header.ICMPv6DstUnreachableMinimumSize)
@@ -89,15 +98,21 @@ func (e *endpoint) handleICMP(r *stack.Route, vv buffer.VectorisedView) {
 		}
 
 	case header.ICMPv6NeighborSolicit:
+		received.NeighborSolicit.Increment()
+
+		e.linkAddrCache.AddLinkAddress(e.nicid, r.RemoteAddress, r.RemoteLinkAddress)
+
 		if len(v) < header.ICMPv6NeighborSolicitMinimumSize {
+			received.Invalid.Increment()
 			return
 		}
-		targetAddr := tcpip.Address(v[8 : 8+16])
+		targetAddr := tcpip.Address(v[8:][:16])
 		if e.linkAddrCache.CheckLocalAddress(e.nicid, ProtocolNumber, targetAddr) == 0 {
 			// We don't have a useful answer; the best we can do is ignore the request.
 			return
 		}
-		hdr := buffer.NewPrependable(int(r.MaxHeaderLength()) + header.IPv6MinimumSize + header.ICMPv6NeighborAdvertSize)
+
+		hdr := buffer.NewPrependable(int(r.MaxHeaderLength()) + header.ICMPv6NeighborAdvertSize)
 		pkt := header.ICMPv6(hdr.Prepend(header.ICMPv6NeighborAdvertSize))
 		pkt.SetType(header.ICMPv6NeighborAdvert)
 		pkt[icmpV6FlagOffset] = ndpSolicitedFlag | ndpOverrideFlag
@@ -118,38 +133,69 @@ func (e *endpoint) handleICMP(r *stack.Route, vv buffer.VectorisedView) {
 		defer r.Release()
 		r.LocalAddress = targetAddr
 		pkt.SetChecksum(icmpChecksum(pkt, r.LocalAddress, r.RemoteAddress, buffer.VectorisedView{}))
-		r.WritePacket(hdr, buffer.VectorisedView{}, header.ICMPv6ProtocolNumber, r.DefaultTTL())
 
-		e.linkAddrCache.AddLinkAddress(e.nicid, r.RemoteAddress, r.RemoteLinkAddress)
-
-	case header.ICMPv6NeighborAdvert:
-		if len(v) < header.ICMPv6NeighborAdvertSize {
+		if err := r.WritePacket(nil /* gso */, hdr, buffer.VectorisedView{}, header.ICMPv6ProtocolNumber, r.DefaultTTL()); err != nil {
+			sent.Dropped.Increment()
 			return
 		}
-		targetAddr := tcpip.Address(v[8 : 8+16])
+		sent.NeighborAdvert.Increment()
+
+	case header.ICMPv6NeighborAdvert:
+		received.NeighborAdvert.Increment()
+		if len(v) < header.ICMPv6NeighborAdvertSize {
+			received.Invalid.Increment()
+			return
+		}
+		targetAddr := tcpip.Address(v[8:][:16])
 		e.linkAddrCache.AddLinkAddress(e.nicid, targetAddr, r.RemoteLinkAddress)
 		if targetAddr != r.RemoteAddress {
 			e.linkAddrCache.AddLinkAddress(e.nicid, r.RemoteAddress, r.RemoteLinkAddress)
 		}
 
 	case header.ICMPv6EchoRequest:
+		received.EchoRequest.Increment()
 		if len(v) < header.ICMPv6EchoMinimumSize {
+			received.Invalid.Increment()
 			return
 		}
+
 		vv.TrimFront(header.ICMPv6EchoMinimumSize)
-		hdr := buffer.NewPrependable(int(r.MaxHeaderLength()) + header.IPv6MinimumSize + header.ICMPv6EchoMinimumSize)
+		hdr := buffer.NewPrependable(int(r.MaxHeaderLength()) + header.ICMPv6EchoMinimumSize)
 		pkt := header.ICMPv6(hdr.Prepend(header.ICMPv6EchoMinimumSize))
 		copy(pkt, h)
 		pkt.SetType(header.ICMPv6EchoReply)
 		pkt.SetChecksum(icmpChecksum(pkt, r.LocalAddress, r.RemoteAddress, vv))
-		r.WritePacket(hdr, vv, header.ICMPv6ProtocolNumber, r.DefaultTTL())
-
-	case header.ICMPv6EchoReply:
-		if len(v) < header.ICMPv6EchoMinimumSize {
+		if err := r.WritePacket(nil /* gso */, hdr, vv, header.ICMPv6ProtocolNumber, r.DefaultTTL()); err != nil {
+			sent.Dropped.Increment()
 			return
 		}
-		e.dispatcher.DeliverTransportPacket(r, header.ICMPv6ProtocolNumber, vv)
+		sent.EchoReply.Increment()
 
+	case header.ICMPv6EchoReply:
+		received.EchoReply.Increment()
+		if len(v) < header.ICMPv6EchoMinimumSize {
+			received.Invalid.Increment()
+			return
+		}
+		e.dispatcher.DeliverTransportPacket(r, header.ICMPv6ProtocolNumber, netHeader, vv)
+
+	case header.ICMPv6TimeExceeded:
+		received.TimeExceeded.Increment()
+
+	case header.ICMPv6ParamProblem:
+		received.ParamProblem.Increment()
+
+	case header.ICMPv6RouterSolicit:
+		received.RouterSolicit.Increment()
+
+	case header.ICMPv6RouterAdvert:
+		received.RouterAdvert.Increment()
+
+	case header.ICMPv6RedirectMsg:
+		received.RedirectMsg.Increment()
+
+	default:
+		received.Invalid.Increment()
 	}
 }
 
@@ -201,11 +247,31 @@ func (*protocol) LinkAddressRequest(addr, localAddr tcpip.Address, linkEP stack.
 		DstAddr:       r.RemoteAddress,
 	})
 
-	return linkEP.WritePacket(r, hdr, buffer.VectorisedView{}, ProtocolNumber)
+	// TODO: count this in ICMP stats.
+	return linkEP.WritePacket(r, nil /* gso */, hdr, buffer.VectorisedView{}, ProtocolNumber)
 }
 
 // ResolveStaticAddress implements stack.LinkAddressResolver.
 func (*protocol) ResolveStaticAddress(addr tcpip.Address) (tcpip.LinkAddress, bool) {
+	if header.IsV6MulticastAddress(addr) {
+		// RFC 2464 Transmission of IPv6 Packets over Ethernet Networks
+		//
+		// 7. Address Mapping -- Multicast
+		//
+		// An IPv6 packet with a multicast destination address DST,
+		// consisting of the sixteen octets DST[1] through DST[16], is
+		// transmitted to the Ethernet multicast address whose first
+		// two octets are the value 3333 hexadecimal and whose last
+		// four octets are the last four octets of DST.
+		return tcpip.LinkAddress([]byte{
+			0x33,
+			0x33,
+			addr[header.IPv6AddressSize-4],
+			addr[header.IPv6AddressSize-3],
+			addr[header.IPv6AddressSize-2],
+			addr[header.IPv6AddressSize-1],
+		}), true
+	}
 	return "", false
 }
 

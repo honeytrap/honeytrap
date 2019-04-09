@@ -83,8 +83,16 @@ func (e *endpoint) MaxHeaderLength() uint16 {
 	return e.linkEP.MaxHeaderLength() + header.IPv6MinimumSize
 }
 
+// GSOMaxSize returns the maximum GSO packet size.
+func (e *endpoint) GSOMaxSize() uint32 {
+	if gso, ok := e.linkEP.(stack.GSOEndpoint); ok {
+		return gso.GSOMaxSize()
+	}
+	return 0
+}
+
 // WritePacket writes a packet to the given destination address and protocol.
-func (e *endpoint) WritePacket(r *stack.Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.TransportProtocolNumber, ttl uint8) *tcpip.Error {
+func (e *endpoint) WritePacket(r *stack.Route, gso *stack.GSO, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.TransportProtocolNumber, ttl uint8, loop stack.PacketLooping) *tcpip.Error {
 	length := uint16(hdr.UsedLength() + payload.Size())
 	ip := header.IPv6(hdr.Prepend(header.IPv6MinimumSize))
 	ip.Encode(&header.IPv6Fields{
@@ -94,15 +102,27 @@ func (e *endpoint) WritePacket(r *stack.Route, hdr buffer.Prependable, payload b
 		SrcAddr:       r.LocalAddress,
 		DstAddr:       r.RemoteAddress,
 	})
-	r.Stats().IP.PacketsSent.Increment()
 
-	return e.linkEP.WritePacket(r, hdr, payload, ProtocolNumber)
+	if loop&stack.PacketLoop != 0 {
+		views := make([]buffer.View, 1, 1+len(payload.Views()))
+		views[0] = hdr.View()
+		views = append(views, payload.Views()...)
+		vv := buffer.NewVectorisedView(len(views[0])+payload.Size(), views)
+		e.HandlePacket(r, vv)
+	}
+	if loop&stack.PacketOut == 0 {
+		return nil
+	}
+
+	r.Stats().IP.PacketsSent.Increment()
+	return e.linkEP.WritePacket(r, gso, hdr, payload, ProtocolNumber)
 }
 
 // HandlePacket is called by the link layer when new ipv6 packets arrive for
 // this endpoint.
 func (e *endpoint) HandlePacket(r *stack.Route, vv buffer.VectorisedView) {
-	h := header.IPv6(vv.First())
+	headerView := vv.First()
+	h := header.IPv6(headerView)
 	if !h.IsValid(vv.Size()) {
 		return
 	}
@@ -112,12 +132,12 @@ func (e *endpoint) HandlePacket(r *stack.Route, vv buffer.VectorisedView) {
 
 	p := h.TransportProtocol()
 	if p == header.ICMPv6ProtocolNumber {
-		e.handleICMP(r, vv)
+		e.handleICMP(r, headerView, vv)
 		return
 	}
 
 	r.Stats().IP.PacketsDelivered.Increment()
-	e.dispatcher.DeliverTransportPacket(r, p, vv)
+	e.dispatcher.DeliverTransportPacket(r, p, headerView, vv)
 }
 
 // Close cleans up resources associated with the endpoint.
