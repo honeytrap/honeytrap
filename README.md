@@ -35,6 +35,6 @@ We work on the front line of security development and explore undiscovered groun
 
 ## Copyright and license
 
-Code and documentation copyright 2017 DutchSec.
+Code and documentation copyright 2016-2019 DutchSec.
 
 Code released under [Apache License, Version 2.0](LICENSE).
