@@ -37,4 +37,4 @@ We work on the front line of security development and explore undiscovered groun
 
 Code and documentation copyright 2017 DutchSec.
 
-Code released under [Affero General Public License](LICENSE).
+Code released under [Apache License, Version 2.0](LICENSE).
