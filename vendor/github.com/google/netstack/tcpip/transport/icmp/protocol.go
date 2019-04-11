@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package ping contains the implementation of the ICMP and IPv6-ICMP transport
+// Package icmp contains the implementation of the ICMP and IPv6-ICMP transport
 // protocols for use in ping. To use it in the networking stack, this package
 // must be added to the project, and
-// activated on the stack by passing ping.ProtocolName (or "ping") and/or
-// ping.ProtocolName6 (or "ping6") as one of the transport protocols when
+// activated on the stack by passing icmp.ProtocolName (or "icmp") and/or
+// icmp.ProtocolName6 (or "icmp6") as one of the transport protocols when
 // calling stack.New(). Then endpoints can be created by passing
-// ping.ProtocolNumber or ping.ProtocolNumber6 as the transport protocol number
+// icmp.ProtocolNumber or icmp.ProtocolNumber6 as the transport protocol number
 // when calling Stack.NewEndpoint().
-package ping
+package icmp
 
 import (
 	"encoding/binary"
@@ -30,23 +30,25 @@ import (
 	"github.com/google/netstack/tcpip/buffer"
 	"github.com/google/netstack/tcpip/header"
 	"github.com/google/netstack/tcpip/stack"
+	"github.com/google/netstack/tcpip/transport/raw"
 	"github.com/google/netstack/waiter"
 )
 
 const (
-	// ProtocolName4 is the string representation of the ping protocol name.
-	ProtocolName4 = "ping4"
+	// ProtocolName4 is the string representation of the icmp protocol name.
+	ProtocolName4 = "icmp4"
 
 	// ProtocolNumber4 is the ICMP protocol number.
 	ProtocolNumber4 = header.ICMPv4ProtocolNumber
 
-	// ProtocolName6 is the string representation of the ping protocol name.
-	ProtocolName6 = "ping6"
+	// ProtocolName6 is the string representation of the icmp protocol name.
+	ProtocolName6 = "icmp6"
 
 	// ProtocolNumber6 is the IPv6-ICMP protocol number.
 	ProtocolNumber6 = header.ICMPv6ProtocolNumber
 )
 
+// protocol implements stack.TransportProtocol.
 type protocol struct {
 	number tcpip.TransportProtocolNumber
 }
@@ -66,15 +68,25 @@ func (p *protocol) netProto() tcpip.NetworkProtocolNumber {
 	panic(fmt.Sprint("unknown protocol number: ", p.number))
 }
 
-// NewEndpoint creates a new ping endpoint.
+// NewEndpoint creates a new icmp endpoint. It implements
+// stack.TransportProtocol.NewEndpoint.
 func (p *protocol) NewEndpoint(stack *stack.Stack, netProto tcpip.NetworkProtocolNumber, waiterQueue *waiter.Queue) (tcpip.Endpoint, *tcpip.Error) {
 	if netProto != p.netProto() {
 		return nil, tcpip.ErrUnknownProtocol
 	}
-	return newEndpoint(stack, netProto, p.number, waiterQueue), nil
+	return newEndpoint(stack, netProto, p.number, waiterQueue)
 }
 
-// MinimumPacketSize returns the minimum valid ping packet size.
+// NewRawEndpoint creates a new raw icmp endpoint. It implements
+// stack.TransportProtocol.NewRawEndpoint.
+func (p *protocol) NewRawEndpoint(stack *stack.Stack, netProto tcpip.NetworkProtocolNumber, waiterQueue *waiter.Queue) (tcpip.Endpoint, *tcpip.Error) {
+	if netProto != p.netProto() {
+		return nil, tcpip.ErrUnknownProtocol
+	}
+	return raw.NewEndpoint(stack, netProto, p.number, waiterQueue)
+}
+
+// MinimumPacketSize returns the minimum valid icmp packet size.
 func (p *protocol) MinimumPacketSize() int {
 	switch p.number {
 	case ProtocolNumber4:
@@ -85,7 +97,7 @@ func (p *protocol) MinimumPacketSize() int {
 	panic(fmt.Sprint("unknown protocol number: ", p.number))
 }
 
-// ParsePorts returns the source and destination ports stored in the given ping
+// ParsePorts returns the source and destination ports stored in the given icmp
 // packet.
 func (p *protocol) ParsePorts(v buffer.View) (src, dst uint16, err *tcpip.Error) {
 	switch p.number {

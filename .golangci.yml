@@ -1,0 +1,56 @@
+run:
+  skip-dirs:
+    - vendor
+    - pb
+
+  # exit code when at least one issue was found, default is 1
+  issues-exit-code: 0 # for now disables
+
+issues:
+  max-per-linter: 999999
+  max-same: 999999
+
+linters-settings:
+  errcheck:
+    check-type-assertions: false
+    check-blank: false
+  unparam:
+    algo: cha
+    check-exported: false
+  nakedret:
+    max-func-lines: 0
+  misspell:
+    locale: US
+  dupl:
+    threshold: 600
+  goconst:
+    min-occurrences: 5
+  gocyclo:
+    min-complexity: 180
+  lll:
+    line-length: 750
+
+linters:
+  enable:
+    - gofmt
+    - ineffassign
+    - staticcheck
+    - structcheck
+    - unused
+    - unparam
+    - varcheck
+    # - deadcode
+    - gosimple
+    - dupl
+    - gocyclo
+    - nakedret
+    - lll
+  disable:
+    - errcheck
+    - govet
+    - golint
+    - megacheck
+    - goimports
+    - unconvert
+    - prealloc
+    - goconst

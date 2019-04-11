@@ -1,12 +1,12 @@
 language: go
 
 go:
-  - master
-  - tip
+  - stable
+  - 1.12.x
   - 1.10.x
 
 sudo: required
-dist: trusty
+dist: xenial
 
 go_import_path: github.com/honeytrap/honeytrap
 
@@ -17,28 +17,32 @@ os:
 - linux
 
 env:
-- ARCH=x86_64
+- GIMME_OS=linux GIMME_ARCH=amd64
 
 addons:
   apt:
     packages:
     - lxc
 
-install:
+before_install:
   - sudo add-apt-repository -y ppa:ubuntu-lxc/stable
   - sudo apt-get update -qq
   - sudo apt-get install -y software-properties-common python-software-properties lxc-dev
-  - go get -u -v gopkg.in/alecthomas/gometalinter.v2
+  - go get -u github.com/axw/gocov/gocov github.com/mattn/goveralls github.com/tcnksm/ghr
+  - curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | bash -s -- -b $GOPATH/bin 
+
+install:
   - go get -u -v github.com/honeytrap/honeytrap
-  - gometalinter.v2 --install
 
 script:
+  - $GOPATH/bin/golangci-lint run
   # Go 1.9 doesn't support `go test -coverprofile` with multiple packages, so run basic tests instead
   - if [[ -z "$(go version | grep '1\.9')" ]]; then go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...; else go test -v ./...; fi
-  - go build ./...
-  - go build -tags "lxc" ./...
-  - GOARCH=arm go build ./...
-  - gometalinter.v2 --fast --deadline 10m --errors --vendor --sort=linter ./... --exclude='blank import' --exclude='should have comment' --exclude='should be of the form "' --exclude='can be annoying to use' # Report warnings, but do not fail if there are any
+  - rm -rf $(go env CACHEDIR) && go build ./...
+  - rm -rf $(go env CACHEDIR) && go build -tags "lxc" ./...
+  - GOOS=linux GOARCH=arm64 go build ./...
+  - GOOS=windows GOARCH=amd64 go build ./...
+  - GOOS=darwin GOARCH=amd64 go build ./...
 
 after_success:
 - bash <(curl -s https://codecov.io/bash)

@@ -17,6 +17,7 @@ package header
 import (
 	"encoding/binary"
 
+	"github.com/google/btree"
 	"github.com/google/netstack/tcpip"
 	"github.com/google/netstack/tcpip/seqnum"
 )
@@ -131,6 +132,16 @@ type SACKBlock struct {
 	End seqnum.Value
 }
 
+// Less returns true if r.Start < b.Start.
+func (r SACKBlock) Less(b btree.Item) bool {
+	return r.Start.LessThan(b.(SACKBlock).Start)
+}
+
+// Contains returns true if b is completely contained in r.
+func (r SACKBlock) Contains(b SACKBlock) bool {
+	return r.Start.LessThanEq(b.Start) && b.End.LessThanEq(r.End)
+}
+
 // TCPOptions are used to parse and cache the TCP segment options for a non
 // syn/syn-ack segment.
 //
@@ -155,6 +166,12 @@ type TCP []byte
 const (
 	// TCPMinimumSize is the minimum size of a valid TCP packet.
 	TCPMinimumSize = 20
+
+	// TCPOptionsMaximumSize is the maximum size of TCP options.
+	TCPOptionsMaximumSize = 40
+
+	// TCPHeaderMaximumSize is the maximum header size of a TCP packet.
+	TCPHeaderMaximumSize = TCPMinimumSize + TCPOptionsMaximumSize
 
 	// TCPProtocolNumber is TCP's transport protocol number.
 	TCPProtocolNumber tcpip.TransportProtocolNumber = 6
@@ -220,19 +237,12 @@ func (b TCP) SetChecksum(checksum uint16) {
 	binary.BigEndian.PutUint16(b[tcpChecksum:], checksum)
 }
 
-// CalculateChecksum calculates the checksum of the tcp segment given
-// the totalLen and partialChecksum(descriptions below)
-// totalLen is the total length of the segment
+// CalculateChecksum calculates the checksum of the tcp segment.
 // partialChecksum is the checksum of the network-layer pseudo-header
-// (excluding the total length) and the checksum of the segment data.
-func (b TCP) CalculateChecksum(partialChecksum uint16, totalLen uint16) uint16 {
-	// Add the length portion of the checksum to the pseudo-checksum.
-	tmp := make([]byte, 2)
-	binary.BigEndian.PutUint16(tmp, totalLen)
-	checksum := Checksum(tmp, partialChecksum)
-
+// and the checksum of the segment data.
+func (b TCP) CalculateChecksum(partialChecksum uint16) uint16 {
 	// Calculate the rest of the checksum.
-	return Checksum(b[:b.DataOffset()], checksum)
+	return Checksum(b[:b.DataOffset()], partialChecksum)
 }
 
 // Options returns a slice that holds the unparsed TCP options in the segment.
@@ -285,6 +295,11 @@ func (b TCP) EncodePartial(partialChecksum, length uint16, seqnum, acknum uint32
 
 	// Encode the checksum.
 	b.SetChecksum(^checksum)
+}
+
+// TCPChecksumOffset returns offset of the checksum field.
+func TCPChecksumOffset() uint16 {
+	return tcpChecksum
 }
 
 // ParseSynOptions parses the options received in a SYN segment and returns the

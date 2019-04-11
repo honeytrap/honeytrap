@@ -17,13 +17,14 @@
 package header
 
 import (
+	"encoding/binary"
+
 	"github.com/google/netstack/tcpip"
+	"github.com/google/netstack/tcpip/buffer"
 )
 
-// Checksum calculates the checksum (as defined in RFC 1071) of the bytes in the
-// given byte array.
-func Checksum(buf []byte, initial uint16) uint16 {
-	v := uint32(initial)
+func calculateChecksum(buf []byte, initial uint32) uint16 {
+	v := initial
 
 	l := len(buf)
 	if l&1 != 0 {
@@ -38,19 +39,56 @@ func Checksum(buf []byte, initial uint16) uint16 {
 	return ChecksumCombine(uint16(v), uint16(v>>16))
 }
 
+// Checksum calculates the checksum (as defined in RFC 1071) of the bytes in the
+// given byte array.
+//
+// The initial checksum must have been computed on an even number of bytes.
+func Checksum(buf []byte, initial uint16) uint16 {
+	return calculateChecksum(buf, uint32(initial))
+}
+
+// ChecksumVV calculates the checksum (as defined in RFC 1071) of the bytes in
+// the given VectorizedView.
+//
+// The initial checksum must have been computed on an even number of bytes.
+func ChecksumVV(vv buffer.VectorisedView, initial uint16) uint16 {
+	var odd bool
+	sum := initial
+	for _, v := range vv.Views() {
+		if len(v) == 0 {
+			continue
+		}
+		s := uint32(sum)
+		if odd {
+			s += uint32(v[0])
+			v = v[1:]
+		}
+		odd = len(v)&1 != 0
+		sum = calculateChecksum(v, s)
+	}
+	return sum
+}
+
 // ChecksumCombine combines the two uint16 to form their checksum. This is done
 // by adding them and the carry.
+//
+// Note that checksum a must have been computed on an even number of bytes.
 func ChecksumCombine(a, b uint16) uint16 {
 	v := uint32(a) + uint32(b)
 	return uint16(v + v>>16)
 }
 
-// PseudoHeaderChecksum calculates the pseudo-header checksum for the
-// given destination protocol and network address, ignoring the length
-// field. Pseudo-headers are needed by transport layers when calculating
-// their own checksum.
-func PseudoHeaderChecksum(protocol tcpip.TransportProtocolNumber, srcAddr tcpip.Address, dstAddr tcpip.Address) uint16 {
+// PseudoHeaderChecksum calculates the pseudo-header checksum for the given
+// destination protocol and network address. Pseudo-headers are needed by
+// transport layers when calculating their own checksum.
+func PseudoHeaderChecksum(protocol tcpip.TransportProtocolNumber, srcAddr tcpip.Address, dstAddr tcpip.Address, totalLen uint16) uint16 {
 	xsum := Checksum([]byte(srcAddr), 0)
 	xsum = Checksum([]byte(dstAddr), xsum)
+
+	// Add the length portion of the checksum to the pseudo-checksum.
+	tmp := make([]byte, 2)
+	binary.BigEndian.PutUint16(tmp, totalLen)
+	xsum = Checksum(tmp, xsum)
+
 	return Checksum([]byte{0, uint8(protocol)}, xsum)
 }

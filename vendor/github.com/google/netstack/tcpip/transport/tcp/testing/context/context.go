@@ -327,14 +327,11 @@ func (c *Context) BuildSegment(payload []byte, h *Headers) buffer.VectorisedView
 	})
 
 	// Calculate the TCP pseudo-header checksum.
-	xsum := header.Checksum([]byte(TestAddr), 0)
-	xsum = header.Checksum([]byte(StackAddr), xsum)
-	xsum = header.Checksum([]byte{0, uint8(tcp.ProtocolNumber)}, xsum)
+	xsum := header.PseudoHeaderChecksum(tcp.ProtocolNumber, TestAddr, StackAddr, uint16(len(t)))
 
 	// Calculate the TCP checksum and set it.
-	length := uint16(header.TCPMinimumSize + len(h.TCPOpts) + len(payload))
 	xsum = header.Checksum(payload, xsum)
-	t.SetChecksum(^t.CalculateChecksum(xsum, length))
+	t.SetChecksum(^t.CalculateChecksum(xsum))
 
 	// Inject packet.
 	return buf.ToVectorisedView()
@@ -482,14 +479,11 @@ func (c *Context) SendV6Packet(payload []byte, h *Headers) {
 	})
 
 	// Calculate the TCP pseudo-header checksum.
-	xsum := header.Checksum([]byte(TestV6Addr), 0)
-	xsum = header.Checksum([]byte(StackV6Addr), xsum)
-	xsum = header.Checksum([]byte{0, uint8(tcp.ProtocolNumber)}, xsum)
+	xsum := header.PseudoHeaderChecksum(tcp.ProtocolNumber, TestV6Addr, StackV6Addr, uint16(len(t)))
 
 	// Calculate the TCP checksum and set it.
-	length := uint16(header.TCPMinimumSize + len(payload))
 	xsum = header.Checksum(payload, xsum)
-	t.SetChecksum(^t.CalculateChecksum(xsum, length))
+	t.SetChecksum(^t.CalculateChecksum(xsum))
 
 	// Inject packet.
 	c.linkEP.Inject(ipv6.ProtocolNumber, buf.ToVectorisedView())
@@ -701,7 +695,7 @@ func (c *Context) CreateConnectedWithOptions(wantOptions header.TCPSynOptions) *
 	synOptions := header.ParseSynOptions(tcpSeg.Options(), false)
 
 	// Build options w/ tsVal to be sent in the SYN-ACK.
-	synAckOptions := make([]byte, 40)
+	synAckOptions := make([]byte, header.TCPOptionsMaximumSize)
 	offset := 0
 	if wantOptions.TS {
 		offset += header.EncodeTSOption(wantOptions.TSVal, synOptions.TSVal, synAckOptions[offset:])
@@ -796,7 +790,7 @@ func (c *Context) AcceptWithOptions(wndScale int, synOptions header.TCPSynOption
 	}
 	defer ep.Close()
 
-	if err := ep.Bind(tcpip.FullAddress{Port: StackPort}, nil); err != nil {
+	if err := ep.Bind(tcpip.FullAddress{Port: StackPort}); err != nil {
 		c.t.Fatalf("Bind failed: %v", err)
 	}
 
@@ -849,7 +843,7 @@ func (c *Context) PassiveConnect(maxPayload, wndScale int, synOptions header.TCP
 // value of the window scaling option to be sent in the SYN. If synOptions.WS >
 // 0 then we send the WindowScale option.
 func (c *Context) PassiveConnectWithOptions(maxPayload, wndScale int, synOptions header.TCPSynOptions) *RawEndpoint {
-	opts := make([]byte, 40)
+	opts := make([]byte, header.TCPOptionsMaximumSize)
 	offset := 0
 	offset += header.EncodeMSSOption(uint32(maxPayload), opts)
 
