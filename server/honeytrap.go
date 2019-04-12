@@ -29,7 +29,6 @@ import (
 
 	"github.com/honeytrap/honeytrap/cmd"
 	"github.com/honeytrap/honeytrap/config"
-	"github.com/honeytrap/honeytrap/web"
 
 	"github.com/honeytrap/honeytrap/director"
 	_ "github.com/honeytrap/honeytrap/director/forward"
@@ -344,17 +343,6 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 	go hc.heartbeat()
 
 	hc.profiler.Start()
-
-	w, err := web.New(
-		web.WithEventBus(hc.bus),
-		web.WithDataDir(hc.dataDir),
-		web.WithConfig(hc.config.Web, hc.config),
-	)
-	if err != nil {
-		log.Error("Error parsing configuration of web: %s", err.Error())
-	}
-
-	w.Start()
 
 	channels := map[string]pushers.Channel{}
 	isChannelUsed := make(map[string]bool)
