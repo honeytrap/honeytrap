@@ -1,1 +1,0 @@
-This is a fork of github.com/PromonLogicalis/snmp (MIT licensed, copyright (c) 2016 PromonLogicalis).
