@@ -3,7 +3,7 @@ language: go
 go:
   - stable
   - 1.12.x
-  - 1.10.x
+  - 1.11.x
 
 sudo: required
 dist: xenial
@@ -17,7 +17,7 @@ os:
 - linux
 
 env:
-- GIMME_OS=linux GIMME_ARCH=amd64
+- GIMME_OS=linux GIMME_ARCH=amd64 GO111MODULE=on
 
 addons:
   apt:
