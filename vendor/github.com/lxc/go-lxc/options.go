@@ -200,7 +200,7 @@ type MigrateOptions struct {
 	FeaturesToCheck CriuFeatures
 }
 
-// ConsoleLogOptions type is used for defining console log options.
+// ConsoleLogOptioins type is used for defining console log options.
 type ConsoleLogOptions struct {
 	ClearLog       bool
 	ReadLog        bool

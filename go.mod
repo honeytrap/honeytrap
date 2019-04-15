@@ -9,7 +9,7 @@ require (
 	github.com/PromonLogicalis/asn1 v0.0.0-20190312173541-d60463189a56 // indirect
 	github.com/Shopify/sarama v1.16.0
 	github.com/Shopify/toxiproxy v2.1.4+incompatible // indirect
-	github.com/boltdb/bolt v1.3.1 // indirect
+	github.com/boltdb/bolt v1.3.1
 	github.com/dgraph-io/badger v0.0.0-20180227002726-94594b20babf
 	github.com/dgryski/go-farm v0.0.0-20180109070241-2de33835d102 // indirect
 	github.com/dutchcoders/gobus v0.0.0-20180915095724-ece5a7810d96
@@ -23,7 +23,7 @@ require (
 	github.com/glycerine/goconvey v0.0.0-20190410193231-58a59202ab31 // indirect
 	github.com/glycerine/rbuf v0.0.0-20171031012212-54320fe9f6f3
 	github.com/go-asn1-ber/asn1-ber v0.0.0-20170511165959-379148ca0225
-	github.com/golang/protobuf v0.0.0-20180202184318-bbd03ef6da3a
+	github.com/golang/protobuf v0.0.0-20180202184318-bbd03ef6da3a // indirect
 	github.com/golang/snappy v0.0.0-20170215233205-553a64147049 // indirect
 	github.com/google/btree v1.0.0 // indirect
 	github.com/google/gopacket v1.1.14
@@ -31,7 +31,7 @@ require (
 	github.com/gorilla/websocket v1.2.0
 	github.com/honeytrap/honeytrap v0.0.0-20190405081451-87794dac6942
 	github.com/honeytrap/honeytrap-web v0.0.0-20180212153621-02944754979e
-	github.com/honeytrap/protocol v0.0.0-20190410072324-219b95413db0 // indirect
+	github.com/honeytrap/protocol v0.0.0-20190410072324-219b95413db0
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/lxc/go-lxc v0.0.0-20180227230311-2660c429a942
 	github.com/mailru/easyjson v0.0.0-20171120080333-32fa128f234d // indirect
@@ -56,7 +56,7 @@ require (
 	github.com/stretchr/testify v1.3.0 // indirect
 	github.com/vishvananda/netlink v1.0.0
 	github.com/vishvananda/netns v0.0.0-20171111001504-be1fbeda1936 // indirect
-	github.com/yuin/gopher-lua v0.0.0-20190206043414-8bfc7677f583 // indirect
+	github.com/yuin/gopher-lua v0.0.0-20190206043414-8bfc7677f583
 	golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2
 	golang.org/x/sync v0.0.0-20190412183630-56d357773e84 // indirect
 	golang.org/x/time v0.0.0-20170927054726-6dc17368e09b

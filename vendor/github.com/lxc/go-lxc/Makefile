@@ -9,26 +9,24 @@ format:
 	@goimports -w *.go || true
 
 test:
-	@echo "$(OK_COLOR)==> Running tests for priveleged user $(NO_COLOR)"
-	@sudo `which go` test -v -coverprofile=/tmp/priv.out
+	@echo "$(OK_COLOR)==> Running go test $(NO_COLOR)"
+	@sudo `which go` test -v
 
 test-race:
-	@echo "$(OK_COLOR)==> Running tests with -race flag for priveleged user $(NO_COLOR)"
+	@echo "$(OK_COLOR)==> Running go test $(NO_COLOR)"
 	@sudo `which go` test -race -v
 
 test-unprivileged:
-	@echo "$(OK_COLOR)==> Running tests for unprivileged user $(NO_COLOR)"
-	@`which go` test -v -coverprofile=/tmp/unpriv.out
+	@echo "$(OK_COLOR)==> Running go test for unprivileged user$(NO_COLOR)"
+	@`which go` test -v
 
 test-unprivileged-race:
-	@echo "$(OK_COLOR)==> Running tests with -race flag for unprivileged user $(NO_COLOR)"
+	@echo "$(OK_COLOR)==> Running go test for unprivileged user$(NO_COLOR)"
 	@`which go` test -race -v
 
 cover:
-	@echo "$(OK_COLOR)==> Running cover for privileged user $(NO_COLOR)"
-	@`which go` tool cover -func=/tmp/priv.out || true
-	@echo "$(OK_COLOR)==> Running cover for unprivileged user $(NO_COLOR)"
-	@`which go` tool cover -func=/tmp/unpriv.out || true
+	@sudo `which go` test -v -coverprofile=coverage.out
+	@`which go` tool cover -func=coverage.out
 
 doc:
 	@`which godoc` gopkg.in/lxc/go-lxc.v2 | less
@@ -42,7 +40,7 @@ lint:
 	@`which golint` . || true
 
 escape-analysis:
-	@`which go` build -gcflags -m
+	@go build -gcflags -m
 
 ctags:
 	@ctags -R --languages=c,go

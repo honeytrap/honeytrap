@@ -12,7 +12,7 @@ package lxc
 
 static char** makeCharArray(size_t size) {
     // caller checks return value
-    return calloc(size, sizeof(char*));
+    return calloc(sizeof(char*), size);
 }
 
 static void setArrayString(char **array, char *string, size_t n) {

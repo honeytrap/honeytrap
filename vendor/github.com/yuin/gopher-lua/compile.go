@@ -65,6 +65,9 @@ var _ecnonem2 = &expcontext{ecNone, regNotDefined, -2}
 var ecfuncdef = &expcontext{ecMethod, regNotDefined, 0}
 
 func ecupdate(ec *expcontext, ctype expContextType, reg, varargopt int) {
+	if ec == _ecnone0 || ec == _ecnonem1 || ec == _ecnonem2 {
+		panic("can not update ec cache")
+	}
 	ec.ctype = ctype
 	ec.reg = reg
 	ec.varargopt = varargopt
@@ -80,6 +83,10 @@ func ecnone(varargopt int) *expcontext {
 		return _ecnonem2
 	}
 	return &expcontext{ecNone, regNotDefined, varargopt}
+}
+
+func shouldmove(ec *expcontext, reg int) bool {
+	return ec.ctype == ecLocal && ec.reg != regNotDefined && ec.reg != reg
 }
 
 func sline(pos ast.PositionHolder) int {
@@ -199,6 +206,15 @@ func (cd *codeStore) PropagateMV(top int, save *int, reg *int, inc int) {
 	}
 	*save = *reg
 	*reg = *reg + inc
+}
+
+func (cd *codeStore) AddLoadNil(a, b, line int) {
+	last := cd.Last()
+	if opGetOpCode(last) == OP_LOADNIL && (opGetArgA(last)+opGetArgB(last)) == a {
+		cd.SetB(cd.LastPC(), b)
+	} else {
+		cd.AddABC(OP_LOADNIL, a, b, 0, line)
+	}
 }
 
 func (cd *codeStore) SetOpCode(pc int, v int) {
@@ -661,7 +677,7 @@ func compileRegAssignment(context *funcContext, names []string, exprs []ast.Expr
 	// extra left names
 	if lennames > namesassigned {
 		restleft := lennames - namesassigned - 1
-		context.Code.AddABC(OP_LOADNIL, reg, reg+restleft, 0, line)
+		context.Code.AddLoadNil(reg, reg+restleft, line)
 		reg += restleft
 	}
 
@@ -963,7 +979,7 @@ func compileExpr(context *funcContext, reg int, expr ast.Expr, ec *expcontext) i
 		code.AddABx(OP_LOADK, sreg, context.ConstIndex(ex.Value), sline(ex))
 		return sused
 	case *ast.NilExpr:
-		code.AddABC(OP_LOADNIL, sreg, sreg, 0, sline(ex))
+		code.AddLoadNil(sreg, sreg, sline(ex))
 		return sused
 	case *ast.FalseExpr:
 		code.AddABC(OP_LOADBOOL, sreg, 0, 0, sline(ex))
@@ -1091,10 +1107,7 @@ func constFold(exp ast.Expr) ast.Expr { // {{{
 				panic(fmt.Sprintf("unknown binop: %v", expr.Operator))
 			}
 		} else {
-			retexpr := *expr
-			retexpr.Lhs = constFold(expr.Lhs)
-			retexpr.Rhs = constFold(expr.Rhs)
-			return &retexpr
+			return expr
 		}
 	case *ast.UnaryMinusOpExpr:
 		expr.Expr = constFold(expr.Expr)
@@ -1216,7 +1229,7 @@ func compileTableExpr(context *funcContext, reg int, ex *ast.TableExpr, ec *expc
 	}
 	code.SetB(tablepc, int2Fb(arraycount))
 	code.SetC(tablepc, int2Fb(len(ex.Fields)-arraycount))
-	if ec.ctype == ecLocal && ec.reg != tablereg {
+	if shouldmove(ec, tablereg) {
 		code.AddABC(OP_MOVE, ec.reg, tablereg, 0, sline(ex))
 	}
 } // }}}
@@ -1449,11 +1462,17 @@ func compileLogicalOpExprAux(context *funcContext, reg int, expr ast.Expr, ec *e
 		return
 	}
 
+	a := reg
+	sreg := savereg(ec, a)
 	if !hasnextcond && thenlabel == elselabel {
-		reg += compileExpr(context, reg, expr, ec)
+		reg += compileExpr(context, reg, expr, &expcontext{ec.ctype, intMax(a, sreg), ec.varargopt})
+		last := context.Code.Last()
+		if opGetOpCode(last) == OP_MOVE && opGetArgA(last) == a {
+			context.Code.SetA(context.Code.LastPC(), sreg)
+		} else {
+			context.Code.AddABC(OP_MOVE, sreg, a, 0, sline(expr))
+		}
 	} else {
-		a := reg
-		sreg := savereg(ec, a)
 		reg += compileExpr(context, reg, expr, ecnone(0))
 		if sreg == a {
 			code.AddABC(OP_TEST, a, 0, 0^flip, sline(expr))
@@ -1507,7 +1526,7 @@ func compileFuncCallExpr(context *funcContext, reg int, expr *ast.FuncCallExpr, 
 	context.Code.AddABC(OP_CALL, funcreg, b, ec.varargopt+2, sline(expr))
 	context.Proto.DbgCalls = append(context.Proto.DbgCalls, DbgCall{Pc: context.Code.LastPC(), Name: name})
 
-	if ec.varargopt == 0 && ec.ctype == ecLocal && funcreg != ec.reg {
+	if ec.varargopt == 0 && shouldmove(ec, funcreg) {
 		context.Code.AddABC(OP_MOVE, ec.reg, funcreg, 0, sline(expr))
 		return 1
 	}

@@ -67,7 +67,6 @@ var (
 	ErrTemplateNotAllowed            = NewError("unprivileged users only allowed to use \"download\" template")
 	ErrUnfreezeFailed                = NewError("unfreezing the container failed")
 	ErrUnknownBackendStore           = NewError("unknown backend type")
-	ErrReleaseFailed                 = NewError("releasing the container failed")
 )
 
 // Error represents a basic error that implies the error interface.
