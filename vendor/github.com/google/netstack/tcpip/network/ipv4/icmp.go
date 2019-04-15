@@ -17,7 +17,6 @@ package ipv4
 import (
 	"encoding/binary"
 
-	"github.com/google/netstack/tcpip"
 	"github.com/google/netstack/tcpip/buffer"
 	"github.com/google/netstack/tcpip/header"
 	"github.com/google/netstack/tcpip/stack"
@@ -55,34 +54,53 @@ func (e *endpoint) handleControl(typ stack.ControlType, extra uint32, vv buffer.
 	e.dispatcher.DeliverTransportControlPacket(e.id.LocalAddress, h.DestinationAddress(), ProtocolNumber, p, typ, extra, vv)
 }
 
-func (e *endpoint) handleICMP(r *stack.Route, vv buffer.VectorisedView) {
+func (e *endpoint) handleICMP(r *stack.Route, netHeader buffer.View, vv buffer.VectorisedView) {
+	stats := r.Stats()
+	received := stats.ICMP.V4PacketsReceived
 	v := vv.First()
 	if len(v) < header.ICMPv4MinimumSize {
+		received.Invalid.Increment()
 		return
 	}
 	h := header.ICMPv4(v)
 
+	// TODO: Meaningfully handle all ICMP types.
 	switch h.Type() {
 	case header.ICMPv4Echo:
+		received.Echo.Increment()
 		if len(v) < header.ICMPv4EchoMinimumSize {
+			received.Invalid.Increment()
 			return
 		}
-		vv.TrimFront(header.ICMPv4MinimumSize)
-		req := echoRequest{r: r.Clone(), v: vv.ToView()}
-		select {
-		case e.echoRequests <- req:
-		default:
-			req.r.Release()
+		// It's possible that a raw socket expects to receive this.
+		e.dispatcher.DeliverTransportPacket(r, header.ICMPv4ProtocolNumber, netHeader, vv)
+
+		vv := vv.Clone(nil)
+		vv.TrimFront(header.ICMPv4EchoMinimumSize)
+		hdr := buffer.NewPrependable(int(r.MaxHeaderLength()) + header.ICMPv4EchoMinimumSize)
+		pkt := header.ICMPv4(hdr.Prepend(header.ICMPv4EchoMinimumSize))
+		copy(pkt, h)
+		pkt.SetType(header.ICMPv4EchoReply)
+		pkt.SetChecksum(^header.Checksum(pkt, header.ChecksumVV(vv, 0)))
+		sent := stats.ICMP.V4PacketsSent
+		if err := r.WritePacket(nil /* gso */, hdr, vv, header.ICMPv4ProtocolNumber, r.DefaultTTL()); err != nil {
+			sent.Dropped.Increment()
+			return
 		}
+		sent.EchoReply.Increment()
 
 	case header.ICMPv4EchoReply:
+		received.EchoReply.Increment()
 		if len(v) < header.ICMPv4EchoMinimumSize {
+			received.Invalid.Increment()
 			return
 		}
-		e.dispatcher.DeliverTransportPacket(r, header.ICMPv4ProtocolNumber, vv)
+		e.dispatcher.DeliverTransportPacket(r, header.ICMPv4ProtocolNumber, netHeader, vv)
 
 	case header.ICMPv4DstUnreachable:
+		received.DstUnreachable.Increment()
 		if len(v) < header.ICMPv4DstUnreachableMinimumSize {
+			received.Invalid.Increment()
 			return
 		}
 		vv.TrimFront(header.ICMPv4DstUnreachableMinimumSize)
@@ -94,31 +112,32 @@ func (e *endpoint) handleICMP(r *stack.Route, vv buffer.VectorisedView) {
 			mtu := uint32(binary.BigEndian.Uint16(v[header.ICMPv4DstUnreachableMinimumSize-2:]))
 			e.handleControl(stack.ControlPacketTooBig, calculateMTU(mtu), vv)
 		}
+
+	case header.ICMPv4SrcQuench:
+		received.SrcQuench.Increment()
+
+	case header.ICMPv4Redirect:
+		received.Redirect.Increment()
+
+	case header.ICMPv4TimeExceeded:
+		received.TimeExceeded.Increment()
+
+	case header.ICMPv4ParamProblem:
+		received.ParamProblem.Increment()
+
+	case header.ICMPv4Timestamp:
+		received.Timestamp.Increment()
+
+	case header.ICMPv4TimestampReply:
+		received.TimestampReply.Increment()
+
+	case header.ICMPv4InfoRequest:
+		received.InfoRequest.Increment()
+
+	case header.ICMPv4InfoReply:
+		received.InfoReply.Increment()
+
+	default:
+		received.Invalid.Increment()
 	}
-	// TODO: Handle other ICMP types.
-}
-
-type echoRequest struct {
-	r stack.Route
-	v buffer.View
-}
-
-func (e *endpoint) echoReplier() {
-	for req := range e.echoRequests {
-		sendPing4(&req.r, 0, req.v)
-		req.r.Release()
-	}
-}
-
-func sendPing4(r *stack.Route, code byte, data buffer.View) *tcpip.Error {
-	hdr := buffer.NewPrependable(header.ICMPv4EchoMinimumSize + int(r.MaxHeaderLength()))
-
-	icmpv4 := header.ICMPv4(hdr.Prepend(header.ICMPv4EchoMinimumSize))
-	icmpv4.SetType(header.ICMPv4EchoReply)
-	icmpv4.SetCode(code)
-	copy(icmpv4[header.ICMPv4MinimumSize:], data)
-	data = data[header.ICMPv4EchoMinimumSize-header.ICMPv4MinimumSize:]
-	icmpv4.SetChecksum(^header.Checksum(icmpv4, header.Checksum(data, 0)))
-
-	return r.WritePacket(hdr, data.ToVectorisedView(), header.ICMPv4ProtocolNumber, r.DefaultTTL())
 }

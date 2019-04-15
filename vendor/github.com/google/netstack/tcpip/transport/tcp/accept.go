@@ -15,13 +15,13 @@
 package tcp
 
 import (
+	"crypto/sha1"
 	"encoding/binary"
 	"hash"
 	"io"
 	"sync"
 	"time"
 
-	"crypto/sha1"
 	"github.com/google/netstack/rand"
 	"github.com/google/netstack/sleep"
 	"github.com/google/netstack/tcpip"
@@ -214,8 +214,10 @@ func (l *listenContext) createConnectedEndpoint(s *segment, iss seqnum.Value, ir
 	n.maybeEnableTimestamp(rcvdSynOpts)
 	n.maybeEnableSACKPermitted(rcvdSynOpts)
 
+	n.initGSO()
+
 	// Register new endpoint so that packets are routed to it.
-	if err := n.stack.RegisterTransportEndpoint(n.boundNICID, n.effectiveNetProtos, ProtocolNumber, n.id, n); err != nil {
+	if err := n.stack.RegisterTransportEndpoint(n.boundNICID, n.effectiveNetProtos, ProtocolNumber, n.id, n, n.reusePort); err != nil {
 		n.Close()
 		return nil, err
 	}
@@ -248,11 +250,7 @@ func (l *listenContext) createEndpointAndPerformHandshake(s *segment, opts *head
 	}
 
 	// Perform the 3-way handshake.
-	h, err := newHandshake(ep, l.rcvWnd)
-	if err != nil {
-		ep.Close()
-		return nil, err
-	}
+	h := newHandshake(ep, l.rcvWnd)
 
 	h.resetToSynRcvd(cookie, irs, opts)
 	if err := h.execute(); err != nil {
@@ -304,7 +302,7 @@ func (e *endpoint) handleSynSegment(ctx *listenContext, s *segment, opts *header
 // and needs to handle it.
 func (e *endpoint) handleListenSegment(ctx *listenContext, s *segment) {
 	switch s.flags {
-	case flagSyn:
+	case header.TCPFlagSyn:
 		opts := parseSynSegmentOptions(s)
 		if incSynRcvdCount() {
 			s.incRef()
@@ -322,10 +320,10 @@ func (e *endpoint) handleListenSegment(ctx *listenContext, s *segment) {
 				TSVal: tcpTimeStamp(timeStampOffset()),
 				TSEcr: opts.TSVal,
 			}
-			sendSynTCP(&s.route, s.id, flagSyn|flagAck, cookie, s.sequenceNumber+1, ctx.rcvWnd, synOpts)
+			sendSynTCP(&s.route, s.id, header.TCPFlagSyn|header.TCPFlagAck, cookie, s.sequenceNumber+1, ctx.rcvWnd, synOpts)
 		}
 
-	case flagAck:
+	case header.TCPFlagAck:
 		if data, ok := ctx.isCookieValid(s.id, s.ackNumber-1, s.sequenceNumber-1); ok && int(data) < len(mssTable) {
 			// Create newly accepted endpoint and deliver it.
 			rcvdSynOptions := &header.TCPSynOptions{

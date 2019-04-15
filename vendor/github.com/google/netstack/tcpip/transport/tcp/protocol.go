@@ -106,6 +106,12 @@ func (*protocol) NewEndpoint(stack *stack.Stack, netProto tcpip.NetworkProtocolN
 	return newEndpoint(stack, netProto, waiterQueue), nil
 }
 
+// NewRawEndpoint creates a new raw TCP endpoint. Raw TCP sockets are currently
+// unsupported. It implements stack.TransportProtocol.NewRawEndpoint.
+func (p *protocol) NewRawEndpoint(stack *stack.Stack, netProto tcpip.NetworkProtocolNumber, waiterQueue *waiter.Queue) (tcpip.Endpoint, *tcpip.Error) {
+	return nil, tcpip.ErrUnknownProtocol
+}
+
 // MinimumPacketSize returns the minimum valid tcp packet size.
 func (*protocol) MinimumPacketSize() int {
 	return header.TCPMinimumSize
@@ -134,7 +140,7 @@ func (p *protocol) HandleUnknownDestinationPacket(r *stack.Route, id stack.Trans
 	}
 
 	// There's nothing to do if this is already a reset packet.
-	if s.flagIsSet(flagRst) {
+	if s.flagIsSet(header.TCPFlagRst) {
 		return true
 	}
 
@@ -149,13 +155,13 @@ func (p *protocol) HandleUnknownDestinationPacket(r *stack.Route, id stack.Trans
 func replyWithReset(s *segment) {
 	// Get the seqnum from the packet if the ack flag is set.
 	seq := seqnum.Value(0)
-	if s.flagIsSet(flagAck) {
+	if s.flagIsSet(header.TCPFlagAck) {
 		seq = s.ackNumber
 	}
 
 	ack := s.sequenceNumber.Add(s.logicalLen())
 
-	sendTCP(&s.route, s.id, buffer.VectorisedView{}, s.route.DefaultTTL(), flagRst|flagAck, seq, ack, 0, nil)
+	sendTCP(&s.route, s.id, buffer.VectorisedView{}, s.route.DefaultTTL(), header.TCPFlagRst|header.TCPFlagAck, seq, ack, 0, nil /* options */, nil /* gso */)
 }
 
 // SetOption implements TransportProtocol.SetOption.

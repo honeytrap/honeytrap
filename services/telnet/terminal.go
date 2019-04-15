@@ -1,11 +1,22 @@
-// Copyright 2011 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2016-2019 DutchSec (https://dutchsec.com/)
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 package telnet
 
 import (
 	"bytes"
 	"io"
+	"net"
 	"sync"
 	"unicode/utf8"
 )
@@ -36,6 +47,8 @@ var vt100EscapeCodes = EscapeCodes{
 // Terminal contains the state for running a VT100 terminal that is capable of
 // reading lines of input.
 type Terminal struct {
+	net.Conn
+
 	// AutoCompleteCallback, if non-null, is called for each keypress with
 	// the full input line and the current position of the cursor (in
 	// bytes, as an index into |line|). If it returns ok=false, the key
@@ -52,7 +65,6 @@ type Terminal struct {
 	// concurrent processing of a key press and a Write() call.
 	lock sync.Mutex
 
-	c      io.ReadWriter
 	prompt []rune
 
 	// line is the current line being entered.
@@ -97,10 +109,11 @@ type Terminal struct {
 // a local terminal, that terminal must first have been put into raw mode.
 // prompt is a string that is written at the start of each input line (i.e.
 // "> ").
-func NewTerminal(c io.ReadWriter, prompt string) *Terminal {
+func NewTerminal(c net.Conn, prompt string) *Terminal {
 	return &Terminal{
+		Conn: c,
+
 		Escape:       &vt100EscapeCodes,
-		c:            c,
 		prompt:       []rune(prompt),
 		termWidth:    80,
 		termHeight:   24,
@@ -634,7 +647,7 @@ func (t *Terminal) Write(buf []byte) (n int, err error) {
 	if t.cursorX == 0 && t.cursorY == 0 {
 		// This is the easy case: there's nothing on the screen that we
 		// have to move out of the way.
-		return writeWithCRLF(t.c, buf)
+		return writeWithCRLF(t.Conn, buf)
 	}
 
 	// We have a prompt and possibly user input on the screen. We
@@ -649,12 +662,12 @@ func (t *Terminal) Write(buf []byte) (n int, err error) {
 		t.clearLineToRight()
 	}
 
-	if _, err = t.c.Write(t.outBuf); err != nil {
+	if _, err = t.Conn.Write(t.outBuf); err != nil {
 		return
 	}
 	t.outBuf = t.outBuf[:0]
 
-	if n, err = writeWithCRLF(t.c, buf); err != nil {
+	if n, err = writeWithCRLF(t.Conn, buf); err != nil {
 		return
 	}
 
@@ -665,7 +678,7 @@ func (t *Terminal) Write(buf []byte) (n int, err error) {
 
 	t.moveCursorToPos(t.pos)
 
-	if _, err = t.c.Write(t.outBuf); err != nil {
+	if _, err = t.Conn.Write(t.outBuf); err != nil {
 		return
 	}
 	t.outBuf = t.outBuf[:0]
@@ -705,7 +718,7 @@ func (t *Terminal) readLine() (line string, err error) {
 
 	if t.cursorX == 0 && t.cursorY == 0 {
 		t.writeLine(t.prompt)
-		t.c.Write(t.outBuf)
+		t.Conn.Write(t.outBuf)
 		t.outBuf = t.outBuf[:0]
 	}
 
@@ -748,7 +761,7 @@ func (t *Terminal) readLine() (line string, err error) {
 		} else {
 			t.remainder = nil
 		}
-		t.c.Write(t.outBuf)
+		t.Conn.Write(t.outBuf)
 		t.outBuf = t.outBuf[:0]
 		if lineOk {
 			if t.echo {
@@ -767,7 +780,7 @@ func (t *Terminal) readLine() (line string, err error) {
 		var n int
 
 		t.lock.Unlock()
-		n, err = t.c.Read(readBuf)
+		n, err = t.Conn.Read(readBuf)
 		t.lock.Lock()
 
 		if err != nil {
@@ -855,7 +868,7 @@ func (t *Terminal) SetSize(width, height int) error {
 		t.clearAndRepaintLinePlusNPrevious(t.maxLine)
 	}
 
-	_, err := t.c.Write(t.outBuf)
+	_, err := t.Conn.Write(t.outBuf)
 	t.outBuf = t.outBuf[:0]
 	return err
 }
@@ -879,9 +892,9 @@ var ErrPasteIndicator = pasteIndicatorError{}
 // from ReadLine with the error set to ErrPasteIndicator.
 func (t *Terminal) SetBracketedPasteMode(on bool) {
 	if on {
-		io.WriteString(t.c, "\x1b[?2004h")
+		io.WriteString(t.Conn, "\x1b[?2004h")
 	} else {
-		io.WriteString(t.c, "\x1b[?2004l")
+		io.WriteString(t.Conn, "\x1b[?2004l")
 	}
 }
 

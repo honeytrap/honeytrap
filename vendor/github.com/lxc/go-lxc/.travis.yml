@@ -4,10 +4,9 @@ os:
   - linux
 
 go:
-  - 1.6
-  - 1.7
-  - 1.8
-  - 1.9
+  - "1.9"
+  - "1.10"
+  - "1.11"
   - tip
 
 matrix:
@@ -18,21 +17,23 @@ matrix:
 before_install:
  - sudo add-apt-repository ppa:ubuntu-lxc/daily -y
  - sudo apt-get update
- - sudo apt-get install -qq lxc lxc-dev uidmap
+ - sudo apt-get install -qq lxc lxc-dev uidmap busybox
  - echo "${USER}:100000:65536" | sudo tee /etc/subuid
  - echo "${USER}:100000:65536" | sudo tee /etc/subgid
  - echo "${USER} veth lxcbr0 10" | sudo tee -a /etc/lxc/lxc-usernet
- - mkdir -p ~/.config/lxc/
- - cp /etc/lxc/default.conf ~/.config/lxc/default.conf
- - echo "lxc.idmap = u 0 100000 65536" | sudo tee -a ~/.config/lxc/default.conf
- - echo "lxc.idmap = g 0 100000 65536" | sudo tee -a ~/.config/lxc/default.conf
+ - mkdir -p ${HOME}/.config/lxc/
+ - cp /etc/lxc/default.conf ${HOME}/.config/lxc/default.conf
+ - echo "lxc.id_map = u 0 100000 65536" | sudo tee -a ${HOME}/.config/lxc/default.conf
+ - echo "lxc.id_map = g 0 100000 65536" | sudo tee -a ${HOME}/.config/lxc/default.conf
  - "make setup-test-cgroup"
- - mkdir -p ~/.local/share
- - chmod +x ~/.local/share
- - chmod +x ~/.local/
+ - mkdir -p ${HOME}/.local/share/lxc
  - chmod +x ${HOME}
+ - chmod +x ${HOME}/.local
+ - chmod +x ${HOME}/.local/share
+ - chmod +x ${HOME}/.local/share/lxc
 
 install:
+  - go get golang.org/x/tools/cmd/goimports
   - go get gopkg.in/lxc/go-lxc.v2
 
 script:

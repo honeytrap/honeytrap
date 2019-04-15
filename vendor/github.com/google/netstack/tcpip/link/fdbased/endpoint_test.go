@@ -24,18 +24,22 @@ import (
 	"syscall"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/google/netstack/tcpip"
 	"github.com/google/netstack/tcpip/buffer"
 	"github.com/google/netstack/tcpip/header"
+	"github.com/google/netstack/tcpip/link/rawfile"
 	"github.com/google/netstack/tcpip/stack"
 )
 
 const (
-	mtu   = 1500
-	laddr = tcpip.LinkAddress("\x11\x22\x33\x44\x55\x66")
-	raddr = tcpip.LinkAddress("\x77\x88\x99\xaa\xbb\xcc")
-	proto = 10
+	mtu        = 1500
+	laddr      = tcpip.LinkAddress("\x11\x22\x33\x44\x55\x66")
+	raddr      = tcpip.LinkAddress("\x77\x88\x99\xaa\xbb\xcc")
+	proto      = 10
+	csumOffset = 48
+	gsoMSS     = 500
 )
 
 type packetInfo struct {
@@ -85,8 +89,8 @@ func (c *context) cleanup() {
 	syscall.Close(c.fds[1])
 }
 
-func (c *context) DeliverNetworkPacket(linkEP stack.LinkEndpoint, remoteLinkAddr tcpip.LinkAddress, localLinkAddr tcpip.LinkAddress, protocol tcpip.NetworkProtocolNumber, vv buffer.VectorisedView) {
-	c.ch <- packetInfo{remoteLinkAddr, protocol, vv.ToView()}
+func (c *context) DeliverNetworkPacket(linkEP stack.LinkEndpoint, remote tcpip.LinkAddress, local tcpip.LinkAddress, protocol tcpip.NetworkProtocolNumber, vv buffer.VectorisedView) {
+	c.ch <- packetInfo{remote, protocol, vv.ToView()}
 }
 
 func TestNoEthernetProperties(t *testing.T) {
@@ -129,67 +133,108 @@ func TestAddress(t *testing.T) {
 	}
 }
 
+func testWritePacket(t *testing.T, plen int, eth bool, gsoMaxSize uint32) {
+	c := newContext(t, &Options{Address: laddr, MTU: mtu, EthernetHeader: eth, GSOMaxSize: gsoMaxSize})
+	defer c.cleanup()
+
+	r := &stack.Route{
+		RemoteLinkAddress: raddr,
+	}
+
+	// Build header.
+	hdr := buffer.NewPrependable(int(c.ep.MaxHeaderLength()) + 100)
+	b := hdr.Prepend(100)
+	for i := range b {
+		b[i] = uint8(rand.Intn(256))
+	}
+
+	// Build payload and write.
+	payload := make(buffer.View, plen)
+	for i := range payload {
+		payload[i] = uint8(rand.Intn(256))
+	}
+	want := append(hdr.View(), payload...)
+	var gso *stack.GSO
+	if gsoMaxSize != 0 {
+		gso = &stack.GSO{
+			Type:       stack.GSOTCPv6,
+			NeedsCsum:  true,
+			CsumOffset: csumOffset,
+			MSS:        gsoMSS,
+			MaxSize:    gsoMaxSize,
+		}
+	}
+	if err := c.ep.WritePacket(r, gso, hdr, payload.ToVectorisedView(), proto); err != nil {
+		t.Fatalf("WritePacket failed: %v", err)
+	}
+
+	// Read from fd, then compare with what we wrote.
+	b = make([]byte, mtu)
+	n, err := syscall.Read(c.fds[0], b)
+	if err != nil {
+		t.Fatalf("Read failed: %v", err)
+	}
+	b = b[:n]
+	if gsoMaxSize != 0 {
+		vnetHdr := *(*virtioNetHdr)(unsafe.Pointer(&b[0]))
+		if vnetHdr.flags&_VIRTIO_NET_HDR_F_NEEDS_CSUM == 0 {
+			t.Fatalf("virtioNetHdr.flags %v  doesn't contain %v", vnetHdr.flags, _VIRTIO_NET_HDR_F_NEEDS_CSUM)
+		}
+		csumStart := header.EthernetMinimumSize + gso.L3HdrLen
+		if vnetHdr.csumStart != csumStart {
+			t.Fatalf("vnetHdr.csumStart = %v, want %v", vnetHdr.csumStart, csumStart)
+		}
+		if vnetHdr.csumOffset != csumOffset {
+			t.Fatalf("vnetHdr.csumOffset = %v, want %v", vnetHdr.csumOffset, csumOffset)
+		}
+		gsoType := uint8(0)
+		if int(gso.MSS) < plen {
+			gsoType = _VIRTIO_NET_HDR_GSO_TCPV6
+		}
+		if vnetHdr.gsoType != gsoType {
+			t.Fatalf("vnetHdr.gsoType = %v, want %v", vnetHdr.gsoType, gsoType)
+		}
+		b = b[virtioNetHdrSize:]
+	}
+	if eth {
+		h := header.Ethernet(b)
+		b = b[header.EthernetMinimumSize:]
+
+		if a := h.SourceAddress(); a != laddr {
+			t.Fatalf("SourceAddress() = %v, want %v", a, laddr)
+		}
+
+		if a := h.DestinationAddress(); a != raddr {
+			t.Fatalf("DestinationAddress() = %v, want %v", a, raddr)
+		}
+
+		if et := h.Type(); et != proto {
+			t.Fatalf("Type() = %v, want %v", et, proto)
+		}
+	}
+	if len(b) != len(want) {
+		t.Fatalf("Read returned %v bytes, want %v", len(b), len(want))
+	}
+	if !bytes.Equal(b, want) {
+		t.Fatalf("Read returned %x, want %x", b, want)
+	}
+}
+
 func TestWritePacket(t *testing.T) {
 	lengths := []int{0, 100, 1000}
 	eths := []bool{true, false}
+	gsos := []uint32{0, 32768}
 
 	for _, eth := range eths {
 		for _, plen := range lengths {
-			t.Run(fmt.Sprintf("Eth=%v,PayloadLen=%v", eth, plen), func(t *testing.T) {
-				c := newContext(t, &Options{Address: laddr, MTU: mtu, EthernetHeader: eth})
-				defer c.cleanup()
-
-				r := &stack.Route{
-					RemoteLinkAddress: raddr,
-				}
-
-				// Build header.
-				hdr := buffer.NewPrependable(int(c.ep.MaxHeaderLength()) + 100)
-				b := hdr.Prepend(100)
-				for i := range b {
-					b[i] = uint8(rand.Intn(256))
-				}
-
-				// Build payload and write.
-				payload := make(buffer.View, plen)
-				for i := range payload {
-					payload[i] = uint8(rand.Intn(256))
-				}
-				want := append(hdr.View(), payload...)
-				if err := c.ep.WritePacket(r, hdr, payload.ToVectorisedView(), proto); err != nil {
-					t.Fatalf("WritePacket failed: %v", err)
-				}
-
-				// Read from fd, then compare with what we wrote.
-				b = make([]byte, mtu)
-				n, err := syscall.Read(c.fds[0], b)
-				if err != nil {
-					t.Fatalf("Read failed: %v", err)
-				}
-				b = b[:n]
-				if eth {
-					h := header.Ethernet(b)
-					b = b[header.EthernetMinimumSize:]
-
-					if a := h.SourceAddress(); a != laddr {
-						t.Fatalf("SourceAddress() = %v, want %v", a, laddr)
-					}
-
-					if a := h.DestinationAddress(); a != raddr {
-						t.Fatalf("DestinationAddress() = %v, want %v", a, raddr)
-					}
-
-					if et := h.Type(); et != proto {
-						t.Fatalf("Type() = %v, want %v", et, proto)
-					}
-				}
-				if len(b) != len(want) {
-					t.Fatalf("Read returned %v bytes, want %v", len(b), len(want))
-				}
-				if !bytes.Equal(b, want) {
-					t.Fatalf("Read returned %x, want %x", b, want)
-				}
-			})
+			for _, gso := range gsos {
+				t.Run(
+					fmt.Sprintf("Eth=%v,PayloadLen=%v,GSOMaxSize=%v", eth, plen, gso),
+					func(t *testing.T) {
+						testWritePacket(t, plen, eth, gso)
+					},
+				)
+			}
 		}
 	}
 }
@@ -209,7 +254,7 @@ func TestPreserveSrcAddress(t *testing.T) {
 	// WritePacket panics given a prependable with anything less than
 	// the minimum size of the ethernet header.
 	hdr := buffer.NewPrependable(header.EthernetMinimumSize)
-	if err := c.ep.WritePacket(r, hdr, buffer.VectorisedView{}, proto); err != nil {
+	if err := c.ep.WritePacket(r, nil /* gso */, hdr, buffer.VectorisedView{}, proto); err != nil {
 		t.Fatalf("WritePacket failed: %v", err)
 	}
 
@@ -309,9 +354,22 @@ func TestBufConfigFirst(t *testing.T) {
 
 func build(bufConfig []int) *endpoint {
 	e := &endpoint{
-		views:  make([]buffer.View, len(bufConfig)),
-		iovecs: make([]syscall.Iovec, len(bufConfig)),
+		views:   make([][]buffer.View, MaxMsgsPerRecv),
+		iovecs:  make([][]syscall.Iovec, MaxMsgsPerRecv),
+		msgHdrs: make([]rawfile.MMsgHdr, MaxMsgsPerRecv),
 	}
+
+	for i, _ := range e.views {
+		e.views[i] = make([]buffer.View, len(bufConfig))
+	}
+	for i := range e.iovecs {
+		e.iovecs[i] = make([]syscall.Iovec, len(bufConfig))
+	}
+	for k, msgHdr := range e.msgHdrs {
+		msgHdr.Msg.Iov = &e.iovecs[k][0]
+		msgHdr.Msg.Iovlen = uint64(len(bufConfig))
+	}
+
 	e.allocateViews(bufConfig)
 	return e
 }
@@ -356,12 +414,12 @@ var capLengthTestCases = []struct {
 func TestCapLength(t *testing.T) {
 	for _, c := range capLengthTestCases {
 		e := build(c.config)
-		used := e.capViews(c.n, c.config)
+		used := e.capViews(0, c.n, c.config)
 		if used != c.wantUsed {
 			t.Errorf("Test \"%s\" failed when calling capViews(%d, %v). Got %d. Want %d", c.comment, c.n, c.config, used, c.wantUsed)
 		}
-		lengths := make([]int, len(e.views))
-		for i, v := range e.views {
+		lengths := make([]int, len(e.views[0]))
+		for i, v := range e.views[0] {
 			lengths[i] = len(v)
 		}
 		if !reflect.DeepEqual(lengths, c.wantLengths) {

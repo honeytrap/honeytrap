@@ -21,15 +21,9 @@ import (
 	"unsafe"
 )
 
-func blockingPoll(fds *pollEvent, nfds int, timeout int64) (int, syscall.Errno) {
-	var ts *syscall.Timespec = nil
-
-	if timeout != -1 {
-		timeSpec := syscall.NsecToTimespec(timeout * 1000000)
-		ts = &timeSpec
-	}
-
-	// we are using SYS_PPOLL here instead of SYS_POLL, because SYS_POLL isn't available on ARM64
-	n, _, e := syscall.Syscall6(syscall.SYS_PPOLL, uintptr(unsafe.Pointer(fds)), uintptr(nfds), uintptr(unsafe.Pointer(ts)), 0, 0, 0)
+// BlockingPoll is just a stub function that forwards to the poll() system call
+// on non-amd64 platforms.
+func BlockingPoll(fds *PollEvent, nfds int, timeout int64) (int, syscall.Errno) {
+	n, _, e := syscall.Syscall(syscall.SYS_POLL, uintptr(unsafe.Pointer(fds)), uintptr(nfds), uintptr(timeout))
 	return int(n), e
 }

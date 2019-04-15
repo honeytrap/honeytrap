@@ -94,7 +94,7 @@ func (t *testObject) checkValues(protocol tcpip.TransportProtocolNumber, vv buff
 // DeliverTransportPacket is called by network endpoints after parsing incoming
 // packets. This is used by the test object to verify that the results of the
 // parsing are expected.
-func (t *testObject) DeliverTransportPacket(r *stack.Route, protocol tcpip.TransportProtocolNumber, vv buffer.VectorisedView) {
+func (t *testObject) DeliverTransportPacket(r *stack.Route, protocol tcpip.TransportProtocolNumber, netHeader buffer.View, vv buffer.VectorisedView) {
 	t.checkValues(protocol, vv, r.RemoteAddress, r.LocalAddress)
 	t.dataCalls++
 }
@@ -145,7 +145,7 @@ func (*testObject) LinkAddress() tcpip.LinkAddress {
 // WritePacket is called by network endpoints after producing a packet and
 // writing it to the link endpoint. This is used by the test object to verify
 // that the produced packet is as expected.
-func (t *testObject) WritePacket(_ *stack.Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
+func (t *testObject) WritePacket(_ *stack.Route, _ *stack.GSO, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
 	var prot tcpip.TransportProtocolNumber
 	var srcAddr tcpip.Address
 	var dstAddr tcpip.Address
@@ -177,7 +177,7 @@ func buildIPv4Route(local, remote tcpip.Address) (stack.Route, *tcpip.Error) {
 		NIC:         1,
 	}})
 
-	return s.FindRoute(1, local, remote, ipv4.ProtocolNumber)
+	return s.FindRoute(1, local, remote, ipv4.ProtocolNumber, false /* multicastLoop */)
 }
 
 func buildIPv6Route(local, remote tcpip.Address) (stack.Route, *tcpip.Error) {
@@ -191,7 +191,7 @@ func buildIPv6Route(local, remote tcpip.Address) (stack.Route, *tcpip.Error) {
 		NIC:         1,
 	}})
 
-	return s.FindRoute(1, local, remote, ipv6.ProtocolNumber)
+	return s.FindRoute(1, local, remote, ipv6.ProtocolNumber, false /* multicastLoop */)
 }
 
 func TestIPv4Send(t *testing.T) {
@@ -221,7 +221,7 @@ func TestIPv4Send(t *testing.T) {
 	if err != nil {
 		t.Fatalf("could not find route: %v", err)
 	}
-	if err := ep.WritePacket(&r, hdr, payload.ToVectorisedView(), 123, 123); err != nil {
+	if err := ep.WritePacket(&r, nil /* gso */, hdr, payload.ToVectorisedView(), 123, 123, stack.PacketOut); err != nil {
 		t.Fatalf("WritePacket failed: %v", err)
 	}
 }
@@ -287,9 +287,9 @@ func TestIPv4ReceiveControl(t *testing.T) {
 		{"Non-zero fragment offset", 0, 100, header.ICMPv4PortUnreachable, stack.ControlPortUnreachable, 0, 0},
 		{"Zero-length packet", 0, 0, header.ICMPv4PortUnreachable, stack.ControlPortUnreachable, 0, 2*header.IPv4MinimumSize + header.ICMPv4DstUnreachableMinimumSize + 8},
 	}
-	r := stack.Route{
-		LocalAddress:  localIpv4Addr,
-		RemoteAddress: "\x0a\x00\x00\xbb",
+	r, err := buildIPv4Route(localIpv4Addr, "\x0a\x00\x00\xbb")
+	if err != nil {
+		t.Fatal(err)
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -450,7 +450,7 @@ func TestIPv6Send(t *testing.T) {
 	if err != nil {
 		t.Fatalf("could not find route: %v", err)
 	}
-	if err := ep.WritePacket(&r, hdr, payload.ToVectorisedView(), 123, 123); err != nil {
+	if err := ep.WritePacket(&r, nil /* gso */, hdr, payload.ToVectorisedView(), 123, 123, stack.PacketOut); err != nil {
 		t.Fatalf("WritePacket failed: %v", err)
 	}
 }
@@ -521,9 +521,12 @@ func TestIPv6ReceiveControl(t *testing.T) {
 		{"Non-zero fragment offset", 0, newUint16(100), header.ICMPv6DstUnreachable, header.ICMPv6PortUnreachable, stack.ControlPortUnreachable, 0, 0},
 		{"Zero-length packet", 0, nil, header.ICMPv6DstUnreachable, header.ICMPv6PortUnreachable, stack.ControlPortUnreachable, 0, 2*header.IPv6MinimumSize + header.ICMPv6DstUnreachableMinimumSize + 8},
 	}
-	r := stack.Route{
-		LocalAddress:  localIpv6Addr,
-		RemoteAddress: "\x0a\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xaa",
+	r, err := buildIPv6Route(
+		localIpv6Addr,
+		"\x0a\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xaa",
+	)
+	if err != nil {
+		t.Fatal(err)
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

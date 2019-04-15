@@ -1,0 +1,47 @@
+language: go
+
+os:
+  - linux
+
+go:
+  - 1.6
+  - 1.7
+  - 1.8
+  - 1.9
+  - tip
+
+matrix:
+  fast_finish: true
+  allow_failures:
+    - go: tip
+
+before_install:
+ - sudo add-apt-repository ppa:ubuntu-lxc/daily -y
+ - sudo apt-get update
+ - sudo apt-get install -qq lxc lxc-dev uidmap
+ - echo "${USER}:100000:65536" | sudo tee /etc/subuid
+ - echo "${USER}:100000:65536" | sudo tee /etc/subgid
+ - echo "${USER} veth lxcbr0 10" | sudo tee -a /etc/lxc/lxc-usernet
+ - mkdir -p ~/.config/lxc/
+ - cp /etc/lxc/default.conf ~/.config/lxc/default.conf
+ - echo "lxc.idmap = u 0 100000 65536" | sudo tee -a ~/.config/lxc/default.conf
+ - echo "lxc.idmap = g 0 100000 65536" | sudo tee -a ~/.config/lxc/default.conf
+ - "make setup-test-cgroup"
+ - mkdir -p ~/.local/share
+ - chmod +x ~/.local/share
+ - chmod +x ~/.local/
+ - chmod +x ${HOME}
+
+install:
+  - go get gopkg.in/lxc/go-lxc.v2
+
+script:
+  - "make all"
+  - "make test"
+  - "make test-race"
+  - "make test-unprivileged"
+  - "make test-unprivileged-race"
+  - "make cover"
+
+notifications:
+  webhooks: https://linuxcontainers.org/webhook-lxcbot/

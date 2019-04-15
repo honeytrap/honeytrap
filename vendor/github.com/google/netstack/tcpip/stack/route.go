@@ -46,17 +46,28 @@ type Route struct {
 	// ref a reference to the network endpoint through which the route
 	// starts.
 	ref *referencedNetworkEndpoint
+
+	// loop controls where WritePacket should send packets.
+	loop PacketLooping
 }
 
 // makeRoute initializes a new route. It takes ownership of the provided
 // reference to a network endpoint.
-func makeRoute(netProto tcpip.NetworkProtocolNumber, localAddr, remoteAddr tcpip.Address, localLinkAddr tcpip.LinkAddress, ref *referencedNetworkEndpoint) Route {
+func makeRoute(netProto tcpip.NetworkProtocolNumber, localAddr, remoteAddr tcpip.Address, localLinkAddr tcpip.LinkAddress, ref *referencedNetworkEndpoint, handleLocal, multicastLoop bool) Route {
+	loop := PacketOut
+	if handleLocal && localAddr != "" && remoteAddr == localAddr {
+		loop = PacketLoop
+	} else if multicastLoop && (header.IsV4MulticastAddress(remoteAddr) || header.IsV6MulticastAddress(remoteAddr)) {
+		loop |= PacketLoop
+	}
+
 	return Route{
 		NetProto:         netProto,
 		LocalAddress:     localAddr,
 		LocalLinkAddress: localLinkAddr,
 		RemoteAddress:    remoteAddr,
 		ref:              ref,
+		loop:             loop,
 	}
 }
 
@@ -77,13 +88,21 @@ func (r *Route) Stats() tcpip.Stats {
 
 // PseudoHeaderChecksum forwards the call to the network endpoint's
 // implementation.
-func (r *Route) PseudoHeaderChecksum(protocol tcpip.TransportProtocolNumber) uint16 {
-	return header.PseudoHeaderChecksum(protocol, r.LocalAddress, r.RemoteAddress)
+func (r *Route) PseudoHeaderChecksum(protocol tcpip.TransportProtocolNumber, totalLen uint16) uint16 {
+	return header.PseudoHeaderChecksum(protocol, r.LocalAddress, r.RemoteAddress, totalLen)
 }
 
 // Capabilities returns the link-layer capabilities of the route.
 func (r *Route) Capabilities() LinkEndpointCapabilities {
 	return r.ref.ep.Capabilities()
+}
+
+// GSOMaxSize returns the maximum GSO packet size.
+func (r *Route) GSOMaxSize() uint32 {
+	if gso, ok := r.ref.ep.(GSOEndpoint); ok {
+		return gso.GSOMaxSize()
+	}
+	return 0
 }
 
 // Resolve attempts to resolve the link address if necessary. Returns ErrWouldBlock in
@@ -133,10 +152,13 @@ func (r *Route) IsResolutionRequired() bool {
 }
 
 // WritePacket writes the packet through the given route.
-func (r *Route) WritePacket(hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.TransportProtocolNumber, ttl uint8) *tcpip.Error {
-	err := r.ref.ep.WritePacket(r, hdr, payload, protocol, ttl)
-	if err == tcpip.ErrNoRoute {
+func (r *Route) WritePacket(gso *GSO, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.TransportProtocolNumber, ttl uint8) *tcpip.Error {
+	err := r.ref.ep.WritePacket(r, gso, hdr, payload, protocol, ttl, r.loop)
+	if err != nil {
 		r.Stats().IP.OutgoingPacketErrors.Increment()
+	} else {
+		r.ref.nic.stats.Tx.Packets.Increment()
+		r.ref.nic.stats.Tx.Bytes.IncrementBy(uint64(hdr.UsedLength() + payload.Size()))
 	}
 	return err
 }
