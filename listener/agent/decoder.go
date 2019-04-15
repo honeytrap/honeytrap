@@ -18,7 +18,7 @@ import (
 	"encoding/binary"
 	"net"
 
-	"github.com/honeytrap/honeytrap/protocol"
+	"github.com/honeytrap/protocol"
 )
 
 func NewDecoder(data []byte) *Decoder {

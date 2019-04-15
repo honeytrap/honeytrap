@@ -1,4 +1,4 @@
-module github.com/honeytrap
+module github.com/honeytrap/honeytrap
 
 go 1.11
 
@@ -23,13 +23,12 @@ require (
 	github.com/glycerine/goconvey v0.0.0-20190410193231-58a59202ab31 // indirect
 	github.com/glycerine/rbuf v0.0.0-20171031012212-54320fe9f6f3
 	github.com/go-asn1-ber/asn1-ber v0.0.0-20170511165959-379148ca0225
-	github.com/golang/protobuf v0.0.0-20180202184318-bbd03ef6da3a // indirect
+	github.com/golang/protobuf v0.0.0-20180202184318-bbd03ef6da3a
 	github.com/golang/snappy v0.0.0-20170215233205-553a64147049 // indirect
 	github.com/google/btree v1.0.0 // indirect
 	github.com/google/gopacket v1.1.14
 	github.com/google/netstack v0.0.0
 	github.com/gorilla/websocket v1.2.0
-	github.com/honeytrap/honeytrap v0.0.0-20190412192249-065ef54c4b75
 	github.com/honeytrap/honeytrap-web v0.0.0-20180212153621-02944754979e
 	github.com/honeytrap/protocol v0.0.0-20190410072324-219b95413db0
 	github.com/kr/pretty v0.1.0 // indirect
