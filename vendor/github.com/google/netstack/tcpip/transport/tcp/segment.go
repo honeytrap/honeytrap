@@ -16,21 +16,12 @@ package tcp
 
 import (
 	"sync/atomic"
+	"time"
 
 	"github.com/google/netstack/tcpip/buffer"
 	"github.com/google/netstack/tcpip/header"
 	"github.com/google/netstack/tcpip/seqnum"
 	"github.com/google/netstack/tcpip/stack"
-)
-
-// Flags that may be set in a TCP segment.
-const (
-	flagFin = 1 << iota
-	flagSyn
-	flagRst
-	flagPsh
-	flagAck
-	flagUrg
 )
 
 // segment represents a TCP segment. It holds the payload and parsed TCP segment
@@ -56,8 +47,13 @@ type segment struct {
 	window         seqnum.Size
 
 	// parsedOptions stores the parsed values from the options in the segment.
-	parsedOptions header.TCPOptions
-	options       []byte
+	parsedOptions  header.TCPOptions
+	options        []byte
+	hasNewSACKInfo bool
+	rcvdTime       time.Time
+	// xmitTime is the last transmit time of this segment. A zero value
+	// indicates that the segment has yet to be transmitted.
+	xmitTime time.Time
 }
 
 func newSegment(r *stack.Route, id stack.TransportEndpointID, vv buffer.VectorisedView) *segment {
@@ -67,6 +63,7 @@ func newSegment(r *stack.Route, id stack.TransportEndpointID, vv buffer.Vectoris
 		route:  r.Clone(),
 	}
 	s.data = vv.Clone(s.views[:])
+	s.rcvdTime = time.Now()
 	return s
 }
 
@@ -78,6 +75,7 @@ func newSegmentFromView(r *stack.Route, id stack.TransportEndpointID, v buffer.V
 	}
 	s.views[0] = v
 	s.data = buffer.NewVectorisedView(len(v), s.views[:1])
+	s.rcvdTime = time.Now()
 	return s
 }
 
@@ -91,6 +89,7 @@ func (s *segment) clone() *segment {
 		window:         s.window,
 		route:          s.route.Clone(),
 		viewToDeliver:  s.viewToDeliver,
+		rcvdTime:       s.rcvdTime,
 	}
 	t.data = s.data.Clone(t.views[:])
 	return t
@@ -114,10 +113,10 @@ func (s *segment) incRef() {
 // as the data length plus one for each of the SYN and FIN bits set.
 func (s *segment) logicalLen() seqnum.Size {
 	l := seqnum.Size(s.data.Size())
-	if s.flagIsSet(flagSyn) {
+	if s.flagIsSet(header.TCPFlagSyn) {
 		l++
 	}
-	if s.flagIsSet(flagFin) {
+	if s.flagIsSet(header.TCPFlagFin) {
 		l++
 	}
 	return l

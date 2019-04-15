@@ -116,7 +116,7 @@ func NewWithFile(lower tcpip.LinkEndpointID, file *os.File, snapLen uint32) (tcp
 // DeliverNetworkPacket implements the stack.NetworkDispatcher interface. It is
 // called by the link-layer endpoint being wrapped when a packet arrives, and
 // logs the packet before forwarding to the actual dispatcher.
-func (e *endpoint) DeliverNetworkPacket(linkEP stack.LinkEndpoint, remoteLinkAddr, localLinkAddr tcpip.LinkAddress, protocol tcpip.NetworkProtocolNumber, vv buffer.VectorisedView) {
+func (e *endpoint) DeliverNetworkPacket(linkEP stack.LinkEndpoint, remote, local tcpip.LinkAddress, protocol tcpip.NetworkProtocolNumber, vv buffer.VectorisedView) {
 	if atomic.LoadUint32(&LogPackets) == 1 && e.file == nil {
 		logPacket("recv", protocol, vv.First())
 	}
@@ -147,7 +147,7 @@ func (e *endpoint) DeliverNetworkPacket(linkEP stack.LinkEndpoint, remoteLinkAdd
 			panic(err)
 		}
 	}
-	e.dispatcher.DeliverNetworkPacket(e, remoteLinkAddr, localLinkAddr, protocol, vv)
+	e.dispatcher.DeliverNetworkPacket(e, remote, local, protocol, vv)
 }
 
 // Attach implements the stack.LinkEndpoint interface. It saves the dispatcher
@@ -185,10 +185,18 @@ func (e *endpoint) LinkAddress() tcpip.LinkAddress {
 	return e.lower.LinkAddress()
 }
 
+// GSOMaxSize returns the maximum GSO packet size.
+func (e *endpoint) GSOMaxSize() uint32 {
+	if gso, ok := e.lower.(stack.GSOEndpoint); ok {
+		return gso.GSOMaxSize()
+	}
+	return 0
+}
+
 // WritePacket implements the stack.LinkEndpoint interface. It is called by
 // higher-level protocols to write packets; it just logs the packet and forwards
 // the request to the lower endpoint.
-func (e *endpoint) WritePacket(r *stack.Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
+func (e *endpoint) WritePacket(r *stack.Route, gso *stack.GSO, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
 	if atomic.LoadUint32(&LogPackets) == 1 && e.file == nil {
 		logPacket("send", protocol, hdr.View())
 	}
@@ -229,7 +237,7 @@ func (e *endpoint) WritePacket(r *stack.Route, hdr buffer.Prependable, payload b
 			panic(err)
 		}
 	}
-	return e.lower.WritePacket(r, hdr, payload, protocol)
+	return e.lower.WritePacket(r, gso, hdr, payload, protocol)
 }
 
 func logPacket(prefix string, protocol tcpip.NetworkProtocolNumber, b buffer.View) {

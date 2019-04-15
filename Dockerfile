@@ -1,18 +1,25 @@
-FROM golang:latest AS builder
+FROM golang:latest AS go
+
+ENV GOPATH /go
+ENV PATH $GOPATH/bin:/usr/local/go/bin:$PATH
 
 ADD . /go/src/github.com/honeytrap/honeytrap
-WORKDIR /go/src/github.com/honeytrap/honeytrap
 
 ARG LDFLAGS=""
-RUN go build -tags="" -ldflags="$(go run scripts/gen-ldflags.go)" -o /go/bin/app github.com/honeytrap/honeytrap
 
-FROM debian
-RUN apt-get update && apt-get install -y ca-certificates curl
-COPY --from=builder /go/bin/app /honeytrap/honeytrap
+WORKDIR /go/src/github.com/honeytrap/honeytrap
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -tags="" -ldflags="$(go run scripts/gen-ldflags.go)" -o /go/bin/app github.com/honeytrap/honeytrap
+
+FROM alpine
+MAINTAINER  Remco Verhoef <remco.verhoef@dutchsec.com>
+
+RUN apk --update upgrade && apk add curl ca-certificates && rm -rf /var/cache/apk/*
+RUN apk add ca-certificates && update-ca-certificates
 
 RUN mkdir /config /data
 
 RUN curl -s -o /config/config.toml https://raw.githubusercontent.com/honeytrap/honeytrap-configs/master/server-standalone/config-server-standalone.toml
+COPY --from=go /go/bin/app /honeytrap/honeytrap
 
 ENTRYPOINT ["/honeytrap/honeytrap", "--config", "/config/config.toml", "--data", "/data/"]
 

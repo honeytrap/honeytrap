@@ -68,6 +68,7 @@ func (e *Error) IgnoreStats() bool {
 var (
 	ErrUnknownProtocol       = &Error{msg: "unknown protocol"}
 	ErrUnknownNICID          = &Error{msg: "unknown nic id"}
+	ErrUnknownDevice         = &Error{msg: "unknown device"}
 	ErrUnknownProtocolOption = &Error{msg: "unknown option for protocol"}
 	ErrDuplicateNICID        = &Error{msg: "duplicate nic id"}
 	ErrDuplicateAddress      = &Error{msg: "duplicate address"}
@@ -100,6 +101,7 @@ var (
 	ErrNetworkUnreachable    = &Error{msg: "network is unreachable"}
 	ErrMessageTooLong        = &Error{msg: "message too long"}
 	ErrNoBufferSpace         = &Error{msg: "no buffer space available"}
+	ErrBroadcastDisabled     = &Error{msg: "broadcast socket option disabled"}
 )
 
 // Errors related to Subnet
@@ -298,9 +300,6 @@ type Endpoint interface {
 	//
 	// This method does not block if there is no data pending. It will also
 	// either return an error or data, never both.
-	//
-	// A timestamp (in ns) is optionally returned. A zero value indicates
-	// that no timestamp was available.
 	Read(*FullAddress) (buffer.View, ControlMessages, *Error)
 
 	// Write writes data to the endpoint's peer. This method does not block if
@@ -312,7 +311,10 @@ type Endpoint interface {
 	// the caller should not use data[:n] after Write returns.
 	//
 	// Note that unlike io.Writer.Write, it is not an error for Write to
-	// perform a partial write.
+	// perform a partial write (if n > 0, no error may be returned). Only
+	// stream (TCP) Endpoints may return partial writes, and even then only
+	// in the case where writing additional data would block. Other Endpoints
+	// will either write the entire message or return an error.
 	//
 	// For UDP and Ping sockets if address resolution is required,
 	// ErrNoLinkAddress and a notification channel is returned for the caller to
@@ -323,9 +325,6 @@ type Endpoint interface {
 	// Peek reads data without consuming it from the endpoint.
 	//
 	// This method does not block if there is no data pending.
-	//
-	// A timestamp (in ns) is optionally returned. A zero value indicates
-	// that no timestamp was available.
 	Peek([][]byte) (uintptr, ControlMessages, *Error)
 
 	// Connect connects the endpoint to its peer. Specifying a NIC is
@@ -358,11 +357,7 @@ type Endpoint interface {
 
 	// Bind binds the endpoint to a specific local address and port.
 	// Specifying a NIC is optional.
-	//
-	// An optional commit function will be executed atomically with respect
-	// to binding the endpoint. If this returns an error, the bind will not
-	// occur and the error will be propagated back to the caller.
-	Bind(address FullAddress, commit func() *Error) *Error
+	Bind(address FullAddress) *Error
 
 	// GetLocalAddress returns the address to which the endpoint is bound.
 	GetLocalAddress() (FullAddress, *Error)
@@ -420,24 +415,31 @@ type ReceiveQueueSizeOption int
 // socket is to be restricted to sending and receiving IPv6 packets only.
 type V6OnlyOption int
 
-// NoDelayOption is used by SetSockOpt/GetSockOpt to specify if data should be
+// DelayOption is used by SetSockOpt/GetSockOpt to specify if data should be
 // sent out immediately by the transport protocol. For TCP, it determines if the
 // Nagle algorithm is on or off.
-type NoDelayOption int
+type DelayOption int
+
+// CorkOption is used by SetSockOpt/GetSockOpt to specify if data should be
+// held until segments are full by the TCP transport protocol.
+type CorkOption int
 
 // ReuseAddressOption is used by SetSockOpt/GetSockOpt to specify whether Bind()
 // should allow reuse of local address.
 type ReuseAddressOption int
+
+// ReusePortOption is used by SetSockOpt/GetSockOpt to permit multiple sockets
+// to be bound to an identical socket address.
+type ReusePortOption int
+
+// QuickAckOption is stubbed out in SetSockOpt/GetSockOpt.
+type QuickAckOption int
 
 // PasscredOption is used by SetSockOpt/GetSockOpt to specify whether
 // SCM_CREDENTIALS socket control messages are enabled.
 //
 // Only supported on Unix sockets.
 type PasscredOption int
-
-// TimestampOption is used by SetSockOpt/GetSockOpt to specify whether
-// SO_TIMESTAMP socket control messages are enabled.
-type TimestampOption int
 
 // TCPInfoOption is used by GetSockOpt to expose TCP statistics.
 //
@@ -469,6 +471,17 @@ type KeepaliveCountOption int
 // TTL value for multicast messages. The default is 1.
 type MulticastTTLOption uint8
 
+// MulticastInterfaceOption is used by SetSockOpt/GetSockOpt to specify a
+// default interface for multicast.
+type MulticastInterfaceOption struct {
+	NIC           NICID
+	InterfaceAddr Address
+}
+
+// MulticastLoopOption is used by SetSockOpt/GetSockOpt to specify whether
+// multicast packets sent over a non-loopback interface will be looped back.
+type MulticastLoopOption bool
+
 // MembershipOption is used by SetSockOpt/GetSockOpt as an argument to
 // AddMembershipOption and RemoveMembershipOption.
 type MembershipOption struct {
@@ -486,6 +499,14 @@ type AddMembershipOption MembershipOption
 // group identified by the given multicast address, on the interface matching
 // the given interface address.
 type RemoveMembershipOption MembershipOption
+
+// OutOfBandInlineOption is used by SetSockOpt/GetSockOpt to specify whether
+// TCP out-of-band data is delivered along with the normal in-band data.
+type OutOfBandInlineOption int
+
+// BroadcastOption is used by SetSockOpt/GetSockOpt to specify whether
+// datagram sockets are allowed to send packets to a broadcast address.
+type BroadcastOption int
 
 // Route is a row in the routing table. It specifies through which NIC (and
 // gateway) sets of packets should be routed. A row is considered viable if the
@@ -510,6 +531,12 @@ type Route struct {
 func (r *Route) Match(addr Address) bool {
 	if len(addr) != len(r.Destination) {
 		return false
+	}
+
+	// Using header.Ipv4Broadcast would introduce an import cycle, so
+	// we'll use a literal instead.
+	if addr == "\xff\xff\xff\xff" {
+		return true
 	}
 
 	for i := 0; i < len(r.Destination); i++ {
@@ -550,10 +577,160 @@ func (s *StatCounter) IncrementBy(v uint64) {
 	atomic.AddUint64(&s.count, v)
 }
 
+func (s *StatCounter) String() string {
+	return strconv.FormatUint(s.Value(), 10)
+}
+
+// ICMPv4PacketStats enumerates counts for all ICMPv4 packet types.
+type ICMPv4PacketStats struct {
+	// Echo is the total number of ICMPv4 echo packets counted.
+	Echo *StatCounter
+
+	// EchoReply is the total number of ICMPv4 echo reply packets counted.
+	EchoReply *StatCounter
+
+	// DstUnreachable is the total number of ICMPv4 destination unreachable
+	// packets counted.
+	DstUnreachable *StatCounter
+
+	// SrcQuench is the total number of ICMPv4 source quench packets
+	// counted.
+	SrcQuench *StatCounter
+
+	// Redirect is the total number of ICMPv4 redirect packets counted.
+	Redirect *StatCounter
+
+	// TimeExceeded is the total number of ICMPv4 time exceeded packets
+	// counted.
+	TimeExceeded *StatCounter
+
+	// ParamProblem is the total number of ICMPv4 parameter problem packets
+	// counted.
+	ParamProblem *StatCounter
+
+	// Timestamp is the total number of ICMPv4 timestamp packets counted.
+	Timestamp *StatCounter
+
+	// TimestampReply is the total number of ICMPv4 timestamp reply packets
+	// counted.
+	TimestampReply *StatCounter
+
+	// InfoRequest is the total number of ICMPv4 information request
+	// packets counted.
+	InfoRequest *StatCounter
+
+	// InfoReply is the total number of ICMPv4 information reply packets
+	// counted.
+	InfoReply *StatCounter
+}
+
+// ICMPv6PacketStats enumerates counts for all ICMPv6 packet types.
+type ICMPv6PacketStats struct {
+	// EchoRequest is the total number of ICMPv6 echo request packets
+	// counted.
+	EchoRequest *StatCounter
+
+	// EchoReply is the total number of ICMPv6 echo reply packets counted.
+	EchoReply *StatCounter
+
+	// DstUnreachable is the total number of ICMPv6 destination unreachable
+	// packets counted.
+	DstUnreachable *StatCounter
+
+	// PacketTooBig is the total number of ICMPv6 packet too big packets
+	// counted.
+	PacketTooBig *StatCounter
+
+	// TimeExceeded is the total number of ICMPv6 time exceeded packets
+	// counted.
+	TimeExceeded *StatCounter
+
+	// ParamProblem is the total number of ICMPv6 parameter problem packets
+	// counted.
+	ParamProblem *StatCounter
+
+	// RouterSolicit is the total number of ICMPv6 router solicit packets
+	// counted.
+	RouterSolicit *StatCounter
+
+	// RouterAdvert is the total number of ICMPv6 router advert packets
+	// counted.
+	RouterAdvert *StatCounter
+
+	// NeighborSolicit is the total number of ICMPv6 neighbor solicit
+	// packets counted.
+	NeighborSolicit *StatCounter
+
+	// NeighborAdvert is the total number of ICMPv6 neighbor advert packets
+	// counted.
+	NeighborAdvert *StatCounter
+
+	// RedirectMsg is the total number of ICMPv6 redirect message packets
+	// counted.
+	RedirectMsg *StatCounter
+}
+
+// ICMPv4SentPacketStats collects outbound ICMPv4-specific stats.
+type ICMPv4SentPacketStats struct {
+	ICMPv4PacketStats
+
+	// Dropped is the total number of ICMPv4 packets dropped due to link
+	// layer errors.
+	Dropped *StatCounter
+}
+
+// ICMPv4ReceivedPacketStats collects inbound ICMPv4-specific stats.
+type ICMPv4ReceivedPacketStats struct {
+	ICMPv4PacketStats
+
+	// Invalid is the total number of ICMPv4 packets received that the
+	// transport layer could not parse.
+	Invalid *StatCounter
+}
+
+// ICMPv6SentPacketStats collects outbound ICMPv6-specific stats.
+type ICMPv6SentPacketStats struct {
+	ICMPv6PacketStats
+
+	// Dropped is the total number of ICMPv6 packets dropped due to link
+	// layer errors.
+	Dropped *StatCounter
+}
+
+// ICMPv6ReceivedPacketStats collects inbound ICMPv6-specific stats.
+type ICMPv6ReceivedPacketStats struct {
+	ICMPv6PacketStats
+
+	// Invalid is the total number of ICMPv6 packets received that the
+	// transport layer could not parse.
+	Invalid *StatCounter
+}
+
+// ICMPStats collects ICMP-specific stats (both v4 and v6).
+type ICMPStats struct {
+	// ICMPv4SentPacketStats contains counts of sent packets by ICMPv4 packet type
+	// and a single count of packets which failed to write to the link
+	// layer.
+	V4PacketsSent ICMPv4SentPacketStats
+
+	// ICMPv4ReceivedPacketStats contains counts of received packets by ICMPv4
+	// packet type and a single count of invalid packets received.
+	V4PacketsReceived ICMPv4ReceivedPacketStats
+
+	// ICMPv6SentPacketStats contains counts of sent packets by ICMPv6 packet type
+	// and a single count of packets which failed to write to the link
+	// layer.
+	V6PacketsSent ICMPv6SentPacketStats
+
+	// ICMPv6ReceivedPacketStats contains counts of received packets by ICMPv6
+	// packet type and a single count of invalid packets received.
+	V6PacketsReceived ICMPv6ReceivedPacketStats
+}
+
 // IPStats collects IP-specific stats (both v4 and v6).
 type IPStats struct {
-	// PacketsReceived is the total number of IP packets received from the link
-	// layer in nic.DeliverNetworkPacket.
+	// PacketsReceived is the total number of IP packets received from the
+	// link layer in nic.DeliverNetworkPacket.
 	PacketsReceived *StatCounter
 
 	// InvalidAddressesReceived is the total number of IP packets received
@@ -574,8 +751,8 @@ type IPStats struct {
 
 // TCPStats collects TCP-specific stats.
 type TCPStats struct {
-	// ActiveConnectionOpenings is the number of connections opened successfully
-	// via Connect.
+	// ActiveConnectionOpenings is the number of connections opened
+	// successfully via Connect.
 	ActiveConnectionOpenings *StatCounter
 
 	// PassiveConnectionOpenings is the number of connections opened
@@ -586,8 +763,8 @@ type TCPStats struct {
 	// (active and passive openings, respectively) that end in an error.
 	FailedConnectionAttempts *StatCounter
 
-	// ValidSegmentsReceived is the number of TCP segments received that the
-	// transport layer successfully parsed.
+	// ValidSegmentsReceived is the number of TCP segments received that
+	// the transport layer successfully parsed.
 	ValidSegmentsReceived *StatCounter
 
 	// InvalidSegmentsReceived is the number of TCP segments received that
@@ -602,6 +779,28 @@ type TCPStats struct {
 
 	// ResetsReceived is the number of TCP resets received.
 	ResetsReceived *StatCounter
+
+	// Retransmits is the number of TCP segments retransmitted.
+	Retransmits *StatCounter
+
+	// FastRecovery is the number of times Fast Recovery was used to
+	// recover from packet loss.
+	FastRecovery *StatCounter
+
+	// SACKRecovery is the number of times SACK Recovery was used to
+	// recover from packet loss.
+	SACKRecovery *StatCounter
+
+	// SlowStartRetransmits is the number of segments retransmitted in slow
+	// start.
+	SlowStartRetransmits *StatCounter
+
+	// FastRetransmit is the number of segments retransmitted in fast
+	// recovery.
+	FastRetransmit *StatCounter
+
+	// Timeouts is the number of times the RTO expired.
+	Timeouts *StatCounter
 }
 
 // UDPStats collects UDP-specific stats.
@@ -641,6 +840,9 @@ type Stats struct {
 	// DroppedPackets is the number of packets dropped due to full queues.
 	DroppedPackets *StatCounter
 
+	// ICMP breaks out ICMP-specific stats (both v4 and v6).
+	ICMP ICMPStats
+
 	// IP breaks out IP-specific stats (both v4 and v6).
 	IP IPStats
 
@@ -656,13 +858,13 @@ func fillIn(v reflect.Value) {
 		v := v.Field(i)
 		switch v.Kind() {
 		case reflect.Ptr:
-			if s, ok := v.Addr().Interface().(**StatCounter); ok {
-				if *s == nil {
-					*s = &StatCounter{}
-				}
+			if s := v.Addr().Interface().(**StatCounter); *s == nil {
+				*s = &StatCounter{}
 			}
 		case reflect.Struct:
 			fillIn(v)
+		default:
+			panic(fmt.Sprintf("unexpected type %s", v.Type()))
 		}
 	}
 }
