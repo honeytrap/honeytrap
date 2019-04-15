@@ -55,8 +55,8 @@ github.com/gopherjs/gopherjs v0.0.0-20181017120253-0766667cb4d1 h1:EGx4pi6eqNxGa
 github.com/gopherjs/gopherjs v0.0.0-20181017120253-0766667cb4d1/go.mod h1:wJfORRmW1u3UXTncJ5qlYoELFm8eSnnEO6hX4iZ3EWY=
 github.com/gorilla/websocket v1.2.0 h1:VJtLvh6VQym50czpZzx07z/kw9EgAxI3x1ZB8taTMQQ=
 github.com/gorilla/websocket v1.2.0/go.mod h1:E7qHFY5m1UJ88s3WnNqhKjPHQ0heANvMoAMk2YaljkQ=
-github.com/honeytrap/honeytrap v0.0.0-20190405081451-87794dac6942 h1:LxJI2zYdZS+XHgcTfM5a4RgXIGXs/NROh/DbS2o2RhI=
-github.com/honeytrap/honeytrap v0.0.0-20190405081451-87794dac6942/go.mod h1:kOud84EIo8dEPtDXZ3cfTSJXqVEBawdKN/FNHhpMYwk=
+github.com/honeytrap/honeytrap v0.0.0-20190412192249-065ef54c4b75 h1:B2E1NOJX6E8OqNSp/Gxn8qAGyTqieNVE5GT32A2xGv8=
+github.com/honeytrap/honeytrap v0.0.0-20190412192249-065ef54c4b75/go.mod h1:kOud84EIo8dEPtDXZ3cfTSJXqVEBawdKN/FNHhpMYwk=
 github.com/honeytrap/honeytrap-web v0.0.0-20180212153621-02944754979e h1:WdcDM3VW4a1Od4yrFBoFDAkuYaCnusLO0NvPsUg055w=
 github.com/honeytrap/honeytrap-web v0.0.0-20180212153621-02944754979e/go.mod h1:HwePuuZKuCS4TMKes3pb8blMjoc/E2mXkAZA5DgMuvg=
 github.com/honeytrap/netstack v0.0.0-20190414201528-9ea5e4d2258f h1:EcXJ+zt14ngfb9ZkilSufYHex0gif3Cg7x110j3Llnc=

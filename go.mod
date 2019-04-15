@@ -29,7 +29,7 @@ require (
 	github.com/google/gopacket v1.1.14
 	github.com/google/netstack v0.0.0
 	github.com/gorilla/websocket v1.2.0
-	github.com/honeytrap/honeytrap v0.0.0-20190405081451-87794dac6942
+	github.com/honeytrap/honeytrap v0.0.0-20190412192249-065ef54c4b75
 	github.com/honeytrap/honeytrap-web v0.0.0-20180212153621-02944754979e
 	github.com/honeytrap/protocol v0.0.0-20190410072324-219b95413db0
 	github.com/kr/pretty v0.1.0 // indirect
