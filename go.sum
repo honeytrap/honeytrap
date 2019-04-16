@@ -68,8 +68,6 @@ github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORN
 github.com/kr/pty v1.1.1/go.mod h1:pFQYn66WHrOpPYNljwOMqo10TkYh1fy3cYio2l3bCsQ=
 github.com/kr/text v0.1.0 h1:45sCR5RtlFHMR4UwH9sdQ5TC8v0qDQCHnXt+kaKSTVE=
 github.com/kr/text v0.1.0/go.mod h1:4Jbv+DJW3UT/LiOwJeYQe1efqtUx/iVham/4vfdArNI=
-github.com/lxc/go-lxc v0.0.0-20180227230311-2660c429a942 h1:iEgxhTOGsOZmbrI68G6FV1RDh9rbLDvVxm9zE44sejU=
-github.com/lxc/go-lxc v0.0.0-20180227230311-2660c429a942/go.mod h1:CNKW+LaTS/HmFWZqT2mc01CqBGYYoJkeYQKmBeftk+I=
 github.com/mailru/easyjson v0.0.0-20171120080333-32fa128f234d h1:bM4HYnlVXPgUKmzl7o3drEaVfOk+sTBiADAQOWjU+8I=
 github.com/mailru/easyjson v0.0.0-20171120080333-32fa128f234d/go.mod h1:C1wdFJiN94OJF2b5HbByQZoLdCWB1Yqtg26g4irojpc=
 github.com/mattn/go-colorable v0.0.9 h1:UVL0vNpWh04HeJXV0KLcaT7r06gOH2l4OW6ddYRUIY4=
@@ -137,6 +135,8 @@ golang.org/x/time v0.0.0-20170927054726-6dc17368e09b/go.mod h1:tRJNPiyCQ0inRvYxb
 golang.org/x/tools v0.0.0-20190328211700-ab21143f2384/go.mod h1:LCzVGOaR6xXOjkQ3onu1FJEFr0SW1gC7cKk1uF8kGRs=
 gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 h1:qIbj1fsPNlZgppZ+VLlY7N33q108Sa+fhmuc+sWQYwY=
 gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
+gopkg.in/lxc/go-lxc.v2 v2.0.0-20190324192716-2f350e4a2980 h1:JH0hbXFbkeENYCUaso0BKGGuw5RyisZwJKYG4KuzzC4=
+gopkg.in/lxc/go-lxc.v2 v2.0.0-20190324192716-2f350e4a2980/go.mod h1:4K0lbUXeslpmjwJZyW1lI6s5j97mrsj4+kpYwwvuLXo=
 gopkg.in/olivere/elastic.v5 v5.0.65 h1:/Z27tcUa/IMzA8QFwUQPJW7u10GoWRoaubQONmCaTNs=
 gopkg.in/olivere/elastic.v5 v5.0.65/go.mod h1:FylZT6jQWtfHsicejzOm3jIMVPOAksa80i3o+6qtQRk=
 gopkg.in/urfave/cli.v1 v1.20.0 h1:NdAVW6RYxDif9DhDHaAortIu956m2c0v+09AZBPTbE0=

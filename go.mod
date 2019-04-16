@@ -32,7 +32,6 @@ require (
 	github.com/honeytrap/honeytrap-web v0.0.0-20180212153621-02944754979e
 	github.com/honeytrap/protocol v0.0.0-20190410072324-219b95413db0
 	github.com/kr/pretty v0.1.0 // indirect
-	github.com/lxc/go-lxc v0.0.0-20180227230311-2660c429a942
 	github.com/mailru/easyjson v0.0.0-20171120080333-32fa128f234d // indirect
 	github.com/mattn/go-colorable v0.0.9 // indirect
 	github.com/mattn/go-isatty v0.0.3
@@ -60,6 +59,7 @@ require (
 	golang.org/x/sync v0.0.0-20190412183630-56d357773e84 // indirect
 	golang.org/x/time v0.0.0-20170927054726-6dc17368e09b
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
+	gopkg.in/lxc/go-lxc.v2 v2.0.0-20190324192716-2f350e4a2980
 	gopkg.in/olivere/elastic.v5 v5.0.65
 	gopkg.in/urfave/cli.v1 v1.20.0
 )
