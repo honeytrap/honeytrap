@@ -21,13 +21,16 @@ env:
 
 addons:
   apt:
+    sources:
+    - ppa:ubuntu-lxc/stable
     packages:
     - lxc
+    - lxc-dev
 
 before_install:
-  - sudo add-apt-repository -y ppa:ubuntu-lxc/stable
+    # - sudo add-apt-repository -y ppa:ubuntu-lxc/stable
   - sudo apt-get update -qq
-  - sudo apt-get install -y software-properties-common python-software-properties pkg-config
+  - sudo apt-get install -y software-properties-common python-software-properties lxc lxc-dev
   - go get github.com/axw/gocov/gocov github.com/mattn/goveralls github.com/tcnksm/ghr
   - curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | bash -s -- -b $GOPATH/bin 
 
