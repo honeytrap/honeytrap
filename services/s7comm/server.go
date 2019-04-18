@@ -167,7 +167,7 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 				event.Type("ics"),
 				event.SourceAddr(conn.RemoteAddr()),
 				event.DestinationAddr(conn.LocalAddr()),
-				event.Custom("request.type", "unkown command"),
+				event.Custom("request.type", "Received unknown request"),
 				event.Payload(b),
 			))
 
