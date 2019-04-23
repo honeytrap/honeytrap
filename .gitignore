@@ -27,3 +27,7 @@ _testmain.go
 *.prof
 *.#*
 honeytrap
+
+\.idea/
+
+*.log
