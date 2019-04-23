@@ -20,7 +20,7 @@
 
 ## To start using Honeytrap
 
-See our documentation on [docs.honeytrap.io](http://docs.honeytrap.io/docs/home/).
+See our documentation on [docs.honeytrap.io](http://docs.honeytrap.io/).
 
 ## Community
 Join the [honeytrap-users](https://groups.google.com/forum/#!forum/honeytrap-users) mailing list to discuss all things Honeytrap.
