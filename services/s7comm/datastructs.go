@@ -185,6 +185,20 @@ type ModInfo struct {
 	RSV       []byte
 	CPUType   []byte
 }
+type S7CommPlus struct {
+	ID uint8
+	PDUType uint8
+	DataLen uint16
+	Reserved uint16
+	SubType	uint16
+	SecNum uint32
+}
+
+type S7ComPlusData struct{
+	hostname string
+	networkInt string
+	servSes string
+}
 
 const (
 	Request        = 0x01

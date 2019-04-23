@@ -124,10 +124,56 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 			}
 		}
 		if cotp {
-			P, isS7 := s.S.deserialize(b)
+			//Check if ID is 32 or 72
+			if b[7] != 0x72 {
 
-			if isS7 && !s7 {
-				if P.S7.Parameter.SetupCom.Function == S7ConReq {
+				P, isS7 := s.S.deserialize(b)
+
+				if isS7 && !s7 {
+					if P.S7.Parameter.SetupCom.Function == S7ConReq {
+
+						s.c.Send(event.New(
+							services.EventOptions,
+							event.Category("s7comm"),
+							event.Type("ics"),
+							event.SourceAddr(conn.RemoteAddr()),
+							event.DestinationAddr(conn.LocalAddr()),
+							event.Custom("request.type", "S7comm job request"),
+							event.Payload(b),
+						))
+
+						response := s.S.connect(P)
+						len, err := conn.Write(response)
+						if err != nil || len < 1 {
+							break
+						}
+						s7 = true
+					}
+				}
+				if isS7 && s7 {
+					reqID := P.S7.Data.SZLID
+					if reqID != 0 {
+						r := s.handleEvent(reqID, conn, b)
+						if r != nil {
+							len, err := conn.Write(r)
+							if err != nil || len < 1 {
+								break
+							}
+						}
+					}
+				}
+			}else if b[7] == 0x72 {
+				var S7P S7CommPlus
+
+				if b[8] == 0x01 {
+					S7CPD, resp := S7P.connect(b)
+
+					if resp != nil {
+						len, err := conn.Write(resp)
+						if err != nil || len < 1 {
+							break
+						}
+					}
 
 					s.c.Send(event.New(
 						services.EventOptions,
@@ -135,24 +181,19 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 						event.Type("ics"),
 						event.SourceAddr(conn.RemoteAddr()),
 						event.DestinationAddr(conn.LocalAddr()),
-						event.Custom("request.type", "S7comm job request"),
+						event.Custom("request.type", "Received S7CommPlus Request"),
+						event.Custom("hostname", S7CPD.hostname),
+						event.Custom("interface", S7CPD.networkInt),
+						event.Custom("server_session", S7CPD.servSes),
 						event.Payload(b),
 					))
 
-					response := s.S.connect(P)
-					len, err := conn.Write(response)
-					if err != nil || len < 1 {
-						break
-					}
-					s7 = true
-				}
-			}
-			if isS7 && s7 {
-				reqID := P.S7.Data.SZLID
-				if reqID != 0 {
-					r := s.handleEvent(reqID, conn, b)
-					if r != nil {
-						len, err := conn.Write(r)
+
+
+				} else if b[8] == 0x02{
+					resp := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
+					if resp != nil {
+						len, err := conn.Write(resp)
 						if err != nil || len < 1 {
 							break
 						}
