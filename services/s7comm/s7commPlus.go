@@ -45,7 +45,7 @@ func (s7p *S7CommPlus) connect(m []byte) (Data S7ComPlusData, resp []byte) {
 
 					switch m[i+2] {
 					case 0x69:
-						S7PD.servSes = msg
+						S7PD.dataType = msg
 					case 0x2a:
 						S7PD.hostname = msg
 					case 0x21:

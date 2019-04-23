@@ -197,7 +197,7 @@ type S7CommPlus struct {
 type S7ComPlusData struct{
 	hostname string
 	networkInt string
-	servSes string
+	dataType string
 }
 
 const (

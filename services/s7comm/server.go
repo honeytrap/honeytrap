@@ -184,7 +184,7 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 						event.Custom("request.type", "Received S7CommPlus Request"),
 						event.Custom("hostname", S7CPD.hostname),
 						event.Custom("interface", S7CPD.networkInt),
-						event.Custom("server_session", S7CPD.servSes),
+						event.Custom("data_type", S7CPD.dataType),
 						event.Payload(b),
 					))
 
