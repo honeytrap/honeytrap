@@ -191,6 +191,17 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 
 
 				} else if b[8] == 0x02{
+
+					s.c.Send(event.New(
+						services.EventOptions,
+						event.Category("s7comm"),
+						event.Type("ics"),
+						event.SourceAddr(conn.RemoteAddr()),
+						event.DestinationAddr(conn.LocalAddr()),
+						event.Custom("request.type", "Received S7CommPlus Request"),
+						event.Payload(b),
+					))
+
 					resp := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
 					if resp != nil {
 						len, err := conn.Write(resp)
@@ -198,6 +209,16 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 							break
 						}
 					}
+				}else{
+					s.c.Send(event.New(
+						services.EventOptions,
+						event.Category("s7comm"),
+						event.Type("ics"),
+						event.SourceAddr(conn.RemoteAddr()),
+						event.DestinationAddr(conn.LocalAddr()),
+						event.Custom("request.type", "Received S7CommPlus Request"),
+						event.Payload(b),
+					))
 				}
 			}
 		}
