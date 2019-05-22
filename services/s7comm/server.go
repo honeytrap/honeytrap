@@ -79,81 +79,95 @@ type s7commServiceConfig struct {
 
 type s7commService struct {
 	s7commServiceConfig
-	c pushers.Channel
-	S S7Packet
-	P Packet
+	channel  pushers.Channel
+	s7packet S7Packet
+	iot      Packet
 }
 
-func (s *s7commService) SetChannel(c pushers.Channel) {
-	s.c = c
+func (s7service *s7commService) SetChannel(c pushers.Channel) {
+	s7service.channel = c
 }
 
-func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
-	s.parseUserInput()
-	var cotp, s7 bool = false, false
+func (s7service *s7commService) Handle(ctx context.Context, conn net.Conn) error {
+	s7service.parseUserInput()
+	var isCotp, isS7Connected bool = false, false
 	var err error
 	for {
-		b := make([]byte, 4096)
-		bl, err := conn.Read(b)
-		b = b[:bl]
-		if errCk(err) {
+		buf := make([]byte, 4096)
+		buflen, err := conn.Read(buf)
+		buf = buf[:buflen]
+		if errorCheck(err) {
 			break
 		}
-		if len(b) < 1 {
+		if len(buf) < 1 {
 			break
 		}
-		if !cotp {
-			response := s.S.C.connect(b)
+		if !isCotp {
+			response := s7service.s7packet.C.connect(buf)
 			if response != nil {
 
-				s.c.Send(event.New(
+				s7service.channel.Send(event.New(
 					services.EventOptions,
 					event.Category("s7comm"),
 					event.Type("ics"),
 					event.SourceAddr(conn.RemoteAddr()),
 					event.DestinationAddr(conn.LocalAddr()),
 					event.Custom("request.type", "COTP connection request"),
-					event.Payload(b),
+					event.Payload(buf),
 				))
 
 				len, err := conn.Write(response)
 				if err != nil || len < 1 {
 					break
 				}
-				cotp = true
+				isCotp = true
 			}
 		}
-		if cotp {
+		if isCotp {
 			//Check if ID is 32 or 72
-			if b[7] != 0x72 {
+			if buf[7] != 0x72 {
 
-				P, isS7 := s.S.deserialize(b)
-
-				if isS7 && !s7 {
+				P, isS7 := s7service.s7packet.deserialize(buf)
+				if isS7 && !isS7Connected {
 					if P.S7.Parameter.SetupCom.Function == S7ConReq {
 
-						s.c.Send(event.New(
+						s7service.channel.Send(event.New(
 							services.EventOptions,
 							event.Category("s7comm"),
 							event.Type("ics"),
 							event.SourceAddr(conn.RemoteAddr()),
 							event.DestinationAddr(conn.LocalAddr()),
 							event.Custom("request.type", "S7comm job request"),
-							event.Payload(b),
+							event.Payload(buf),
 						))
 
-						response := s.S.connect(P)
+						response := s7service.s7packet.connect(P)
 						len, err := conn.Write(response)
 						if err != nil || len < 1 {
 							break
 						}
-						s7 = true
+						isS7Connected = true
+					} else{
+						requestType := lookupJobRequest(P.S7)
+
+						if requestType != ""{
+							s7service.channel.Send(event.New(
+								services.EventOptions,
+								event.Category("s7comm"),
+								event.Type("ics"),
+								event.SourceAddr(conn.RemoteAddr()),
+								event.DestinationAddr(conn.LocalAddr()),
+								event.Custom("request.type", requestType),
+								event.Payload(buf),
+							))
+						}
+
 					}
 				}
-				if isS7 && s7 {
+				if isS7 && isS7Connected {
 					reqID := P.S7.Data.SZLID
 					if reqID != 0 {
-						r := s.handleEvent(reqID, conn, b)
+						r := s7service.handleEvent(reqID, conn, buf)
 						if r != nil {
 							len, err := conn.Write(r)
 							if err != nil || len < 1 {
@@ -162,11 +176,11 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 						}
 					}
 				}
-			}else if b[7] == 0x72 {
-				var S7P S7CommPlus
+			}else if buf[7] == 0x72 {
+				var s7Plus S7CommPlus
 
-				if b[8] == 0x01 {
-					S7CPD, resp := S7P.connect(b)
+				if buf[8] == 0x01 {
+					S7CPD, resp := s7Plus.connect(buf)
 
 					if resp != nil {
 						len, err := conn.Write(resp)
@@ -175,7 +189,7 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 						}
 					}
 
-					s.c.Send(event.New(
+					s7service.channel.Send(event.New(
 						services.EventOptions,
 						event.Category("s7comm"),
 						event.Type("ics"),
@@ -185,21 +199,21 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 						event.Custom("hostname", S7CPD.hostname),
 						event.Custom("interface", S7CPD.networkInt),
 						event.Custom("data_type", S7CPD.dataType),
-						event.Payload(b),
+						event.Payload(buf),
 					))
 
 
 
-				} else if b[8] == 0x02{
+				} else if buf[8] == 0x02{
 
-					s.c.Send(event.New(
+					s7service.channel.Send(event.New(
 						services.EventOptions,
 						event.Category("s7comm"),
 						event.Type("ics"),
 						event.SourceAddr(conn.RemoteAddr()),
 						event.DestinationAddr(conn.LocalAddr()),
 						event.Custom("request.type", "Received S7CommPlus Request"),
-						event.Payload(b),
+						event.Payload(buf),
 					))
 
 					resp := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
@@ -210,27 +224,27 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 						}
 					}
 				}else{
-					s.c.Send(event.New(
+					s7service.channel.Send(event.New(
 						services.EventOptions,
 						event.Category("s7comm"),
 						event.Type("ics"),
 						event.SourceAddr(conn.RemoteAddr()),
 						event.DestinationAddr(conn.LocalAddr()),
 						event.Custom("request.type", "Received S7CommPlus Request"),
-						event.Payload(b),
+						event.Payload(buf),
 					))
 				}
 			}
 		}
-		if !cotp && !s7 {
-			s.c.Send(event.New(
+		if !isCotp && !isS7Connected {
+			s7service.channel.Send(event.New(
 				services.EventOptions,
 				event.Category("s7comm"),
 				event.Type("ics"),
 				event.SourceAddr(conn.RemoteAddr()),
 				event.DestinationAddr(conn.LocalAddr()),
 				event.Custom("request.type", "Received unknown request"),
-				event.Payload(b),
+				event.Payload(buf),
 			))
 
 		}
@@ -239,7 +253,48 @@ func (s *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 	return err
 }
 
-func (s *s7commService) handleEvent(reqID uint16, conn net.Conn, b []byte) (r []byte) {
+
+func lookupJobRequest(packet S7Packet)(rt string) {
+
+	switch packet.Parameter.SetupCom.Function {
+	case 0x00:
+		log.Info("Diagnostics request")
+		rt = "diagnostics request"
+	case 0x04:
+		log.Info("Read request")
+		rt = "read request"
+	case 0x05:
+		log.Info("Write request")
+		rt = "write request"
+	case 0x1a:
+		log.Info("Download request")
+		rt = "download request"
+	case 0x1b:
+		log.Info("Download block")
+		rt = "download block"
+	case 0x1c:
+		log.Info("End download")
+		rt = "end download"
+	case 0x1d:
+		log.Info("Start upload")
+		rt = "start upload"
+	case 0x1e:
+		log.Info("Upload")
+		rt = "upload"
+	case 0x1f:
+		log.Info("End upload")
+		rt = "end upload"
+	case 0x28:
+		log.Info("Insert block")
+		rt = "insert block"
+	default:
+		rt = ""
+
+	}
+	return
+}
+
+func (s7service *s7commService) handleEvent(reqID uint16, conn net.Conn, b []byte) (r []byte) {
 
 	var rt string
 	var resp []byte
@@ -248,18 +303,18 @@ func (s *s7commService) handleEvent(reqID uint16, conn net.Conn, b []byte) (r []
 	case 0x11:
 		log.Info("Module ID list requested")
 		rt = "module ID request"
-		resp = s.S.primRes(s.P)
+		resp = s7service.s7packet.primRes(s7service.iot)
 	case 0x1c:
 		log.Info("Component ID list requested")
 		rt = "component ID request"
-		resp = s.S.secRes(s.P)
+		resp = s7service.s7packet.secRes(s7service.iot)
 	default:
 		log.Info("Received unknown request")
 		rt = "unknown request"
 		resp = nil
 	}
 
-	s.c.Send(event.New(
+	s7service.channel.Send(event.New(
 		services.EventOptions,
 		event.Category("s7comm"),
 		event.Type("ics"),
@@ -273,20 +328,20 @@ func (s *s7commService) handleEvent(reqID uint16, conn net.Conn, b []byte) (r []
 	return resp
 }
 
-func (s *s7commService) parseUserInput() {
-	s.S.ui.Hardware = s.Hardware
-	s.S.ui.SysName = s.SysName
-	s.S.ui.Copyright = s.Copyright
-	s.S.ui.Version = s.Version
-	s.S.ui.ModType = s.ModType
-	s.S.ui.Mod = s.Mod
-	s.S.ui.SerialNum = s.SerialNum
-	s.S.ui.PlantID = s.PlantID
-	s.S.ui.CPUType = s.CPUType
+func (s7service *s7commService) parseUserInput() {
+	s7service.s7packet.ui.Hardware = s7service.Hardware
+	s7service.s7packet.ui.SysName = s7service.SysName
+	s7service.s7packet.ui.Copyright = s7service.Copyright
+	s7service.s7packet.ui.Version = s7service.Version
+	s7service.s7packet.ui.ModType = s7service.ModType
+	s7service.s7packet.ui.Mod = s7service.Mod
+	s7service.s7packet.ui.SerialNum = s7service.SerialNum
+	s7service.s7packet.ui.PlantID = s7service.PlantID
+	s7service.s7packet.ui.CPUType = s7service.CPUType
 	return
 }
 
-func errCk(err error) bool {
+func errorCheck(err error) bool {
 	if err != nil {
 		if err.Error() == "EOF" {
 			return true
