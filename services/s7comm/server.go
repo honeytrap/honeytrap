@@ -45,7 +45,7 @@ import (
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/services"
-	logging "github.com/op/go-logging"
+	"github.com/op/go-logging"
 )
 
 var (
@@ -147,10 +147,13 @@ func (s7service *s7commService) Handle(ctx context.Context, conn net.Conn) error
 							break
 						}
 						isS7Connected = true
-					} else{
-						requestType := lookupJobRequest(P.S7)
+					}
+				}
+				if isS7 && isS7Connected {
 
-						if requestType != ""{
+					if P.S7.Header.MessageType == 1 {
+						requestType := lookupJobRequest(P.S7)
+						if requestType != "" {
 							s7service.channel.Send(event.New(
 								services.EventOptions,
 								event.Category("s7comm"),
@@ -162,21 +165,20 @@ func (s7service *s7commService) Handle(ctx context.Context, conn net.Conn) error
 							))
 						}
 
-					}
-				}
-				if isS7 && isS7Connected {
-					reqID := P.S7.Data.SZLID
-					if reqID != 0 {
-						r := s7service.handleEvent(reqID, conn, buf)
-						if r != nil {
-							len, err := conn.Write(r)
-							if err != nil || len < 1 {
-								break
+					} else {
+						reqID := P.S7.Data.SZLID
+						if reqID != 0 {
+							r := s7service.handleEvent(reqID, conn, buf)
+							if r != nil {
+								len, err := conn.Write(r)
+								if err != nil || len < 1 {
+									break
+								}
 							}
 						}
 					}
 				}
-			}else if buf[7] == 0x72 {
+			} else if buf[7] == 0x72 {
 				var s7Plus S7CommPlus
 
 				if buf[8] == 0x01 {
@@ -202,9 +204,7 @@ func (s7service *s7commService) Handle(ctx context.Context, conn net.Conn) error
 						event.Payload(buf),
 					))
 
-
-
-				} else if buf[8] == 0x02{
+				} else if buf[8] == 0x02 {
 
 					s7service.channel.Send(event.New(
 						services.EventOptions,
@@ -223,7 +223,7 @@ func (s7service *s7commService) Handle(ctx context.Context, conn net.Conn) error
 							break
 						}
 					}
-				}else{
+				} else {
 					s7service.channel.Send(event.New(
 						services.EventOptions,
 						event.Category("s7comm"),
@@ -253,8 +253,7 @@ func (s7service *s7commService) Handle(ctx context.Context, conn net.Conn) error
 	return err
 }
 
-
-func lookupJobRequest(packet S7Packet)(rt string) {
+func lookupJobRequest(packet S7Packet) (rt string) {
 
 	switch packet.Parameter.SetupCom.Function {
 	case 0x00:
