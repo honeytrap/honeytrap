@@ -1,3 +1,18 @@
+/* Copyright 2016-2019 DutchSec (https://dutchsec.com/)
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+* http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+ */
+
 package s7comm
 
 import (
@@ -27,8 +42,10 @@ func (s7p *S7CommPlus) connect(m []byte) (Data S7ComPlusData, resp []byte) {
 	a382 2b 0004 01
 	a382 2c 0012 01 c9c380
 	a382 2d 0015 00 a1000000d3817f0000
-	a381 69001515537562736372697074696f6e436f6e7461696e6572a2a200000000
+	a381 69 0015 15 537562736372697074696f6e436f6e7461696e6572a 2a200000000
+					SubscriptionContainer
 	*/
+
 	var S7PD S7ComPlusData
 	for i := 0; i < len(m)- 1; i++ {
 
