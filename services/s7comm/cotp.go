@@ -17,7 +17,6 @@ package s7comm
 
 import (
 	"bytes"
-
 	"github.com/honeytrap/honeytrap/services/decoder"
 )
 
@@ -75,7 +74,8 @@ func (C *COTP) connect(m []byte) (response []byte) {
 
 func createCOTPCon(m []byte) (response []byte) {
 	var T TPKT
-	if len(m) > 0x11 {
+
+	if len(m) > 0x11 && m[1] == 0xe0{
 
 		dec := decoder.NewDecoder(m)
 
