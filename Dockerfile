@@ -3,12 +3,12 @@ FROM golang:latest AS go
 ENV GOPATH /go
 ENV PATH $GOPATH/bin:/usr/local/go/bin:$PATH
 
-ADD . /src/honeytrap
+ADD . /go/src/github.com/honeytrap/honeytrap
 
 ARG LDFLAGS=""
 
-WORKDIR /src/honeytrap
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -tags="" -ldflags="$(go run scripts/gen-ldflags.go)" -o /go/bin/app .
+WORKDIR /go/src/github.com/honeytrap/honeytrap
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -tags="" -ldflags="$(go run scripts/gen-ldflags.go)" -o /go/bin/app github.com/honeytrap/honeytrap
 
 FROM alpine
 MAINTAINER  Remco Verhoef <remco.verhoef@dutchsec.com>

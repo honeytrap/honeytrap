@@ -1,0 +1,48 @@
+language: go
+
+os:
+  - linux
+
+go:
+  - "1.9"
+  - "1.10"
+  - "1.11"
+  - tip
+
+matrix:
+  fast_finish: true
+  allow_failures:
+    - go: tip
+
+before_install:
+ - sudo add-apt-repository ppa:ubuntu-lxc/daily -y
+ - sudo apt-get update
+ - sudo apt-get install -qq lxc lxc-dev uidmap busybox
+ - echo "${USER}:100000:65536" | sudo tee /etc/subuid
+ - echo "${USER}:100000:65536" | sudo tee /etc/subgid
+ - echo "${USER} veth lxcbr0 10" | sudo tee -a /etc/lxc/lxc-usernet
+ - mkdir -p ${HOME}/.config/lxc/
+ - cp /etc/lxc/default.conf ${HOME}/.config/lxc/default.conf
+ - echo "lxc.id_map = u 0 100000 65536" | sudo tee -a ${HOME}/.config/lxc/default.conf
+ - echo "lxc.id_map = g 0 100000 65536" | sudo tee -a ${HOME}/.config/lxc/default.conf
+ - "make setup-test-cgroup"
+ - mkdir -p ${HOME}/.local/share/lxc
+ - chmod +x ${HOME}
+ - chmod +x ${HOME}/.local
+ - chmod +x ${HOME}/.local/share
+ - chmod +x ${HOME}/.local/share/lxc
+
+install:
+  - go get golang.org/x/tools/cmd/goimports
+  - go get gopkg.in/lxc/go-lxc.v2
+
+script:
+  - "make all"
+  - "make test"
+  - "make test-race"
+  - "make test-unprivileged"
+  - "make test-unprivileged-race"
+  - "make cover"
+
+notifications:
+  webhooks: https://linuxcontainers.org/webhook-lxcbot/

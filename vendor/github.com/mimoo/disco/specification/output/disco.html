@@ -1,0 +1,233 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <meta http-equiv="Content-Style-Type" content="text/css" />
+  <meta name="generator" content="pandoc" />
+  <meta name="author" content="David Wong (david.wong@nccgroup.trust)" />
+  <meta name="date" content="2018-01-14" />
+  <title>Noise Extension: Disco</title>
+  <style type="text/css">code{white-space: pre;}</style>
+  <link rel="stylesheet" href="spec_markdown.css" type="text/css" />
+</head>
+<body>
+<div id="header">
+<h1 class="title">Noise Extension: Disco</h1>
+<b>Author:</b> David Wong (david.wong@nccgroup.trust)<br/>
+<b>Revision:</b> 5<br/>
+<b>Date:</b> 2018-01-14<br/>
+<b>Status:</b> unofficial/unstable<br/>
+<b>PDF:</b> <a href="disco.pdf">disco.pdf</a><br/>
+</div>
+<div id="TOC">
+<h2 class="toc">Table of Contents</h2>
+<ul>
+<li><a href="#introduction">1. Introduction</a><ul>
+<li><a href="#motivation">1.1. Motivation</a></li>
+<li><a href="#how-to-read-this-document-and-implement-disco">1.2. How to Read This Document and Implement Disco</a></li>
+</ul></li>
+<li><a href="#protocol-naming">2. Protocol naming</a></li>
+<li><a href="#the-strobestate-object">3. The <code>StrobeState</code> object</a></li>
+<li><a href="#post-handshake-phase-and-modifications-to-the-handshake-state">4. Post-handshake phase and modifications to the Handshake State</a></li>
+<li><a href="#modifications-to-the-symmetric-state">5. Modifications to the Symmetric State</a></li>
+<li><a href="#modifications-to-pre-shared-symmetric-keys">6. Modifications to pre-shared symmetric keys</a></li>
+<li><a href="#modifications-to-advanced-features">7. Modifications to Advanced Features</a><ul>
+<li><a href="#channel-binding">7.1 Channel Binding</a></li>
+<li><a href="#rekey">7.2 Rekey</a></li>
+<li><a href="#out-of-order-transport-messages">7.3 Out-of-order transport messages</a><ul>
+<li><a href="#modifications-to-the-split-function">7.3.1 Modifications to the <code>Split()</code> function</a></li>
+<li><a href="#modifications-to-the-cipherstate-object">7.3.2 Modifications to the <code>CipherState</code> object</a></li>
+</ul></li>
+<li><a href="#half-duplex-protocols">7.4 Half-duplex protocols</a></li>
+</ul></li>
+<li><a href="#security-considerations">8. Security Considerations</a></li>
+<li><a href="#acknowledgements">9. Acknowledgements</a></li>
+<li><a href="#change-log">10. Change log</a></li>
+<li><a href="#references">11. References</a></li>
+</ul>
+</div>
+<h1 id="introduction">1. Introduction</h1>
+<p>This specification is extending <a href="http://noiseprotocol.org">Noise revision 34</a><span class="citation">[1]</span> and <a href="http://strobe.sourceforge.io/">Strobe v1.0.2</a><span class="citation">[2]</span>. It relies for the most part on Noise's specification, heavily modifying some of its foundations to rely on Strobe as an opaque cryptographic primitive.</p>
+<p>Major changes between versions of Disco are listed at the end of this document.</p>
+<h2 id="motivation">1.1. Motivation</h2>
+<p><a href="http://noiseprotocol.org">Noise</a><span class="citation">[1]</span> is a framework for crypto protocols based on the Diffie-Hellman key agreement. One of Noise's property is to authenticate the protocol transcript by continuously hashing messages being sent and received, as well as continuously deriving new keys based on the output of key exchanges and previously derived keys. This interesting property stops at the end of the handshake.<br />
+<a href="http://strobe.sourceforge.io/">Strobe</a><span class="citation">[2]</span> is a protocol framework based on a <a href="http://sponge.noekeon.org/">duplex construction</a><span class="citation">[3]</span>. It naturally benefits from similar property, effectively absorbing every operation to influence the next ones. The Strobe specification is comparable in aspect to Noise, but focuses only on the symmetric parts of a protocol. By merging both protocol frameworks into one, Disco achieves the following goals:</p>
+<ul>
+<li>The Noise specification is greatly simplified by removing all symmetric cryptographic algorithms and all symmetric objects. These are replaced by a single Strobe object acting as an opaque cryptographic primitive.</li>
+<li>The encryption of Disco messages is influenced by all previous messages that have been exchanged in addition to the output of key exchanges. This includes post-handshake messages as well.</li>
+<li>Implementations of the Disco extension consequently benefit from the use of Strobe which works on top of a single primitive. This allows for a drastic reduction in size of the codebase, facilitating security audits and pleasing the constraints of embedded device development.</li>
+<li>Thanks to Strobe's total reliance on SHA-3's internal permutation keccak, hardware support for the latter will benefit Strobe and consequently Disco. Cryptanalysis from the SHA-3 competition indicate that Strobe and Disco are built on top of solid foundations.</li>
+<li>The use of a Strobe library in an implementation of Disco also provides access the following functions for free: generation of random numbers, derivation of keys, hashing, encryption and authentication.</li>
+</ul>
+<h2 id="how-to-read-this-document-and-implement-disco">1.2. How to Read This Document and Implement Disco</h2>
+<p>To implement the Disco extension, a Strobe implementation respecting the functions of the <a href="#the-strobestate-object">section 3 of this document</a> is required. None of the <a href="http://noiseprotocol.org/noise.html#crypto-functions">cipher and hash functions of Noise</a> are required. Furthermore, the <a href="http://noiseprotocol.org/noise.html#the-cipherstate-object">CipherState</a> is not necessary while the <a href="http://noiseprotocol.org/noise.html#the-symmetricstate-object">SymmetricState</a> has been simplified by Strobe calls. When implementing Noise with the Disco extension, simply ignore the CipherState section of Noise and implement the SymmetricState described in <a href="#modifications-to-the-symmetric-state">section 5 of this document</a>. For PSK handshakes see <a href="#modifications-to-pre-shared-symmetric-keys">section 6</a> and for advanced features, refer to <a href="#modifications-to-advanced-features">section 7</a>.</p>
+<p>Note that like the Noise protocol framework, additional layers might need to be added on top of Disco for it to be usable (for example a framing layer to indicate the messages' lengths). For more information see <a href="http://noiseprotocol.org/noise.html#application-responsabilities">Noise's section 13 on application responsabilities</a>.</p>
+<h1 id="protocol-naming">2. Protocol naming</h1>
+<p>The name of a Noise protocol extended with Disco follows the same convention, but replaces the symmetric cryptographic algorithms by the version of Strobe used:</p>
+<pre><code>Noise_[PATTERN]_[KEYEXCHANGE]_STROBEvX.Y.Z</code></pre>
+<p>For example, with the current version of Strobe<span class="citation">[2]</span> being STROBEv1.0.2:</p>
+<pre><code>Noise_XX_25519_STROBEv1.0.2</code></pre>
+<!-- TODO: maybe change this to Noise_[PATTERN]_[KEYEXCHANGE]_STROBEvX.Y.Z_PERMUTATION -->
+<h1 id="the-strobestate-object">3. The <code>StrobeState</code> object</h1>
+<!-- TODO: do we need descriptions for all the functions here? -->
+<!-- TODO: do we need StrobeR? -->
+<!-- TODO: we should talk about security here (128/256) -->
+<p>A <code>StrobeState</code> depends on a Strobe object (as defined in <a href="https://strobe.sourceforge.io/specs/#object">section 5 of the Strobe Specification</a>) as well as the following associated constant:</p>
+<ul>
+<li><strong><code>StrobeR</code></strong>: The blocksize of the Strobe state (computed as <code>N - (2*sec)/8 - 2</code>, <a href="https://strobe.sourceforge.io/specs/#params">see section 4 of the Strobe specification</a>).</li>
+</ul>
+<p>While a Strobe object responds to many functions (see Strobe's specification<span class="citation">[4]</span>), only the following ones need to be implemented in order for the Disco extension to work properly:</p>
+<p><strong><code>InitializeStrobe(protocol_name)</code></strong>: Initialize the Strobe object with a custom protocol name.</p>
+<p><strong><code>KEY(key)</code></strong>: Permutes the Strobe's state and replaces the new state with the key.</p>
+<p><strong><code>PRF(output_len)</code></strong>: Permutes the Strobe's state and removes <code>output_len</code> bytes from the new state. Outputs the removed bytes to the caller.</p>
+<p><strong><code>send_ENC(plaintext)</code></strong>: Permutes the Strobe's state and XOR the plaintext with the new state to encrypt it. The new state is replaced by the resulting ciphertext, while the resulting ciphertext is output to the caller.</p>
+<p><strong><code>recv_ENC(ciphertext)</code></strong>: Permutes the Strobe's state and XOR the ciphertext with the new state to decrypt it. The new state is replaced by the ciphertext, while the resulting plaintext is output to the caller.</p>
+<p><strong><code>AD(additionalData)</code></strong>: Absorbs the additional data in the Strobe's state.</p>
+<p><strong><code>send_MAC(output_length)</code></strong>: Permutes the Strobe's state and retrieves the next <code>output_length</code> bytes from the new state.</p>
+<p><strong><code>recv_MAC(tag)</code></strong>: Permutes the Strobe's state and compare (in <strong>constant-time</strong>) the received tag with the next 16 bytes from the new state.</p>
+<p><strong><code>RATCHET(length)</code></strong>: Permutes the Strobe's state and set the next <code>length</code> bytes from the new state to zero.</p>
+<p>The following <strong>meta</strong> functions:</p>
+<p><strong><code>meta_AD(additionalData)</code></strong>: XOR the additional data in the Strobe's state.</p>
+<p>The following function which is not specified in Strobe:</p>
+<p><strong><code>Clone()</code></strong>: Returns a copy of the Strobe state.</p>
+<h1 id="post-handshake-phase-and-modifications-to-the-handshake-state">4. Post-handshake phase and modifications to the Handshake State</h1>
+<p>Processing the final handshake message via <code>WriteMessage()</code> and <code>ReadMessage()</code> now returns two new <code>StrobeState</code> objects by calling <code>Split()</code>. The first for encrypting transport messages from initiator to responder, and the second for messages in the other direction. At this point the <code>StrobeState</code> of the <code>SymmetricState</code> should not be deleted as it is the first <code>StrobeState</code> object returned by <code>Split()</code> (and will be used by the initiator to encrypt messages).</p>
+<p>The peers can then encrypt (resp. decrypt) messages by calling <code>send_ENC</code> followed by <code>send_MAC</code> (resp. <code>recv_ENC</code> followed by <code>recv_MAC</code>) on the relevant <code>StrobeState</code> object.</p>
+<h1 id="modifications-to-the-symmetric-state">5. Modifications to the Symmetric State</h1>
+<p>A SymmetricState object contains:</p>
+<ul>
+<li><strong><code>StrobeState</code></strong>: a Strobe state responding to the functions mentioned in the previous section.</li>
+<li><strong><code>isKeyed</code></strong>: a boolean value indicating if a Diffie-Hellman key exchange has already occurred.</li>
+</ul>
+<p>A SymmetricState responds to the following functions:</p>
+<p><strong><code>InitializeSymmetric(protocol_name)</code></strong>: Calls <code>InitializeStrobe(protocol_name)</code> on the Strobe state.</p>
+<p><strong><code>MixKey(input_key_material)</code></strong>: Calls <code>AD(input_key_material)</code> on the Strobe state. It then sets <code>isKeyed</code> to <code>true</code>.</p>
+<p><strong><code>MixHash(data)</code></strong>: Calls <code>AD(data)</code> on the Strobe state.</p>
+<p><strong><code>MixKeyAndHash(input_key_material)</code></strong>: Calls <code>AD(input_key_material)</code> on the Strobe state.</p>
+<p><strong><code>GetHandshakeHash()</code></strong>: Calls <code>PRF(32)</code>. This function should only be called at the end of a handshake, i.e. after the Split() function has been called. This function is used for channel binding, as described in <a href="https://noiseprotocol.org/noise.html#channel-binding">Section 11.2 of the Noise specification</a>.</p>
+<p><strong><code>EncryptAndHash(plaintext)</code></strong>: Returns a ready to be sent payload to the caller by following these steps:</p>
+<ul>
+<li>If <code>isKeyed</code> is set to <code>false</code>, call <code>send_CLR(plaintext)</code> and return the <code>plaintext</code>.</li>
+<li>Call <code>send_ENC(plaintext)</code> followed by <code>send_MAC(16)</code> on the Strobe state. Return the contatenation of both results to the caller.</li>
+</ul>
+<p><strong><code>DecryptAndHash(ciphertext)</code></strong>: Returns the received payload by following steps:</p>
+<ul>
+<li>If <code>isKeyed</code> is set to <code>false</code>, call <code>recv_CLR(ciphertext)</code> and return the <code>ciphertext</code>.</li>
+<li>Otherwise, check that the length of the received <code>ciphertext</code> is at least 16 bytes. If it is not, return an error to the caller and abort the handshake.</li>
+<li>Call <code>recv_ENC(ciphertext[:-16])</code> and store the result in a <code>plaintext</code> buffer.</li>
+<li>Call <code>recv_MAC(ciphertext[-16:])</code> on the Strobe state. If <code>recv_MAC</code> returns <code>false</code>, the peer must return an error to the caller and abort the connection. Otherwise return the <code>plaintext</code> buffer.</li>
+</ul>
+<p><strong><code>Split()</code></strong>: Returns a pair of Strobe states for encrypting transport messages by executing the following steps:</p>
+<ul>
+<li>Let <code>s1</code> be the Strobe state and <code>s2</code> the result returned by <code>Clone()</code>.</li>
+<li>Calls <code>meta_AD(&quot;initiator&quot;)</code> on <code>s1</code> and <code>meta_AD(&quot;responder&quot;)</code> on <code>s2</code>.</li>
+<li>Calls <code>RATCHET(16)</code> on <code>s1</code> and on <code>s2</code>. <!-- TODO: ratchet(32) for 256-bit of security --></li>
+<li>Returns the pair <code>(s1, s2)</code>.</li>
+</ul>
+<h1 id="modifications-to-pre-shared-symmetric-keys">6. Modifications to pre-shared symmetric keys</h1>
+<p>For PSK handshakes, the &quot;<code>e</code>&quot; token does not need to call <code>MixKey(e.public_key)</code>. Hence, no further modifications to the Symmetric State functions are needed for such handshakes.</p>
+<h1 id="modifications-to-advanced-features">7. Modifications to Advanced Features</h1>
+<h2 id="channel-binding">7.1 Channel Binding</h2>
+<p>Right before calling <code>Split()</code>, a binding value could be obtained from the StrobeState by calling <code>PRF()</code>.</p>
+<h2 id="rekey">7.2 Rekey</h2>
+<p>To enable this, Strobe supports a <code>RATCHET()</code> function.</p>
+<h2 id="out-of-order-transport-messages">7.3 Out-of-order transport messages</h2>
+<p>In order to build out-of-order protocols out of Disco, the <code>Split()</code> function must return nonce-based objects. For this, the <code>Split()</code> function is modified in the next section to return a pair of <code>DiscoSecureChannel</code> objects which are defined in the section following it.</p>
+<p>Transport messages are then encrypted and decrypted by calling <code>Encrypt()</code> and <code>Decrypt()</code> on the relevant <code>DiscoSecureChannel</code>.</p>
+<h3 id="modifications-to-the-split-function">7.3.1 Modifications to the <code>Split()</code> function</h3>
+<p>Modify the <code>Split()</code> function to add the following steps before returning the pair <code>(s1, s2)</code> of <code>Strobe</code> objects:</p>
+<ul>
+<li>Call <code>meta_RATCHET(0)</code> on both <code>s1</code> and <code>s2</code>.</li>
+<li>Create two <code>CipherState</code> named <code>c1</code> and <code>c2</code>.</li>
+<li>Associate <code>s1</code> (resp. <code>s2</code>) to <code>c1</code> (resp. <code>c2</code>).</li>
+<li>Set both the nonces <code>n</code> of <code>c1</code> and <code>c2</code> to zero.</li>
+<li>Return the pair <code>(c1, c2)</code>.</li>
+</ul>
+<h3 id="modifications-to-the-cipherstate-object">7.3.2 Modifications to the <code>CipherState</code> object</h3>
+<p>A <code>CipherState</code> can encrypt and decrypt data based on its associated <code>StrobeState</code> object as well as the following variable:</p>
+<ul>
+<li><strong><code>n</code></strong>: An 8-byte (64-bit) unsigned integer nonce.</li>
+</ul>
+<p>A <code>CipherState</code> responds to the following functions:</p>
+<p><strong><code>EncryptWithAd(ad, plaintext)</code></strong>:</p>
+<ul>
+<li>If <code>n</code> is equal to 2<sup>64</sup>-1 the function returns an error to the caller and aborts the Disco session.</li>
+<li>Create a new <code>StrobeState</code> by calling <code>Clone()</code> on the <code>StrobeState</code> object.</li>
+<li>Call <code>AD(n)</code> on the new <code>StrobeState</code>.</li>
+<li>Call <code>send_ENC(plaintext)</code> on the new <code>StrobeState</code> and add the result to a <code>ciphertext</code> buffer.</li>
+<li>Call <code>send_MAC(16)</code> on the new <code>StrobeState</code> and add the result to the <code>ciphertext</code> buffer.</li>
+<li>Increment the nonce <code>n</code> and discard the new <code>StrobeState</code> object.</li>
+<li>Return the <code>ciphertext</code> buffer containing the encrypted data.</li>
+</ul>
+<p><strong><code>DecryptWithAd(ad, ciphertext):</code></strong>:</p>
+<ul>
+<li>Check that the length of the received <code>ciphertext</code> is at least 16 bytes. If it is not, return an error to the caller and abort the session.</li>
+<li>If <code>n</code> is equal to 2<sup>64</sup>-1 the function returns an error to the caller and aborts the Disco session.</li>
+<li>Create a new <code>StrobeState</code> by calling <code>Clone()</code> on the <code>StrobeState</code> object.</li>
+<li>Call <code>AD(n)</code> on the new <code>StrobeState</code>.</li>
+<li>Call <code>recv_ENC(ciphertext[:-16])</code> on the new <code>StrobeState</code> and store the result in a <code>plaintext</code> buffer.</li>
+<li>Call <code>recv_MAC(ciphertext[-16:])</code> on the new <code>StrobeState</code>, if the function returns <code>false</code>, return an error to the caller and abort the Disco session.</li>
+<li>Increment the nonce <code>n</code> and discard the new <code>StrobeState</code> object.</li>
+<li>Return the <code>plaintext</code> buffer containing the decrypted data.</li>
+</ul>
+<!-- TODO: do 32 for Strobe-256/1600 -->
+<p><strong><code>Rekey()</code></strong>: calls RATCHET(16) on the Strobe Object.</p>
+<h2 id="half-duplex-protocols">7.4 Half-duplex protocols</h2>
+<p>To use Disco in half-duplex mode, modify <code>Split()</code> to return the <code>StrobeState</code> without modifications.</p>
+<p>The same security considerations from the Noise specification applies to this section: if the two peers do not properly take turns to write and read on the channel, the protocol will fail catastrophically.</p>
+<h1 id="security-considerations">8. Security Considerations</h1>
+<p>The same security considerations that apply to both Noise and Strobe are to be considered.</p>
+<h1 id="acknowledgements">9. Acknowledgements</h1>
+<p>Thanks to Trevor Perrin and Mike Hamburg for being the foundations and main help in building this specification.</p>
+<p>Thanks to Trevor Perrin again for suggesting the name to this extension.</p>
+<h1 id="change-log">10. Change log</h1>
+<p><strong>this section will be removed in the final document</strong></p>
+<p><strong>draft-5</strong>:</p>
+<ul>
+<li>Added a pre-shared key section</li>
+</ul>
+<p><strong>draft-4</strong>:</p>
+<ul>
+<li><code>DiscoSecureChannel</code> has been renamed to <code>CipherState</code>.</li>
+<li>Added a post-handshake phase.</li>
+</ul>
+<p><strong>draft-3</strong>:</p>
+<ul>
+<li>The specification now extends Noise draft-33.</li>
+<li>A <code>isSetKey</code> boolean value was added to the SymmetricState, it is set when <code>MixKey()</code> is called.</li>
+<li><code>EncryptAndHash()</code> and <code>DecryptAndHash()</code> now look for the value of <code>isSetKey</code> and branch to <code>send_CLR()</code> and <code>recv_CLR()</code> if the boolean value is set to <code>false</code>.</li>
+<li>a <code>StrobeState</code> object has been introduced to formalize the integration of Strobe in Disco.</li>
+<li>Added the missing <code>GetHandshakeHash()</code> function to the <code>SymmetricState</code>.</li>
+<li>removed the <code>TAGLEN</code> field and set it to 16 everywhere. Following Noise's way of defining the tag length.</li>
+<li>Half-duplex protocols are introduced in Advanced features.</li>
+<li>Out-of-order protocols are introduced in Advanced features, along with <code>DiscoSecureChannel</code> objects.</li>
+</ul>
+<p><strong>draft-2</strong>:</p>
+<ul>
+<li>The <code>SymmetricState</code> object has been simplified with Strobe's calls (instead of modifying the <code>HandshakeState</code>).</li>
+</ul>
+<p><strong>draft-1</strong>:</p>
+<ul>
+<li>Protocol names don't have the symmetric algorithms, but instead the version of Strobe.</li>
+<li>The <code>CipherState</code> object has been removed.</li>
+<li>The Handshake object makes calls to Strobe functions, affecting a unique Strobe state.</li>
+<li>The Handshake returns two Strobe states.</li>
+<li>The document extends Noise draft-32.</li>
+</ul>
+<h1 id="references" class="unnumbered">11. References</h1>
+<div id="refs" class="references">
+<div id="ref-noise">
+<p>[1] Trevor Perrin, “Noise protocol framework.” 2017. <a href="https://noiseprotocol.org" class="uri">https://noiseprotocol.org</a></p>
+</div>
+<div id="ref-strobe">
+<p>[2] Mike Hamburg, “The STROBE protocol framework.” Cryptology ePrint Archive, Report 2017/003, 2017. <a href="https://eprint.iacr.org/2017/003" class="uri">https://eprint.iacr.org/2017/003</a></p>
+</div>
+<div id="ref-duplex">
+<p>[3] G. Bertoni, J. Daemen, M. Peeters, and G. V. Assche, “Duplexing the sponge: Single-pass authenticated encryption and other applications.” Cryptology ePrint Archive, Report 2011/499, 2011. <a href="https://eprint.iacr.org/2011/499" class="uri">https://eprint.iacr.org/2011/499</a></p>
+</div>
+<div id="ref-strobespec">
+<p>[4] Mike Hamburg, “The STROBE protocol framework specification.” 2017. <a href="https://strobe.sourceforge.io/" class="uri">https://strobe.sourceforge.io/</a></p>
+</div>
+</div>
+</body>
+</html>

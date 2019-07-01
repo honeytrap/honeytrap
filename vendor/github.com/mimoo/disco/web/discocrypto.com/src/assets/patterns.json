@@ -1,0 +1,42 @@
+[
+  {
+  	"name": "Noise_K",
+  	"tags": ["one_way", "key_pinning"],
+  	"description": "Noise_K is a one-way handshake pattern (in which only the client sends application data to the server and the server never replies) where:<ol><li>the client already knows the server's public key</li><li>the server already knows the client's public key</li></ol>"
+  },
+  {
+  	"name": "Noise_N",
+  	"tags": ["one_way", "key_pinning"],
+  	"description": "Noise_N is a one-way handshake pattern (in which only the client sends application data to the server and the server never replies) where:<ol><li>the client already knows the server's public key</li><li>the client is not authenticated as part of the handshake</li></ol>"
+  },
+  {
+  	"name": "Noise_X",
+  	"tags": ["one_way", "key_pinning", "PKI"],
+  	"description": "Noise_X is a one-way handshake pattern (in which only the client sends application data to the server and the server never replies) where:<ol><li>the server receives the client's public key as part of the handshake</li><li>the client already knows the server's public key</li></ol>"
+  },
+  {
+  	"name": "Noise_NNpsk2",
+  	"tags": ["two_way", "psk"],
+  	"description": "Noise_NNpsk2 is a handshake pattern where both the client and the server already share a 32-byte secret."
+  },
+  {
+  	"name": "Noise_KK",
+  	"tags": ["two_way", "key_pinning"],
+  	"description": "Noise_KK is a handshake pattern where both peers already know each other's public key prior to the handshake."
+  },
+  {
+  	"name": "Noise_NK",
+  	"tags": ["two_way", "key_pinning"],
+  	"description": "Noise_NK is a handshake pattern similar to mobile device applications connecting to webservers using <strong>public-key pinning</strong>. The static public key of the server is hardcoded on the client-side of the connection, thanks to this it is not \"sent\" by the server during the connection, but still used as part of the cryptographic computations. The client is not authenticated"
+  },
+	{
+		"name": "Noise_NX",
+		"tags": ["two_way", "PKI"],
+		"description": "Noise_NX is a handshake pattern similar to a typical <strong>browser ↔ HTTPS server</strong> scenario where the client does not authenticate itself and the server authenticates its public key via a signature from an authoritative signing key."
+	},
+	{
+		"name": "Noise_XX",
+		"tags": ["two_way", "PKI"],
+		"description": "Noise_XX is a handshake pattern similar to the typical <strong>browser ↔ HTTPS server</strong> scenario where both the client and the server authenticate themselves via a static public key along with a proof from an (or two different) authoritative signing key(s)."
+	}
+]
