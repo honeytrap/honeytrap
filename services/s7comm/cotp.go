@@ -75,8 +75,8 @@ func (C *COTP) connect(m []byte) (response []byte) {
 func createCOTPCon(m []byte) (response []byte) {
 	var T TPKT
 
-	if len(m) > 0x11 && m[1] == 0xe0{
 
+	if len(m) > 0x11 && m[1] == 0xe0 && m[7] == 0xc1 && m[11] == 0xc2{
 		dec := decoder.NewDecoder(m)
 
 		var COTPRequest = COTPConnectRequest{
