@@ -354,9 +354,9 @@ type errHandler struct {
 	err error
 }
 
-func (eh *errHandler) serializer(buf *bytes.Buffer, i interface{}) {
-	if eh.err != nil {
+func (errorHandler *errHandler) serializer(buf *bytes.Buffer, i interface{}) {
+	if errorHandler.err != nil {
 		return
 	}
-	eh.err = binary.Write(buf, binary.BigEndian, i)
+	errorHandler.err = binary.Write(buf, binary.BigEndian, i)
 }
