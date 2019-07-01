@@ -203,9 +203,9 @@ func (s7 *S7Packet) primRes(P Packet) (response []byte) {
 }
 
 func bufferFiller(m *[]byte, tl int) {
-	tl = tl - len((*m))
+	tl = tl - len(*m)
 	a := make([]byte, tl)
-	(*m) = append((*m), a...)
+	*m = append(*m, a...)
 }
 
 func createS7Header(m *[]byte) (H S7Header) {
@@ -225,9 +225,9 @@ func createS7Header(m *[]byte) (H S7Header) {
 		if H.MessageType == AckData {
 			H.ErrorClass = dec.Byte()
 			H.ErrorCode = dec.Byte()
-			(*m) = (*m)[12:]
+			*m = (*m)[12:]
 		} else {
-			(*m) = (*m)[10:]
+			*m = (*m)[10:]
 		}
 	}
 	return
@@ -269,19 +269,19 @@ func createS7Parameters(m *[]byte, H S7Header) (P S7Parameter) {
 			P.UserData.DataRefNum = dec.Byte()
 			P.UserData.LastDataUnit = dec.Byte()
 			P.UserData.ErrorCode = dec.Uint16()
-			(*m) = (*m)[12:]
+			*m = (*m)[12:]
 			return
 		}
 
 	}
 
-	(*m) = (*m)[8:]
+	*m = (*m)[8:]
 	return
 }
 
 func createS7Data(mp *[]byte, H S7Header, P S7Parameter) (D S7Data) {
 	dec := decoder.NewDecoder(*mp)
-	var m = (*mp)
+	var m = *mp
 	if H.MessageType == UserData {
 		if P.UserData.MethodType == S7DataRequest {
 			D = S7Data{

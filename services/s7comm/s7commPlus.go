@@ -20,7 +20,7 @@ import (
 	"github.com/google/netstack/rand"
 	"github.com/honeytrap/honeytrap/services/decoder"
 )
-func (s7p *S7CommPlus) randomResponse(m []byte) (resp []byte) {
+func (s7p *Plus) randomResponse(m []byte) (resp []byte) {
 
 	var Tptk TPKT
 	var Cotp COTP
@@ -29,7 +29,7 @@ func (s7p *S7CommPlus) randomResponse(m []byte) (resp []byte) {
 	return
 }
 
-func (s7p *S7CommPlus) connect(m []byte) (Data S7ComPlusData, resp []byte) {
+func (s7p *Plus) connect(m []byte) (Data S7ComPlusData, resp []byte) {
 
 	// We're skipping TKTP & COPT check
 	dec := decoder.NewDecoder(m[7:])
@@ -89,7 +89,7 @@ func (s7p *S7CommPlus) connect(m []byte) (Data S7ComPlusData, resp []byte) {
 	var Tpkt TPKT
 
 	resp = make([]byte, 25)
-	rand.Read(resp)
+	_, _ = rand.Read(resp)
 
 	resp = Tpkt.serialize(Cotp.serialize(resp))
 

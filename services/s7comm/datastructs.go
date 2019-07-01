@@ -185,7 +185,7 @@ type ModInfo struct {
 	RSV       []byte
 	CPUType   []byte
 }
-type S7CommPlus struct {
+type Plus struct {
 	ID uint8
 	PDUType uint8
 	DataLen uint16

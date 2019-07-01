@@ -90,7 +90,7 @@ func (s7service *s7commService) SetChannel(c pushers.Channel) {
 
 func (s7service *s7commService) Handle(ctx context.Context, conn net.Conn) error {
 	s7service.parseUserInput()
-	var isCotp, isS7Connected bool = false, false
+	var isCotp, isS7Connected = false, false
 	var err error
 	for {
 		buf := make([]byte, 4096)
@@ -116,8 +116,8 @@ func (s7service *s7commService) Handle(ctx context.Context, conn net.Conn) error
 					event.Payload(buf),
 				))
 
-				len, err := conn.Write(response)
-				if err != nil || len < 1 {
+				length, err := conn.Write(response)
+				if err != nil || length < 1 {
 					break
 				}
 				isCotp = true
@@ -125,6 +125,11 @@ func (s7service *s7commService) Handle(ctx context.Context, conn net.Conn) error
 		}
 		if isCotp {
 			//Check if ID is 32 or 72
+
+			if len(buf) < 8 {
+				break
+			}
+
 			if buf[7] != 0x72 {
 
 				P, isS7 := s7service.s7packet.deserialize(buf)
@@ -142,8 +147,8 @@ func (s7service *s7commService) Handle(ctx context.Context, conn net.Conn) error
 						))
 
 						response := s7service.s7packet.connect(P)
-						len, err := conn.Write(response)
-						if err != nil || len < 1 {
+						length, err := conn.Write(response)
+						if err != nil || length < 1 {
 							break
 						}
 						isS7Connected = true
@@ -170,8 +175,8 @@ func (s7service *s7commService) Handle(ctx context.Context, conn net.Conn) error
 						if reqID != 0 {
 							r := s7service.handleEvent(reqID, conn, buf)
 							if r != nil {
-								len, err := conn.Write(r)
-								if err != nil || len < 1 {
+								length, err := conn.Write(r)
+								if err != nil || length < 1 {
 									break
 								}
 							}
@@ -179,14 +184,14 @@ func (s7service *s7commService) Handle(ctx context.Context, conn net.Conn) error
 					}
 				}
 			} else if buf[7] == 0x72 {
-				var s7Plus S7CommPlus
+				var s7Plus Plus
 
 				if buf[8] == 0x01 {
 					S7CPD, resp := s7Plus.connect(buf)
 
 					if resp != nil {
-						len, err := conn.Write(resp)
-						if err != nil || len < 1 {
+						length, err := conn.Write(resp)
+						if err != nil || length < 1 {
 							break
 						}
 					}
@@ -208,8 +213,8 @@ func (s7service *s7commService) Handle(ctx context.Context, conn net.Conn) error
 
 					resp := s7Plus.randomResponse(buf)
 					if resp != nil {
-						len, err := conn.Write(resp)
-						if err != nil || len < 1 {
+						length, err := conn.Write(resp)
+						if err != nil || length < 1 {
 							break
 						}
 					}
