@@ -10,16 +10,16 @@ ARG LDFLAGS=""
 WORKDIR /src/honeytrap
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -tags="" -ldflags="$(go run scripts/gen-ldflags.go)" -o /go/bin/app .
 
-FROM alpine
+RUN mkdir /config /data
+RUN curl -s -o /config/config.toml https://raw.githubusercontent.com/honeytrap/honeytrap-configs/master/server-standalone/config-server-standalone.toml
+
+FROM scratch
 MAINTAINER  Remco Verhoef <remco.verhoef@dutchsec.com>
 
-RUN apk --update upgrade && apk add curl ca-certificates && rm -rf /var/cache/apk/*
-RUN apk add ca-certificates && update-ca-certificates
-
-RUN mkdir /config /data
-
-RUN curl -s -o /config/config.toml https://raw.githubusercontent.com/honeytrap/honeytrap-configs/master/server-standalone/config-server-standalone.toml
+COPY --from=go /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=go /go/bin/app /honeytrap/honeytrap
+COPY --from=go /config /config
+COPY --from=go /data /data
 
 ENTRYPOINT ["/honeytrap/honeytrap", "--config", "/config/config.toml", "--data", "/data/"]
 
