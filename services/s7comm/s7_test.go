@@ -161,9 +161,6 @@ func TestS7SecResp(t *testing.T){
 	}
 }
 
-
-
-
 func TestBufferSerialzer(t *testing.T){
 	var eh errHandler
 	var T TPKT
@@ -193,5 +190,4 @@ func TestBufferSerialzer(t *testing.T){
 	if buf.Bytes() != nil{
 		t.Errorf("Serializer returned %v, but an empty output was expected", buf.Bytes())
 	}
-
 }

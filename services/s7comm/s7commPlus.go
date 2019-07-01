@@ -15,11 +15,18 @@
 
 package s7comm
 
+import "C"
 import (
 	"github.com/google/netstack/rand"
 	"github.com/honeytrap/honeytrap/services/decoder"
 )
-func (s7p *S7CommPlus) receiveCommand(m []byte) () {
+func (s7p *S7CommPlus) randomResponse(m []byte) (resp []byte) {
+
+	var Tptk TPKT
+	var Cotp COTP
+
+	resp = Tptk.serialize(Cotp.serialize(m))
+	return
 }
 
 func (s7p *S7CommPlus) connect(m []byte) (Data S7ComPlusData, resp []byte) {
@@ -78,7 +85,13 @@ func (s7p *S7CommPlus) connect(m []byte) (Data S7ComPlusData, resp []byte) {
 		}
 	}
 	//Sending back 25 bytes of random data
+	var Cotp COTP
+	var Tpkt TPKT
+
 	resp = make([]byte, 25)
 	rand.Read(resp)
+
+	resp = Tpkt.serialize(Cotp.serialize(resp))
+
 	return S7PD, resp
 }

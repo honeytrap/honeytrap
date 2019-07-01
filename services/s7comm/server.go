@@ -197,33 +197,23 @@ func (s7service *s7commService) Handle(ctx context.Context, conn net.Conn) error
 						event.Type("ics"),
 						event.SourceAddr(conn.RemoteAddr()),
 						event.DestinationAddr(conn.LocalAddr()),
-						event.Custom("request.type", "Received S7CommPlus Request"),
+						event.Custom("request.type", "Received S7CommPlus Connection Request"),
 						event.Custom("hostname", S7CPD.hostname),
 						event.Custom("interface", S7CPD.networkInt),
 						event.Custom("data_type", S7CPD.dataType),
 						event.Payload(buf),
 					))
 
-				} else if buf[8] == 0x02 {
+				} else  {
 
-					s7service.channel.Send(event.New(
-						services.EventOptions,
-						event.Category("s7comm"),
-						event.Type("ics"),
-						event.SourceAddr(conn.RemoteAddr()),
-						event.DestinationAddr(conn.LocalAddr()),
-						event.Custom("request.type", "Received S7CommPlus Request"),
-						event.Payload(buf),
-					))
-
-					resp := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
+					resp := s7Plus.randomResponse(buf)
 					if resp != nil {
 						len, err := conn.Write(resp)
 						if err != nil || len < 1 {
 							break
 						}
 					}
-				} else {
+
 					s7service.channel.Send(event.New(
 						services.EventOptions,
 						event.Category("s7comm"),
@@ -233,6 +223,8 @@ func (s7service *s7commService) Handle(ctx context.Context, conn net.Conn) error
 						event.Custom("request.type", "Received S7CommPlus Request"),
 						event.Payload(buf),
 					))
+
+
 				}
 			}
 		}
