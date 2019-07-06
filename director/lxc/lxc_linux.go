@@ -172,9 +172,9 @@ func (c *lxcContainer) housekeeper() {
 
 // clone attempts to clone the underline lxc.Container.
 func (c *lxcContainer) clone() error {
-	log.Debugf("Creating new container %s from template %s", c.name, c.d.Template)
+	log.Debugf("Creating new container %s from template %s", c.name, c.template)
 
-	c1, err := lxc.NewContainer(c.Template)
+	c1, err := lxc.NewContainer(c.template)
 	if err != nil {
 		return err
 	}
