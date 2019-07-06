@@ -36,8 +36,9 @@ var (
 
 func New(options ...func(director.Director) error) (director.Director, error) {
 	d := &lxcDirector{
-		eb:       pushers.MustDummy(),
-		template: "honeytrap",
+		eb: pushers.MustDummy(),
+
+		Template: "honeytrap",
 	}
 
 	for _, optionFn := range options {
@@ -49,9 +50,10 @@ func New(options ...func(director.Director) error) (director.Director, error) {
 }
 
 type lxcDirector struct {
-	template string
-	eb       pushers.Channel
-	cache    *sync.Map // map[string]*lxcContainer
+	Template string `toml:"template"`
+
+	eb    pushers.Channel
+	cache *sync.Map // map[string]*lxcContainer
 }
 
 func (d *lxcDirector) SetChannel(eb pushers.Channel) {
@@ -72,7 +74,7 @@ func (d *lxcDirector) Dial(conn net.Conn) (net.Conn, error) {
 	if !ok {
 		var err error
 
-		c, err = d.newContainer(name, d.template)
+		c, err = d.newContainer(name, d.Template)
 		if err != nil {
 			log.Errorf("Error creating container: %s", err.Error())
 			return nil, err
@@ -170,9 +172,9 @@ func (c *lxcContainer) housekeeper() {
 
 // clone attempts to clone the underline lxc.Container.
 func (c *lxcContainer) clone() error {
-	log.Debugf("Creating new container %s from template %s", c.name, c.d.template)
+	log.Debugf("Creating new container %s from template %s", c.name, c.d.Template)
 
-	c1, err := lxc.NewContainer(c.template)
+	c1, err := lxc.NewContainer(c.Template)
 	if err != nil {
 		return err
 	}
