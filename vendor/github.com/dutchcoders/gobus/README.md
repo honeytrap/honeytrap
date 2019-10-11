@@ -1,2 +1,0 @@
-# bus
-Golang event bus

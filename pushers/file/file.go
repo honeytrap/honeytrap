@@ -17,15 +17,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path"
 	"path/filepath"
-	"sync"
 	"time"
 
-	"github.com/honeytrap/honeytrap/config"
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/op/go-logging"
@@ -36,10 +33,10 @@ var (
 )
 
 var (
-	defaultMaxSize  = 1024 * 1024 * 1024
+	defaultMaxSize  = int64(1024 * 1024 * 1024)
 	defaultWaitTime = 5 * time.Second
-	crtlline        = []byte("\r\n")
-	log             = logging.MustGetLogger("channels/file")
+
+	log = logging.MustGetLogger("channels/file")
 )
 
 // New returns a new instance of a FileBackend.
@@ -47,9 +44,9 @@ func New(options ...func(pushers.Channel) error) (pushers.Channel, error) {
 	fc := FileBackend{
 		FileConfig: FileConfig{
 			MaxSize: defaultMaxSize,
+			Mode:    os.FileMode(0600),
 		},
 		request: make(chan map[string]interface{}),
-		closer:  make(chan struct{}),
 	}
 
 	for _, optionFn := range options {
@@ -60,21 +57,25 @@ func New(options ...func(pushers.Channel) error) (pushers.Channel, error) {
 		return nil, errors.New("File channel: filename not set")
 	}
 
+	if fc.MaxSize < 1024 {
+		return nil, errors.New("File channel: minimal max size is 1024")
+	}
+
 	if path.IsAbs(fc.File) {
 	} else if pwd, err := os.Getwd(); err == nil {
 		fc.File = filepath.Join(pwd, fc.File)
 	}
 
-	fc.timeout = config.MakeDuration(fc.Timeout, uint64(defaultWaitTime))
+	go fc.writeLoop()
 
 	return &fc, nil
 }
 
 // FileConfig defines the config used to setup the FileBackend.
 type FileConfig struct {
-	MaxSize int    `toml:"maxsize"`
-	File    string `toml:"filename"`
-	Timeout string `toml:"timeout"`
+	MaxSize int64       `toml:"maxsize"`
+	File    string      `toml:"filename"`
+	Mode    os.FileMode `toml:"mode"`
 }
 
 // FileBackend defines a struct which implements the pushers.Pusher interface
@@ -86,26 +87,17 @@ type FileConfig struct {
 // also the old file will be renamed with the current timestamp and a new file created.
 type FileBackend struct {
 	FileConfig
-	timeout time.Duration
-	dest    *os.File
+
 	request chan map[string]interface{}
-	closer  chan struct{}
-	wg      sync.WaitGroup
 }
 
-// Wait calls the internal waiter.
-func (f *FileBackend) Wait() {
-	f.wg.Wait()
+func (f *FileBackend) Close() {
+	close(f.request)
 }
 
 // Send delivers the giving if it passes all filtering criteria into the
 // FileBackend write queue.
 func (f *FileBackend) Send(message event.Event) {
-	if err := f.syncWrites(); err != nil {
-		log.Errorf("Error syncing writes: %+q", err)
-		return
-	}
-
 	mp := make(map[string]interface{})
 
 	message.Range(func(key, value interface{}) bool {
@@ -118,122 +110,45 @@ func (f *FileBackend) Send(message event.Event) {
 	f.request <- mp
 }
 
-// syncWrites startups the channel procedure to listen for new writes to giving file.
-func (f *FileBackend) syncWrites() error {
-	if f.dest != nil && f.request != nil {
-		return nil
-	}
-
-	// If the request channel has been niled but file is still opened,
-	// close it.
-	if f.dest != nil {
-		f.dest.Sync()
-		f.dest.Close()
-	}
-
-	if f.request == nil {
-		f.request = make(chan map[string]interface{})
-	}
-
-	var err error
-
-	f.dest, err = newFile(f.File, f.MaxSize)
+// syncLoop handles configuration of the giving loop for writing to file.
+func (f *FileBackend) writeLoop() {
+	dest, err := OpenRotateFile(f.File, f.Mode, f.MaxSize)
 	if err != nil {
 		log.Errorf("Failed create destination file: %s", err)
-		return err
+		return
 	}
 
-	f.wg.Add(1)
-	go f.syncLoop()
+	defer dest.Close()
 
-	return nil
-}
-
-// syncLoop handles configuration of the giving loop for writing to file.
-func (f *FileBackend) syncLoop() {
-	defer f.wg.Done()
-
-	ticker := time.NewTimer(f.timeout)
 	var buf bytes.Buffer
 
-	{
-	writeSync:
-		for {
-			select {
-			case <-ticker.C:
-				f.dest.Close()
-				f.dest = nil
-
-				// Close request channel and nil it.
-				f.request = nil
-
-				break writeSync
-
-			case req, ok := <-f.request:
-				if !ok {
-					f.dest.Close()
-					f.dest = nil
-					f.request = nil
-					break writeSync
-				}
-
-				if err := json.NewEncoder(&buf).Encode(req); err != nil {
-					log.Errorf("Failed to marshal PushMessage to JSON : %+q", err)
-					continue writeSync
-				}
-
-				if buf.Len() < (500 * 1024) {
-					continue
-				}
-			case <-time.After(time.Second):
+	for {
+		select {
+		case req, ok := <-f.request:
+			if !ok {
+				return
 			}
 
-			if _, err := io.Copy(f.dest, &buf); err != nil && err != io.EOF {
-				log.Errorf("Failed to copy data to File : %+q", err)
+			if err := json.NewEncoder(&buf).Encode(req); err != nil {
+				log.Errorf("Failed to marshal PushMessage to JSON : %+q", err)
+				continue
 			}
 
-			if err := f.dest.Sync(); err != nil {
-				log.Errorf("Failed to sync Write to File : %+q", err)
+			if buf.Len() < (500 * 1024) {
+				continue
 			}
-
-			// Reset the buffer for reuse.
-			buf.Reset()
-		}
-	}
-}
-
-// newFile returns a new file with the giving target path and returns the
-// new file object.
-func newFile(targetPath string, maxSize int) (*os.File, error) {
-	// Attempt to stat file, if it does not exists then create a new one.
-	stat, err := os.Stat(targetPath)
-	if err != nil {
-		dest, err := os.OpenFile(targetPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
-		if err != nil {
-			return nil, err
+		case <-time.After(time.Second):
 		}
 
-		return dest, nil
-	}
-
-	if stat.IsDir() {
-		return nil, errors.New("Only direct file paths allowed")
-	}
-
-	// if we dealing with a file still  below our max size, then
-	// open file if already exists else
-	if int(stat.Size()) <= maxSize {
-		dest, err := os.OpenFile(targetPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
-		if err != nil {
-			return nil, err
+		if _, err := io.Copy(dest, &buf); err != nil {
+			log.Errorf("Failed to copy data to File : %+q", err)
 		}
 
-		return dest, nil
-	}
+		if err := dest.Sync(); err != nil {
+			log.Errorf("Failed to sync Write to File : %+q", err)
+		}
 
-	if err := os.Rename(targetPath, fmt.Sprintf("%s-%s", targetPath, stat.ModTime().Format("20060102150405"))); err != nil {
-		return nil, err
+		// Reset the buffer for reuse.
+		buf.Reset()
 	}
-
-	return os.OpenFile(targetPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 }
