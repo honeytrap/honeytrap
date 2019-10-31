@@ -16,6 +16,7 @@ package console
 import (
 	"encoding/hex"
 	"fmt"
+	logging "github.com/op/go-logging"
 	"io"
 	"net"
 	"os"
@@ -27,11 +28,14 @@ import (
 
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
+
 )
 
 var (
 	_ = pushers.Register("console", New)
 )
+
+var log = logging.MustGetLogger("channels/console")
 
 // Config defines the config used to setup the Console.
 type Config struct {

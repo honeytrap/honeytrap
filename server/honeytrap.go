@@ -72,6 +72,7 @@ import (
 	_ "github.com/honeytrap/honeytrap/pushers/console"
 	_ "github.com/honeytrap/honeytrap/pushers/dshield"
 	_ "github.com/honeytrap/honeytrap/pushers/elasticsearch"
+	_ "github.com/honeytrap/honeytrap/pushers/eventcollector"
 	_ "github.com/honeytrap/honeytrap/pushers/file"
 	_ "github.com/honeytrap/honeytrap/pushers/kafka"
 	_ "github.com/honeytrap/honeytrap/pushers/marija"
@@ -693,6 +694,7 @@ func (hc *Honeytrap) handle(conn net.Conn) {
 				event.Stack(),
 				message,
 			))
+			log.Debugf("############## \n %s\n#############\n", event.Stack())
 		}
 	}()
 
@@ -710,7 +712,7 @@ func (hc *Honeytrap) handle(conn net.Conn) {
 
 	log.Debug("Handling connection for %s => %s %s(%s)", conn.RemoteAddr(), conn.LocalAddr(), sm.Name, sm.Type)
 
-	newConn = TimeoutConn(newConn, time.Second*30)
+	newConn = TimeoutConn(newConn, time.Second*300)  // raise connection timeout
 
 	ctx := context.Background()
 	if err := sm.Service.Handle(ctx, newConn); err != nil {

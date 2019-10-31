@@ -14,9 +14,15 @@
 package kafka
 
 import (
-	"encoding/json"
-
+	"encoding/hex"
+	"fmt"
 	sarama "github.com/Shopify/sarama"
+	"net"
+	"sort"
+	"strings"
+	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
@@ -34,9 +40,7 @@ var log = logging.MustGetLogger("channels/kafka")
 // push messages to an elasticsearch api.
 type Backend struct {
 	Config
-
 	producer sarama.AsyncProducer
-
 	ch chan map[string]interface{}
 }
 
@@ -52,33 +56,69 @@ func New(options ...func(pushers.Channel) error) (pushers.Channel, error) {
 	}
 
 	config := sarama.NewConfig()
-	config.Producer.Return.Successes = true
+	config.Producer.Retry.Max = 5
+	config.Producer.RequiredAcks = sarama.NoResponse
 
 	producer, err := sarama.NewAsyncProducer(c.Brokers, config)
 	if err != nil {
 		return nil, err
 	}
+
 	c.producer = producer
 
 	go c.run()
-
 	return &c, nil
+}
+
+func printify(s string) string {
+	o := ""
+	for _, rune := range s {
+		if !unicode.IsPrint(rune) {
+			buf := make([]byte, 4)
+
+			n := utf8.EncodeRune(buf, rune)
+			o += fmt.Sprintf("\\x%s", hex.EncodeToString(buf[:n]))
+			continue
+		}
+
+		o += string(rune)
+	}
+	return o
 }
 
 func (hc Backend) run() {
 	defer hc.producer.AsyncClose()
 
-	for doc := range <-hc.ch {
-		data, err := json.Marshal(doc)
-		if err != nil {
-			log.Errorf("Error marshaling event: %s", err.Error())
-			continue
-		}
+	for e := range hc.ch {
+		var params []string
 
-		hc.producer.Input() <- &sarama.ProducerMessage{
+		for k, v := range e {
+
+			switch x := v.(type) {
+			case net.IP:
+				params = append(params, fmt.Sprintf("%s=%s", k, x.String()))
+			case uint32, uint16, uint8, uint,
+				int32, int16, int8, int:
+				params = append(params, fmt.Sprintf("%s=%d", k, v))
+			case time.Time:
+				params = append(params, fmt.Sprintf("%s=%s", k, x.String()))
+			case string:
+				params = append(params, fmt.Sprintf("%s=%s", k, printify(x)))
+			default:
+				params = append(params, fmt.Sprintf("%s=%#v", k, v))
+			}
+		}
+		sort.Strings(params)
+		message := &sarama.ProducerMessage{
 			Topic: hc.Topic,
 			Key:   nil,
-			Value: sarama.ByteEncoder(data),
+			Value: sarama.StringEncoder(strings.Join(params, ", ")),
+		}
+		select {
+		case hc.producer.Input() <- message:
+			log.Debug("Produced message:\n", message)
+		case err := <- hc.producer.Errors():
+			log.Error("Failed to commit message: ", err)
 		}
 	}
 }
