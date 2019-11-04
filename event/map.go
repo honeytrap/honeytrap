@@ -43,7 +43,7 @@ func New(opts ...Option) Event {
 		sm: new(sync.Map),
 	}
 
-	e.sm.Store("date", time.Now())
+	e.sm.Store("date", time.Now().Format(time.RFC3339))
 
 	for _, opt := range opts {
 		if opt == nil {
