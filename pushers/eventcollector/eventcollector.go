@@ -16,6 +16,7 @@ package eventcollector
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	sarama "github.com/Shopify/sarama"
 	"github.com/honeytrap/honeytrap/pushers/eventcollector/events"
@@ -30,6 +31,7 @@ import (
 
 var (
 	_ = pushers.Register("eventcollector", New)
+	eventAPIStarted bool = false
 )
 
 var log = logging.MustGetLogger("channels/eventcollector")
@@ -42,11 +44,13 @@ type Backend struct {
 	ch chan map[string]interface{}
 }
 
-
-
-
-
 func New(options ...func(pushers.Channel) error) (pushers.Channel, error) {
+
+	if !eventAPIStarted {
+		go events.StartAPI()
+		eventAPIStarted = true
+	}
+
 	ch := make(chan map[string]interface{}, 100)
 
 	c := Backend{
@@ -82,7 +86,6 @@ func printify(s string) string {
 			o += fmt.Sprintf("\\x%s", hex.EncodeToString(buf[:n]))
 			continue
 		}
-
 		o += string(rune)
 	}
 	return o
@@ -92,42 +95,35 @@ func (hc Backend) run() {
 	defer hc.producer.AsyncClose()
 
 	for e := range hc.ch {
-		//var params []string
 
-		procEvent := events.ProcessEvent(e)
-
-/*		for k, v := range e {
-
-			switch x := v.(type) {
-			case net.IP:
-				params = append(params, fmt.Sprintf("%s=%s", k, x.String()))
-			case uint32, uint16, uint8, uint,
-				int32, int16, int8, int:
-				params = append(params, fmt.Sprintf("%s=%d", k, v))
-			case time.Time:
-				params = append(params, fmt.Sprintf("%s=%s", k, x.String()))
-			case string:
-				params = append(params, fmt.Sprintf("%s=%s", k, printify(x)))
-			default:
-				params = append(params, fmt.Sprintf("%s=%#v", k, v))
-			}
+		// process event
+		_, evt, ok := events.ProcessEvent(e)
+		if !ok {
+			continue
 		}
-		sort.Strings(params)*/
+
+		// convert event to json
+		eventJ, err := json.Marshal(evt)
+		if err != nil {
+			log.Errorf("Failed to marshall event: %v", err)
+			continue
+		}
+
+		// send event to event collector broker
 		message := &sarama.ProducerMessage{
 			Topic: hc.Topic,
 			Key:   nil,
-			Value: sarama.StringEncoder(procEvent),
+			Value: sarama.StringEncoder(eventJ),
 		}
 		select {
 		case hc.producer.Input() <- message:
-			log.Debug("Produced message:\n", message)
+			// log.Debug("Produced message:\n", message)
 		case err := <- hc.producer.Errors():
 			log.Error("Failed to commit message: ", err)
 		}
 	}
 }
 
-// Send delivers the giving push messages into the internal elastic search endpoint.
 func (hc Backend) Send(message event.Event) {
 	mp := make(map[string]interface{})
 

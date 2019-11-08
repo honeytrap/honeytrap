@@ -2,77 +2,77 @@ package events
 
 import (
 	"fmt"
-	"regexp"
+	strip "github.com/grokify/html-strip-tags-go"
+	"strconv"
 )
 
 const ansi = "[\u001B\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[a-zA-Z\\d]*)*)?\u0007)|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PRZcf-ntqry=><~]))"
 
+var	SSHSessions map[string]SSHSession
+
+
 type EventMetadataSSH struct {
-	SourcePort uint `json:"source_port"`
-	DestinationIP string `json:"dest_ip"`
-	DestinationPort uint `json:"dest_port"`
-	SessionID string `json:"session_id"`
-	Username string `json:"username"`
-	Token string `json:"token"`
-	AuthType string `json:"auth_type"`  // publickey-authentication | password-authentication
-	PublicKey string `json:"public_key"`
-	PublicKeyType string `json:"public_key_type"` // ssh-rsa | ...
-	Password string `json:"password"`
-	ChannelState string `json:"channel_state"` // open |
+	EventType 		string 		`json:"event_type"`
+	SourcePort 		uint 		`json:"source_port"`
+	DestinationIP 	string 		`json:"dest_ip"`
+	DestinationPort uint 		`json:"dest_port"`
+	SessionID 		string 		`json:"session_id"`
+	Username 		string 		`json:"username"`
+	Token 			string 		`json:"token"`
+	TransactionType string 		`json:"transaction_type"`  // publickey-authentication | password-authentication | request..
+	PublicKey 		string 		`json:"public_key"`
+	PublicKeyType 	string 		`json:"public_key_type"` // ssh-rsa | ...
+	Password 		string 		`json:"password"`
+	Recording 		string 		`json:"recording"`
 }
 
-var sshSessions map[string]SSHSession
-
 type SSHSession struct {
-	SessionID string `json:"session-id"`
-	SourceIP string `json:"source-ip"`
-	DestinationIP string `json:"destination-ip"`
-	SourcePort uint `json:"source-port"`
-	DestinationPort uint `json:"destination-port"`
-	Token string `json:"token"`
-	AuthAttempts []SSHSessionAuth `json:"auth-attempts"`
-	AuthSuccess bool `json:"auth-success"`
-	AuthFailCount uint `json:"auth-fail-count"`
-	Payload []byte `json:"payload"`
-	Recording []byte `json:"recording"`
-	EventCount uint `json:"event-count"`
-	CreationDate string `json:"creation-date"`
-	LastUpdateDate string `json:"last-update-date"`
+	Token			string				`json:"token"`
+	AuthAttempts	[]SSHSessionAuth	`json:"auth-attempts"`
+	AuthSuccess		bool				`json:"auth-success"`
+	AuthFailCount	uint				`json:"auth-fail-count"`
+	Payload			string				`json:"payload"`
+	Recording		string				`json:"recording"`
 }
 
 type SSHSessionAuth struct {
-	Timestamp string `json:"timestamp"`
-	AuthType string `json:"auth-type"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-	PublicKey string `json:"public-key"`
-	PublicKeyType string `json:"public-key-type"`
+	Timestamp 		string 		`json:"timestamp"`
+	AuthType 		string 		`json:"auth-type"`
+	Username 		string 		`json:"username"`
+	Password 		string 		`json:"password"`
+	PublicKey 		string 		`json:"public-key"`
+	PublicKeyType 	string 		`json:"public-key-type"`
+	Success 		bool 		`json:"success"`
 }
 
 
-
-func ProcessEventSSH(e map[string]interface{}) EventMetadataSSH {
-	var session SSHSession
+func ProcessEventSSH(e map[string]interface{}) (sshSession SSHSession, eventMetadataSSH EventMetadataSSH, ok bool) {
 
 	sessionID := fmt.Sprintf("%v", e["ssh.sessionid"])
 	eventType := fmt.Sprintf("%v", e["type"])
 
-	if s, ok := sshSessions[sessionID]; ok { // session already being handled
-		session = s
-		session.LastUpdateDate = fmt.Sprintf("%v", e["date"])
+	ok = true
 
-	} else {
-		session = SSHSession{
-			SessionID: fmt.Sprintf("%v", e["ssh.sessionid"]),
-			SourceIP: fmt.Sprintf("%v", e["source-ip"]),
-			SourcePort: uint(e["source-port"].(int)),
-			DestinationIP: fmt.Sprintf("%v", e["destination-ip"]),
-			DestinationPort: uint(e["destination-port"].(int)),
-			Token: fmt.Sprintf("%v", e["token"]),
-			CreationDate: fmt.Sprintf("%v", e["date"]),
-			LastUpdateDate: fmt.Sprintf("%v", e["date"]),
-		}
+	srcPort, _ := strconv.ParseUint(fmt.Sprintf("%v", e["source-port"]), 10, 64)
+	dstPort, _ := strconv.ParseUint(fmt.Sprintf("%v", e["destination-port"]), 10, 64)
+
+	eventMetadataSSH = EventMetadataSSH{
+		SessionID: sessionID,
+		TransactionType: eventType,
+		SourcePort: uint(srcPort),
+		DestinationIP: fmt.Sprintf("%v", e["destination-ip"]),
+		DestinationPort: uint(dstPort),
+
 	}
+
+	if Sessions[sessionID].ServiceMeta == nil {
+		sshSession = SSHSession{
+			Token:         fmt.Sprintf("%v", e["token"]),
+		}
+	} else {
+		sshSession = Sessions[sessionID].ServiceMeta.(SSHSession)
+	}
+
 
 	switch eventType {
 
@@ -83,64 +83,58 @@ func ProcessEventSSH(e map[string]interface{}) EventMetadataSSH {
 			Password:      "",
 			PublicKey:     fmt.Sprintf("%v", e["ssh.publickey"]),
 			PublicKeyType: fmt.Sprintf("%v", e["ssh.publickey-type"]),
+			Timestamp:	   fmt.Sprintf("%v", e["date"]),
 		}
-		session.AuthAttempts = append(session.AuthAttempts, authAttempt)
+		sshSession.AuthAttempts = append(sshSession.AuthAttempts, authAttempt)
+		eventMetadataSSH.EventType = "auth_attempt_pubkey"
+		eventMetadataSSH.Username = authAttempt.Username
+		eventMetadataSSH.PublicKey = authAttempt.PublicKey
+		eventMetadataSSH.PublicKeyType = authAttempt.PublicKeyType
 
 	case "password-authentication":
 		authAttempt := SSHSessionAuth{
-			AuthType: eventType,
-			Username: fmt.Sprintf("%v", e["ssh.username"]),
-			Password: fmt.Sprintf("%v", e["ssh.password"]),
+			AuthType: 	   eventType,
+			Username: 	   fmt.Sprintf("%v", e["ssh.username"]),
+			Password: 	   fmt.Sprintf("%v", e["ssh.password"]),
+			Timestamp:	   fmt.Sprintf("%v", e["date"]),
 		}
-		session.AuthAttempts = append(session.AuthAttempts, authAttempt)
+		sshSession.AuthAttempts = append(sshSession.AuthAttempts, authAttempt)
+		eventMetadataSSH.EventType = "auth_attempt_passwd"
+		eventMetadataSSH.Username = authAttempt.Username
+		eventMetadataSSH.Password = authAttempt.Password
 
 	case "ssh-channel":
-		session.AuthSuccess = true
-		session.AuthFailCount = uint(len(session.AuthAttempts) - 1)
+		sshSession.AuthSuccess = true
+		sshSession.AuthFailCount = uint(len(sshSession.AuthAttempts) - 1)
+		if len(sshSession.AuthAttempts) < 1 {
+			log.Errorf("Handling ssh-channel with no previous auth attempts: %v", sshSession.AuthAttempts)
+			ok = false
+			break
+		}
+
+		lastAuth := &sshSession.AuthAttempts[len(sshSession.AuthAttempts)-1]
+		lastAuth.Success = true
+
+		eventMetadataSSH.Username = lastAuth.Username
+		switch lastAuth.AuthType {
+		case "publickey-authentication":
+			eventMetadataSSH.EventType = "auth_success_pubkey"
+			eventMetadataSSH.PublicKey = lastAuth.PublicKey
+			eventMetadataSSH.PublicKeyType = lastAuth.PublicKeyType
+		case "password-authentication":
+			eventMetadataSSH.EventType = "auth_success_passwd"
+			eventMetadataSSH.Password = lastAuth.Password
+		}
 
 	case "ssh-request":
-		session.Payload = append(session.Payload, []byte(fmt.Sprintf("%v", e["ssh.payload"]))...)
+		sshSession.Payload = fmt.Sprintf("%v%v", sshSession.Payload, e["ssh.payload"])
 
 	case "ssh-session":
-		sRecording := StripANSI(fmt.Sprintf("%v", e["ssh.recording"]))
-		session.Recording = append(session.Recording, sRecording...)
+		sRecording := StripANSI(strip.StripTags(e["ssh.recording"].(string)))
+		sshSession.Recording = fmt.Sprintf("%v%v", sshSession.Recording, sRecording)
+		eventMetadataSSH.EventType = "session_report"
+		eventMetadataSSH.Recording = sshSession.Recording
 	}
 
-	session.EventCount++
-
-	eventMetadata, ok := digestMetadata(e)
-	if !ok {
-		log.Errorf("Failed to digest SSH metadata")
-	}
-
-	return eventMetadata
-}
-
-func StripANSI(str string) string {
-	var re = regexp.MustCompile(ansi)
-	return re.ReplaceAllString(str, "")
-}
-
-func digestMetadata(e map[string]interface{}) (EventMetadataSSH, bool) {
-	metadata := EventMetadataSSH{
-		SessionID:       fmt.Sprintf("%v", e["ssh.sessionid"]),
-		SourcePort:      uint(e["source-port"].(int)),
-		DestinationIP:   fmt.Sprintf("%v", e["destination-ip"]),
-		DestinationPort: uint(e["destination-port"].(int)),
-		Token:           fmt.Sprintf("%v", e["token"]),
-		TransactionType:        fmt.Sprintf("%v", e["type"]),
-	}
-
-	switch metadata.AuthType {
-	case "publickey-authentication":
-		metadata.PublicKey = fmt.Sprintf("%v", e["ssh.publickey"])
-		metadata.PublicKeyType = fmt.Sprintf("%v", e["ssh.publickey-type"])
-		metadata.Username = fmt.Sprintf("%v", e["ssh.username"])
-	case "password-authentication":
-		metadata.Password = fmt.Sprintf("%v", e["ssh.password"])
-		metadata.Username = fmt.Sprintf("%v", e["ssh.username"])
-	default:
-		return metadata, false
-	}
-	return metadata, true
+	return
 }

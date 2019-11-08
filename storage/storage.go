@@ -116,3 +116,4 @@ func (s *badgeStorage) Set(key string, data []byte) error {
 		return err
 	})
 }
+
