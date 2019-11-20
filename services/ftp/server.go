@@ -103,7 +103,7 @@ func NewServer(opts *ServerOpts) *Server {
 // newConn constructs a new object that will handle the FTP protocol over
 // an active net.TCPConn. The TCP connection should already be open before
 // it is handed to this functions. driver is an instance of FTPDriver that
-// will handle all auth and persistence details.
+// will handle all auth and models details.
 func (server *Server) newConn(tcpConn net.Conn, driver Driver, recv chan string) *Conn {
 	c := &Conn{
 		namePrefix:    "/",

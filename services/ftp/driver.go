@@ -25,7 +25,7 @@ type DriverFactory interface {
 }
 
 // You will create an implementation of this interface that speaks to your
-// chosen persistence layer. graval will create a new instance of your
+// chosen models layer. graval will create a new instance of your
 // driver for each client that connects and delegate to it as required.
 type Driver interface {
 	// Init init

@@ -1,0 +1,2 @@
+cd ~/GO-Projects/src/github.com/honeytrap/honeytrap
+CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -tags="lxc" -ldflags="$(go run scripts/gen-ldflags.go)" -o $GOPATH/bin/honeytrap

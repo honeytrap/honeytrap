@@ -16,6 +16,7 @@ package events
 
 import (
 	"fmt"
+	"github.com/honeytrap/honeytrap/pushers/eventcollector/models"
 	"github.com/op/go-logging"
 	"regexp"
 	"time"
@@ -27,37 +28,13 @@ var supportedServices = []string{"ssh", "telnet", "dns"}
 
 var eventIDSeq int = 0
 
-var Sessions = make(map[string]Session)
-var Events []Event
-
-type Session struct {
-	SessionID 		string 			`json:"session-id"`
-	Service 		string 			`json:"service"`
-	SourceIP 		string 			`json:"source-ip"`
-	SourcePort 		uint 			`json:"source-port"`
-	DestinationIP 	string 			`json:"destination-ip"`
-	DestinationPort uint 			`json:"destination-port"`
-	CreationDate 	string 			`json:"creation-date"`
-	UpdateDate 		string			`json:"update-date"`
-	EventCount		uint			`json:"event-count"`
-	ServiceMeta 	interface{}		`json:"service-meta"`
-}
-
-type Event struct {
-	EventID 		uint 			`json:"event_id"`
-	AgentType 		string  		`json:"agent_type"`
-	Timestamp 		string 			`json:"timestamp"` // ISO 8601
-	SourceIP 		string 			`json:"sourceip"`
-	Count 			uint 			`json:"count"`
-	Type 			string 			`json:"type"`
-	Priority 		string 			`json:"priority"`
-	Name 			string 			`json:"name"`
-	Context 		string 			`json:"context"`
-	Metadata 		interface{} 	`json:"metadata"`
-}
+var Sessions = make(map[string]models.Session)
+var Events = make(map[string]models.Event)
+var eventModel = new(models.EventModel)
+var sessionModel = new(models.SessionModel)
 
 
-func ProcessEvent(e map[string]interface{}) (session Session, event Event, ok bool) {
+func ProcessEvent(e map[string]interface{}) (session models.Session, event models.Event, ok bool) {
 	ok = true
 	var eventMetadata interface{}
 	var serviceMeta interface{}
@@ -69,8 +46,9 @@ func ProcessEvent(e map[string]interface{}) (session Session, event Event, ok bo
 	}
 
 	eventIDSeq++
-	event = Event{
-		EventID: uint(eventIDSeq),
+	event = models.Event{
+
+		//EventID: fmt.Sprintf("%v", eventIDSeq),
 		AgentType: "HONEYNET",
 		Timestamp: ConvertDatePseudoISO8601(fmt.Sprintf("%v", e["date"])),
 		SourceIP: fmt.Sprintf("%v", e["source-ip"]),
@@ -93,7 +71,7 @@ func ProcessEvent(e map[string]interface{}) (session Session, event Event, ok bo
 	
 	} else {
 		log.Debugf("Creating new handler for session '%v'", sessionID)
-		session = Session{
+		session = models.Session{
 			SessionID:       sessionID,
 			Service:         service,
 			SourceIP:        fmt.Sprintf("%v", e["source-ip"]),
@@ -118,17 +96,26 @@ func ProcessEvent(e map[string]interface{}) (session Session, event Event, ok bo
 		if !ok {
 			log.Errorf("Failed to process event (Telnet service) with session '%v'", sessionID)
 		}
-
 	}
 
-	event.Metadata = eventMetadata
+	//event.Metadata = eventMetadata
+	fmt.Print(eventMetadata)
 	session.ServiceMeta = serviceMeta
 	Sessions[sessionID] = session
-	Events = append(Events, event)
+	eventid := fmt.Sprintf("%v", eventIDSeq)
+	Events[eventid] = event
 
+	err :=  sessionModel.Create(session)
+	if err != nil {
+		log.Errorf("Failed to persist session %v: %v", sessionID, err)
+	}
+
+	err = eventModel.Create(event)
+	if err != nil {
+		log.Errorf("Failed to persist event %v: %v", eventid, err)
+	}
 	return
 }
-
 
 func ConvertDatePseudoISO8601(date string) string {
 	d, err := time.Parse(time.RFC3339, date)
@@ -148,14 +135,6 @@ func stringInSlice(a string, list []string) bool {
 	return false
 }
 
-func getSessionsValues() []Session {
-	// create slice from map sessions
-	sessionsValues := make([]Session, 0, len(Sessions))
-	for _, v := range Sessions {
-		sessionsValues = append(sessionsValues, v)
-	}
-	return sessionsValues
-}
 
 
 func StripANSI(str string) string {

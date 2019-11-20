@@ -1,4 +1,4 @@
-// +build linux,!amd64,!arm
+// +build netstack, linux,!amd64,!arm
 
 // Copyright 2016-2019 DutchSec (https://dutchsec.com/)
 //

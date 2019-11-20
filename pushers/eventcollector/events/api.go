@@ -12,11 +12,12 @@ func setupRouter() *gin.Engine {
 	// gin.DisableConsoleColor()
 	r := gin.Default()
 
-	r.GET("/sessions", epSessions)
-	r.GET("/sessions/ssh", epSessionsSSH)
-	r.GET("/session/:session-id", epSession)
+	r.GET("/sessions", epSessionsFind)
+	r.GET("/sessions/purge", epSessionsPrune)
+	r.GET("/session/:session-id", epSessions)
+	r.GET("/events", epEventsFind)
+	r.GET("/event/:event-id", epEventGet)
 
-	r.GET("/events", epEvents)
 	//r.GET("/ssh/sessions", endpointSSHSessions)
 	//r.GET("/ssh/session/:session_id", endpointSSHSessions)
 
@@ -65,31 +66,50 @@ func setupRouter() *gin.Engine {
 	return r
 }
 
-func epSessions(c *gin.Context) {
-	log.Debugf("ENDPOINT /sessions (size: %v)", len(Sessions))
 
-	// return json from slice sessions values
-	c.JSON(http.StatusOK, getSessionsValues())
+
+func epSessionsFind(c *gin.Context) {
+	list, err := sessionModel.Find()
+	log.Debugf("ENDPOINT /sessions (size: %v)", len(list))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"message": "Find error", "error": err.Error()})
+		c.Abort()
+	} else {
+		c.JSON(http.StatusOK, gin.H{"data": list})
+	}
 }
 
+/*
 func epSessionsSSH(c *gin.Context) {
-
-	var sshSessions []Session
+	// var sshSessions []Session
+	sshSessions := make([]models.Session, 0, 0)
 	sessions := getSessionsValues()
 	for _, s := range sessions {
-
 		if s.Service == "ssh" {
 			sshSessions = append(sshSessions, s)
 		}
 	}
 	log.Debugf("ENDPOINT /sessions/ssh (size: %v)", len(sshSessions))
-
 	c.JSON(http.StatusOK, sshSessions)
 }
 
-func epSession(c *gin.Context) {
+func epSessionsTelnet(c *gin.Context) {
+	telnetSessions := make([]models.Session, 0, 0)
+	sessions := getSessionsValues()
+	for _, s := range sessions {
+		if s.Service == "telnet" {
+			telnetSessions = append(telnetSessions, s)
+		}
+	}
+	log.Debugf("ENDPOINT /sessions/telnet (size: %v)", len(telnetSessions))
+	c.JSON(http.StatusOK, telnetSessions)
+}
+*/
+
+
+func epSessions(c *gin.Context) {
 	sessionID := c.Params.ByName("session-id")
-	log.Debugf("ENDPOINT /session/%v", sessionID)
+	log.Debugf("ENDPOINT /sessions/%v", sessionID)
 	if session, ok := Sessions[sessionID]; !ok {
 		c.JSON(http.StatusOK, gin.H{})
 		return
@@ -98,9 +118,51 @@ func epSession(c *gin.Context) {
 	}
 }
 
-func epEvents(c *gin.Context) {
-	log.Debugf("ENDPOINT /events (size: %v)", len(Events))
-	c.JSON(http.StatusOK, Events)
+func epSessionsPrune(c *gin.Context) {
+	log.Debugf("ENDPOINT /sessions/prune")
+	err := sessionModel.DropAll()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message:": "Couldn't remove all sessions", "error": err})
+		c.Abort()
+	} else {
+		c.JSON(http.StatusOK, gin.H{"message": "All sessions were removed successfully"})
+	}
+
+}
+
+func epEventsFind(c *gin.Context) {
+	list, err := eventModel.Find()
+	log.Debugf("ENDPOINT /events (size: %v)", len(list))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"message": "Find error", "error": err.Error()})
+		c.Abort()
+	} else {
+		c.JSON(http.StatusOK, gin.H{"data": list})
+	}
+}
+
+func epEventGet(c *gin.Context) {
+	eventID := c.Params.ByName("event-id")
+	log.Debugf("ENDPOINT /events/%v", eventID)
+	event, err := eventModel.Get(eventID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"message": "Event not found", "error": err.Error()})
+		c.Abort()
+	} else {
+		c.JSON(http.StatusOK, gin.H{"data": event})
+	}
+}
+
+func epEvent(c *gin.Context) {
+	eventID := c.Params.ByName("event-id")
+	log.Debugf("ENDPOINT /event/%v", eventID)
+
+	if event, ok := Events[eventID]; !ok {
+		c.JSON(http.StatusOK, gin.H{})
+		return
+	} else {
+		c.JSON(http.StatusOK, event)
+	}
 }
 
 func StartAPI() {

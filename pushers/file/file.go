@@ -80,7 +80,7 @@ type FileConfig struct {
 
 // FileBackend defines a struct which implements the pushers.Pusher interface
 // and allows us to write PushMessage updates into a giving file path. Mainly for
-// the need to sync PushMessage to local files for persistence.
+// the need to sync PushMessage to local files for models.
 // File paths provided are either created with a append mode if they already
 // exists else will be created. FileBackend will also restrict filesize to a max of 1gb by default else if
 // there exists a max size set in configuration, then that will be used instead,

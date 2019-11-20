@@ -26,7 +26,7 @@ var mapInfoCmds = map[string]infoSection{
 	"server":      (*redisService).infoServerMsg,
 	"clients":     (*redisService).infoClientsMsg,
 	"memory":      (*redisService).infoMemoryMsg,
-	"persistence": (*redisService).infoPersistenceMsg,
+	"models": (*redisService).infoPersistenceMsg,
 	"stats":       (*redisService).infoStatsMsg,
 	"replication": (*redisService).infoReplicationMsg,
 	"cpu":         (*redisService).infoCPUMsg,
