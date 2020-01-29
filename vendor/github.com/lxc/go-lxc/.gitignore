@@ -1,5 +1,0 @@
-examples/*/*
-!examples/*/*.go
-coverage.out
-tags
-*.swp

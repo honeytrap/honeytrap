@@ -27,7 +27,7 @@ import (
 
 	"github.com/honeytrap/honeytrap/director"
 	"github.com/honeytrap/honeytrap/pushers"
-	"github.com/lxc/go-lxc"
+	lxc "gopkg.in/lxc/go-lxc.v2"
 )
 
 var (
