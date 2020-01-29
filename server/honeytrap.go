@@ -74,6 +74,7 @@ import (
 	_ "github.com/honeytrap/honeytrap/pushers/elasticsearch"
 	_ "github.com/honeytrap/honeytrap/pushers/file"
 	_ "github.com/honeytrap/honeytrap/pushers/kafka"
+	_ "github.com/honeytrap/honeytrap/pushers/lumberjack"
 	_ "github.com/honeytrap/honeytrap/pushers/marija"
 	_ "github.com/honeytrap/honeytrap/pushers/pulsar"
 	_ "github.com/honeytrap/honeytrap/pushers/rabbitmq"

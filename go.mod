@@ -10,12 +10,14 @@ require (
 	github.com/Shopify/sarama v1.16.0
 	github.com/Shopify/toxiproxy v2.1.4+incompatible // indirect
 	github.com/boltdb/bolt v1.3.1
+	github.com/cenkalti/backoff/v4 v4.0.0
 	github.com/dgraph-io/badger v0.0.0-20180227002726-94594b20babf
 	github.com/dgryski/go-farm v0.0.0-20180109070241-2de33835d102 // indirect
 	github.com/dutchcoders/gobus v0.0.0-20180915095724-ece5a7810d96
 	github.com/eapache/go-resiliency v1.0.0 // indirect
 	github.com/eapache/go-xerial-snappy v0.0.0-20160609142408-bb955e01b934 // indirect
 	github.com/eapache/queue v1.1.0 // indirect
+	github.com/elastic/go-lumber v0.1.0
 	github.com/elazarl/go-bindata-assetfs v0.0.0-20180223160309-38087fe4dafb
 	github.com/fatih/color v1.6.0
 	github.com/fortytw2/leaktest v1.3.0 // indirect
@@ -23,14 +25,13 @@ require (
 	github.com/glycerine/goconvey v0.0.0-20190410193231-58a59202ab31 // indirect
 	github.com/glycerine/rbuf v0.0.0-20171031012212-54320fe9f6f3
 	github.com/go-asn1-ber/asn1-ber v0.0.0-20170511165959-379148ca0225
-	github.com/golang/protobuf v0.0.0-20180202184318-bbd03ef6da3a
+	github.com/golang/protobuf v1.3.1
 	github.com/golang/snappy v0.0.0-20170215233205-553a64147049 // indirect
-	github.com/google/btree v1.0.0 // indirect
 	github.com/google/gopacket v1.1.14
-	github.com/google/netstack v0.0.0
 	github.com/gorilla/websocket v1.2.0
 	github.com/honeytrap/honeytrap-web v0.0.0-20180212153621-02944754979e
 	github.com/honeytrap/protocol v0.0.0-20190410072324-219b95413db0
+	github.com/klauspost/compress v1.9.8 // indirect
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/mailru/easyjson v0.0.0-20171120080333-32fa128f234d // indirect
 	github.com/mattn/go-colorable v0.0.9 // indirect
@@ -52,16 +53,17 @@ require (
 	github.com/songgao/water v0.0.0-20180221190335-75f112d19d5a
 	github.com/streadway/amqp v0.0.0-20180315184602-8e4aba63da9f
 	github.com/stretchr/testify v1.3.0 // indirect
-	github.com/vishvananda/netlink v1.0.0
-	github.com/vishvananda/netns v0.0.0-20171111001504-be1fbeda1936 // indirect
 	github.com/yuin/gopher-lua v0.0.0-20190206043414-8bfc7677f583
 	golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2
-	golang.org/x/sync v0.0.0-20190412183630-56d357773e84 // indirect
-	golang.org/x/time v0.0.0-20170927054726-6dc17368e09b
+	golang.org/x/net v0.0.0-20200114155413-6afb5195e5aa // indirect
+	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
 	gopkg.in/lxc/go-lxc.v2 v2.0.0-20190324192716-2f350e4a2980
 	gopkg.in/olivere/elastic.v5 v5.0.65
 	gopkg.in/urfave/cli.v1 v1.20.0
+	gvisor.dev/gvisor v0.0.0-20200128064056-cfe0afa80512
 )
 
 replace github.com/google/netstack => github.com/honeytrap/netstack v0.0.0-20190414201528-9ea5e4d2258f
+
+// replace github.com/elastic/go-lumber => /Users/stefangrimminck/Development/go-lumber
