@@ -65,5 +65,3 @@ require (
 )
 
 replace github.com/google/netstack => github.com/honeytrap/netstack v0.0.0-20190414201528-9ea5e4d2258f
-
-// replace github.com/elastic/go-lumber => /Users/stefangrimminck/Development/go-lumber
