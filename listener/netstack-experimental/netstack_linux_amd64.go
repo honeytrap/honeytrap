@@ -11,7 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-package netstack
+package xnetstack
 
 import (
 	"context"
@@ -29,18 +29,18 @@ import (
 
 	"math/big"
 
-	"github.com/google/netstack/tcpip"
-	"github.com/google/netstack/tcpip/adapters/gonet"
-	"github.com/google/netstack/tcpip/link/fdbased"
-	"github.com/google/netstack/tcpip/link/rawfile"
-	"github.com/google/netstack/tcpip/link/sniffer"
-	"github.com/google/netstack/tcpip/link/tun"
-	"github.com/google/netstack/tcpip/network/ipv4"
-	"github.com/google/netstack/tcpip/network/ipv6"
-	"github.com/google/netstack/tcpip/stack"
-	"github.com/google/netstack/tcpip/transport/tcp"
-	"github.com/google/netstack/tcpip/transport/udp"
-	"github.com/google/netstack/waiter"
+	"gvisor.dev/gvisor/pkg/tcpip"
+	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
+	"gvisor.dev/gvisor/pkg/tcpip/link/fdbased"
+	"gvisor.dev/gvisor/pkg/tcpip/link/rawfile"
+	"gvisor.dev/gvisor/pkg/tcpip/link/sniffer"
+	"gvisor.dev/gvisor/pkg/tcpip/link/tun"
+	"gvisor.dev/gvisor/pkg/tcpip/network/ipv4"
+	"gvisor.dev/gvisor/pkg/tcpip/network/ipv6"
+	"gvisor.dev/gvisor/pkg/tcpip/stack"
+	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
+	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
+	"gvisor.dev/gvisor/pkg/waiter"
 )
 
 // todo
@@ -184,18 +184,21 @@ func (l *netstackListener) Start(ctx context.Context) error {
 
 	la := tcpip.LinkAddress(ifaceLink.Attrs().HardwareAddr)
 
-	linkID := fdbased.New(&fdbased.Options{
-		FD:              fd,
-		MTU:             mtu,
-		EthernetHeader:  true,
-		ChecksumOffload: false,
-		Address:         la,
+	linkID, err := fdbased.New(&fdbased.Options{
+		FDs:            []int{fd},
+		MTU:            mtu,
+		EthernetHeader: true,
+		Address:        la,
 		ClosedFunc: func(e *tcpip.Error) {
 			if e != nil {
 				log.Errorf("File descriptor closed: %v", err)
 			}
 		},
 	})
+	if err != nil {
+		//TODO (jerry 2020-02-07): How to handle this error?
+		log.Errorf("linkID: %v", err)
+	}
 
 	if l.Debug {
 		linkID = sniffer.New(linkID)
@@ -225,9 +228,13 @@ func (l *netstackListener) Start(ctx context.Context) error {
 				continue
 			}
 
+			subnet4, err := tcpip.NewSubnet(ipToAddress(net.IPv4zero), tcpip.AddressMask(net.IPv4zero))
+			if err != nil {
+				log.Warningf("Subnet: %v", err)
+			}
+
 			routes = append(routes, tcpip.Route{
-				Destination: ipToAddress(net.IPv4zero),
-				Mask:        tcpip.AddressMask(net.IPv4zero),
+				Destination: subnet4,
 				Gateway:     ipToAddress(r.Gw),
 			})
 			continue
@@ -236,17 +243,54 @@ func (l *netstackListener) Start(ctx context.Context) error {
 			log.Warningf("IPv6 is not supported, skipping route: %v", r)
 			continue
 		}
+		subnet6, err := tcpip.NewSubnet(ipToAddress(r.Dst.IP.Mask(r.Dst.Mask)), tcpip.AddressMask(r.Dst.Mask))
+		if err != nil {
+			log.Warningf("Subnet: %v", err)
+		}
+
 		routes = append(routes, tcpip.Route{
-			Destination: ipToAddress(r.Dst.IP.Mask(r.Dst.Mask)),
-			Mask:        tcpip.AddressMask(r.Dst.Mask),
-			NIC:         nicID,
+			Destination: subnet6,
+			Gateway:     ipToAddress(r.Gw),
 		})
+		/*
+				routes = append(routes, tcpip.Route{
+					Destination: ipToAddress(net.IPv4zero),
+					Mask:        tcpip.AddressMask(net.IPv4zero),
+					Gateway:     ipToAddress(r.Gw),
+				})
+				continue
+			}
+			if r.Dst.IP.To4() == nil {
+				log.Warningf("IPv6 is not supported, skipping route: %v", r)
+				continue
+			}
+			routes = append(routes, tcpip.Route{
+				Destination: ipToAddress(r.Dst.IP.Mask(r.Dst.Mask)),
+				Mask:        tcpip.AddressMask(r.Dst.Mask),
+				NIC:         nicID,
+			})
+		*/
 	}
 
-	s := stack.New([]string{ipv4.ProtocolName, ipv6.ProtocolName, arp.ProtocolName}, []string{tcp.ProtocolName, udp.ProtocolName}, stack.Options{})
-	if err := s.SetTransportProtocolOption(tcp.ProtocolNumber, tcp.RSTDisabled(true)); err != nil {
-		return fmt.Errorf("Could not set transport protocol option: %s", err.String())
+	opts := stack.Options{
+		NetworkProtocols: []stack.NetworkProtocol{
+			ipv4.NewProtocol(),
+			ipv6.NewProtocol(),
+		},
+		TransportProtocols: []stack.TransportProtocol{
+			tcp.NewProtocol(),
+			udp.NewProtocol(),
+		},
 	}
+
+	s := stack.New(opts)
+
+	//TODO: can not find a suitable replacement for RSTDisabled.
+	//see: pkg/tcpip/transport/tcp/protocol.go for Options.
+	//
+	//if err := s.SetTransportProtocolOption(tcp.ProtocolNumber, tcp.RSTDisabled(true)); err != nil {
+	//	return fmt.Errorf("Could not set transport protocol option: %s", err.String())
+	//}
 
 	s.AddTCPProbe(func(s stack.TCPEndpointState) {
 	})
