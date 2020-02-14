@@ -11,7 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-package netstack
+package udp
 
 import (
 	"errors"
@@ -20,12 +20,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/netstack/tcpip"
-	"github.com/google/netstack/tcpip/buffer"
-	"github.com/google/netstack/tcpip/header"
-	"github.com/google/netstack/tcpip/stack"
-	"github.com/google/netstack/tcpip/transport/udp"
-	"github.com/google/netstack/waiter"
+	"gvisor.dev/gvisor/pkg/tcpip"
+	"gvisor.dev/gvisor/pkg/tcpip/buffer"
+	"gvisor.dev/gvisor/pkg/tcpip/header"
+	"gvisor.dev/gvisor/pkg/tcpip/stack"
+	udpg "gvisor.dev/gvisor/pkg/tcpip/transport/udp"
+
+	"gvisor.dev/gvisor/pkg/waiter"
 )
 
 // Forwarder is a connection request forwarder, which allows clients to decide
@@ -39,6 +40,9 @@ type Forwarder struct {
 
 	s *stack.Stack
 
+	gforwarder        *udpg.Forwarder
+	gforwarderRequest *udpg.ForwarderRequest
+
 	mu sync.Mutex
 }
 
@@ -48,12 +52,24 @@ type Forwarder struct {
 //
 // If rcvWnd is set to zero, the default buffer size is used instead.
 func NewForwarder(s *stack.Stack, handler func(*ForwarderRequest)) *Forwarder {
-	return &Forwarder{
+
+	f := &Forwarder{
 		s:       s,
 		handler: handler,
 	}
+
+	//This will get set when Forwarder.HandlePacket is called.
+	//need to get a (gvisor)ForwarderRequest like this. Structs are made unexported by gvisor.
+	gfr := udpg.NewForwarder(s, func(fr *udpg.ForwarderRequest) {
+		f.gforwarderRequest = fr
+	})
+
+	f.gforwarder = gfr
+
+	return f
 }
 
+/*
 // HandlePacket handles a packet if it is of interest to the forwarder (i.e., if
 // it's a SYN packet), returning true if it's the case. Otherwise the packet
 // is not handled and false is returned.
@@ -82,32 +98,66 @@ func (f *Forwarder) HandlePacket(r *stack.Route, id stack.TransportEndpointID, n
 		ep:        ep,
 		wq:        &wq,
 		payload:   hdr.Payload(),
-		la: tcpip.FullAddress{
-			Addr: id.LocalAddress,
-			Port: id.LocalPort,
-			NIC:  r.NICID(),
-		},
-		ra: tcpip.FullAddress{
-			Addr: id.RemoteAddress,
-			Port: id.RemotePort,
-			NIC:  r.NICID(),
-		},
+	})
+
+	return true
+}
+*/
+
+// HandlePacket handles a packet if it is of interest to the forwarder (i.e., if
+// it's a SYN packet), returning true if it's the case. Otherwise the packet
+// is not handled and false is returned.
+//
+// This function is expected to be passed as an argument to the
+// stack.SetTransportProtocolHandler function.
+func (f *Forwarder) HandlePacket(r *stack.Route, id stack.TransportEndpointID, pkt tcpip.PacketBuffer) bool {
+	// Get the header then trim it from the view.
+	hdr := header.UDP(pkt.Data.First())
+	if int(hdr.Length()) > pkt.Data.Size() {
+		// Malformed packet.
+		return false
+	}
+
+	pkt.Data.TrimFront(header.UDPMinimumSize)
+
+	//set gforwarderRequest. Neccesary to use CreateEndpoint.
+	f.gforwarder.HandlePacket(r, id, pkt)
+
+	wq := &waiter.Queue{}
+
+	ep, err := f.gforwarderRequest.CreateEndpoint(wq)
+	if err != nil {
+		return false
+	}
+
+	go f.handler(&ForwarderRequest{
+		payload: hdr.Payload(),
+		id:      id,
+		route:   r,
+		wq:      wq,
+		ep:      ep,
 	})
 
 	return true
 }
 
 type ForwarderRequest struct {
-	forwarder *Forwarder
-	payload   []byte
+	payload []byte
+	id      stack.TransportEndpointID
+	wq      *waiter.Queue
+	ep      tcpip.Endpoint
+	route   *stack.Route
 
-	wq *waiter.Queue
-	ep tcpip.Endpoint
-
-	la tcpip.FullAddress
-	ra tcpip.FullAddress
+	gfr *udpg.ForwarderRequest
 }
 
+// ID returns the 4-tuple (src address, src port, dst address, dst port) that
+// represents the session request.
+func (fr *ForwarderRequest) ID() stack.TransportEndpointID {
+	return fr.gfr.ID()
+}
+
+/*
 // ID returns the 4-tuple (src address, src port, dst address, dst port) that
 // represents the connection request.
 func (r *ForwarderRequest) ID() stack.TransportEndpointID {
@@ -118,6 +168,7 @@ func (r *ForwarderRequest) ID() stack.TransportEndpointID {
 		RemoteAddress: r.ra.Addr,
 	}
 }
+*/
 
 func (fr *ForwarderRequest) Payload() []byte {
 	return fr.payload
@@ -127,7 +178,11 @@ func (fr *ForwarderRequest) Write(b []byte, addr *net.UDPAddr) (int, error) {
 	v := buffer.NewView(len(b))
 	copy(v, b)
 
-	wopts := tcpip.WriteOptions{To: &fr.ra}
+	wopts := tcpip.WriteOptions{To: &tcpip.FullAddress{
+		Addr: fr.id.RemoteAddress,
+		Port: fr.id.RemotePort,
+		NIC:  fr.route.NICID(),
+	}}
 
 	n, resCh, err := fr.ep.Write(tcpip.SlicePayload(v), wopts)
 	if resCh != nil {
