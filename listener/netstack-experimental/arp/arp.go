@@ -26,10 +26,10 @@
 package arp
 
 import (
-	"github.com/google/netstack/tcpip"
-	"github.com/google/netstack/tcpip/buffer"
-	"github.com/google/netstack/tcpip/header"
-	"github.com/google/netstack/tcpip/stack"
+	"gvisor.dev/gvisor/pkg/tcpip"
+	"gvisor.dev/gvisor/pkg/tcpip/buffer"
+	"gvisor.dev/gvisor/pkg/tcpip/header"
+	"gvisor.dev/gvisor/pkg/tcpip/stack"
 )
 
 const (
@@ -70,7 +70,7 @@ func (e *endpoint) Capabilities() stack.LinkEndpointCapabilities {
 }
 
 func (e *endpoint) ID() *stack.NetworkEndpointID {
-	return &stack.NetworkEndpointID{ProtocolAddress}
+	return &stack.NetworkEndpointID{LocalAddress: ProtocolAddress}
 }
 
 func (e *endpoint) MaxHeaderLength() uint16 {
@@ -79,13 +79,20 @@ func (e *endpoint) MaxHeaderLength() uint16 {
 
 func (e *endpoint) Close() {}
 
-func (e *endpoint) WritePacket(*stack.Route, *stack.GSO, buffer.Prependable, buffer.VectorisedView, tcpip.TransportProtocolNumber, uint8, stack.PacketLooping) *tcpip.Error {
+func (e *endpoint) WritePacket(r *stack.Route, gso *stack.GSO, params stack.NetworkHeaderParams, pkt tcpip.PacketBuffer) *tcpip.Error {
 	return tcpip.ErrNotSupported
 }
 
-func (e *endpoint) HandlePacket(r *stack.Route, vv buffer.VectorisedView) {
-	v := vv.First()
-	h := header.ARP(v)
+func (e *endpoint) WritePackets(r *stack.Route, gso *stack.GSO, pkts []tcpip.PacketBuffer, params stack.NetworkHeaderParams) (int, *tcpip.Error) {
+	return 0, tcpip.ErrNotSupported
+}
+
+func (e *endpoint) WriteHeaderIncludedPacket(r *stack.Route, pkt tcpip.PacketBuffer) *tcpip.Error {
+	return tcpip.ErrNotSupported
+}
+
+func (e *endpoint) HandlePacket(r *stack.Route, p tcpip.PacketBuffer) {
+	h := header.ARP(p.Data.First())
 	if !h.IsValid() {
 		return
 	}
@@ -103,13 +110,18 @@ func (e *endpoint) HandlePacket(r *stack.Route, vv buffer.VectorisedView) {
 		copy(pkt.HardwareAddressSender(), r.LocalLinkAddress[:])
 		copy(pkt.ProtocolAddressSender(), h.ProtocolAddressTarget())
 		copy(pkt.ProtocolAddressTarget(), h.ProtocolAddressSender())
-		e.linkEP.WritePacket(r, nil /* gso */, hdr, buffer.VectorisedView{}, ProtocolNumber)
+		e.linkEP.WritePacket(r, nil, ProtocolNumber, p)
 		fallthrough // also fill the cache from requests
 	case header.ARPReply:
 		addr := tcpip.Address(h.ProtocolAddressSender())
 		linkAddr := tcpip.LinkAddress(h.HardwareAddressSender())
 		e.linkAddrCache.AddLinkAddress(e.nicid, addr, linkAddr)
 	}
+}
+
+func (e *endpoint) PrefixLen() int {
+	//TODO (jerry 2020-02-05): Return correct PrefixLen.
+	return 0
 }
 
 // protocol implements stack.NetworkProtocol and stack.LinkAddressResolver.
@@ -136,6 +148,11 @@ func (p *protocol) NewEndpoint(nicid tcpip.NICID, addr tcpip.Address, linkAddrCa
 	}, nil
 }
 
+func (p *protocol) DefaultPrefxLen() int {
+	//TODO (jerry 2020-02-05): Return correct Default.
+	return 0
+}
+
 // LinkAddressProtocol implements stack.LinkAddressResolver.
 func (*protocol) LinkAddressProtocol() tcpip.NetworkProtocolNumber {
 	return header.IPv4ProtocolNumber
@@ -155,7 +172,11 @@ func (*protocol) LinkAddressRequest(addr, localAddr tcpip.Address, linkEP stack.
 	copy(h.ProtocolAddressSender(), localAddr)
 	copy(h.ProtocolAddressTarget(), addr)
 
-	return linkEP.WritePacket(r, nil /* gso */, hdr, buffer.VectorisedView{}, ProtocolNumber)
+	pkt := tcpip.PacketBuffer{
+		Header: hdr,
+	}
+
+	return linkEP.WritePacket(r, nil, ProtocolNumber, pkt)
 }
 
 // ResolveStaticAddress implements stack.LinkAddressResolver.
@@ -195,9 +216,3 @@ func (p *protocol) Option(option interface{}) *tcpip.Error {
 }
 
 var broadcastMAC = tcpip.LinkAddress([]byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff})
-
-func init() {
-	stack.RegisterNetworkProtocolFactory(ProtocolName, func() stack.NetworkProtocol {
-		return &protocol{}
-	})
-}

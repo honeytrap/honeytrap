@@ -1,6 +1,6 @@
 module github.com/honeytrap/honeytrap
 
-go 1.11
+go 1.13
 
 require (
 	github.com/AndreasBriese/bbloom v0.0.0-20170702084017-28f7e881ca57 // indirect
@@ -23,11 +23,9 @@ require (
 	github.com/glycerine/goconvey v0.0.0-20190410193231-58a59202ab31 // indirect
 	github.com/glycerine/rbuf v0.0.0-20171031012212-54320fe9f6f3
 	github.com/go-asn1-ber/asn1-ber v0.0.0-20170511165959-379148ca0225
-	github.com/golang/protobuf v0.0.0-20180202184318-bbd03ef6da3a
+	github.com/golang/protobuf v1.3.1
 	github.com/golang/snappy v0.0.0-20170215233205-553a64147049 // indirect
-	github.com/google/btree v1.0.0 // indirect
 	github.com/google/gopacket v1.1.14
-	github.com/google/netstack v0.0.0
 	github.com/gorilla/websocket v1.2.0
 	github.com/honeytrap/honeytrap-web v0.0.0-20180212153621-02944754979e
 	github.com/honeytrap/protocol v0.0.0-20190410072324-219b95413db0
@@ -52,16 +50,14 @@ require (
 	github.com/songgao/water v0.0.0-20180221190335-75f112d19d5a
 	github.com/streadway/amqp v0.0.0-20180315184602-8e4aba63da9f
 	github.com/stretchr/testify v1.3.0 // indirect
-	github.com/vishvananda/netlink v1.0.0
-	github.com/vishvananda/netns v0.0.0-20171111001504-be1fbeda1936 // indirect
+	github.com/vishvananda/netlink v1.1.0
 	github.com/yuin/gopher-lua v0.0.0-20190206043414-8bfc7677f583
-	golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2
-	golang.org/x/sync v0.0.0-20190412183630-56d357773e84 // indirect
-	golang.org/x/time v0.0.0-20170927054726-6dc17368e09b
+	golang.org/x/crypto v0.0.0-20200128174031-69ecbb4d6d5d
+	golang.org/x/sys v0.0.0-20200202164722-d101bd2416d5 // indirect
+	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
 	gopkg.in/lxc/go-lxc.v2 v2.0.0-20190324192716-2f350e4a2980
 	gopkg.in/olivere/elastic.v5 v5.0.65
 	gopkg.in/urfave/cli.v1 v1.20.0
+	gvisor.dev/gvisor v0.0.0-20200131231121-3eb302470365
 )
-
-replace github.com/google/netstack => github.com/honeytrap/netstack v0.0.0-20190414201528-9ea5e4d2258f
