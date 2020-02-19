@@ -1,6 +1,6 @@
 module github.com/honeytrap/honeytrap
 
-go 1.11
+go 1.13
 
 require (
 	github.com/AndreasBriese/bbloom v0.0.0-20170702084017-28f7e881ca57 // indirect
