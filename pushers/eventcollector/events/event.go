@@ -98,7 +98,7 @@ func ProcessEvent(e map[string]interface{}) (session models.Session, event model
 		}
 	}
 
-	//event.Metadata = eventMetadata
+	event.Metadata = eventMetadata
 	fmt.Print(eventMetadata)
 	session.ServiceMeta = serviceMeta
 	Sessions[sessionID] = session
@@ -134,8 +134,6 @@ func stringInSlice(a string, list []string) bool {
 	}
 	return false
 }
-
-
 
 func StripANSI(str string) string {
 	var re = regexp.MustCompile(ansi)

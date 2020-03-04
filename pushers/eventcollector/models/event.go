@@ -10,19 +10,23 @@ const (
 
 type Event struct {
 	EventID 		bson.ObjectId   `json:"event_id" bson:"_id,omitempty"`
+	//event_id = generate
 	AgentType 		string  		`json:"agent_type" form:"agent_type" binding:"required" bson:"agent_type"`
 	AgentID			string			`json:"agent_id" form:"agent_id" binding:"required" bson:"agent_id"`
 	Timestamp 		string 			`json:"timestamp" form:"timestamp" binding:"required" bson:"timestamp"`
 	SourceIP 		string 			`json:"sourceip" form:"sourceip" binding:"required" bson:"sourceip"`
 	Count 			uint 			`json:"count" form:"count" binding:"required" bson:"count"`
+	//count = 0
 	Type 			string 			`json:"type" form:"type" binding:"required" bson:"type"`
 	Priority 		string 			`json:"priority" form:"priority" binding:"required" bson:"priority"`
+	//priority = medium
 	Name 			string 			`json:"name" form:"name" binding:"required" bson:"name"`
 	Context 		string 			`json:"context" form:"context" binding:"required" bson:"context"`
-	//Metadata 		interface{} 	`json:"metadata" form:"metadata" bson:"metadata"`
+	Metadata 		interface{} 	`json:"metadata" form:"metadata" bson:"metadata"`
 }
 
 type EventMetadataSSH struct {
+	//active  bool
 	EventType 		string 		`json:"event_type" form:"event_type" binding:"required" bson:"event_type"`
 	SourcePort 		uint 		`json:"source_port" form:"source_port" binding:"required" bson:"source_port"`
 	DestinationIP 	string 		`json:"dest_ip" form:"dest_ip" binding:"required" bson:"dest_ip"`

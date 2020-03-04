@@ -27,3 +27,5 @@ _testmain.go
 *.prof
 
 *.bak
+
+.idea/

@@ -18,4 +18,10 @@ type Config struct {
 	Brokers []string `toml:"brokers"`
 	Topic   string   `toml:"topic"`
 	AgentName string `toml:"agent"`
+	Mode string `toml:"mode"` 				// sync or async
+	SecurityProtocol string `toml:"security_protocol"`
+	SSLCAFile string `toml:"ssl_cafile"`
+	SSLCertFile string `toml:"ssl_certfile"`
+	SSLKeyFile string `toml:"ssl_keyfile"`
+	SSLPassword string `toml:"ssl_password"`
 }

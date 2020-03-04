@@ -20,21 +20,23 @@ require (
 	github.com/fatih/color v1.6.0
 	github.com/fortytw2/leaktest v1.3.0 // indirect
 	github.com/fuyufjh/splunk-hec-go v0.3.3
+	github.com/gin-gonic/gin v1.4.0
 	github.com/glycerine/goconvey v0.0.0-20190410193231-58a59202ab31 // indirect
 	github.com/glycerine/rbuf v0.0.0-20171031012212-54320fe9f6f3
 	github.com/go-asn1-ber/asn1-ber v0.0.0-20170511165959-379148ca0225
-	github.com/golang/protobuf v0.0.0-20180202184318-bbd03ef6da3a
+	github.com/golang/protobuf v1.3.1
 	github.com/golang/snappy v0.0.0-20170215233205-553a64147049 // indirect
 	github.com/google/btree v1.0.0 // indirect
 	github.com/google/gopacket v1.1.14
 	github.com/google/netstack v0.0.0
 	github.com/gorilla/websocket v1.2.0
+	github.com/grokify/html-strip-tags-go v0.0.0-20190921062105-daaa06bf1aaf
 	github.com/honeytrap/honeytrap-web v0.0.0-20180212153621-02944754979e
 	github.com/honeytrap/protocol v0.0.0-20190410072324-219b95413db0
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/mailru/easyjson v0.0.0-20171120080333-32fa128f234d // indirect
 	github.com/mattn/go-colorable v0.0.9 // indirect
-	github.com/mattn/go-isatty v0.0.3
+	github.com/mattn/go-isatty v0.0.7
 	github.com/miekg/dns v1.0.4
 	github.com/mimoo/StrobeGo v0.0.0-20171206114618-43f0c284a7f9 // indirect
 	github.com/mimoo/disco v0.0.0-20180114190844-15dd4b8476c9
@@ -51,7 +53,6 @@ require (
 	github.com/songgao/packets v0.0.0-20160404182456-549a10cd4091
 	github.com/songgao/water v0.0.0-20180221190335-75f112d19d5a
 	github.com/streadway/amqp v0.0.0-20180315184602-8e4aba63da9f
-	github.com/stretchr/testify v1.3.0 // indirect
 	github.com/vishvananda/netlink v1.0.0
 	github.com/vishvananda/netns v0.0.0-20171111001504-be1fbeda1936 // indirect
 	github.com/yuin/gopher-lua v0.0.0-20190206043414-8bfc7677f583
@@ -60,6 +61,7 @@ require (
 	golang.org/x/time v0.0.0-20170927054726-6dc17368e09b
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
 	gopkg.in/lxc/go-lxc.v2 v2.0.0-20190324192716-2f350e4a2980
+	gopkg.in/mgo.v2 v2.0.0-20190816093944-a6b53ec6cb22
 	gopkg.in/olivere/elastic.v5 v5.0.65
 	gopkg.in/urfave/cli.v1 v1.20.0
 )
