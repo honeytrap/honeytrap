@@ -41,7 +41,15 @@ func New(options ...func(pushers.Channel) error) (pushers.Channel, error) {
 func (b Backend) run() {
 	var s []interface{}
 
-	bo := backoff.NewExponentialBackOff()
+	bo := &backoff.ExponentialBackOff{
+		InitialInterval:     backoff.DefaultInitialInterval,
+		RandomizationFactor: backoff.DefaultRandomizationFactor,
+		Multiplier:          backoff.DefaultMultiplier,
+		MaxInterval:         time.Minute,
+		MaxElapsedTime:      0,
+		Stop:                backoff.Stop,
+		Clock:               backoff.SystemClock,
+	}
 	_ = backoff.RetryNotify(func() error {
 		conn, err := net.Dial("tcp", b.URL)
 		if err != nil {
