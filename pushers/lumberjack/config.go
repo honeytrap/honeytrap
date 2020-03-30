@@ -19,5 +19,6 @@ type Config struct {
 	Interval         int    `toml:"sync_interval"`
 	CompressionLevel int    `toml:"compression_level"`
 	Secure           bool   `toml:"tls"`
+	NoVerify         bool   `toml:"no-verify"`
 	Index            string `toml:"index"`
 }
