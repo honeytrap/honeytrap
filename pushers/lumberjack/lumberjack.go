@@ -57,10 +57,14 @@ func (b Backend) run() {
 		}
 
 		if b.Secure {
+			var tlsConn *tls.Conn
 			host, _, _ := net.SplitHostPort(b.URL)
-			tlsConn := tls.Client(conn, &tls.Config{
-				ServerName: host,
-			})
+
+			if b.NoVerify {
+				tlsConn = tls.Client(conn, &tls.Config{InsecureSkipVerify: true, ServerName: host,})
+			} else {
+				tlsConn = tls.Client(conn, &tls.Config{ServerName: host,})
+			}
 
 			if err := tlsConn.Handshake(); err != nil {
 				return err
