@@ -17,11 +17,12 @@ import (
 	"fmt"
 	"io"
 
+	"encoding/json"
+
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/op/go-logging"
 	"github.com/streadway/amqp"
-	"encoding/json"
 )
 
 var (
@@ -56,7 +57,7 @@ func New(options ...func(pushers.Channel) error) (pushers.Channel, error) {
 		return nil, fmt.Errorf("AMQP queue not set")
 	}
 
-	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
+	conn, err := amqp.Dial(c.AMQPConfig.Address)
 	if err != nil {
 		return nil, err
 	}
@@ -104,13 +105,13 @@ func (b *AMQPObject) Send(e event.Event) {
 		return
 	}
 	err = b.amqpChannel.Publish(
-		"", // exchange
+		"",          // exchange
 		b.queueName, // routing key
 		false,
 		false,
 		amqp.Publishing{
 			ContentType: "text/json",
-			Body: msg,
+			Body:        msg,
 		},
 	)
 	if err != nil {
