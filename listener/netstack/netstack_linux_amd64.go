@@ -23,21 +23,20 @@ import (
 	"github.com/fatih/color"
 	"github.com/vishvananda/netlink"
 
-	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/listener"
 	"github.com/honeytrap/honeytrap/pushers"
 
-	"github.com/google/netstack/tcpip"
-	"github.com/google/netstack/tcpip/adapters/gonet"
-	"github.com/google/netstack/tcpip/link/fdbased"
-	"github.com/google/netstack/tcpip/link/rawfile"
-	"github.com/google/netstack/tcpip/link/sniffer"
-	"github.com/google/netstack/tcpip/link/tun"
-	"github.com/google/netstack/tcpip/network/ipv4"
-	"github.com/google/netstack/tcpip/network/ipv6"
-	"github.com/google/netstack/tcpip/stack"
-	"github.com/google/netstack/tcpip/transport/tcp"
-	"github.com/google/netstack/tcpip/transport/udp"
+	"gvisor.dev/gvisor/pkg/tcpip"
+	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
+	"gvisor.dev/gvisor/pkg/tcpip/link/fdbased"
+	"gvisor.dev/gvisor/pkg/tcpip/link/rawfile"
+	"gvisor.dev/gvisor/pkg/tcpip/link/sniffer"
+	"gvisor.dev/gvisor/pkg/tcpip/link/tun"
+	"gvisor.dev/gvisor/pkg/tcpip/network/ipv4"
+	"gvisor.dev/gvisor/pkg/tcpip/network/ipv6"
+	"gvisor.dev/gvisor/pkg/tcpip/stack"
+	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
+	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
 )
 
 type netstackConfig struct {
@@ -168,18 +167,21 @@ func (l *netstackListener) Start(ctx context.Context) error {
 
 	la := tcpip.LinkAddress(ifaceLink.Attrs().HardwareAddr)
 
-	linkID := fdbased.New(&fdbased.Options{
-		FD:              fd,
-		MTU:             mtu,
-		EthernetHeader:  true,
-		ChecksumOffload: false,
-		Address:         la,
+	linkID, err := fdbased.New(&fdbased.Options{
+		FDs:            []int{fd},
+		MTU:            mtu,
+		EthernetHeader: true,
+		Address:        la,
 		ClosedFunc: func(e *tcpip.Error) {
 			if e != nil {
 				log.Errorf("File descriptor closed: %v", err)
 			}
 		},
 	})
+	if err != nil {
+		//TODO (jerry 2020-02-07): How to handle this error?
+		log.Errorf("linkID: %v", err)
+	}
 
 	if l.Debug {
 		linkID = sniffer.New(linkID)
@@ -207,9 +209,13 @@ func (l *netstackListener) Start(ctx context.Context) error {
 				continue
 			}
 
+			subnet4, err := tcpip.NewSubnet(ipToAddress(net.IPv4zero), tcpip.AddressMask(net.IPv4zero))
+			if err != nil {
+				log.Warningf("Subnet: %v", err)
+			}
+
 			routes = append(routes, tcpip.Route{
-				Destination: ipToAddress(net.IPv4zero),
-				Mask:        tcpip.AddressMask(net.IPv4zero),
+				Destination: subnet4,
 				Gateway:     ipToAddress(r.Gw),
 			})
 			continue
@@ -218,16 +224,36 @@ func (l *netstackListener) Start(ctx context.Context) error {
 			log.Warningf("IPv6 is not supported, skipping route: %v", r)
 			continue
 		}
+		subnet6, err := tcpip.NewSubnet(ipToAddress(r.Dst.IP.Mask(r.Dst.Mask)), tcpip.AddressMask(r.Dst.Mask))
+		if err != nil {
+			log.Warningf("Subnet: %v", err)
+		}
+
 		routes = append(routes, tcpip.Route{
-			Destination: ipToAddress(r.Dst.IP.Mask(r.Dst.Mask)),
-			Mask:        tcpip.AddressMask(r.Dst.Mask),
+			Destination: subnet6,
+			Gateway:     ipToAddress(r.Gw),
 		})
 	}
 
-	s := stack.New([]string{ipv4.ProtocolName, ipv6.ProtocolName}, []string{tcp.ProtocolName, udp.ProtocolName}, stack.Options{})
-	if err := s.SetTransportProtocolOption(tcp.ProtocolNumber, tcp.RSTDisabled(true)); err != nil {
-		return fmt.Errorf("Could not set transport protocol option: %s", err.String())
+	opts := stack.Options{
+		NetworkProtocols: []stack.NetworkProtocol{
+			ipv4.NewProtocol(),
+			ipv6.NewProtocol(),
+		},
+		TransportProtocols: []stack.TransportProtocol{
+			tcp.NewProtocol(),
+			udp.NewProtocol(),
+		},
 	}
+
+	s := stack.New(opts)
+
+	//TODO: can not find a suitable replacement for RSTDisabled.
+	//see: pkg/tcpip/transport/tcp/protocol.go for Options.
+	//
+	//if err := s.SetTransportProtocolOption(tcp.ProtocolNumber, tcp.RSTDisabled(true)); err != nil {
+	//	return fmt.Errorf("Could not set transport protocol option: %s", err.String())
+	//}
 
 	s.AddTCPProbe(func(s stack.TCPEndpointState) {
 	})
@@ -299,17 +325,25 @@ func (l *netstackListener) Start(ctx context.Context) error {
 						continue
 					}
 
-					if gc, ok := conn.(*gonet.Conn); !ok {
-					} else if irs, err := gc.IRS(); err != nil {
-					} else {
-						conn = event.WithConn(conn, event.Custom("irs", irs))
-
-					}
+					//TODO (jerry 2020-02-07): No suitable replacement for IRS()
+					//if gc, ok := conn.(*gonet.Conn); !ok {
+					//	//} else if irs, err := gc.IRS(); err != nil {
+					//} else {
+					//	conn = event.WithConn(conn, event.Custom("irs", irs))
+					//}
 
 					l.ch <- conn
 				}
 			} else if ua, ok := address.(*net.UDPAddr); ok {
-				pc, err := gonet.NewPacketConn(s, tcpip.FullAddress{
+				/*
+					pc, err := gonet.NewPacketConn(s, tcpip.FullAddress{
+						NIC:  0,
+						Addr: tcpip.Address(ua.IP),
+						Port: uint16(ua.Port),
+					}, ipv4.ProtocolNumber)
+				*/
+				//laddr = nil = local address automatically chosen.
+				pc, err := gonet.DialUDP(s, nil, &tcpip.FullAddress{
 					NIC:  0,
 					Addr: tcpip.Address(ua.IP),
 					Port: uint16(ua.Port),
