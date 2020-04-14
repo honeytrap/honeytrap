@@ -56,6 +56,8 @@ func (b Backend) run() {
 			return err
 		}
 
+		defer conn.Close()
+
 		if b.Secure {
 			host, _, _ := net.SplitHostPort(b.URL)
 			tlsConn := tls.Client(conn, &tls.Config{
@@ -63,6 +65,7 @@ func (b Backend) run() {
 			})
 
 			if err := tlsConn.Handshake(); err != nil {
+				log.Errorf("unable to setup TLS connection: %v", err)
 				return err
 			}
 
@@ -72,12 +75,14 @@ func (b Backend) run() {
 		// Create new lumberjack client for protocol encoding
 		client, err := lumberClient.NewWithConn(conn, lumberClient.CompressionLevel(b.CompressionLevel))
 		if err != nil {
+			log.Errorf("lumberjack connection failed: %v", err)
 			return err
 		}
 
 		// Create new Synchronous client for sending Events to ingestion point.
 		cl, err := lumberClient.NewSyncClientWith(client)
 		if err != nil {
+			log.Errorf("unable to create lumberjack client: %v", err)
 			return err
 		}
 
