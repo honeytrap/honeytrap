@@ -97,10 +97,6 @@ func (b Backend) run() {
 					continue
 				}
 
-				evt.Store("beat", map[string]interface{}{
-					"name": "honeytrap",
-				})
-
 				s = append(s, evt)
 
 				if len(s) < 10 {
