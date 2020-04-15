@@ -73,7 +73,7 @@ func (b Backend) run() {
 		}
 
 		// Create new lumberjack client for protocol encoding
-		client, err := lumberClient.NewWithConn(conn, lumberClient.CompressionLevel(b.CompressionLevel))
+		client, err := lumberClient.NewWithConn(conn)
 		if err != nil {
 			log.Errorf("lumberjack connection failed: %v", err)
 			return err
@@ -96,14 +96,6 @@ func (b Backend) run() {
 				if category == "heartbeat" {
 					continue
 				}
-
-				evt.Store("@metadata", map[string]interface{}{
-					"beat": b.Index,
-				})
-
-				evt.Store("beat", map[string]interface{}{
-					"name": "honeytrap",
-				})
 
 				s = append(s, evt)
 
