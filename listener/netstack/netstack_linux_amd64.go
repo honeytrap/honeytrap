@@ -1,3 +1,5 @@
+//Package netstack uses gvisor netstack for listener.
+//
 // Copyright 2016-2019 DutchSec (https://dutchsec.com/)
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -80,77 +82,43 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 	}
 
 	if len(l.Interfaces) == 0 {
-		return nil, fmt.Errorf("No interface defined")
+		return nil, fmt.Errorf("no interface defined")
 	} else if len(l.Interfaces) > 1 {
-		return nil, fmt.Errorf("Only one interface is supported currently")
+		return nil, fmt.Errorf("only one interface is supported currently")
 	}
 
-	return &l, nil
-}
+	iface := l.Interfaces[0]
 
-// ipToAddressAndProto converts IP to tcpip.Address and a protocol number.
-//
-// Note: don't use 'len(ip)' to determine IP version because length is always 16.
-func ipToAddressAndProto(ip net.IP) (tcpip.NetworkProtocolNumber, tcpip.Address) {
-	if i4 := ip.To4(); i4 != nil {
-		return ipv4.ProtocolNumber, tcpip.Address(i4)
-	}
-	return ipv6.ProtocolNumber, tcpip.Address(ip)
-}
-
-// ipToAddress converts IP to tcpip.Address, ignoring the protocol.
-func ipToAddress(ip net.IP) tcpip.Address {
-	_, addr := ipToAddressAndProto(ip)
-	return addr
-}
-
-func htons(n uint16) uint16 {
-	var (
-		high = n >> 8
-		ret  = n<<8 + high
-	)
-
-	return ret
-}
-
-func (l *netstackListener) Start(ctx context.Context) error {
-	intfName := l.Interfaces[0]
-
-	mtu, err := rawfile.GetMTU(intfName)
+	ifaceLink, err := netlink.LinkByName(iface)
 	if err != nil {
-		return err
-	}
-
-	ifaceLink, err := netlink.LinkByName(intfName)
-	if err != nil {
-		return fmt.Errorf("unable to bind to %q: %v", "1", err)
+		return nil, fmt.Errorf("unable to bind to %q: %v", "1", err)
 	}
 
 	var fd int
 
-	if strings.HasPrefix(intfName, "tun") {
-		fd, err = tun.Open(intfName)
+	if strings.HasPrefix(iface, "tun") {
+		fd, err = tun.Open(iface)
 		if err != nil {
-			return fmt.Errorf("Could not open tun interface: %s", err.Error())
+			return nil, fmt.Errorf("could not open tun interface: %s", err.Error())
 		}
-	} else if strings.HasPrefix(intfName, "tap") {
-		fd, err = tun.OpenTAP(intfName)
+	} else if strings.HasPrefix(iface, "tap") {
+		fd, err = tun.OpenTAP(iface)
 		if err != nil {
-			return fmt.Errorf("Could not open tap interface: %s", err.Error())
+			return nil, fmt.Errorf("could not open tap interface: %s", err.Error())
 		}
 	} else {
 		fd, err = syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(htons(syscall.ETH_P_ALL)))
 		if err != nil {
-			return fmt.Errorf("Could not create socket: %s", err.Error())
+			return nil, fmt.Errorf("could not create socket: %s", err.Error())
 		}
 
 		if fd < 0 {
-			return fmt.Errorf("Socket error: return < 0")
+			return nil, fmt.Errorf("socket error: return < 0")
 		}
 
 		if err = syscall.SetNonblock(fd, true); err != nil {
 			syscall.Close(fd)
-			return fmt.Errorf("Error setting fd to nonblock: %s", err)
+			return nil, fmt.Errorf("error setting fd to nonblock: %s", err)
 		}
 
 		ll := syscall.SockaddrLinklayer{
@@ -161,8 +129,13 @@ func (l *netstackListener) Start(ctx context.Context) error {
 		}
 
 		if err := syscall.Bind(fd, &ll); err != nil {
-			return fmt.Errorf("unable to bind to %q: %v", "iface.Name", err)
+			return nil, fmt.Errorf("unable to bind to %q: %v", "iface.Name", err)
 		}
+	}
+
+	mtu, err := rawfile.GetMTU(iface)
+	if err != nil {
+		return nil, err
 	}
 
 	la := tcpip.LinkAddress(ifaceLink.Attrs().HardwareAddr)
@@ -195,42 +168,18 @@ func (l *netstackListener) Start(ctx context.Context) error {
 
 	rs, err := netlink.RouteList(link, netlink.FAMILY_ALL)
 	if err != nil {
-		return fmt.Errorf("error getting routes from %q: %v", link.Attrs().Name, err)
+		return nil, fmt.Errorf("error getting routes from %q: %v", link.Attrs().Name, err)
 	}
 
 	for _, r := range rs {
-		// Is it a default route?
-		if r.Dst == nil {
-			if r.Gw == nil {
-				return fmt.Errorf("default route with no gateway %q: %+v", link.Attrs().Name, r)
-			}
-			if r.Gw.To4() == nil {
-				log.Warningf("IPv6 is not supported, skipping default route: %v", r)
-				continue
-			}
-
-			subnet4, err := tcpip.NewSubnet(ipToAddress(net.IPv4zero), tcpip.AddressMask(net.IPv4zero))
-			if err != nil {
-				log.Warningf("Subnet: %v", err)
-			}
-
-			routes = append(routes, tcpip.Route{
-				Destination: subnet4,
-				Gateway:     ipToAddress(r.Gw),
-			})
-			continue
-		}
-		if r.Dst.IP.To4() == nil {
-			log.Warningf("IPv6 is not supported, skipping route: %v", r)
-			continue
-		}
-		subnet6, err := tcpip.NewSubnet(ipToAddress(r.Dst.IP.Mask(r.Dst.Mask)), tcpip.AddressMask(r.Dst.Mask))
+		sub, err := subnet(r)
 		if err != nil {
-			log.Warningf("Subnet: %v", err)
+			log.Debug(err.Error())
+			continue
 		}
 
 		routes = append(routes, tcpip.Route{
-			Destination: subnet6,
+			Destination: sub,
 			Gateway:     ipToAddress(r.Gw),
 		})
 	}
@@ -261,19 +210,19 @@ func (l *netstackListener) Start(ctx context.Context) error {
 	s.SetRouteTable(routes)
 
 	if err := s.CreateNIC(1, linkID); err != nil {
-		return fmt.Errorf(err.String())
+		return nil, fmt.Errorf("create NIC: %v", err)
 	}
 
 	addrs, err := netlink.AddrList(link, netlink.FAMILY_V4)
 	if err != nil {
-		return fmt.Errorf("Error retrieving interface ip addresses: %s", err.Error())
+		return nil, fmt.Errorf("error retrieving interface ip addresses: %s", err.Error())
 	}
 
 	if l.Addr != "" {
 		if addr, err := netlink.ParseAddr(l.Addr); err == nil {
 			addrs = []netlink.Addr{*addr}
 		} else {
-			return fmt.Errorf("Bad IP address: %v: %s", l.Addr, err)
+			return nil, fmt.Errorf("bad IP address: %v: %s", l.Addr, err)
 		}
 	}
 
@@ -288,14 +237,14 @@ func (l *netstackListener) Start(ctx context.Context) error {
 			addr = tcpip.Address(parsedAddr.IP)
 			proto = ipv6.ProtocolNumber
 		} else {
-			return fmt.Errorf("Unknown IP type: %v, bits=%d", l.Addr, bits)
+			return nil, fmt.Errorf("unknown IP type: %v, bits=%d", l.Addr, bits)
 		}
 
 		log.Debugf("Listening on: %s (%d)\n", parsedAddr.String(), proto)
 
-		// s.AddSubnet()
+		//s.AddSubnet()
 		if err := s.AddAddress(1, proto, addr); err != nil {
-			return fmt.Errorf(err.String())
+			return nil, fmt.Errorf(err.String())
 		}
 	}
 
@@ -303,80 +252,126 @@ func (l *netstackListener) Start(ctx context.Context) error {
 
 	l.s = s
 
+	return &l, nil
+}
+
+func subnet(r netlink.Route) (tcpip.Subnet, error) {
+	// Is it a default route?
+	if r.Dst == nil {
+		if r.Gw == nil {
+			return tcpip.Subnet{}, fmt.Errorf("default route with no gateway %+v", r)
+		}
+		if r.Gw.To4() == nil {
+			return tcpip.Subnet{}, fmt.Errorf("IPv6 is not supported, skipping default route: %v", r)
+		}
+
+		return tcpip.NewSubnet(ipToAddress(net.IPv4zero), tcpip.AddressMask(net.IPv4zero))
+	}
+	if r.Dst.IP.To4() == nil {
+		return tcpip.Subnet{}, fmt.Errorf("IPv6 is not supported, skipping route: %v", r)
+	}
+
+	return tcpip.NewSubnet(ipToAddress(r.Dst.IP.Mask(r.Dst.Mask)), tcpip.AddressMask(r.Dst.Mask))
+}
+
+// ipToAddressAndProto converts IP to tcpip.Address and a protocol number.
+//
+// Note: don't use 'len(ip)' to determine IP version because length is always 16.
+func ipToAddressAndProto(ip net.IP) (tcpip.NetworkProtocolNumber, tcpip.Address) {
+	if i4 := ip.To4(); i4 != nil {
+		return ipv4.ProtocolNumber, tcpip.Address(i4)
+	}
+	return ipv6.ProtocolNumber, tcpip.Address(ip)
+}
+
+// ipToAddress converts IP to tcpip.Address, ignoring the protocol.
+func ipToAddress(ip net.IP) tcpip.Address {
+	_, addr := ipToAddressAndProto(ip)
+	return addr
+}
+
+func htons(n uint16) uint16 {
+	var (
+		high = n >> 8
+		ret  = n<<8 + high
+	)
+
+	return ret
+}
+
+func (l *netstackListener) ListenTCP(addr *net.TCPAddr) {
+
+	listener, err := gonet.NewListener(l.s, tcpip.FullAddress{
+		NIC:  0,
+		Addr: tcpip.Address(addr.IP),
+		Port: uint16(addr.Port),
+	}, ipv4.ProtocolNumber)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer listener.Close()
+
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			log.Error("Error accepting tcp connection: %s", err.Error())
+			continue
+		}
+
+		//TODO (jerry 2020-02-07): No suitable replacement for IRS()
+		//if gc, ok := conn.(*gonet.Conn); !ok {
+		//	//} else if irs, err := gc.IRS(); err != nil {
+		//} else {
+		//	conn = event.WithConn(conn, event.Custom("irs", irs))
+		//}
+
+		l.ch <- conn
+	}
+}
+
+func (l *netstackListener) ListenUDP(addr *net.UDPAddr) {
+
+	//laddr = nil = local address automatically chosen.
+	pc, err := gonet.DialUDP(l.s, nil, &tcpip.FullAddress{
+		NIC:  0,
+		Addr: tcpip.Address(addr.IP),
+		Port: uint16(addr.Port),
+	}, ipv4.ProtocolNumber)
+	if err != nil {
+		fmt.Println(color.RedString("Error starting udp listener: %s", err.Error()))
+		return
+	}
+
+	for {
+		var buf [65535]byte
+
+		n, raddr, err := pc.ReadFrom(buf[:])
+		if err != nil {
+			log.Error("Error reading udp:", err.Error())
+			continue
+		}
+
+		l.ch <- &listener.DummyUDPConn{
+			Buffer: buf[:n],
+			Laddr:  addr,
+			Raddr:  raddr.(*net.UDPAddr),
+			Fn: func(b []byte, addr *net.UDPAddr) (int, error) {
+				return pc.WriteTo(b, addr)
+			},
+		}
+	}
+}
+
+func (l *netstackListener) Start(ctx context.Context) error {
+
 	for _, address := range l.Addresses {
-		go func(address net.Addr) {
-			if ta, ok := address.(*net.TCPAddr); ok {
-				log.Infof("Listener started: tcp/%s", address)
-
-				listener, err := gonet.NewListener(s, tcpip.FullAddress{
-					NIC:  0,
-					Addr: tcpip.Address(ta.IP),
-					Port: uint16(ta.Port),
-				}, ipv4.ProtocolNumber)
-				if err != nil {
-					log.Fatal(err)
-				}
-				defer listener.Close()
-
-				for {
-					conn, err := listener.Accept()
-					if err != nil {
-						log.Error("Error accepting tcp connection: %s", err.Error())
-						continue
-					}
-
-					//TODO (jerry 2020-02-07): No suitable replacement for IRS()
-					//if gc, ok := conn.(*gonet.Conn); !ok {
-					//	//} else if irs, err := gc.IRS(); err != nil {
-					//} else {
-					//	conn = event.WithConn(conn, event.Custom("irs", irs))
-					//}
-
-					l.ch <- conn
-				}
-			} else if ua, ok := address.(*net.UDPAddr); ok {
-				/*
-					pc, err := gonet.NewPacketConn(s, tcpip.FullAddress{
-						NIC:  0,
-						Addr: tcpip.Address(ua.IP),
-						Port: uint16(ua.Port),
-					}, ipv4.ProtocolNumber)
-				*/
-				//laddr = nil = local address automatically chosen.
-				pc, err := gonet.DialUDP(s, nil, &tcpip.FullAddress{
-					NIC:  0,
-					Addr: tcpip.Address(ua.IP),
-					Port: uint16(ua.Port),
-				}, ipv4.ProtocolNumber)
-				if err != nil {
-					fmt.Println(color.RedString("Error starting udp listener: %s", err.Error()))
-					return
-				}
-
-				log.Infof("Listener started: udp/%s", address)
-
-				go func() {
-					for {
-						var buf [65535]byte
-
-						n, raddr, err := pc.ReadFrom(buf[:])
-						if err != nil {
-							log.Error("Error reading udp:", err.Error())
-							continue
-						}
-
-						l.ch <- &listener.DummyUDPConn{
-							Buffer: buf[:n],
-							Laddr:  ua,
-							Raddr:  raddr.(*net.UDPAddr),
-							Fn: func(b []byte, addr *net.UDPAddr) (int, error) {
-								return pc.WriteTo(b, addr)
-							},
-						}
-					}
-				}()
-			}
-		}(address)
+		if ta, ok := address.(*net.TCPAddr); ok {
+			go l.ListenTCP(ta)
+			log.Infof("Listener started: tcp/%s", address)
+		} else if ua, ok := address.(*net.UDPAddr); ok {
+			go l.ListenUDP(ua)
+			log.Infof("Listener started: udp/%s", address)
+		}
 	}
 
 	return nil
