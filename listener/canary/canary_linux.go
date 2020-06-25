@@ -231,7 +231,7 @@ func (c *Canary) handleUDP(eh *ethernet.Frame, iph *ipv4.Header, data []byte) er
 			))
 
 		} else if err := fn(iph, hdr); err != nil {
-			fmt.Printf("Could not decode udp packet: %s", err)
+			log.Errorf("could not decode udp packet: %v", err)
 			// return err
 			// todo to error channel
 		}

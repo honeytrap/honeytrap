@@ -1,3 +1,5 @@
+//Package udp header object.
+//
 // Copyright 2016-2019 DutchSec (https://dutchsec.com/)
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,7 +30,7 @@ type Header struct {
 
 func Unmarshal(data []byte) (*Header, error) {
 	if len(data) < 8 {
-		return nil, fmt.Errorf("Incorrect UDP header size: %d", len(data))
+		return nil, fmt.Errorf("incorrect UDP header size: %d", len(data))
 	}
 
 	hdr := Header{}
