@@ -13,6 +13,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
 package canary
 
 import (
@@ -20,7 +21,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"strings"
 	"time"
 
 	"github.com/honeytrap/honeytrap/event"
@@ -208,7 +208,7 @@ func (c *Canary) knockDetector(ctx context.Context) {
 					} else if k, ok := v.(KnockUDPPort); ok {
 						ports[i] = fmt.Sprintf("udp/%d", k.DestinationPort)
 					} else if _, ok := v.(KnockICMP); ok {
-						ports[i] = fmt.Sprintf("icmp")
+						ports[i] = "icmp"
 					}
 				})
 
@@ -216,14 +216,12 @@ func (c *Canary) knockDetector(ctx context.Context) {
 					event.New(
 						CanaryOptions,
 						EventCategoryPortscan,
-						event.ServiceStarted,
 						event.SourceHardwareAddr(k.SourceHardwareAddr),
 						event.DestinationHardwareAddr(k.DestinationHardwareAddr),
 						event.SourceIP(k.SourceIP),
 						event.DestinationIP(k.DestinationIP),
 						event.Custom("portscan.ports", ports),
 						event.Custom("portscan.duration", k.Last.Sub(k.Start)),
-						event.Message(fmt.Sprintf("Port %d touch(es) detected from %s with duration %+v: %s", k.Count, k.SourceIP, k.Last.Sub(k.Start), strings.Join(ports, ", "))),
 					),
 				)
 			})
