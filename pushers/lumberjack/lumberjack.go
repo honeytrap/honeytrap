@@ -41,12 +41,22 @@ func New(options ...func(pushers.Channel) error) (pushers.Channel, error) {
 func (b Backend) run() {
 	var s []interface{}
 
-	bo := backoff.NewExponentialBackOff()
+	bo := &backoff.ExponentialBackOff{
+		InitialInterval:     backoff.DefaultInitialInterval,
+		RandomizationFactor: backoff.DefaultRandomizationFactor,
+		Multiplier:          backoff.DefaultMultiplier,
+		MaxInterval:         time.Minute,
+		MaxElapsedTime:      0,
+		Stop:                backoff.Stop,
+		Clock:               backoff.SystemClock,
+	}
 	_ = backoff.RetryNotify(func() error {
 		conn, err := net.Dial("tcp", b.URL)
 		if err != nil {
 			return err
 		}
+
+		defer conn.Close()
 
 		if b.Secure {
 			host, _, _ := net.SplitHostPort(b.URL)
@@ -55,6 +65,7 @@ func (b Backend) run() {
 			})
 
 			if err := tlsConn.Handshake(); err != nil {
+				log.Errorf("unable to setup TLS connection: %v", err)
 				return err
 			}
 
@@ -62,14 +73,16 @@ func (b Backend) run() {
 		}
 
 		// Create new lumberjack client for protocol encoding
-		client, err := lumberClient.NewWithConn(conn, lumberClient.CompressionLevel(b.CompressionLevel))
+		client, err := lumberClient.NewWithConn(conn)
 		if err != nil {
+			log.Errorf("lumberjack connection failed: %v", err)
 			return err
 		}
 
 		// Create new Synchronous client for sending Events to ingestion point.
 		cl, err := lumberClient.NewSyncClientWith(client)
 		if err != nil {
+			log.Errorf("unable to create lumberjack client: %v", err)
 			return err
 		}
 
@@ -83,14 +96,6 @@ func (b Backend) run() {
 				if category == "heartbeat" {
 					continue
 				}
-
-				evt.Store("@metadata", map[string]interface{}{
-					"beat": b.Index,
-				})
-
-				evt.Store("beat", map[string]interface{}{
-					"name": "honeytrap",
-				})
 
 				s = append(s, evt)
 

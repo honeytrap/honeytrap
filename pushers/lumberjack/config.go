@@ -17,7 +17,5 @@ package lumberjack
 type Config struct {
 	URL              string `toml:"url"`
 	Interval         int    `toml:"sync_interval"`
-	CompressionLevel int    `toml:"compression_level"`
 	Secure           bool   `toml:"tls"`
-	Index            string `toml:"index"`
 }

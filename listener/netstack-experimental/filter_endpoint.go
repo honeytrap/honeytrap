@@ -11,18 +11,24 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-package netstack
+package xnetstack
 
 import (
-	"github.com/google/netstack/tcpip"
-	"github.com/google/netstack/tcpip/buffer"
-	"github.com/google/netstack/tcpip/stack"
+	"gvisor.dev/gvisor/pkg/tcpip"
+	"gvisor.dev/gvisor/pkg/tcpip/buffer"
+	"gvisor.dev/gvisor/pkg/tcpip/stack"
 )
 
+/*
 func NewFilter(lower tcpip.LinkEndpointID) tcpip.LinkEndpointID {
 	return stack.RegisterLinkEndpoint(&filterEndpoint{
 		lower: stack.FindLinkEndpoint(lower),
 	})
+}
+*/
+
+func NewFilter(lower stack.LinkEndpoint) stack.LinkEndpoint {
+	return &filterEndpoint{lower: lower}
 }
 
 type filterEndpoint struct {
@@ -32,9 +38,19 @@ type filterEndpoint struct {
 
 // WritePacket writes outbound packets to the file descriptor. If it is not
 // currently writable, the packet is dropped.
-func (e *filterEndpoint) WritePacket(r *stack.Route, gso *stack.GSO, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.NetworkProtocolNumber) *tcpip.Error {
+func (e *filterEndpoint) WritePacket(r *stack.Route, gso *stack.GSO, protocol tcpip.NetworkProtocolNumber, pkt tcpip.PacketBuffer) *tcpip.Error {
 	// https://godoc.org/golang.org/x/net/bpf
-	return e.lower.WritePacket(r, gso, hdr, payload, protocol)
+	return e.lower.WritePacket(r, gso, protocol, pkt)
+}
+
+//WritePackets implements stack.LinkEndpoint
+func (e *filterEndpoint) WritePackets(r *stack.Route, gso *stack.GSO, pkts []tcpip.PacketBuffer, protocol tcpip.NetworkProtocolNumber) (int, *tcpip.Error) {
+	return e.lower.WritePackets(r, gso, pkts, protocol)
+}
+
+//WriteRawPacket implements stack.LinkEndpoint
+func (e *filterEndpoint) WriteRawPacket(vv buffer.VectorisedView) *tcpip.Error {
+	return e.lower.WriteRawPacket(vv)
 }
 
 // Attach implements the stack.LinkEndpoint interface. It saves the dispatcher
@@ -45,8 +61,9 @@ func (e *filterEndpoint) Attach(dispatcher stack.NetworkDispatcher) {
 	e.lower.Attach(e)
 }
 
-func (e *filterEndpoint) DeliverNetworkPacket(linkEP stack.LinkEndpoint, remoteLinkAddr tcpip.LinkAddress, sourceLinkAddr tcpip.LinkAddress, protocol tcpip.NetworkProtocolNumber, vv buffer.VectorisedView) {
-	e.dispatcher.DeliverNetworkPacket(linkEP, remoteLinkAddr, sourceLinkAddr, protocol, vv)
+//DeliverNetworkPacket implements stack.NetworkDispatcher.
+func (e *filterEndpoint) DeliverNetworkPacket(linkEP stack.LinkEndpoint, remote, local tcpip.LinkAddress, protocol tcpip.NetworkProtocolNumber, pkt tcpip.PacketBuffer) {
+	e.dispatcher.DeliverNetworkPacket(linkEP, remote, local, protocol, pkt)
 }
 
 // IsAttached implements stack.LinkEndpoint.IsAttached.
@@ -75,3 +92,6 @@ func (e *filterEndpoint) MaxHeaderLength() uint16 {
 func (e *filterEndpoint) LinkAddress() tcpip.LinkAddress {
 	return e.lower.LinkAddress()
 }
+
+// Wait implements stack.LinkEndpoint.Wait.
+func (*filterEndpoint) Wait() {}
