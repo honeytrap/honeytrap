@@ -167,6 +167,7 @@ golang.org/x/sys v0.0.0-20190606203320-7fc4e5ec1444 h1:/d2cWp6PSamH4jDPFLyO150ps
 golang.org/x/sys v0.0.0-20190606203320-7fc4e5ec1444/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/sys v0.0.0-20200202164722-d101bd2416d5 h1:LfCXLvNmTYH9kEmVgqbnsWfruoXZIrh4YBgqVHtDvw0=
 golang.org/x/sys v0.0.0-20200202164722-d101bd2416d5/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
+golang.org/x/sys v0.0.0-20200302150141-5c8b2ff67527 h1:uYVVQ9WP/Ds2ROhcaGPeIdVq0RIXVLwsHlnvJ+cT1So=
 golang.org/x/sys v0.0.0-20200302150141-5c8b2ff67527/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/text v0.3.0/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=
 golang.org/x/time v0.0.0-20191024005414-555d28b269f0 h1:/5xXl8Y5W96D+TtHSlonuFqGHIWVuyCkGJLwGh9JJFs=
@@ -188,3 +189,5 @@ gvisor.dev/gvisor v0.0.0-20200131231121-3eb302470365 h1:D6m6N4ZBSG+ls+FIibbHqenj
 gvisor.dev/gvisor v0.0.0-20200131231121-3eb302470365/go.mod h1:XFSKqn1yjdrTzkXKCXVEfnUFdoZN4GlQuVgnLlUnG9U=
 gvisor.dev/gvisor v0.0.0-20200626042157-7fb6cc286fff h1:JK2+GSlRHF4Td+OLykAIorq1KuMzXCbbpN2OfoP8Ucg=
 gvisor.dev/gvisor v0.0.0-20200626042157-7fb6cc286fff/go.mod h1:h+6z+LgXLDMOwidDk/XF0VPA+V6HLTWBWkwmRjgWwF8=
+gvisor.dev/gvisor v0.0.0-20200626042443-a09f0255aace h1:I+R3YBxcDngOscNhjAE0jm4Irb0adM5ZAL83/lGJVXI=
+gvisor.dev/gvisor v0.0.0-20200626042443-a09f0255aace/go.mod h1:h+6z+LgXLDMOwidDk/XF0VPA+V6HLTWBWkwmRjgWwF8=

@@ -64,5 +64,5 @@ require (
 	gopkg.in/lxc/go-lxc.v2 v2.0.0-20190324192716-2f350e4a2980
 	gopkg.in/olivere/elastic.v5 v5.0.65
 	gopkg.in/urfave/cli.v1 v1.20.0
-	gvisor.dev/gvisor v0.0.0-20200626042157-7fb6cc286fff
+	gvisor.dev/gvisor v0.0.0-20200626042443-a09f0255aace
 )
