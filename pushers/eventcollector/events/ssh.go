@@ -2,9 +2,10 @@ package events
 
 import (
 	"fmt"
-	strip "github.com/grokify/html-strip-tags-go"
 	"github.com/honeytrap/honeytrap/pushers/eventcollector/models"
+	"regexp"
 	"strconv"
+	"strings"
 )
 
 const ansi = "[\u001B\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[a-zA-Z\\d]*)*)?\u0007)|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PRZcf-ntqry=><~]))"
@@ -95,11 +96,128 @@ func ProcessEventSSH(e map[string]interface{}) (sshSession models.SessionSSH, ev
 		eventMetadataSSH.EventType = "session_handshake"
 
 	case "ssh-session":
-		sRecording := StripANSI(strip.StripTags(e["ssh.recording"].(string)))
-		sshSession.Recording = fmt.Sprintf("%v%v", sshSession.Recording, sRecording)
+		sRecording := StripANSI(e["ssh.recording"].(string))
+		sshSession.Recording = DigestRecording(sRecording)
 		eventMetadataSSH.EventType = "session_report"
-		eventMetadataSSH.Recording = sshSession.Recording
+		eventMetadataSSH.Recording = sRecording
+
 	}
+	//
 
 	return
 }
+
+func DigestRecording(recording string) (digest []models.SessionSSHRecording) {
+
+	fmt.Printf("THE RECORDING BEFORE:\n%v\n\n", recording)
+
+	// find matches based on regex
+	re := regexp.MustCompile(`(?:\.wait\(.*?\)\.put\('(?P<content>(?:.|\r|\n)+?)'\))+?`)
+	re_prompt := regexp.MustCompile(`(?:.+?@.+\$)`)
+	names := re.SubexpNames()
+	matches := re.FindAllStringSubmatch(recording, -1)
+
+	tokens := []string{}
+	fmt.Printf("RECORDING AFTER FORMAT:\n")
+	for x, n := range matches {
+
+		m := map[string]string{}
+		for i, n := range n {
+			m[names[i]] = n
+		}
+
+		tokens = append(tokens, m["content"])
+		fmt.Printf("[%d] --> %v\n", x, m["content"])
+	}
+
+	//aggregate commands and separate them by "<br>"
+
+	//commands := map[string]string{}
+	input := false
+
+	command := ""
+	text := ""
+	autoMessageCount := 0
+	commandIndex := 0
+
+	addCommand := func(index int, command string, output string) {
+		commandDigest := models.SessionSSHRecording {
+			Index: index,
+			Command: command,
+			Output:  output,
+		}
+		digest = append(digest, commandDigest)
+	}
+
+	for x, t := range tokens {
+
+		log.Debugf("-> Processing token %d: %v\n", x, t)
+		//check prompt
+		promptMatch := re_prompt.FindStringSubmatch(t) // if matches prompt, switch to input mode
+		if len(promptMatch) != 0 {
+			input = true
+			continue
+		}
+
+		index := strings.LastIndex(t, "<br/>")
+		if index == -1 { // "<br/>" not found -> aggregate
+			text += t
+			continue
+
+		} else { // <br/> found -> aggregate
+
+			if input { // if in input mode -> create command
+				command += text + t[0:index] // aggregate until <br/> placeholder
+				command = strings.Replace(command, "<backspace>", "\b", -1)
+				input = false
+
+			} else {
+				text = t[0:index]// aggregate until <br/> placeholder and sanitize
+				text = strings.Replace(text, "<br/>", "\n", -1)
+
+				if len(command) > 0 {
+					//commands[command] = text
+					addCommand(commandIndex, command, text)
+					commandIndex += 1
+					command = ""
+				} else {
+					autoMessageCount += 1
+					addCommand(commandIndex, "", text)
+					//commands[fmt.Sprintf("<Auto message #%d>", autoMessageCount)] = text
+					autoMessageCount += 1
+					commandIndex += 1
+
+				}
+				text = ""
+			}
+
+		}
+
+
+
+	}
+
+/*	fmt.Printf("COMMANDS:\n")
+
+	for x, c := range commands {
+		fmt.Printf("Command %s: %s\n", x, c)
+	}
+
+	i := 1
+	for c, o := range commands {
+		commandDigest := models.SessionSSHRecording {
+			Index: i,
+			Command: c,
+			Output:  o,
+		}
+		i++
+		digest = append(digest, commandDigest)
+	}*/
+
+	return digest
+}
+
+
+
+
+

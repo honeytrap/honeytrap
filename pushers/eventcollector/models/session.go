@@ -1,6 +1,8 @@
 package models
 
-import "gopkg.in/mgo.v2/bson"
+import (
+	"gopkg.in/mgo.v2/bson"
+)
 
 const (
 	CollectionSession = "sessions"
@@ -20,12 +22,12 @@ type Session struct {
 }
 
 type SessionSSH struct {
-	Token			string				`json:"token" form:"token" binding:"required" bson:"token"`
-	AuthAttempts	[]SessionSSHAuth	`json:"auth-attempts" form:"auth-attempts" binding:"required" bson:"auth-attempts"`
-	AuthSuccess		bool				`json:"auth-success" form:"auth-success" binding:"required" bson:"auth-success"`
-	AuthFailCount	uint				`json:"auth-fail-count" form:"auth-fail-count" binding:"required" bson:"auth-fail-count"`
-	Payload			string				`json:"payload" form:"payload" binding:"required" bson:"payload"`
-	Recording		string				`json:"recording" form:"recording" binding:"required" bson:"recording"`
+	Token			string					`json:"token" form:"token" binding:"required" bson:"token"`
+	AuthAttempts	[]SessionSSHAuth		`json:"auth-attempts" form:"auth-attempts" binding:"required" bson:"auth-attempts"`
+	AuthSuccess		bool					`json:"auth-success" form:"auth-success" binding:"required" bson:"auth-success"`
+	AuthFailCount	uint					`json:"auth-fail-count" form:"auth-fail-count" binding:"required" bson:"auth-fail-count"`
+	Payload			string					`json:"payload" form:"payload" binding:"required" bson:"payload"`
+	Recording		[]SessionSSHRecording	`json:"recording" form:"recording" binding:"required" bson:"recording"`
 }
 
 type SessionSSHAuth struct {
@@ -36,6 +38,12 @@ type SessionSSHAuth struct {
 	PublicKey 		string 		`json:"public-key" form:"public-key" binding:"required" bson:"public-key"`
 	PublicKeyType 	string 		`json:"public-key-type" form:"public-key-type" binding:"required" bson:"public-key-type"`
 	Success 		bool 		`json:"success" form:"success" binding:"required" bson:"success"`
+}
+
+type SessionSSHRecording struct {
+	Index 		    int		`json:"index" form:"index" bson:"index"`
+	Command 		string 	    `json:"command" form:"command" bson:"command"`
+	Output          string      `json:"output" form:"output" bson:"output"`
 }
 
 type SessionTelnet struct {
@@ -66,6 +74,12 @@ type SessionModel struct{}
 func (s *SessionModel) Create(data Session) error {
 	collection := db.Use("sessions")
 	err := collection.Insert(data)
+	return err
+}
+
+func (s *SessionModel) Update(sessionID string, data Session) error {
+	collection := db.Use("sessions")
+	err := collection.Update(bson.D{{"session-id", sessionID}}, data)
 	return err
 }
 

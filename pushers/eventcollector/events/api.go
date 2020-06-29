@@ -1,8 +1,10 @@
 package events
 
 import (
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"net/http"
+
 )
 
 var db = make(map[string]string)
@@ -11,6 +13,23 @@ func setupRouter() *gin.Engine {
 	// Disable Console Color
 	// gin.DisableConsoleColor()
 	r := gin.Default()
+
+	//CORS - specific parameters
+/*	r.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"https://honeynet.ubiwhere.com"},
+		AllowMethods:     []string{"PUT", "PATCH"},
+		AllowHeaders:     []string{"Origin"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		AllowOriginFunc: func(origin string) bool {
+			return origin == "https://github.com"
+		},
+		MaxAge: 12 * time.Hour,
+	}))*/
+
+	//CORS -> allow all origins
+	r.Use(cors.Default())
+
 
 	r.GET("/sessions", epSessionsFind)
 	r.GET("/sessions/purge", epSessionsPrune)
@@ -69,13 +88,17 @@ func setupRouter() *gin.Engine {
 
 
 func epSessionsFind(c *gin.Context) {
+	//page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	//limit, _ := strconv.Atoi(c.DefaultQuery("limit", "3"))
+
+
 	list, err := sessionModel.Find()
 	log.Debugf("ENDPOINT /sessions (size: %v)", len(list))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"message": "Find error", "error": err.Error()})
 		c.Abort()
 	} else {
-		c.JSON(http.StatusOK, gin.H{"data": list})
+		c.JSON(http.StatusOK, gin.H{"sessions": list})
 	}
 }
 
@@ -86,7 +109,7 @@ func epSessionsSSH(c *gin.Context) {
 	sessions := getSessionsValues()
 	for _, s := range sessions {
 		if s.Service == "ssh" {
-			sshSessions = append(sshSessions, s)
+			sshSessions = append(sshSessions, s)go g
 		}
 	}
 	log.Debugf("ENDPOINT /sessions/ssh (size: %v)", len(sshSessions))

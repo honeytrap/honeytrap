@@ -52,12 +52,14 @@ func ProcessEvent(e map[string]interface{}) (session models.Session, event model
 		AgentType: "HONEYNET",
 		Timestamp: ConvertDatePseudoISO8601(fmt.Sprintf("%v", e["date"])),
 		SourceIP: fmt.Sprintf("%v", e["source-ip"]),
-		Count: 1,
+		Count: 0,
 		Type: "Notice",
 		Priority: "Low",
 		Name: "honeynet",
 		Context: service,
 	}
+
+	newSession := false
 
 	// process session
 	sessionID := fmt.Sprintf("%v", e[fmt.Sprintf("%v.sessionid", service)])
@@ -68,8 +70,9 @@ func ProcessEvent(e map[string]interface{}) (session models.Session, event model
 		session.UpdateDate = fmt.Sprintf("%v", e["date"])
 		session.EventCount++
 		log.Debugf("Handling previous registered session '%v'", sessionID)
-	
+
 	} else {
+		newSession = true
 		log.Debugf("Creating new handler for session '%v'", sessionID)
 		session = models.Session{
 			SessionID:       sessionID,
@@ -105,12 +108,19 @@ func ProcessEvent(e map[string]interface{}) (session models.Session, event model
 	eventid := fmt.Sprintf("%v", eventIDSeq)
 	Events[eventid] = event
 
-	err :=  sessionModel.Create(session)
-	if err != nil {
-		log.Errorf("Failed to persist session %v: %v", sessionID, err)
+	if newSession {
+		err := sessionModel.Create(session)
+		if err != nil {
+			log.Errorf("Failed to persist session %v: %v", sessionID, err)
+		}
+	} else {
+		err := sessionModel.Update(sessionID, session)
+		if err != nil {
+			log.Errorf("Failed to update session %v: %v", sessionID, err)
+		}
 	}
 
-	err = eventModel.Create(event)
+	err := eventModel.Create(event)
 	if err != nil {
 		log.Errorf("Failed to persist event %v: %v", eventid, err)
 	}
@@ -139,3 +149,5 @@ func StripANSI(str string) string {
 	var re = regexp.MustCompile(ansi)
 	return re.ReplaceAllString(str, "")
 }
+
+

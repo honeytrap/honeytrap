@@ -52,7 +52,7 @@ func (lr *TypeWriterReadWriteCloser) Read(p []byte) (n int, err error) {
 	lr.buffer.WriteString(fmt.Sprintf(".put('%s')", sanitize(string(p[:n]))))
 	lr.time = now
 
-	log.Debugf(sanitize(string(p[:n])))
+	log.Debugf("typed: %v", sanitize(string(p[:n])))
 	return n, err
 }
 

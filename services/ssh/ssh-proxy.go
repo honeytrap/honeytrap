@@ -15,17 +15,15 @@ package ssh
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
-	"io"
-	"net"
-
 	"github.com/honeytrap/honeytrap/director"
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/honeytrap/honeytrap/services"
-
-	"encoding/base64"
+	"io"
+	"net"
 
 	"github.com/rs/xid"
 	"golang.org/x/crypto/ssh"
@@ -157,6 +155,7 @@ func (s *sshProxyService) Handle(ctx context.Context, conn net.Conn) error {
 
 	// https://www.centos.org/docs/5/html/Deployment_Guide-en-US/s1-ssh-conn.html
 	for newChannel := range chans {
+
 		if newChannel.ChannelType() != "session" {
 			newChannel.Reject(ssh.UnknownChannelType, "unknown channel type")
 			log.Debugf("Unknown channel type: %s\n", newChannel.ChannelType())
@@ -254,13 +253,29 @@ func (s *sshProxyService) Handle(ctx context.Context, conn net.Conn) error {
 			dst.Close()
 		}
 
-		var wrappedChannel io.ReadCloser = channel
+		/*monitorTwrc := func(twrc string) {
+			var oldTwrc string
 
+			for {
+				time.Sleep(2 * time.Second)
+				if twrc != oldTwrc {
+					fmt.Printf(twrc)
+				}
+				oldTwrc = twrc
+			}
+		}*/
+
+
+		var wrappedChannel io.ReadCloser = channel
 		twrc := NewTypeWriterReadCloser(channel2)
 		var wrappedChannel2 io.ReadCloser = twrc
 
+		//go monitorTwrc(twrc.String())
+
 		go copyFn(channel2, wrappedChannel)
 		copyFn(channel, wrappedChannel2)
+
+
 
 		s.c.Send(event.New(
 			services.EventOptions,
@@ -271,6 +286,7 @@ func (s *sshProxyService) Handle(ctx context.Context, conn net.Conn) error {
 			event.Custom("ssh.sessionid", id.String()),
 			event.Custom("ssh.recording", twrc.String()),
 		))
+
 
 	}
 

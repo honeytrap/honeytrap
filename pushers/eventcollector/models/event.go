@@ -26,7 +26,6 @@ type Event struct {
 }
 
 type EventMetadataSSH struct {
-	//active  bool
 	EventType 		string 		`json:"event_type" form:"event_type" binding:"required" bson:"event_type"`
 	SourcePort 		uint 		`json:"source_port" form:"source_port" binding:"required" bson:"source_port"`
 	DestinationIP 	string 		`json:"dest_ip" form:"dest_ip" binding:"required" bson:"dest_ip"`
@@ -39,6 +38,7 @@ type EventMetadataSSH struct {
 	PublicKeyType 	string 		`json:"public_key_type" form:"public_key_type" binding:"required" bson:"public_key_type"`
 	Password 		string 		`json:"password" form:"password" binding:"required" bson:"password"`
 	Recording 		string 		`json:"recording" form:"recording" binding:"required" bson:"recording"`
+	Open            bool        `json:"open" form:"open" binding:"required" bson:"open"`
 }
 
 type EventMetadataTelnet struct {
