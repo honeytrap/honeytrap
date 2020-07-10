@@ -251,6 +251,13 @@ func (c *Canary) handleICMP(eh *ethernet.Frame, iph *ipv4.Header, data []byte) e
 		return nil
 	}
 
+	fmt.Printf("ICMPv4: %+v\n", KnockICMP{
+		SourceHardwareAddr:      eh.Source,
+		DestinationHardwareAddr: eh.Destination,
+		SourceIP:                iph.Src,
+		DestinationIP:           iph.Dst,
+	})
+
 	c.knockChan <- KnockICMP{
 		SourceHardwareAddr:      eh.Source,
 		DestinationHardwareAddr: eh.Destination,

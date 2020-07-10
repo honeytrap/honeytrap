@@ -34,6 +34,7 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/link/rawfile"
 	"gvisor.dev/gvisor/pkg/tcpip/link/sniffer"
 	"gvisor.dev/gvisor/pkg/tcpip/link/tun"
+	"gvisor.dev/gvisor/pkg/tcpip/network/arp"
 	"gvisor.dev/gvisor/pkg/tcpip/network/ipv4"
 	"gvisor.dev/gvisor/pkg/tcpip/network/ipv6"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
@@ -189,6 +190,7 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 		NetworkProtocols: []stack.NetworkProtocol{
 			ipv4.NewProtocol(),
 			ipv6.NewProtocol(),
+			arp.NewProtocol(),
 		},
 		TransportProtocols: []stack.TransportProtocol{
 			tcp.NewProtocol(),
@@ -196,6 +198,7 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 			icmp.NewProtocol4(),
 			icmp.NewProtocol6(),
 		},
+		RawFactory: ,
 	}
 
 	s := stack.New(opts)
