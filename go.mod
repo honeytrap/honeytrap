@@ -26,7 +26,7 @@ require (
 	github.com/glycerine/rbuf v0.0.0-20171031012212-54320fe9f6f3
 	github.com/go-asn1-ber/asn1-ber v0.0.0-20170511165959-379148ca0225
 	github.com/golang/mock v1.3.1 // indirect
-	github.com/golang/protobuf v1.3.1
+	github.com/golang/protobuf v1.3.2
 	github.com/golang/snappy v0.0.0-20170215233205-553a64147049 // indirect
 	github.com/google/go-cmp v0.2.0 // indirect
 	github.com/google/go-github/v28 v28.1.1 // indirect
@@ -46,8 +46,8 @@ require (
 	github.com/oschwald/maxminddb-golang v1.3.0
 	github.com/pierrec/lz4 v0.0.0-20171218195038-2fcda4cb7018 // indirect
 	github.com/pierrec/xxHash v0.1.1 // indirect
-	github.com/pkg/errors v0.8.0 // indirect
 	github.com/pkg/profile v1.2.1
+	github.com/prometheus/common v0.10.0
 	github.com/rcrowley/go-metrics v0.0.0-20180125231941-8732c616f529 // indirect
 	github.com/rs/xid v0.0.0-20170604230408-02dd45c33376
 	github.com/satori/go.uuid v1.2.0
@@ -57,9 +57,11 @@ require (
 	github.com/streadway/amqp v0.0.0-20180315184602-8e4aba63da9f
 	github.com/stretchr/testify v1.3.0 // indirect
 	github.com/vishvananda/netlink v1.1.0
+	github.com/vishvananda/netns v0.0.0-20200520041808-52d707b772fe // indirect
 	github.com/yuin/gopher-lua v0.0.0-20190206043414-8bfc7677f583
 	golang.org/x/crypto v0.0.0-20200128174031-69ecbb4d6d5d
 	golang.org/x/oauth2 v0.0.0-20191202225959-858c2ad4c8b6 // indirect
+	golang.org/x/sys v0.0.0-20200625212154-ddb9806d33ae // indirect
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 	gopkg.in/lxc/go-lxc.v2 v2.0.0-20190324192716-2f350e4a2980
 	gopkg.in/olivere/elastic.v5 v5.0.65

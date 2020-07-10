@@ -1,0 +1,3 @@
+Gvisor maintains a 'go' branch compatible with standard go tools. The main branch requires a build tool.
+
+update gvisor: go get -u gvisor.dev/gvisor@go
