@@ -1,0 +1,243 @@
+// +build linux
+
+// Copyright 2016-2019 DutchSec (https://dutchsec.com/)
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package nscanary
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"net"
+	"strings"
+	"time"
+
+	"github.com/honeytrap/honeytrap/event"
+	"github.com/honeytrap/honeytrap/pushers"
+	"gvisor.dev/gvisor/pkg/tcpip"
+	"gvisor.dev/gvisor/pkg/tcpip/transport/icmp"
+	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
+)
+
+var (
+	// EventCategoryPortscan contains events for ssdp traffic
+	EventCategoryPortscan = event.Category("portscan")
+)
+
+// KnockGroup groups multiple knocks
+type KnockGroup struct {
+	Start time.Time
+	Last  time.Time
+
+	SourceHardwareAddr      net.HardwareAddr
+	DestinationHardwareAddr net.HardwareAddr
+
+	SourceIP      tcpip.Address
+	DestinationIP tcpip.Address
+
+	Protocol tcpip.TransportProtocolNumber
+
+	Count int
+
+	Knocks *UniqueSet
+}
+
+// KnockGrouper defines the interface for NewGroup function
+type KnockGrouper interface {
+	NewGroup() *KnockGroup
+}
+
+// KnockUDPPort struct contain UDP port knock metadata
+type KnockUDPPort struct {
+	SourceHardwareAddr      net.HardwareAddr
+	DestinationHardwareAddr net.HardwareAddr
+
+	SourceIP        tcpip.Address
+	DestinationIP   tcpip.Address
+	DestinationPort uint16
+}
+
+// NewGroup will return a new KnockGroup for UDP protocol
+func (k KnockUDPPort) NewGroup() *KnockGroup {
+	return &KnockGroup{
+		Start:                   time.Now(),
+		SourceHardwareAddr:      k.SourceHardwareAddr,
+		DestinationHardwareAddr: k.DestinationHardwareAddr,
+		SourceIP:                k.SourceIP,
+		DestinationIP:           k.DestinationIP,
+		Count:                   0,
+		Knocks: NewUniqueSet(func(v1, v2 interface{}) bool {
+			if _, ok := v1.(KnockUDPPort); !ok {
+				return false
+			}
+			if _, ok := v2.(KnockUDPPort); !ok {
+				return false
+			}
+
+			k1, k2 := v1.(KnockUDPPort), v2.(KnockUDPPort)
+			return k1.DestinationPort == k2.DestinationPort
+		}),
+	}
+}
+
+// KnockTCPPort struct contain TCP port knock metadata
+type KnockTCPPort struct {
+	SourceHardwareAddr      net.HardwareAddr
+	DestinationHardwareAddr net.HardwareAddr
+
+	SourceIP        tcpip.Address
+	DestinationIP   tcpip.Address
+	DestinationPort uint16
+}
+
+// NewGroup will return a new KnockGroup for TCP protocol
+func (k KnockTCPPort) NewGroup() *KnockGroup {
+	return &KnockGroup{
+		Start:                   time.Now(),
+		SourceHardwareAddr:      k.SourceHardwareAddr,
+		DestinationHardwareAddr: k.DestinationHardwareAddr,
+		SourceIP:                k.SourceIP,
+		DestinationIP:           k.DestinationIP,
+		Protocol:                tcp.ProtocolNumber,
+		Count:                   0,
+		Knocks: NewUniqueSet(func(v1, v2 interface{}) bool {
+			if _, ok := v1.(KnockTCPPort); !ok {
+				return false
+			}
+			if _, ok := v2.(KnockTCPPort); !ok {
+				return false
+			}
+
+			k1, k2 := v1.(KnockTCPPort), v2.(KnockTCPPort)
+			return k1.DestinationPort == k2.DestinationPort
+		}),
+	}
+}
+
+// KnockICMP struct contain ICMP knock metadata
+type KnockICMP struct {
+	SourceHardwareAddr      net.HardwareAddr
+	DestinationHardwareAddr net.HardwareAddr
+
+	SourceIP      tcpip.Address
+	DestinationIP tcpip.Address
+
+	IPVersion int
+}
+
+// NewGroup will return a new KnockGroup for ICMP protocol
+func (k KnockICMP) NewGroup() *KnockGroup {
+	proto := icmp.ProtocolNumber4
+	if k.IPVersion == 6 {
+		proto = icmp.ProtocolNumber6
+	}
+	return &KnockGroup{
+		Start:                   time.Now(),
+		SourceHardwareAddr:      k.SourceHardwareAddr,
+		DestinationHardwareAddr: k.DestinationHardwareAddr,
+		SourceIP:                k.SourceIP,
+		DestinationIP:           k.DestinationIP,
+		Count:                   0,
+		Protocol:                proto,
+		Knocks: NewUniqueSet(func(v1, v2 interface{}) bool {
+			if _, ok := v1.(KnockICMP); !ok {
+				return false
+			}
+			if _, ok := v2.(KnockICMP); !ok {
+				return false
+			}
+
+			_, _ = v1.(KnockICMP), v2.(KnockICMP)
+			return true
+		}),
+	}
+}
+
+func RunKnockDetector(ctx context.Context, c <-chan KnockGrouper, events pushers.Channel) {
+	knocks := NewUniqueSet(func(v1, v2 interface{}) bool {
+		k1, k2 := v1.(*KnockGroup), v2.(*KnockGroup)
+		return k1.Protocol == k2.Protocol &&
+			bytes.Equal(k1.SourceHardwareAddr, k2.SourceHardwareAddr) &&
+			bytes.Equal(k1.DestinationHardwareAddr, k2.DestinationHardwareAddr) &&
+			k1.SourceIP == k2.SourceIP &&
+			k1.DestinationIP == k2.DestinationIP
+	})
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case sk := <-c:
+			grouper := sk
+			knock := knocks.Add(grouper.NewGroup()).(*KnockGroup)
+
+			knock.Count++
+			knock.Last = time.Now()
+
+			knock.Knocks.Add(sk)
+
+		case <-time.After(time.Second * 5):
+			now := time.Now()
+
+			knocks.Each(func(i int, v interface{}) {
+				k := v.(*KnockGroup)
+
+				// TODO(): make duration configurable
+				if k.Count > 100 {
+					// we'll also bail out at a specific count
+					// to prevent ddos
+				} else if k.Last.Add(time.Second * 5).After(now) {
+					return
+				}
+
+				// we have two timeouts, one to send notifications,
+				// one to remove the knock. This will detect portscans
+				// with a longer interval
+
+				// TODO(): make duration configurable
+				if k.Last.Add(time.Second * 60).After(now) {
+					defer knocks.Remove(k)
+				}
+
+				ports := make([]string, k.Knocks.Count())
+
+				k.Knocks.Each(func(i int, v interface{}) {
+					if k, ok := v.(KnockTCPPort); ok {
+						ports[i] = fmt.Sprintf("tcp/%d", k.DestinationPort)
+					} else if k, ok := v.(KnockUDPPort); ok {
+						ports[i] = fmt.Sprintf("udp/%d", k.DestinationPort)
+					} else if _, ok := v.(KnockICMP); ok {
+						ports[i] = "icmp"
+					}
+				})
+
+				events.Send(
+					event.New(
+						CanaryOptions,
+						EventCategoryPortscan,
+						event.ServiceStarted,
+						event.SourceHardwareAddr(k.SourceHardwareAddr),
+						event.DestinationHardwareAddr(k.DestinationHardwareAddr),
+						event.Custom("source-ip", k.SourceIP),
+						event.Custom("source-ip", k.DestinationIP),
+						event.Custom("portscan.ports", ports),
+						event.Custom("portscan.duration", k.Last.Sub(k.Start)),
+						event.Message(fmt.Sprintf("Port %d touch(es) detected from %s with duration %+v: %s", k.Count, k.SourceIP, k.Last.Sub(k.Start), strings.Join(ports, ", "))),
+					),
+				)
+			})
+		}
+	}
+}
