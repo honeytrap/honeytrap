@@ -43,6 +43,10 @@ var GenerateEvents uint32 = 1
 type endpoint struct {
 	nested.Endpoint
 
+	sniffer *sniffer
+}
+
+type sniffer struct {
 	events    pushers.Channel
 	knockChan chan KnockGrouper
 }
@@ -55,8 +59,10 @@ var _ stack.NetworkDispatcher = (*endpoint)(nil)
 // endpoint and logs packets as they traverse the endpoint.
 func NewWrapper(lower stack.LinkEndpoint, e pushers.Channel, knocks chan KnockGrouper) stack.LinkEndpoint {
 	wrapper := &endpoint{
-		events:    e,
-		knockChan: knocks,
+		sniffer: &sniffer{
+			events:    e,
+			knockChan: knocks,
+		},
 	}
 	wrapper.Endpoint.Init(lower, wrapper)
 	return wrapper
@@ -72,7 +78,7 @@ func (e *endpoint) DeliverNetworkPacket(remote, local tcpip.LinkAddress, protoco
 
 func (e *endpoint) dumpPacket(prefix string, gso *stack.GSO, protocol tcpip.NetworkProtocolNumber, pkt *stack.PacketBuffer) {
 	if atomic.LoadUint32(&GenerateEvents) == 1 {
-		e.logPacket(prefix, protocol, pkt, gso)
+		e.sniffer.logPacket(prefix, protocol, pkt, gso)
 	}
 }
 
@@ -105,7 +111,7 @@ func (e *endpoint) WriteRawPacket(vv buffer.VectorisedView) *tcpip.Error {
 	return e.Endpoint.WriteRawPacket(vv)
 }
 
-func (e *endpoint) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber, pkt *stack.PacketBuffer, gso *stack.GSO) {
+func (s *sniffer) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber, pkt *stack.PacketBuffer, gso *stack.GSO) {
 	// Figure out the network layer info.
 	var (
 		transProto     uint8
@@ -196,7 +202,7 @@ func (e *endpoint) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber
 			arp.IsValid(),
 		)
 
-		e.events.Send(event.New(
+		s.events.Send(event.New(
 			CanaryOptions,
 			event.Category("ARP"),
 			event.DestinationHardwareAddr(net.HardwareAddr(arp.HardwareAddressTarget())),
@@ -272,7 +278,7 @@ func (e *endpoint) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber
 			event.Payload(icmp.Payload()),
 		)
 
-		e.knockChan <- KnockICMP{
+		s.knockChan <- KnockICMP{
 			IPVersion:               4,
 			SourceHardwareAddr:      net.HardwareAddr(srcMAC),
 			DestinationHardwareAddr: net.HardwareAddr(destMAC),
@@ -324,7 +330,7 @@ func (e *endpoint) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber
 			event.Payload(icmp.Payload()),
 		)
 
-		e.knockChan <- KnockICMP{
+		s.knockChan <- KnockICMP{
 			IPVersion:               6,
 			SourceHardwareAddr:      net.HardwareAddr(srcMAC),
 			DestinationHardwareAddr: net.HardwareAddr(destMAC),
@@ -355,7 +361,7 @@ func (e *endpoint) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber
 			event.Payload(udp.Payload()),
 		)
 
-		e.knockChan <- KnockUDPPort{
+		s.knockChan <- KnockUDPPort{
 			SourceHardwareAddr:      net.HardwareAddr(srcMAC),
 			DestinationHardwareAddr: net.HardwareAddr(destMAC),
 			SourceIP:                src,
@@ -409,7 +415,7 @@ func (e *endpoint) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber
 			event.Payload(tcp.Payload()),
 		)
 
-		e.knockChan <- KnockTCPPort{
+		s.knockChan <- KnockTCPPort{
 			SourceHardwareAddr:      net.HardwareAddr(srcMAC),
 			DestinationHardwareAddr: net.HardwareAddr(destMAC),
 			SourceIP:                src,
@@ -418,7 +424,7 @@ func (e *endpoint) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber
 		}
 
 	default:
-		e.events.Send(event.New(
+		s.events.Send(event.New(
 			CanaryOptions,
 			EventCategoryUnknown,
 			event.Message("unknown transport protocol"),
@@ -433,7 +439,7 @@ func (e *endpoint) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber
 		event.Message(line),
 	)
 
-	e.events.Send(event.New(
+	s.events.Send(event.New(
 		eoptions...,
 	))
 }
