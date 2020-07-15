@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"net"
 	"strings"
-	"sync"
 	"syscall"
 
 	"github.com/honeytrap/honeytrap/event"
@@ -23,7 +22,7 @@ import (
 	"github.com/op/go-logging"
 	"github.com/vishvananda/netlink"
 	"gvisor.dev/gvisor/pkg/tcpip"
-	"gvisor.dev/gvisor/pkg/tcpip/header"
+	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
 	"gvisor.dev/gvisor/pkg/tcpip/link/fdbased"
 	"gvisor.dev/gvisor/pkg/tcpip/link/rawfile"
 	"gvisor.dev/gvisor/pkg/tcpip/link/tun"
@@ -35,7 +34,6 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/transport/raw"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
-	"gvisor.dev/gvisor/pkg/waiter"
 )
 
 var log = logging.MustGetLogger("listeners/netstack-canary")
@@ -51,7 +49,8 @@ var (
 )
 
 type Canary struct {
-	Addr               string   `toml:"addr"`
+	Addr               string `toml:"addr"`
+	Addresses          []net.Addr
 	Interfaces         []string `toml:"interfaces"`
 	TransportProtocols []string `toml:"transport_protocols"`
 
@@ -61,6 +60,11 @@ type Canary struct {
 	knockChan       chan KnockGrouper
 
 	stack *stack.Stack
+}
+
+//AddAddress implements listener.AddAddresser
+func (c *Canary) AddAddress(a net.Addr) {
+	c.Addresses = append(c.Addresses, a)
 }
 
 func New(options ...func(listener.Listener) error) (listener.Listener, error) {
@@ -127,8 +131,6 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed creating a link endpoint: %w", err)
 	}
-
-	//TODO (jerry): wrap the linkID with filter??
 
 	s.CreateNIC(1, NewWrapper(linkEP, c.events, c.knockChan))
 
@@ -198,65 +200,101 @@ func (c *Canary) SetChannel(ch pushers.Channel) {
 	c.events = ch
 }
 
+func parseAddr(address net.Addr, nic tcpip.NICID) (tcpip.FullAddress, tcpip.NetworkProtocolNumber) {
+	proto := ipv4.ProtocolNumber
+
+	full := tcpip.FullAddress{
+		NIC: nic,
+	}
+
+	if a, ok := address.(*net.TCPAddr); ok {
+		full.Addr = tcpip.Address(a.IP)
+		full.Port = uint16(a.Port)
+	} else if a, ok := address.(*net.UDPAddr); ok {
+		full.Addr = tcpip.Address(a.IP)
+		full.Port = uint16(a.Port)
+	}
+
+	if full.Addr.To4() == "" {
+		proto = ipv6.ProtocolNumber
+	}
+
+	return full, proto
+}
+
 func (c *Canary) Start(ctx context.Context) error {
 	go RunKnockDetector(ctx, c.knockChan, c.events)
 
-	var wg sync.WaitGroup
+	for _, address := range c.Addresses {
+		fa, netproto := parseAddr(address, 1)
 
-	for _, tp := range c.transportProtos {
-
-		go func() {
-			defer wg.Done()
-
-			var wq waiter.Queue
-			ep, e := c.stack.NewRawEndpoint(tp.Number(), proto, &wq, true)
-			if e != nil {
-				log.Fatal(e)
+		if _, ok := address.(*net.TCPAddr); ok {
+			l, err := gonet.ListenTCP(c.stack, fa, netproto)
+			if err != nil {
+				log.Errorf("Error starting listener: %v", err)
+				continue
 			}
-			defer ep.Close()
 
-			// Wait for connections to appear.
-			fmt.Println("ICMPv4: wait for connection to appear.")
+			log.Infof("Listener started: tcp/%s", address)
 
-			for {
-				waitEntry, notifyCh := waiter.NewChannelEntry(nil)
-				wq.EventRegister(&waitEntry, waiter.EventIn)
-
-				view, _, err := ep.Read(nil)
-				if err != nil {
-					if err == tcpip.ErrWouldBlock {
-						fmt.Println("ICMPv4: ep: waiting for notifiCh")
-						<-notifyCh
-						fmt.Println("ICMPv4: ep: notified")
+			go func() {
+				for {
+					conn, err := l.Accept()
+					if err != nil {
+						log.Errorf("Error accepting connection: %s", err.Error())
 						continue
 					}
 
-					log.Fatal("ICMPv4: Read() failed:", err)
+					c.nconn <- conn
 				}
-				fmt.Print("ICMPv4: ep2: ")
-				fmt.Println(view)
-
-				ipversion := header.IPVersion([]byte(view))
-
-				if ipversion == 4 {
-					ip4 := header.IPv4(view)
-					fmt.Printf("ip4.Protocol() = %+v\n", ip4.Protocol())
-					fmt.Printf("ip4.ID() = %+v\n", ip4.ID())
-					fmt.Printf("ip4.Flags() = %+v\n", ip4.Flags())
-
-					hdr := header.ICMPv4(ip4.Payload())
-					fmt.Printf("hdr.Type = %+v\n", hdr.Type())
-					fmt.Printf("hdr.Code = %+v\n", hdr.Code())
-					fmt.Printf("hdr.Checksum() = %+v\n", hdr.Checksum())
-				}
-
-				wq.EventUnregister(&waitEntry)
+			}()
+		} else if _, ok := address.(*net.UDPAddr); ok {
+			l, err := gonet.DialUDP(c.stack, &fa, nil, netproto)
+			if err != nil {
+				log.Errorf("Error starting listener: %v", err)
+				continue
 			}
-		}()
-	}
 
-	wg.Wait()
+			ul := UDPConn{l}
+
+			log.Infof("Listener started: udp/%s", address)
+
+			go func() {
+				for {
+					var buf [65535]byte
+
+					n, raddr, err := ul.ReadFromUDP(buf[:])
+					if err != nil {
+						log.Error("Error reading udp:", err.Error())
+						continue
+					}
+
+					c.nconn <- &listener.DummyUDPConn{
+						Buffer: buf[:n],
+						Laddr:  l.LocalAddr(),
+						Raddr:  raddr,
+						Fn:     ul.WriteToUDP,
+					}
+				}
+			}()
+		}
+	}
 	return nil
+}
+
+//UDPConn extends gonet.UDPConn.
+type UDPConn struct {
+	*gonet.UDPConn
+}
+
+//WriteToUDP satifies listener.DummyUDPConn.Fn
+func (c *UDPConn) WriteToUDP(b []byte, addr *net.UDPAddr) (int, error) {
+	return c.WriteTo(b, net.Addr(addr))
+}
+
+func (c *UDPConn) ReadFromUDP(b []byte) (int, *net.UDPAddr, error) {
+	n, addr, err := c.ReadFrom(b)
+	return n, addr.(*net.UDPAddr), err
 }
 
 func Routes(link netlink.Link) ([]tcpip.Route, error) {
