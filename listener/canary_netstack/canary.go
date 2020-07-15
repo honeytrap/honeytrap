@@ -14,16 +14,20 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"sync"
 	"syscall"
 
+	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/listener"
 	"github.com/honeytrap/honeytrap/pushers"
-	"github.com/prometheus/common/log"
+	"github.com/op/go-logging"
 	"github.com/vishvananda/netlink"
 	"gvisor.dev/gvisor/pkg/tcpip"
+	"gvisor.dev/gvisor/pkg/tcpip/header"
 	"gvisor.dev/gvisor/pkg/tcpip/link/fdbased"
 	"gvisor.dev/gvisor/pkg/tcpip/link/rawfile"
 	"gvisor.dev/gvisor/pkg/tcpip/link/tun"
+	"gvisor.dev/gvisor/pkg/tcpip/network/arp"
 	"gvisor.dev/gvisor/pkg/tcpip/network/ipv4"
 	"gvisor.dev/gvisor/pkg/tcpip/network/ipv6"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
@@ -34,19 +38,35 @@ import (
 	"gvisor.dev/gvisor/pkg/waiter"
 )
 
-type Canary struct {
-	Addr       string   `toml:"addr"`
-	Interfaces []string `toml:"interfaces"`
+var log = logging.MustGetLogger("listeners/netstack-canary")
 
-	events pushers.Channel
-	nconn  chan net.Conn
+var (
+	_                    = listener.Register("netstack-canary", New)
+	EventCategoryUnknown = event.Category("unknown")
+	SensorCanary         = event.Sensor("canary")
+
+	CanaryOptions = event.NewWith(
+		SensorCanary,
+	)
+)
+
+type Canary struct {
+	Addr               string   `toml:"addr"`
+	Interfaces         []string `toml:"interfaces"`
+	TransportProtocols []string `toml:"transport_protocols"`
+
+	transportProtos []stack.TransportProtocol
+	events          pushers.Channel
+	nconn           chan net.Conn
+	knockChan       chan KnockGrouper
 
 	stack *stack.Stack
 }
 
-func New(options ...func(listener.Listener) error) (*Canary, error) {
+func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 	c := &Canary{
-		events: pushers.MustDummy(),
+		events:    pushers.MustDummy(),
+		knockChan: make(chan KnockGrouper),
 	}
 
 	for _, opt := range options {
@@ -57,69 +77,26 @@ func New(options ...func(listener.Listener) error) (*Canary, error) {
 
 	if len(c.Interfaces) == 0 {
 		return nil, fmt.Errorf("no interface defined")
-	} else if len(c.Interfaces) > 1 {
-		return nil, fmt.Errorf("only one interface is supported currently")
+	}
+
+	if protos, err := getTransportProtos(c.TransportProtocols); err != nil {
+		return nil, err
+	} else {
+		c.transportProtos = protos
 	}
 
 	iface := c.Interfaces[0]
 
 	ifaceLink, err := netlink.LinkByName(iface)
 	if err != nil {
-		return nil, fmt.Errorf("unable to bind to %q: %v", "1", err)
-	}
-
-	var fd int
-
-	if strings.HasPrefix(iface, "tun") {
-		fd, err = tun.Open(iface)
-		if err != nil {
-			return nil, fmt.Errorf("could not open tun interface: %s", err.Error())
-		}
-	} else if strings.HasPrefix(iface, "tap") {
-		fd, err = tun.OpenTAP(iface)
-		if err != nil {
-			return nil, fmt.Errorf("could not open tap interface: %s", err.Error())
-		}
-	} else {
-		fd, err = syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(htons(syscall.ETH_P_ALL)))
-		if err != nil {
-			return nil, fmt.Errorf("could not create socket: %s", err.Error())
-		}
-
-		if fd < 0 {
-			return nil, fmt.Errorf("socket error: return < 0")
-		}
-
-		if err = syscall.SetNonblock(fd, true); err != nil {
-			syscall.Close(fd)
-			return nil, fmt.Errorf("error setting fd to nonblock: %s", err)
-		}
-
-		ll := syscall.SockaddrLinklayer{
-			Protocol: htons(syscall.ETH_P_ALL),
-			Ifindex:  ifaceLink.Attrs().Index,
-			Hatype:   0, // No ARP type.
-			Pkttype:  syscall.PACKET_HOST,
-		}
-
-		if err := syscall.Bind(fd, &ll); err != nil {
-			return nil, fmt.Errorf("unable to bind to %q: %v", "iface.Name", err)
-		}
+		return nil, fmt.Errorf("unable to find %s: %v", iface, err)
 	}
 
 	// create a new stack
 	opts := stack.Options{
-		NetworkProtocols: []stack.NetworkProtocol{
-			ipv4.NewProtocol(),
-			ipv6.NewProtocol(),
-		},
-		TransportProtocols: []stack.TransportProtocol{
-			tcp.NewProtocol(),
-			udp.NewProtocol(),
-			icmp.NewProtocol4(),
-			icmp.NewProtocol6(),
-		},
-		RawFactory: raw.EndpointFactory{},
+		NetworkProtocols:   []stack.NetworkProtocol{ipv4.NewProtocol(), ipv6.NewProtocol(), arp.NewProtocol()},
+		TransportProtocols: []stack.TransportProtocol{icmp.NewProtocol4(), icmp.NewProtocol6(), udp.NewProtocol(), tcp.NewProtocol()},
+		RawFactory:         raw.EndpointFactory{},
 	}
 
 	s := stack.New(opts)
@@ -131,13 +108,16 @@ func New(options ...func(listener.Listener) error) (*Canary, error) {
 		return nil, err
 	}
 
-	la := tcpip.LinkAddress(ifaceLink.Attrs().HardwareAddr)
+	fd, err := fileDescriptor(iface, ifaceLink.Attrs().Index)
+	if err != nil {
+		return nil, err
+	}
 
 	linkEP, err := fdbased.New(&fdbased.Options{
 		FDs:            []int{fd},
 		MTU:            mtu,
 		EthernetHeader: true,
-		Address:        la,
+		Address:        tcpip.LinkAddress(ifaceLink.Attrs().HardwareAddr),
 		ClosedFunc: func(e *tcpip.Error) {
 			if e != nil {
 				log.Errorf("File descriptor closed: %v", err)
@@ -150,7 +130,7 @@ func New(options ...func(listener.Listener) error) (*Canary, error) {
 
 	//TODO (jerry): wrap the linkID with filter??
 
-	s.CreateNIC(1, linkEP)
+	s.CreateNIC(1, NewWrapper(linkEP, c.events, c.knockChan))
 
 	// set the route table.
 
@@ -164,7 +144,7 @@ func New(options ...func(listener.Listener) error) (*Canary, error) {
 
 	// stack.AddAddress()
 
-	addrs, err := netlink.AddrList(link, netlink.FAMILY_V4)
+	addrs, err := netlink.AddrList(link, netlink.FAMILY_ALL)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving interface ip addresses: %s", err.Error())
 	}
@@ -201,6 +181,9 @@ func New(options ...func(listener.Listener) error) (*Canary, error) {
 
 	s.SetSpoofing(1, true)
 
+	fmt.Printf("s.GetRouteTable() = %+v\n", s.GetRouteTable())
+	fmt.Printf("s.NICInfo() = %+v\n", s.NICInfo())
+
 	c.stack = s
 
 	return c, nil
@@ -216,29 +199,64 @@ func (c *Canary) SetChannel(ch pushers.Channel) {
 }
 
 func (c *Canary) Start(ctx context.Context) error {
-	var wq waiter.Queue
+	go RunKnockDetector(ctx, c.knockChan, c.events)
 
-	endpoint, err := c.stack.NewPacketEndpoint(true, tcpip.NetworkProtocolNumber(htons(syscall.ETH_P_ALL)), &wq)
-	if err != nil {
-		return fmt.Errorf("create NewPacketEndpoint: %s", err.String())
-	}
-	defer endpoint.Close()
+	var wg sync.WaitGroup
 
-	// Wait for connections to appear.
-	waitEntry, notifyCh := waiter.NewChannelEntry(nil)
-	wq.EventRegister(&waitEntry, waiter.EventIn)
-	defer wq.EventUnregister(&waitEntry)
+	for _, tp := range c.transportProtos {
 
-	for {
-		n, wq, err := endpoint.Read()
-		if err != nil {
-			if err == tcpip.ErrWouldBlock {
-				<-notifyCh
-				continue
+		go func() {
+			defer wg.Done()
+
+			var wq waiter.Queue
+			ep, e := c.stack.NewRawEndpoint(tp.Number(), proto, &wq, true)
+			if e != nil {
+				log.Fatal(e)
 			}
-			return fmt.Errorf("read error: %s", err.String())
-		}
+			defer ep.Close()
+
+			// Wait for connections to appear.
+			fmt.Println("ICMPv4: wait for connection to appear.")
+
+			for {
+				waitEntry, notifyCh := waiter.NewChannelEntry(nil)
+				wq.EventRegister(&waitEntry, waiter.EventIn)
+
+				view, _, err := ep.Read(nil)
+				if err != nil {
+					if err == tcpip.ErrWouldBlock {
+						fmt.Println("ICMPv4: ep: waiting for notifiCh")
+						<-notifyCh
+						fmt.Println("ICMPv4: ep: notified")
+						continue
+					}
+
+					log.Fatal("ICMPv4: Read() failed:", err)
+				}
+				fmt.Print("ICMPv4: ep2: ")
+				fmt.Println(view)
+
+				ipversion := header.IPVersion([]byte(view))
+
+				if ipversion == 4 {
+					ip4 := header.IPv4(view)
+					fmt.Printf("ip4.Protocol() = %+v\n", ip4.Protocol())
+					fmt.Printf("ip4.ID() = %+v\n", ip4.ID())
+					fmt.Printf("ip4.Flags() = %+v\n", ip4.Flags())
+
+					hdr := header.ICMPv4(ip4.Payload())
+					fmt.Printf("hdr.Type = %+v\n", hdr.Type())
+					fmt.Printf("hdr.Code = %+v\n", hdr.Code())
+					fmt.Printf("hdr.Checksum() = %+v\n", hdr.Checksum())
+				}
+
+				wq.EventUnregister(&waitEntry)
+			}
+		}()
 	}
+
+	wg.Wait()
+	return nil
 }
 
 func Routes(link netlink.Link) ([]tcpip.Route, error) {
@@ -295,4 +313,71 @@ func htons(n uint16) uint16 {
 		ret  = n<<8 + high
 	)
 	return ret
+}
+
+//fileDescriptor opens a raw socket and binds it to network interface with name 'link'
+//returns the socket file descriptor, on error fd=0.
+func fileDescriptor(link string, linkIndex int) (int, error) {
+
+	var fd int
+	var err error
+
+	if strings.HasPrefix(link, "tun") {
+		fd, err = tun.Open(link)
+		if err != nil {
+			return 0, fmt.Errorf("could not open tun interface: %s", err.Error())
+		}
+	} else if strings.HasPrefix(link, "tap") {
+		fd, err = tun.OpenTAP(link)
+		if err != nil {
+			return 0, fmt.Errorf("could not open tap interface: %s", err.Error())
+		}
+	} else {
+		fd, err = syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(htons(syscall.ETH_P_ALL)))
+		if err != nil {
+			return 0, fmt.Errorf("could not create socket: %s", err.Error())
+		}
+
+		if fd < 0 {
+			return 0, fmt.Errorf("socket error: fd < 0")
+		}
+
+		ll := syscall.SockaddrLinklayer{
+			Protocol: htons(syscall.ETH_P_ALL),
+			Ifindex:  linkIndex,
+			Hatype:   0, // No ARP type.
+			Pkttype:  syscall.PACKET_HOST,
+		}
+
+		if err := syscall.Bind(fd, &ll); err != nil {
+			return 0, fmt.Errorf("unable to bind to %q: %v", link, err)
+		}
+	}
+	return fd, nil
+}
+
+func getTransportProtos(protos []string) ([]stack.TransportProtocol, error) {
+	pp := make([]stack.TransportProtocol, 0, 4)
+
+	if len(protos) == 0 {
+		//use all transport protocols.
+		protos = []string{"tcp", "udp", "icmp4", "icmp6"}
+	}
+
+	for _, name := range protos {
+		switch name {
+		case "tcp":
+			pp = append(pp, tcp.NewProtocol())
+		case "udp":
+			pp = append(pp, udp.NewProtocol())
+		case "icmp4":
+			pp = append(pp, icmp.NewProtocol4())
+		case "icmp6":
+			pp = append(pp, icmp.NewProtocol6())
+		default:
+			return nil, fmt.Errorf("unknown transport protocol: %s", name)
+		}
+	}
+
+	return pp, nil
 }

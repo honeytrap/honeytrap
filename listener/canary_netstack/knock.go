@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package canary
+package nscanary
 
 import (
 	"bytes"
@@ -25,6 +25,10 @@ import (
 	"time"
 
 	"github.com/honeytrap/honeytrap/event"
+	"github.com/honeytrap/honeytrap/pushers"
+	"gvisor.dev/gvisor/pkg/tcpip"
+	"gvisor.dev/gvisor/pkg/tcpip/transport/icmp"
+	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
 )
 
 var (
@@ -40,10 +44,10 @@ type KnockGroup struct {
 	SourceHardwareAddr      net.HardwareAddr
 	DestinationHardwareAddr net.HardwareAddr
 
-	SourceIP      net.IP
-	DestinationIP net.IP
+	SourceIP      tcpip.Address
+	DestinationIP tcpip.Address
 
-	Protocol Protocol
+	Protocol tcpip.TransportProtocolNumber
 
 	Count int
 
@@ -60,8 +64,8 @@ type KnockUDPPort struct {
 	SourceHardwareAddr      net.HardwareAddr
 	DestinationHardwareAddr net.HardwareAddr
 
-	SourceIP        net.IP
-	DestinationIP   net.IP
+	SourceIP        tcpip.Address
+	DestinationIP   tcpip.Address
 	DestinationPort uint16
 }
 
@@ -93,8 +97,8 @@ type KnockTCPPort struct {
 	SourceHardwareAddr      net.HardwareAddr
 	DestinationHardwareAddr net.HardwareAddr
 
-	SourceIP        net.IP
-	DestinationIP   net.IP
+	SourceIP        tcpip.Address
+	DestinationIP   tcpip.Address
 	DestinationPort uint16
 }
 
@@ -106,7 +110,7 @@ func (k KnockTCPPort) NewGroup() *KnockGroup {
 		DestinationHardwareAddr: k.DestinationHardwareAddr,
 		SourceIP:                k.SourceIP,
 		DestinationIP:           k.DestinationIP,
-		Protocol:                ProtocolTCP,
+		Protocol:                tcp.ProtocolNumber,
 		Count:                   0,
 		Knocks: NewUniqueSet(func(v1, v2 interface{}) bool {
 			if _, ok := v1.(KnockTCPPort); !ok {
@@ -127,12 +131,18 @@ type KnockICMP struct {
 	SourceHardwareAddr      net.HardwareAddr
 	DestinationHardwareAddr net.HardwareAddr
 
-	SourceIP      net.IP
-	DestinationIP net.IP
+	SourceIP      tcpip.Address
+	DestinationIP tcpip.Address
+
+	IPVersion int
 }
 
 // NewGroup will return a new KnockGroup for ICMP protocol
 func (k KnockICMP) NewGroup() *KnockGroup {
+	proto := icmp.ProtocolNumber4
+	if k.IPVersion == 6 {
+		proto = icmp.ProtocolNumber6
+	}
 	return &KnockGroup{
 		Start:                   time.Now(),
 		SourceHardwareAddr:      k.SourceHardwareAddr,
@@ -140,7 +150,7 @@ func (k KnockICMP) NewGroup() *KnockGroup {
 		SourceIP:                k.SourceIP,
 		DestinationIP:           k.DestinationIP,
 		Count:                   0,
-		Protocol:                ProtocolICMP,
+		Protocol:                proto,
 		Knocks: NewUniqueSet(func(v1, v2 interface{}) bool {
 			if _, ok := v1.(KnockICMP); !ok {
 				return false
@@ -155,22 +165,22 @@ func (k KnockICMP) NewGroup() *KnockGroup {
 	}
 }
 
-func (c *Canary) knockDetector(ctx context.Context) {
+func RunKnockDetector(ctx context.Context, c <-chan KnockGrouper, events pushers.Channel) {
 	knocks := NewUniqueSet(func(v1, v2 interface{}) bool {
 		k1, k2 := v1.(*KnockGroup), v2.(*KnockGroup)
 		return k1.Protocol == k2.Protocol &&
 			bytes.Equal(k1.SourceHardwareAddr, k2.SourceHardwareAddr) &&
 			bytes.Equal(k1.DestinationHardwareAddr, k2.DestinationHardwareAddr) &&
-			k1.SourceIP.Equal(k2.SourceIP) &&
-			k1.DestinationIP.Equal(k2.DestinationIP)
+			k1.SourceIP == k2.SourceIP &&
+			k1.DestinationIP == k2.DestinationIP
 	})
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case sk := <-c.knockChan:
-			grouper := sk.(KnockGrouper)
+		case sk := <-c:
+			grouper := sk
 			knock := knocks.Add(grouper.NewGroup()).(*KnockGroup)
 
 			knock.Count++
@@ -213,15 +223,15 @@ func (c *Canary) knockDetector(ctx context.Context) {
 					}
 				})
 
-				c.events.Send(
+				events.Send(
 					event.New(
 						CanaryOptions,
 						EventCategoryPortscan,
 						event.ServiceStarted,
 						event.SourceHardwareAddr(k.SourceHardwareAddr),
 						event.DestinationHardwareAddr(k.DestinationHardwareAddr),
-						event.SourceIP(k.SourceIP),
-						event.DestinationIP(k.DestinationIP),
+						event.Custom("source-ip", k.SourceIP),
+						event.Custom("source-ip", k.DestinationIP),
 						event.Custom("portscan.ports", ports),
 						event.Custom("portscan.duration", k.Last.Sub(k.Start)),
 						event.Message(fmt.Sprintf("Port %d touch(es) detected from %s with duration %+v: %s", k.Count, k.SourceIP, k.Last.Sub(k.Start), strings.Join(ports, ", "))),
