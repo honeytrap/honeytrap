@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package sniffer provides the implementation of data-link layer endpoints that
-// wrap another endpoint and logs inbound and outbound packets.
+// wrapper.go: sniffer provides the implementation of data-link layer endpoints that
+// wrap another endpoint and logs inbound packets.
 //
-// Sniffer endpoints can be used in the networking stack by calling New(eID) to
+// Sniffer endpoints can be used in the networking stack by calling
+// WrapLinkEndpoint(eID, pushers.Channel, chan KnockGrouper) to
 // create a new endpoint, where eID is the ID of the endpoint being wrapped,
 // and then passing it as an argument to Stack.CreateNIC().
+
 package nscanary
 
 import (
@@ -34,11 +36,22 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 )
 
-// GenerateEvents is a flag used to enable or disable sending events to a pusher.
-// Valid values are 0 or 1.
+// Flags to use for LogProtos.
+const (
+	ProtoIPv4 uint32 = 1 << iota
+	ProtoIPv6        = 1 << iota
+	ProtoARP         = 1 << iota
+	ProtoTCP         = 1 << iota
+	ProtoUDP         = 1 << iota
+	ProtoICMP        = 1 << iota
+	ProtoAll         = ProtoIPv4 | ProtoIPv6 | ProtoTCP | ProtoUDP | ProtoICMP | ProtoARP
+)
+
+// LogProtos is a flag-set used to enable(1) events for a protocol.
+// LogProtos = 0; disables event logging.
 //
-// GenerateEvents must be accessed atomically.
-var GenerateEvents uint32 = 1
+// LogProtos must be accessed atomically.
+var LogProtos uint32 = ProtoAll
 
 type endpoint struct {
 	nested.Endpoint
@@ -55,9 +68,11 @@ var _ stack.GSOEndpoint = (*endpoint)(nil)
 var _ stack.LinkEndpoint = (*endpoint)(nil)
 var _ stack.NetworkDispatcher = (*endpoint)(nil)
 
-// New creates a new sniffer link-layer endpoint. It wraps around another
+// WrapLinkEndpoint creates a new sniffer link-layer endpoint. It wraps around another
 // endpoint and logs packets as they traverse the endpoint.
-func NewWrapper(lower stack.LinkEndpoint, e pushers.Channel, knocks chan KnockGrouper) stack.LinkEndpoint {
+// Created events are send by 'e', an configured pushers.Chanel.
+// Knock detection is send in 'knocks' listened on by RunKnockDetector.
+func WrapLinkEndpoint(lower stack.LinkEndpoint, e pushers.Channel, knocks chan KnockGrouper) stack.LinkEndpoint {
 	wrapper := &endpoint{
 		sniffer: &sniffer{
 			events:    e,
@@ -77,7 +92,7 @@ func (e *endpoint) DeliverNetworkPacket(remote, local tcpip.LinkAddress, protoco
 }
 
 func (e *endpoint) dumpPacket(prefix string, gso *stack.GSO, protocol tcpip.NetworkProtocolNumber, pkt *stack.PacketBuffer) {
-	if atomic.LoadUint32(&GenerateEvents) == 1 {
+	if atomic.LoadUint32(&LogProtos) > 0 {
 		e.sniffer.logPacket(prefix, protocol, pkt, gso)
 	}
 }
@@ -149,6 +164,9 @@ func (s *sniffer) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber,
 
 	switch protocol {
 	case header.IPv4ProtocolNumber:
+		if atomic.LoadUint32(&LogProtos)&ProtoIPv4 == 0 {
+			return
+		}
 		hdr, ok := vv.PullUp(header.IPv4MinimumSize)
 		if !ok {
 			return
@@ -170,6 +188,9 @@ func (s *sniffer) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber,
 		)
 
 	case header.IPv6ProtocolNumber:
+		if atomic.LoadUint32(&LogProtos)&ProtoIPv6 == 0 {
+			return
+		}
 		hdr, ok := vv.PullUp(header.IPv6MinimumSize)
 		if !ok {
 			return
@@ -188,6 +209,9 @@ func (s *sniffer) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber,
 		)
 
 	case header.ARPProtocolNumber:
+		if atomic.LoadUint32(&LogProtos)&ProtoARP == 0 {
+			return
+		}
 		hdr, ok := vv.PullUp(header.ARPSize)
 		if !ok {
 			return
@@ -235,6 +259,9 @@ func (s *sniffer) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber,
 	details := ""
 	switch tcpip.TransportProtocolNumber(transProto) {
 	case header.ICMPv4ProtocolNumber:
+		if atomic.LoadUint32(&LogProtos)&(ProtoICMP|ProtoIPv4) != ProtoICMP|ProtoIPv4 {
+			return
+		}
 		transName = "icmp"
 		hdr, ok := vv.PullUp(header.ICMPv4MinimumSize)
 		if !ok {
@@ -269,6 +296,7 @@ func (s *sniffer) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber,
 			}
 		}
 		line := fmt.Sprintf("%s %s %s -> %s %s len:%d id:%04x code:%d", prefix, transName, src, dst, icmpType, size, id, icmp.Code())
+		//TODO (jerry): Add communty-id
 		eoptions = append(eoptions,
 			event.Category("icmp"),
 			event.Protocol("ICMPv4"),
@@ -289,6 +317,9 @@ func (s *sniffer) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber,
 		return
 
 	case header.ICMPv6ProtocolNumber:
+		if atomic.LoadUint32(&LogProtos)&(ProtoICMP|ProtoIPv6) != ProtoICMP|ProtoIPv6 {
+			return
+		}
 		transName = "icmp"
 		hdr, ok := vv.PullUp(header.ICMPv6MinimumSize)
 		if !ok {
@@ -321,6 +352,7 @@ func (s *sniffer) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber,
 			icmpType = "redirect message"
 		}
 		line := fmt.Sprintf("%s %s %s -> %s %s len:%d id:%04x code:%d", prefix, transName, src, dst, icmpType, size, id, icmp.Code())
+		//TODO (jerry): Add communty-id
 		eoptions = append(eoptions,
 			event.Category("icmp"),
 			event.Protocol("ICMPv6"),
@@ -341,6 +373,9 @@ func (s *sniffer) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber,
 		return
 
 	case header.UDPProtocolNumber:
+		if atomic.LoadUint32(&LogProtos)&ProtoUDP == 0 {
+			return
+		}
 		transName = "udp"
 		hdr, ok := vv.PullUp(header.UDPMinimumSize)
 		if !ok {
@@ -353,6 +388,7 @@ func (s *sniffer) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber,
 			details = fmt.Sprintf("xsum: 0x%x", udp.Checksum())
 			size -= header.UDPMinimumSize
 		}
+		//TODO (jerry): Add communty-id
 		eoptions = append(eoptions,
 			event.Category("udp"),
 			event.Protocol("UDP"),
@@ -370,6 +406,9 @@ func (s *sniffer) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber,
 		}
 
 	case header.TCPProtocolNumber:
+		if atomic.LoadUint32(&LogProtos)&ProtoTCP == 0 {
+			return
+		}
 		transName = "tcp"
 		hdr, ok := vv.PullUp(header.TCPMinimumSize)
 		if !ok {
@@ -407,6 +446,7 @@ func (s *sniffer) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber,
 			}
 		}
 
+		//TODO (jerry): Add communty-id
 		eoptions = append(eoptions,
 			event.Category("tcp"),
 			event.Protocol("TCP"),
@@ -442,4 +482,29 @@ func (s *sniffer) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber,
 	s.events.Send(event.New(
 		eoptions...,
 	))
+}
+
+// ExcludeLogProtos exclude protos from event logging.
+// recognized options for protos: ["ip4", "ip6", "arp", "udp", "tcp", "icmp"]
+//
+// This sets the global 'LogProtos'
+func ExcludeLogProtos(protos []string) {
+	flags := ProtoAll
+	for _, proto := range protos {
+		switch proto {
+		case "ip4":
+			flags &^= ProtoIPv4
+		case "ip6":
+			flags &^= ProtoIPv6
+		case "arp":
+			flags &^= ProtoARP
+		case "udp":
+			flags &^= ProtoUDP
+		case "tcp":
+			flags &^= ProtoTCP
+		case "icmp":
+			flags &^= ProtoICMP
+		}
+	}
+	LogProtos = flags
 }

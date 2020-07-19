@@ -4,8 +4,11 @@ package nscanary
 
 //
 // config.toml
-//  listener="canary-netstack"
-//  interfaces=["iface"]
+//  listener = "canary-netstack"
+//  interfaces = ["iface"]
+//  #log_protocols sets the used protos for logging (optional) (default: all)
+//  #recognized options for protos: ["ip4", "ip6", "arp", "udp", "tcp", "icmp"]
+//  log_protocols = ["ip4", "ip6", "arp", "udp", "tcp", "icmp"]
 //  addr=""
 //
 
@@ -49,15 +52,15 @@ var (
 )
 
 type Canary struct {
-	Addr               string `toml:"addr"`
-	Addresses          []net.Addr
-	Interfaces         []string `toml:"interfaces"`
-	TransportProtocols []string `toml:"transport_protocols"`
+	Addr             string `toml:"addr"`
+	Addresses        []net.Addr
+	Interfaces       []string `toml:"interfaces"`
+	ExcludeLogProtos []string `toml:"exclude_log_protos"`
 
-	transportProtos []stack.TransportProtocol
-	events          pushers.Channel
-	nconn           chan net.Conn
-	knockChan       chan KnockGrouper
+	events    pushers.Channel
+	nconn     chan net.Conn
+	knockChan chan KnockGrouper
+	tlsConf   TLS
 
 	stack *stack.Stack
 }
@@ -71,6 +74,7 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 	c := &Canary{
 		events:    pushers.MustDummy(),
 		knockChan: make(chan KnockGrouper),
+		tlsConf:   NewTLSConf("", ""),
 	}
 
 	for _, opt := range options {
@@ -79,14 +83,11 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 		}
 	}
 
+	// set log flags.
+	ExcludeLogProtos(c.ExcludeLogProtos)
+
 	if len(c.Interfaces) == 0 {
 		return nil, fmt.Errorf("no interface defined")
-	}
-
-	if protos, err := getTransportProtos(c.TransportProtocols); err != nil {
-		return nil, err
-	} else {
-		c.transportProtos = protos
 	}
 
 	iface := c.Interfaces[0]
@@ -100,7 +101,8 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 	opts := stack.Options{
 		NetworkProtocols:   []stack.NetworkProtocol{ipv4.NewProtocol(), ipv6.NewProtocol(), arp.NewProtocol()},
 		TransportProtocols: []stack.TransportProtocol{icmp.NewProtocol4(), icmp.NewProtocol6(), udp.NewProtocol(), tcp.NewProtocol()},
-		RawFactory:         raw.EndpointFactory{},
+		//TODO (jerry): Is RawFactory still necessary??
+		RawFactory: raw.EndpointFactory{},
 	}
 
 	s := stack.New(opts)
@@ -132,7 +134,7 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 		return nil, fmt.Errorf("failed creating a link endpoint: %w", err)
 	}
 
-	s.CreateNIC(1, NewWrapper(linkEP, c.events, c.knockChan))
+	s.CreateNIC(1, WrapLinkEndpoint(linkEP, c.events, c.knockChan))
 
 	// set the route table.
 
@@ -229,7 +231,7 @@ func (c *Canary) Start(ctx context.Context) error {
 		fa, netproto := parseAddr(address, 1)
 
 		if _, ok := address.(*net.TCPAddr); ok {
-			l, err := gonet.ListenTCP(c.stack, fa, netproto)
+			l, err := ListenTCP(c.stack, fa, netproto)
 			if err != nil {
 				log.Errorf("Error starting listener: %v", err)
 				continue
@@ -239,9 +241,25 @@ func (c *Canary) Start(ctx context.Context) error {
 
 			go func() {
 				for {
-					conn, err := l.Accept()
+					select {
+					case <-ctx.Done():
+						return
+					default:
+					}
+
+					conn, isTLS, err := l.Accept()
 					if err != nil {
 						log.Errorf("Error accepting connection: %s", err.Error())
+						continue
+					}
+
+					if isTLS {
+						tlsConn, err := c.tlsConf.Handshake(conn, c.events)
+						if err != nil {
+							log.Debugf("tls connection: %v", err)
+							continue
+						}
+						c.nconn <- tlsConn
 						continue
 					}
 
@@ -260,6 +278,12 @@ func (c *Canary) Start(ctx context.Context) error {
 			log.Infof("Listener started: udp/%s", address)
 
 			go func() {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+
 				for {
 					var buf [65535]byte
 
@@ -280,21 +304,6 @@ func (c *Canary) Start(ctx context.Context) error {
 		}
 	}
 	return nil
-}
-
-//UDPConn extends gonet.UDPConn.
-type UDPConn struct {
-	*gonet.UDPConn
-}
-
-//WriteToUDP satifies listener.DummyUDPConn.Fn
-func (c *UDPConn) WriteToUDP(b []byte, addr *net.UDPAddr) (int, error) {
-	return c.WriteTo(b, net.Addr(addr))
-}
-
-func (c *UDPConn) ReadFromUDP(b []byte) (int, *net.UDPAddr, error) {
-	n, addr, err := c.ReadFrom(b)
-	return n, addr.(*net.UDPAddr), err
 }
 
 func Routes(link netlink.Link) ([]tcpip.Route, error) {
@@ -392,30 +401,4 @@ func fileDescriptor(link string, linkIndex int) (int, error) {
 		}
 	}
 	return fd, nil
-}
-
-func getTransportProtos(protos []string) ([]stack.TransportProtocol, error) {
-	pp := make([]stack.TransportProtocol, 0, 4)
-
-	if len(protos) == 0 {
-		//use all transport protocols.
-		protos = []string{"tcp", "udp", "icmp4", "icmp6"}
-	}
-
-	for _, name := range protos {
-		switch name {
-		case "tcp":
-			pp = append(pp, tcp.NewProtocol())
-		case "udp":
-			pp = append(pp, udp.NewProtocol())
-		case "icmp4":
-			pp = append(pp, icmp.NewProtocol4())
-		case "icmp6":
-			pp = append(pp, icmp.NewProtocol6())
-		default:
-			return nil, fmt.Errorf("unknown transport protocol: %s", name)
-		}
-	}
-
-	return pp, nil
 }
