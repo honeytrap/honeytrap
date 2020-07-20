@@ -2,7 +2,7 @@ package nscanary
 
 import "testing"
 
-func TestEcludeLogProtos(t *testing.T) {
+func TestExcludeLogProtos(t *testing.T) {
 	testcases := []struct {
 		exclude []string
 		want    uint32
