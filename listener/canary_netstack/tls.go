@@ -16,6 +16,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
 )
 
@@ -50,6 +51,17 @@ func (c TLS) Handshake(conn net.Conn, events pushers.Channel) (net.Conn, error) 
 		return nil, err
 	}
 	//TODO (jerry): Send tls data (JA3??)
+	state := tlsConn.ConnectionState()
+
+	events.Send(event.New(
+		CanaryOptions,
+		event.Category("tcp"),
+		event.Type("tls"),
+		event.SourceAddr(tlsConn.RemoteAddr()),
+		event.DestinationAddr(tlsConn.LocalAddr()),
+		event.Custom("tls-version", state.Version),
+		event.Custom("tls-ciphersuite", tls.CipherSuiteName(state.CipherSuite)),
+	))
 
 	return tlsConn, nil
 }
