@@ -8,7 +8,7 @@ package nscanary
 //  interfaces = ["iface"]
 //  #log_protocols sets the used protos for logging (optional) (default: all)
 //  #recognized options for protos: ["ip4", "ip6", "arp", "udp", "tcp", "icmp"]
-//  log_protocols = ["ip4", "ip6", "arp", "udp", "tcp", "icmp"]
+//  exclude_log_protos = ["ip4", "ip6", "arp", "udp", "tcp", "icmp"]
 //  addr=""
 //
 
@@ -203,22 +203,30 @@ func (c *Canary) SetChannel(ch pushers.Channel) {
 }
 
 func parseAddr(address net.Addr, nic tcpip.NICID) (tcpip.FullAddress, tcpip.NetworkProtocolNumber) {
-	proto := ipv4.ProtocolNumber
+	var proto tcpip.NetworkProtocolNumber
 
 	full := tcpip.FullAddress{
 		NIC: nic,
 	}
 
+	network := func(ip net.IP) tcpip.NetworkProtocolNumber {
+		if len(ip) == 4 {
+			return ipv4.ProtocolNumber
+		} else if len(ip) == 16 {
+			return ipv6.ProtocolNumber
+		}
+		return 0
+	}
+
 	if a, ok := address.(*net.TCPAddr); ok {
+		proto = network(a.IP)
+
 		full.Addr = tcpip.Address(a.IP)
 		full.Port = uint16(a.Port)
 	} else if a, ok := address.(*net.UDPAddr); ok {
+		proto = network(a.IP)
 		full.Addr = tcpip.Address(a.IP)
 		full.Port = uint16(a.Port)
-	}
-
-	if full.Addr.To4() == "" {
-		proto = ipv6.ProtocolNumber
 	}
 
 	return full, proto
