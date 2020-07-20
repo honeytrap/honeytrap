@@ -168,14 +168,14 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 		if _, bits := parsedAddr.Mask.Size(); bits == 32 {
 			addr = tcpip.Address(parsedAddr.IP)
 			proto = ipv4.ProtocolNumber
-		} else if _, bits := parsedAddr.Mask.Size(); bits == 256 {
+		} else if _, bits := parsedAddr.Mask.Size(); bits == 128 {
 			addr = tcpip.Address(parsedAddr.IP)
 			proto = ipv6.ProtocolNumber
 		} else {
 			return nil, fmt.Errorf("unknown IP type: %v, bits=%d", c.Addr, bits)
 		}
 
-		log.Debugf("Listening on: %s (%d)\n", parsedAddr.String(), proto)
+		log.Debugf("Listening on: %s (%#x)\n", parsedAddr.String(), proto)
 
 		//stack.AddAddressRange() from subnet??
 		if err := s.AddAddress(1, proto, addr); err != nil {
@@ -200,36 +200,6 @@ func (c *Canary) Accept() (net.Conn, error) {
 
 func (c *Canary) SetChannel(ch pushers.Channel) {
 	c.events = ch
-}
-
-func parseAddr(address net.Addr, nic tcpip.NICID) (tcpip.FullAddress, tcpip.NetworkProtocolNumber) {
-	var proto tcpip.NetworkProtocolNumber
-
-	full := tcpip.FullAddress{
-		NIC: nic,
-	}
-
-	network := func(ip net.IP) tcpip.NetworkProtocolNumber {
-		if len(ip) == 4 {
-			return ipv4.ProtocolNumber
-		} else if len(ip) == 16 {
-			return ipv6.ProtocolNumber
-		}
-		return 0
-	}
-
-	if a, ok := address.(*net.TCPAddr); ok {
-		proto = network(a.IP)
-
-		full.Addr = tcpip.Address(a.IP)
-		full.Port = uint16(a.Port)
-	} else if a, ok := address.(*net.UDPAddr); ok {
-		proto = network(a.IP)
-		full.Addr = tcpip.Address(a.IP)
-		full.Port = uint16(a.Port)
-	}
-
-	return full, proto
 }
 
 func (c *Canary) Start(ctx context.Context) error {
@@ -328,12 +298,12 @@ func Routes(link netlink.Link) ([]tcpip.Route, error) {
 	for _, route := range rs {
 		if route.Dst == nil && route.Gw != nil { //default route.
 			if route.Gw.To4() == nil {
-				subnet, err = tcpip.NewSubnet(ipToAddress(net.IPv6zero), tcpip.AddressMask(net.IPv6zero))
+				subnet, err = tcpip.NewSubnet(tcpip.Address(net.IPv6zero), tcpip.AddressMask(net.IPv6zero))
 			} else {
-				subnet, err = tcpip.NewSubnet(ipToAddress(net.IPv4zero), tcpip.AddressMask(net.IPv4zero))
+				subnet, err = tcpip.NewSubnet(tcpip.Address(net.IPv4zero), tcpip.AddressMask(net.IPv4zero))
 			}
 		} else {
-			subnet, err = tcpip.NewSubnet(ipToAddress(route.Dst.IP.Mask(route.Dst.Mask)), tcpip.AddressMask(route.Dst.Mask))
+			subnet, err = tcpip.NewSubnet(tcpip.Address(route.Dst.IP.Mask(route.Dst.Mask)), tcpip.AddressMask(route.Dst.Mask))
 		}
 		if err != nil {
 			return nil, err
@@ -346,28 +316,43 @@ func Routes(link netlink.Link) ([]tcpip.Route, error) {
 	return routes, nil
 }
 
-// ipToAddressAndProto converts IP to tcpip.Address and a protocol number.
-//
-// Note: don't use 'len(ip)' to determine IP version because length is always 16.
-func ipToAddressAndProto(ip net.IP) (tcpip.NetworkProtocolNumber, tcpip.Address) {
-	if i4 := ip.To4(); i4 != nil {
-		return ipv4.ProtocolNumber, tcpip.Address(i4)
-	}
-	return ipv6.ProtocolNumber, tcpip.Address(ip)
-}
-
-// ipToAddress converts IP to tcpip.Address, ignoring the protocol.
-func ipToAddress(ip net.IP) tcpip.Address {
-	_, addr := ipToAddressAndProto(ip)
-	return addr
-}
-
 func htons(n uint16) uint16 {
 	var (
 		high = n >> 8
 		ret  = n<<8 + high
 	)
 	return ret
+}
+
+func parseAddr(address net.Addr, nic tcpip.NICID) (tcpip.FullAddress, tcpip.NetworkProtocolNumber) {
+	full := tcpip.FullAddress{
+		NIC: nic,
+	}
+
+	if a, ok := address.(*net.TCPAddr); ok {
+		ip := a.IP.To4()
+		if ip == nil {
+			ip = a.IP.To16()
+		}
+		full.Addr = tcpip.Address(ip)
+		full.Port = uint16(a.Port)
+	} else if a, ok := address.(*net.UDPAddr); ok {
+		ip := a.IP.To4()
+		if ip == nil {
+			ip = a.IP.To16()
+		}
+		full.Addr = tcpip.Address(ip)
+		full.Port = uint16(a.Port)
+	}
+
+	switch len(full.Addr) {
+	case 4:
+		return full, ipv4.ProtocolNumber
+	case 16:
+		return full, ipv6.ProtocolNumber
+	default:
+		return tcpip.FullAddress{}, 0
+	}
 }
 
 //fileDescriptor opens a raw socket and binds it to network interface with name 'link'
