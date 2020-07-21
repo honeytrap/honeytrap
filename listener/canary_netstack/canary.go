@@ -49,6 +49,11 @@ var (
 	CanaryOptions = event.NewWith(
 		SensorCanary,
 	)
+
+	IPv6loopback               = net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
+	IPv6interfacelocalallnodes = net.IP{0xff, 0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01}
+	IPv6linklocalallnodes      = net.IP{0xff, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01}
+	IPv6linklocalallrouters    = net.IP{0xff, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x02}
 )
 
 type Canary struct {
@@ -188,6 +193,8 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 
 	c.stack = s
 
+	log.Infof("canary started using network interface: %s", iface)
+
 	return c, nil
 }
 
@@ -204,16 +211,27 @@ func (c *Canary) Start(ctx context.Context) error {
 	go RunKnockDetector(ctx, c.knockChan, c.events)
 
 	for _, address := range c.Addresses {
-		fa, netproto := parseAddr(address, 1)
+		fmt.Printf("address = %+v\n", address)
+		fmt.Printf("address.IP = %+v\n", address.(*net.TCPAddr).IP)
+		fmt.Printf("address.Port = %+v\n", address.(*net.TCPAddr).Port)
 
-		if _, ok := address.(*net.TCPAddr); ok {
-			l, err := ListenTCP(c.stack, fa, netproto)
+		full := tcpip.FullAddress{
+			NIC: 1,
+		}
+
+		if a, ok := address.(*net.TCPAddr); ok {
+			ip, netproto := ipAndNetworkProtocol(a.IP)
+
+			full.Addr = tcpip.Address(ip)
+			full.Port = uint16(a.Port)
+
+			l, err := ListenTCP(c.stack, full, netproto)
 			if err != nil {
 				log.Errorf("Error starting listener: %v", err)
 				continue
 			}
 
-			log.Infof("Listener started: tcp/%s", address)
+			log.Infof("Listener started: tcp/%s:%d", full.Addr.String(), full.Port)
 
 			go func() {
 				for {
@@ -243,7 +261,12 @@ func (c *Canary) Start(ctx context.Context) error {
 				}
 			}()
 		} else if _, ok := address.(*net.UDPAddr); ok {
-			l, err := gonet.DialUDP(c.stack, &fa, nil, netproto)
+			ip, netproto := ipAndNetworkProtocol(a.IP)
+
+			full.Addr = tcpip.Address(ip)
+			full.Port = uint16(a.Port)
+
+			l, err := gonet.DialUDP(c.stack, &full, nil, netproto)
 			if err != nil {
 				log.Errorf("Error starting listener: %v", err)
 				continue
@@ -322,35 +345,18 @@ func htons(n uint16) uint16 {
 	return ret
 }
 
-func parseAddr(address net.Addr, nic tcpip.NICID) (tcpip.FullAddress, tcpip.NetworkProtocolNumber) {
-	full := tcpip.FullAddress{
-		NIC: nic,
+func ipAndNetworkProtocol(ip net.IP) (net.IP, tcpip.NetworkProtocolNumber) {
+	netip := ip.To16() // valid IP or nil
+	netproto := ipv4.ProtocolNumber
+
+	if netip != nil && netip.To4() == nil {
+		netproto = ipv6.ProtocolNumber
+	}
+	if netip == nil {
+		netip = net.IP{}
 	}
 
-	if a, ok := address.(*net.TCPAddr); ok {
-		ip := a.IP.To4()
-		if ip == nil {
-			ip = a.IP.To16()
-		}
-		full.Addr = tcpip.Address(ip)
-		full.Port = uint16(a.Port)
-	} else if a, ok := address.(*net.UDPAddr); ok {
-		ip := a.IP.To4()
-		if ip == nil {
-			ip = a.IP.To16()
-		}
-		full.Addr = tcpip.Address(ip)
-		full.Port = uint16(a.Port)
-	}
-
-	switch len(full.Addr) {
-	case 4:
-		return full, ipv4.ProtocolNumber
-	case 16:
-		return full, ipv6.ProtocolNumber
-	default:
-		return tcpip.FullAddress{}, 0
-	}
+	return netip, netproto
 }
 
 //fileDescriptor opens a raw socket and binds it to network interface with name 'link'
@@ -392,4 +398,11 @@ func fileDescriptor(link string, linkIndex int) (int, error) {
 		}
 	}
 	return fd, nil
+}
+
+func loopbackIP(network string) net.IP {
+	if network != "" && network[len(network)-1] == '6' {
+		return IPv6loopback
+	}
+	return net.IP{127, 0, 0, 1}
 }
