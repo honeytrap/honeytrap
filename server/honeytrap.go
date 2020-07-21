@@ -261,11 +261,11 @@ func ToAddr(input string) (net.Addr, string, int, error) {
 	}
 
 	switch proto {
-	case "tcp":
-		addr, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(host, port))
+	case "tcp", "tcp4", "tcp6":
+		addr, err := net.ResolveTCPAddr(proto, net.JoinHostPort(host, port))
 		return addr, proto, int(portUint16), err
-	case "udp":
-		addr, err := net.ResolveUDPAddr("udp", net.JoinHostPort(host, port))
+	case "udp", "udp4", "udp6":
+		addr, err := net.ResolveUDPAddr(proto, net.JoinHostPort(host, port))
 		return addr, proto, int(portUint16), err
 	default:
 		return nil, "", 0, fmt.Errorf("unknown protocol %s", proto)

@@ -2,6 +2,7 @@ package nscanary
 
 import (
 	"errors"
+	"fmt"
 	"net"
 
 	"gvisor.dev/gvisor/pkg/tcpip"
@@ -42,6 +43,10 @@ func ListenTCP(s *stack.Stack, addr tcpip.FullAddress, network tcpip.NetworkProt
 		return nil, errors.New(err.String())
 	}
 
+	fmt.Printf("network = %+v\n", network)
+	fmt.Printf("addr = %+v\n", addr)
+	fmt.Printf("ep.Info() = %+v\n", ep.Info())
+
 	if err := ep.Bind(addr); err != nil {
 		ep.Close()
 		return nil, &net.OpError{
@@ -51,6 +56,8 @@ func ListenTCP(s *stack.Stack, addr tcpip.FullAddress, network tcpip.NetworkProt
 			Err:  errors.New(err.String()),
 		}
 	}
+
+	fmt.Println("start ep.Listen(10)")
 
 	if err := ep.Listen(10); err != nil {
 		ep.Close()
