@@ -62,6 +62,7 @@ type endpoint struct {
 type sniffer struct {
 	events    pushers.Channel
 	knockChan chan KnockGrouper
+	ourMAC    tcpip.LinkAddress //our network interface hardware address.
 }
 
 var _ stack.GSOEndpoint = (*endpoint)(nil)
@@ -77,6 +78,7 @@ func WrapLinkEndpoint(lower stack.LinkEndpoint, e pushers.Channel, knocks chan K
 		sniffer: &sniffer{
 			events:    e,
 			knockChan: knocks,
+			ourMAC:    lower.LinkAddress(),
 		},
 	}
 	wrapper.Endpoint.Init(lower, wrapper)
@@ -136,17 +138,17 @@ func (s *sniffer) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber,
 		destMAC        tcpip.LinkAddress
 	)
 
-	src := tcpip.Address("unknown")
-	dst := tcpip.Address("unknown")
-	id := 0
-	size := uint16(0)
-
 	eoptions := make([]event.Option, 0, 16)
 	eoptions = append(eoptions, CanaryOptions)
 
+	// set the hardware addresses.
+	// skip logging if we are the source.
 	if len(pkt.LinkHeader) > 0 {
 		eth := header.Ethernet(pkt.LinkHeader)
 		srcMAC = eth.SourceAddress()
+		if srcMAC == s.ourMAC {
+			return
+		}
 		destMAC = eth.DestinationAddress()
 		eoptions = append(eoptions,
 			event.DestinationHardwareAddr(net.HardwareAddr(destMAC)),
@@ -154,6 +156,11 @@ func (s *sniffer) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber,
 			event.Custom("network-protocol-number", protocol),
 		)
 	}
+
+	src := tcpip.Address("unknown")
+	dst := tcpip.Address("unknown")
+	id := 0
+	size := uint16(0)
 
 	// Create a clone of pkt, including any headers if present. Avoid allocating
 	// backing memory for the clone.
@@ -167,80 +174,77 @@ func (s *sniffer) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber,
 		if atomic.LoadUint32(&LogProtos)&ProtoIPv4 == 0 {
 			return
 		}
-		hdr, ok := vv.PullUp(header.IPv4MinimumSize)
-		if !ok {
+		hdr := header.IPv4(vv.ToView())
+		if !hdr.IsValid(len(hdr)) {
+			//TODO (jerry): log invalid header??
 			return
 		}
-		ipv4 := header.IPv4(hdr)
-		fragmentOffset = ipv4.FragmentOffset()
-		moreFragments = ipv4.Flags()&header.IPv4FlagMoreFragments == header.IPv4FlagMoreFragments
-		src = ipv4.SourceAddress()
-		dst = ipv4.DestinationAddress()
-		transProto = ipv4.Protocol()
-		size = ipv4.TotalLength() - uint16(ipv4.HeaderLength())
-		vv.TrimFront(int(ipv4.HeaderLength()))
-		id = int(ipv4.ID())
+		fragmentOffset = hdr.FragmentOffset()
+		moreFragments = hdr.Flags()&header.IPv4FlagMoreFragments == header.IPv4FlagMoreFragments
+		src = hdr.SourceAddress()
+		dst = hdr.DestinationAddress()
+		transProto = hdr.Protocol()
+		size = hdr.PayloadLength()
+		vv.TrimFront(int(hdr.HeaderLength()))
+		id = int(hdr.ID())
 		eoptions = append(eoptions,
 			event.Custom("ip-version", "4"),
-			event.Custom("source-ip", ipv4.SourceAddress()),
-			event.Custom("destination-ip", ipv4.DestinationAddress()),
-			event.Payload(ipv4.Payload()),
+			event.Custom("source-ip", hdr.SourceAddress().String()),
+			event.Custom("destination-ip", hdr.DestinationAddress().String()),
+			event.Payload(hdr.Payload()),
 		)
 
 	case header.IPv6ProtocolNumber:
 		if atomic.LoadUint32(&LogProtos)&ProtoIPv6 == 0 {
 			return
 		}
-		hdr, ok := vv.PullUp(header.IPv6MinimumSize)
-		if !ok {
+		hdr := header.IPv6(vv.ToView())
+		if !hdr.IsValid(len(hdr)) {
+			//TODO (jerry): log invalid header??
 			return
 		}
-		ipv6 := header.IPv6(hdr)
-		src = ipv6.SourceAddress()
-		dst = ipv6.DestinationAddress()
-		transProto = ipv6.NextHeader()
-		size = ipv6.PayloadLength()
-		vv.TrimFront(header.IPv6MinimumSize)
+		src = hdr.SourceAddress()
+		dst = hdr.DestinationAddress()
+		transProto = hdr.NextHeader()
+		size = hdr.PayloadLength()
+		vv.TrimFront(vv.Size() - int(size))
 		eoptions = append(eoptions,
-			event.Custom("ip-version", "4"),
-			event.Custom("source-ip", ipv6.SourceAddress()),
-			event.Custom("destination-ip", ipv6.DestinationAddress()),
-			event.Payload(ipv6.Payload()),
+			event.Custom("ip-version", "6"),
+			event.Custom("source-ip", hdr.SourceAddress().String()),
+			event.Custom("destination-ip", hdr.DestinationAddress().String()),
+			event.Payload(hdr.Payload()),
 		)
 
 	case header.ARPProtocolNumber:
 		if atomic.LoadUint32(&LogProtos)&ProtoARP == 0 {
 			return
 		}
-		hdr, ok := vv.PullUp(header.ARPSize)
-		if !ok {
+		hdr := header.ARP(vv.ToView())
+		if !hdr.IsValid() {
 			return
 		}
-		vv.TrimFront(header.ARPSize)
-		arp := header.ARP(hdr)
 		line := fmt.Sprintf(
 			"%s arp %s (%s) -> %s (%s) valid:%t",
 			prefix,
-			tcpip.Address(arp.ProtocolAddressSender()), tcpip.LinkAddress(arp.HardwareAddressSender()),
-			tcpip.Address(arp.ProtocolAddressTarget()), tcpip.LinkAddress(arp.HardwareAddressTarget()),
-			arp.IsValid(),
+			tcpip.Address(hdr.ProtocolAddressSender()), tcpip.LinkAddress(hdr.HardwareAddressSender()),
+			tcpip.Address(hdr.ProtocolAddressTarget()), tcpip.LinkAddress(hdr.HardwareAddressTarget()),
+			hdr.IsValid(),
 		)
 
 		s.events.Send(event.New(
 			CanaryOptions,
 			event.Category("ARP"),
-			event.DestinationHardwareAddr(net.HardwareAddr(arp.HardwareAddressTarget())),
-			event.SourceHardwareAddr(net.HardwareAddr(arp.HardwareAddressSender())),
-			event.SourceIP(arp.ProtocolAddressSender()),
-			event.DestinationIP(arp.ProtocolAddressTarget()),
-			event.Custom("arp-opcode", arp.Op()),
-			event.Custom("arp-isvalid", arp.IsValid()),
-			//event.Custom("arp-hardware-type", arp.HardwareType),
-			//event.Custom("arp-hardware-size", arp.HardwareSize),
-			//event.Custom("arp-protocol-type", arp.ProtocolType),
-			//event.Custom("arp-protocol-size", arp.ProtocolSize),
+			event.DestinationHardwareAddr(net.HardwareAddr(hdr.HardwareAddressTarget())),
+			event.SourceHardwareAddr(net.HardwareAddr(hdr.HardwareAddressSender())),
+			event.SourceIP(hdr.ProtocolAddressSender()),
+			event.DestinationIP(hdr.ProtocolAddressTarget()),
+			event.Custom("arp-opcode", hdr.Op()),
+			event.Custom("arp-isvalid", hdr.IsValid()),
+			//event.Custom("arp-hardware-type", hdr.HardwareType),
+			//event.Custom("arp-hardware-size", hdr.HardwareSize),
+			//event.Custom("arp-protocol-type", hdr.ProtocolType),
+			//event.Custom("arp-protocol-size", hdr.ProtocolSize),
 			event.Message(line),
-			event.Payload(arp),
 		))
 		return
 	default:
@@ -263,14 +267,13 @@ func (s *sniffer) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber,
 			return
 		}
 		transName = "icmp"
-		hdr, ok := vv.PullUp(header.ICMPv4MinimumSize)
-		if !ok {
+		if vv.Size() < header.ICMPv4MinimumSize {
 			break
 		}
-		icmp := header.ICMPv4(hdr)
+		hdr := header.ICMPv4(vv.ToView())
 		icmpType := "unknown"
 		if fragmentOffset == 0 {
-			switch icmp.Type() {
+			switch hdr.Type() {
 			case header.ICMPv4EchoReply:
 				icmpType = "echo reply"
 			case header.ICMPv4DstUnreachable:
@@ -295,15 +298,15 @@ func (s *sniffer) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber,
 				icmpType = "info reply"
 			}
 		}
-		line := fmt.Sprintf("%s %s %s -> %s %s len:%d id:%04x code:%d", prefix, transName, src, dst, icmpType, size, id, icmp.Code())
+		line := fmt.Sprintf("%s %s %s -> %s %s len:%d id:%04x code:%d", prefix, transName, src, dst, icmpType, size, id, hdr.Code())
 		//TODO (jerry): Add communty-id
 		eoptions = append(eoptions,
 			event.Category("icmp"),
 			event.Protocol("ICMPv4"),
 			event.Custom("icmp-type", icmpType),
-			event.Custom("icmp-code", icmp.Code()),
+			event.Custom("icmp-code", hdr.Code()),
 			event.Message(line),
-			event.Payload(icmp.Payload()),
+			event.Payload(hdr.Payload()),
 		)
 
 		s.knockChan <- KnockICMP{
@@ -314,20 +317,17 @@ func (s *sniffer) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber,
 			DestinationIP:           dst,
 		}
 
-		return
-
 	case header.ICMPv6ProtocolNumber:
 		if atomic.LoadUint32(&LogProtos)&(ProtoICMP|ProtoIPv6) != ProtoICMP|ProtoIPv6 {
 			return
 		}
 		transName = "icmp"
-		hdr, ok := vv.PullUp(header.ICMPv6MinimumSize)
-		if !ok {
+		if vv.Size() < header.ICMPv6MinimumSize {
 			break
 		}
-		icmp := header.ICMPv6(hdr)
+		hdr := header.ICMPv6(vv.ToView())
 		icmpType := "unknown"
-		switch icmp.Type() {
+		switch hdr.Type() {
 		case header.ICMPv6DstUnreachable:
 			icmpType = "destination unreachable"
 		case header.ICMPv6PacketTooBig:
@@ -351,15 +351,15 @@ func (s *sniffer) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber,
 		case header.ICMPv6RedirectMsg:
 			icmpType = "redirect message"
 		}
-		line := fmt.Sprintf("%s %s %s -> %s %s len:%d id:%04x code:%d", prefix, transName, src, dst, icmpType, size, id, icmp.Code())
+		line := fmt.Sprintf("%s %s %s -> %s %s len:%d id:%04x code:%d", prefix, transName, src, dst, icmpType, size, id, hdr.Code())
 		//TODO (jerry): Add communty-id
 		eoptions = append(eoptions,
 			event.Category("icmp"),
 			event.Protocol("ICMPv6"),
 			event.Custom("icmp-type", icmpType),
-			event.Custom("icmp-code", icmp.Code()),
+			event.Custom("icmp-code", hdr.Code()),
 			event.Message(line),
-			event.Payload(icmp.Payload()),
+			event.Payload(hdr.Payload()),
 		)
 
 		s.knockChan <- KnockICMP{
@@ -370,31 +370,28 @@ func (s *sniffer) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber,
 			DestinationIP:           dst,
 		}
 
-		return
-
 	case header.UDPProtocolNumber:
 		if atomic.LoadUint32(&LogProtos)&ProtoUDP == 0 {
 			return
 		}
 		transName = "udp"
-		hdr, ok := vv.PullUp(header.UDPMinimumSize)
-		if !ok {
+		if vv.Size() < header.UDPMinimumSize {
 			break
 		}
-		udp := header.UDP(hdr)
+		hdr := header.UDP(vv.ToView())
 		if fragmentOffset == 0 {
-			srcPort = udp.SourcePort()
-			dstPort = udp.DestinationPort()
-			details = fmt.Sprintf("xsum: 0x%x", udp.Checksum())
+			srcPort = hdr.SourcePort()
+			dstPort = hdr.DestinationPort()
+			details = fmt.Sprintf("xsum: 0x%x", hdr.Checksum())
 			size -= header.UDPMinimumSize
 		}
 		//TODO (jerry): Add communty-id
 		eoptions = append(eoptions,
 			event.Category("udp"),
 			event.Protocol("UDP"),
-			event.SourcePort(udp.SourcePort()),
-			event.DestinationPort(udp.DestinationPort()),
-			event.Payload(udp.Payload()),
+			event.SourcePort(hdr.SourcePort()),
+			event.DestinationPort(hdr.DestinationPort()),
+			event.Payload(hdr.Payload()),
 		)
 
 		s.knockChan <- KnockUDPPort{
@@ -410,13 +407,12 @@ func (s *sniffer) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber,
 			return
 		}
 		transName = "tcp"
-		hdr, ok := vv.PullUp(header.TCPMinimumSize)
-		if !ok {
+		if vv.Size() < header.TCPMinimumSize {
 			break
 		}
-		tcp := header.TCP(hdr)
+		hdr := header.TCP(vv.ToView())
 		if fragmentOffset == 0 {
-			offset := int(tcp.DataOffset())
+			offset := int(hdr.DataOffset())
 			if offset < header.TCPMinimumSize {
 				details += fmt.Sprintf("invalid packet: tcp data offset too small %d", offset)
 				break
@@ -426,23 +422,23 @@ func (s *sniffer) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber,
 				break
 			}
 
-			srcPort = tcp.SourcePort()
-			dstPort = tcp.DestinationPort()
+			srcPort = hdr.SourcePort()
+			dstPort = hdr.DestinationPort()
 			size -= uint16(offset)
 
 			// Initialize the TCP flags.
-			flags := tcp.Flags()
+			flags := hdr.Flags()
 			flagsStr := []byte("FSRPAU")
 			for i := range flagsStr {
 				if flags&(1<<uint(i)) == 0 {
 					flagsStr[i] = ' '
 				}
 			}
-			details = fmt.Sprintf("flags:0x%02x (%s) seqnum: %d ack: %d win: %d xsum:0x%x", flags, string(flagsStr), tcp.SequenceNumber(), tcp.AckNumber(), tcp.WindowSize(), tcp.Checksum())
+			details = fmt.Sprintf("flags:0x%02x (%s) seqnum: %d ack: %d win: %d xsum:0x%x", flags, string(flagsStr), hdr.SequenceNumber(), hdr.AckNumber(), hdr.WindowSize(), hdr.Checksum())
 			if flags&header.TCPFlagSyn != 0 {
-				details += fmt.Sprintf(" options: %+v", header.ParseSynOptions(tcp.Options(), flags&header.TCPFlagAck != 0))
+				details += fmt.Sprintf(" options: %+v", header.ParseSynOptions(hdr.Options(), flags&header.TCPFlagAck != 0))
 			} else {
-				details += fmt.Sprintf(" options: %+v", tcp.ParsedOptions())
+				details += fmt.Sprintf(" options: %+v", hdr.ParsedOptions())
 			}
 		}
 
@@ -450,9 +446,9 @@ func (s *sniffer) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber,
 		eoptions = append(eoptions,
 			event.Category("tcp"),
 			event.Protocol("TCP"),
-			event.SourcePort(tcp.SourcePort()),
-			event.DestinationPort(tcp.DestinationPort()),
-			event.Payload(tcp.Payload()),
+			event.SourcePort(hdr.SourcePort()),
+			event.DestinationPort(hdr.DestinationPort()),
+			event.Payload(hdr.Payload()),
 		)
 
 		s.knockChan <- KnockTCPPort{
@@ -470,7 +466,6 @@ func (s *sniffer) logPacket(prefix string, protocol tcpip.NetworkProtocolNumber,
 			event.Message("unknown transport protocol"),
 			event.Payload(vv.ToView()),
 		))
-		return
 	}
 
 	line := fmt.Sprintf("%s %s %s:%d -> %s:%d len:%d id:%04x %s", prefix, transName, src, srcPort, dst, dstPort, size, id, details)
