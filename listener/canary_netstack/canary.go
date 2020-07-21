@@ -57,10 +57,11 @@ type Canary struct {
 	Interfaces       []string `toml:"interfaces"`
 	ExcludeLogProtos []string `toml:"exclude_log_protos"`
 
-	events    pushers.Channel
-	nconn     chan net.Conn
-	knockChan chan KnockGrouper
-	tlsConf   TLS
+	interfaces []net.Interface
+	events     pushers.Channel
+	nconn      chan net.Conn
+	knockChan  chan KnockGrouper
+	tlsConf    TLS
 
 	stack *stack.Stack
 }
@@ -184,9 +185,6 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 	}
 
 	s.SetSpoofing(1, true)
-
-	fmt.Printf("s.GetRouteTable() = %+v\n", s.GetRouteTable())
-	fmt.Printf("s.NICInfo() = %+v\n", s.NICInfo())
 
 	c.stack = s
 
