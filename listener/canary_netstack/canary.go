@@ -6,7 +6,7 @@ package nscanary
 // config.toml
 //  listener = "canary-netstack"
 //  interfaces = ["iface"]
-//  #log_protocols sets the used protos for logging (optional) (default: all)
+//  #exclude_log_protos sets the used protos for logging (optional) (default: all)
 //  #recognized options for protos: ["ip4", "ip6", "arp", "udp", "tcp", "icmp"]
 //  exclude_log_protos = ["ip4", "ip6", "arp", "udp", "tcp", "icmp"]
 //  addr=""
@@ -50,17 +50,17 @@ var (
 		SensorCanary,
 	)
 
-	IPv6loopback               = net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
-	IPv6interfacelocalallnodes = net.IP{0xff, 0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01}
-	IPv6linklocalallnodes      = net.IP{0xff, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01}
-	IPv6linklocalallrouters    = net.IP{0xff, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x02}
+	//IPv6loopback               = net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
+	//IPv6interfacelocalallnodes = net.IP{0xff, 0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01}
+	//IPv6linklocalallnodes      = net.IP{0xff, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01}
+	//IPv6linklocalallrouters    = net.IP{0xff, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x02}
 )
 
 type Canary struct {
-	Addr             string `toml:"addr"`
-	Addresses        []net.Addr
+	//Addr             string `toml:"addr"`
 	Interfaces       []string `toml:"interfaces"`
 	ExcludeLogProtos []string `toml:"exclude_log_protos"`
+	Addresses        []net.Addr
 
 	interfaces []net.Interface
 	events     pushers.Channel
@@ -159,13 +159,13 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 		return nil, fmt.Errorf("error retrieving interface ip addresses: %s", err.Error())
 	}
 
-	if c.Addr != "" {
-		addr, err := netlink.ParseAddr(c.Addr)
-		if err != nil {
-			return nil, fmt.Errorf("bad IP address: %v: %s", c.Addr, err)
-		}
-		addrs = []netlink.Addr{*addr}
-	}
+	//if c.Addr != "" {
+	//	addr, err := netlink.ParseAddr(c.Addr)
+	//	if err != nil {
+	//		return nil, fmt.Errorf("bad IP address: %v: %s", c.Addr, err)
+	//	}
+	//	addrs = []netlink.Addr{*addr}
+	//}
 
 	for _, parsedAddr := range addrs {
 		var addr tcpip.Address
@@ -178,7 +178,7 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 			addr = tcpip.Address(parsedAddr.IP)
 			proto = ipv6.ProtocolNumber
 		} else {
-			return nil, fmt.Errorf("unknown IP type: %v, bits=%d", c.Addr, bits)
+			return nil, fmt.Errorf("unknown IP type: %v, bits=%d", parsedAddr, bits)
 		}
 
 		log.Debugf("Listening on: %s (%#x)\n", parsedAddr.String(), proto)
@@ -208,13 +208,10 @@ func (c *Canary) SetChannel(ch pushers.Channel) {
 }
 
 func (c *Canary) Start(ctx context.Context) error {
+
 	go RunKnockDetector(ctx, c.knockChan, c.events)
 
 	for _, address := range c.Addresses {
-		fmt.Printf("address = %+v\n", address)
-		fmt.Printf("address.IP = %+v\n", address.(*net.TCPAddr).IP)
-		fmt.Printf("address.Port = %+v\n", address.(*net.TCPAddr).Port)
-
 		full := tcpip.FullAddress{
 			NIC: 1,
 		}
@@ -398,11 +395,4 @@ func fileDescriptor(link string, linkIndex int) (int, error) {
 		}
 	}
 	return fd, nil
-}
-
-func loopbackIP(network string) net.IP {
-	if network != "" && network[len(network)-1] == '6' {
-		return IPv6loopback
-	}
-	return net.IP{127, 0, 0, 1}
 }
