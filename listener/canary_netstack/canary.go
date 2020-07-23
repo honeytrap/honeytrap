@@ -24,6 +24,7 @@ import (
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/op/go-logging"
 	"github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
 	"gvisor.dev/gvisor/pkg/tcpip/link/fdbased"
@@ -154,10 +155,10 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 
 	// stack.AddAddress()
 
-	addrs, err := netlink.AddrList(link, netlink.FAMILY_ALL)
-	if err != nil {
-		return nil, fmt.Errorf("error retrieving interface ip addresses: %s", err.Error())
-	}
+	//addrs, err := netlink.AddrList(link, netlink.FAMILY_ALL)
+	//if err != nil {
+	//	return nil, fmt.Errorf("error retrieving interface ip addresses: %s", err.Error())
+	//}
 
 	//if c.Addr != "" {
 	//	addr, err := netlink.ParseAddr(c.Addr)
@@ -167,27 +168,29 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 	//	addrs = []netlink.Addr{*addr}
 	//}
 
-	for _, parsedAddr := range addrs {
-		var addr tcpip.Address
-		var proto tcpip.NetworkProtocolNumber
+	/*
+		for _, parsedAddr := range addrs {
+			var addr tcpip.Address
+			var proto tcpip.NetworkProtocolNumber
 
-		if _, bits := parsedAddr.Mask.Size(); bits == 32 {
-			addr = tcpip.Address(parsedAddr.IP)
-			proto = ipv4.ProtocolNumber
-		} else if _, bits := parsedAddr.Mask.Size(); bits == 128 {
-			addr = tcpip.Address(parsedAddr.IP)
-			proto = ipv6.ProtocolNumber
-		} else {
-			return nil, fmt.Errorf("unknown IP type: %v, bits=%d", parsedAddr, bits)
+			if _, bits := parsedAddr.Mask.Size(); bits == 32 {
+				addr = tcpip.Address(parsedAddr.IP)
+				proto = ipv4.ProtocolNumber
+			} else if _, bits := parsedAddr.Mask.Size(); bits == 128 {
+				addr = tcpip.Address(parsedAddr.IP)
+				proto = ipv6.ProtocolNumber
+			} else {
+				return nil, fmt.Errorf("unknown IP type: %v, bits=%d", parsedAddr, bits)
+			}
+
+			log.Debugf("Listening on: %s (%#x)\n", parsedAddr.String(), proto)
+
+			//stack.AddAddressRange() from subnet??
+			if err := s.AddAddress(1, proto, addr); err != nil {
+				return nil, fmt.Errorf(err.String())
+			}
 		}
-
-		log.Debugf("Listening on: %s (%#x)\n", parsedAddr.String(), proto)
-
-		//stack.AddAddressRange() from subnet??
-		if err := s.AddAddress(1, proto, addr); err != nil {
-			return nil, fmt.Errorf(err.String())
-		}
-	}
+	*/
 
 	s.SetSpoofing(1, true)
 
@@ -222,13 +225,16 @@ func (c *Canary) Start(ctx context.Context) error {
 			full.Addr = tcpip.Address(ip)
 			full.Port = uint16(a.Port)
 
-			l, err := ListenTCP(c.stack, full, netproto)
+			//l, err := ListenTCP(c.stack, full, netproto)
+			l, err := gonet.ListenTCP(c.stack, full, netproto)
 			if err != nil {
 				log.Errorf("Error starting listener: %v", err)
 				continue
 			}
 
 			log.Infof("Listener started: tcp/%s:%d", full.Addr.String(), full.Port)
+
+			isTLS := false
 
 			go func() {
 				for {
@@ -238,7 +244,8 @@ func (c *Canary) Start(ctx context.Context) error {
 					default:
 					}
 
-					conn, isTLS, err := l.Accept()
+					//conn, isTLS, err := l.Accept()
+					conn, err := l.Accept()
 					if err != nil {
 						log.Errorf("Error accepting connection: %s", err.Error())
 						continue
@@ -299,6 +306,7 @@ func (c *Canary) Start(ctx context.Context) error {
 			}()
 		}
 	}
+
 	return nil
 }
 
@@ -374,7 +382,8 @@ func fileDescriptor(link string, linkIndex int) (int, error) {
 			return 0, fmt.Errorf("could not open tap interface: %s", err.Error())
 		}
 	} else {
-		fd, err = syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(htons(syscall.ETH_P_ALL)))
+		//fd, err = unix.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(htons(syscall.ETH_P_ALL)))
+		fd, err = unix.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, 0)
 		if err != nil {
 			return 0, fmt.Errorf("could not create socket: %s", err.Error())
 		}
@@ -382,15 +391,16 @@ func fileDescriptor(link string, linkIndex int) (int, error) {
 		if fd < 0 {
 			return 0, fmt.Errorf("socket error: fd < 0")
 		}
-
-		ll := syscall.SockaddrLinklayer{
-			Protocol: htons(syscall.ETH_P_ALL),
-			Ifindex:  linkIndex,
-			Hatype:   0, // No ARP type.
-			Pkttype:  syscall.PACKET_HOST,
+		if err := unix.SetNonblock(fd, true); err != nil {
+			return 0, err
 		}
 
-		if err := syscall.Bind(fd, &ll); err != nil {
+		ll := unix.SockaddrLinklayer{
+			Protocol: htons(syscall.ETH_P_ALL),
+			Ifindex:  linkIndex,
+		}
+
+		if err := unix.Bind(fd, &ll); err != nil {
 			return 0, fmt.Errorf("unable to bind to %q: %v", link, err)
 		}
 	}
