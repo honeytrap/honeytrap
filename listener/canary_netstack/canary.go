@@ -6,10 +6,13 @@ package nscanary
 // config.toml
 //  listener = "canary-netstack"
 //  interfaces = ["iface"]
-//  #exclude_log_protos sets the used protos for logging (optional) (default: all)
-//  #recognized options for protos: ["ip4", "ip6", "arp", "udp", "tcp", "icmp"]
-//  exclude_log_protos = ["ip4", "ip6", "arp", "udp", "tcp", "icmp"]
-//  addr=""
+//
+//  # interface addresses to use, ipv4/ipv6.
+//  interface-addrs=["1.2.3.4", "ff80::1"]
+//
+//  # exclude_log_protos sets the used protos for logging (optional) (default: all)
+//  # recognized options for protos: ["ip4", "ip6", "arp", "udp", "tcp", "icmp"]
+//  exclude_log_protos = []
 //
 
 import (
@@ -23,21 +26,13 @@ import (
 	"github.com/honeytrap/honeytrap/listener"
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/op/go-logging"
-	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
-	"gvisor.dev/gvisor/pkg/tcpip/link/fdbased"
-	"gvisor.dev/gvisor/pkg/tcpip/link/rawfile"
 	"gvisor.dev/gvisor/pkg/tcpip/link/tun"
-	"gvisor.dev/gvisor/pkg/tcpip/network/arp"
 	"gvisor.dev/gvisor/pkg/tcpip/network/ipv4"
 	"gvisor.dev/gvisor/pkg/tcpip/network/ipv6"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
-	"gvisor.dev/gvisor/pkg/tcpip/transport/icmp"
-	"gvisor.dev/gvisor/pkg/tcpip/transport/raw"
-	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
-	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
 )
 
 var log = logging.MustGetLogger("listeners/netstack-canary")
@@ -57,24 +52,28 @@ var (
 	//IPv6linklocalallrouters    = net.IP{0xff, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x02}
 )
 
-type Canary struct {
-	//Addr             string `toml:"addr"`
+type Config struct {
+	IfaceAddrs       []string `toml:"interface_addrs"`
 	Interfaces       []string `toml:"interfaces"`
 	ExcludeLogProtos []string `toml:"exclude_log_protos"`
-	Addresses        []net.Addr
+}
 
-	interfaces []net.Interface
-	events     pushers.Channel
-	nconn      chan net.Conn
-	knockChan  chan KnockGrouper
-	tlsConf    TLS
+type Canary struct {
+	Config
+
+	listenAddrs []net.Addr
+	interfaces  []net.Interface
+	events      pushers.Channel
+	nconn       chan net.Conn
+	knockChan   chan KnockGrouper
+	tlsConf     TLS
 
 	stack *stack.Stack
 }
 
 //AddAddress implements listener.AddAddresser
 func (c *Canary) AddAddress(a net.Addr) {
-	c.Addresses = append(c.Addresses, a)
+	c.listenAddrs = append(c.listenAddrs, a)
 }
 
 func New(options ...func(listener.Listener) error) (listener.Listener, error) {
@@ -97,106 +96,47 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 		return nil, fmt.Errorf("no interface defined")
 	}
 
-	iface := c.Interfaces[0]
-
-	ifaceLink, err := netlink.LinkByName(iface)
-	if err != nil {
-		return nil, fmt.Errorf("unable to find %s: %v", iface, err)
-	}
-
-	// create a new stack
-	opts := stack.Options{
-		NetworkProtocols:   []stack.NetworkProtocol{ipv4.NewProtocol(), ipv6.NewProtocol(), arp.NewProtocol()},
-		TransportProtocols: []stack.TransportProtocol{icmp.NewProtocol4(), icmp.NewProtocol6(), udp.NewProtocol(), tcp.NewProtocol()},
-		//TODO (jerry): Is RawFactory still necessary??
-		RawFactory: raw.EndpointFactory{},
-	}
-
-	s := stack.New(opts)
-
-	// setup a link endpoint
-
-	mtu, err := rawfile.GetMTU(iface)
+	iface, err := net.InterfaceByName(c.Interfaces[0])
 	if err != nil {
 		return nil, err
 	}
 
-	fd, err := fileDescriptor(iface, ifaceLink.Attrs().Index)
-	if err != nil {
-		return nil, err
+	if iface.Flags&net.FlagUp == 0 {
+		return nil, fmt.Errorf("interface is down: %+v", iface)
 	}
 
-	linkEP, err := fdbased.New(&fdbased.Options{
-		FDs:            []int{fd},
-		MTU:            mtu,
-		EthernetHeader: true,
-		Address:        tcpip.LinkAddress(ifaceLink.Attrs().HardwareAddr),
-		ClosedFunc: func(e *tcpip.Error) {
-			if e != nil {
-				log.Errorf("File descriptor closed: %v", err)
-			}
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed creating a link endpoint: %w", err)
-	}
-
-	s.CreateNIC(1, WrapLinkEndpoint(linkEP, c.events, c.knockChan))
-
-	// set the route table.
-
-	link := ifaceLink
-
-	routes, err := Routes(link)
-	if err != nil {
-		return nil, fmt.Errorf("get routes: %w", err)
-	}
-	s.SetRouteTable(routes)
-
-	// stack.AddAddress()
-
-	//addrs, err := netlink.AddrList(link, netlink.FAMILY_ALL)
-	//if err != nil {
-	//	return nil, fmt.Errorf("error retrieving interface ip addresses: %s", err.Error())
-	//}
-
-	//if c.Addr != "" {
-	//	addr, err := netlink.ParseAddr(c.Addr)
-	//	if err != nil {
-	//		return nil, fmt.Errorf("bad IP address: %v: %s", c.Addr, err)
-	//	}
-	//	addrs = []netlink.Addr{*addr}
-	//}
-
-	/*
-		for _, parsedAddr := range addrs {
-			var addr tcpip.Address
-			var proto tcpip.NetworkProtocolNumber
-
-			if _, bits := parsedAddr.Mask.Size(); bits == 32 {
-				addr = tcpip.Address(parsedAddr.IP)
-				proto = ipv4.ProtocolNumber
-			} else if _, bits := parsedAddr.Mask.Size(); bits == 128 {
-				addr = tcpip.Address(parsedAddr.IP)
-				proto = ipv6.ProtocolNumber
-			} else {
-				return nil, fmt.Errorf("unknown IP type: %v, bits=%d", parsedAddr, bits)
-			}
-
-			log.Debugf("Listening on: %s (%#x)\n", parsedAddr.String(), proto)
-
-			//stack.AddAddressRange() from subnet??
-			if err := s.AddAddress(1, proto, addr); err != nil {
-				return nil, fmt.Errorf(err.String())
-			}
+	var addrs []net.IP
+	for _, addr := range c.IfaceAddrs {
+		if ip := net.ParseIP(addr); ip != nil {
+			addrs = append(addrs, ip)
 		}
-	*/
+	}
 
-	s.SetSpoofing(1, true)
+	eventWrapper := func(lower stack.LinkEndpoint) stack.LinkEndpoint {
+		return WrapLinkEndpoint(lower, c.events, c.knockChan)
+	}
+
+	s, err := SetupNetworkStack(nil, iface, addrs, eventWrapper)
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Printf("s.AllAdresses() = %+v\n", s.AllAddresses())
+	if main, err := s.GetMainNICAddress(1, ipv4.ProtocolNumber); err != nil {
+		fmt.Printf("err = %+v\n", err)
+	} else {
+		fmt.Printf("main = %+v\n", main)
+	}
+	if main, err := s.GetMainNICAddress(1, ipv6.ProtocolNumber); err != nil {
+		fmt.Printf("err = %+v\n", err)
+	} else {
+		fmt.Printf("main = %+v\n", main)
+	}
+	fmt.Printf("routes:  = %+v\n", s.GetRouteTable())
 
 	c.stack = s
 
-	log.Infof("canary started using network interface: %s", iface)
+	log.Infof("canary started using network interface: %+v", iface)
 
 	return c, nil
 }
@@ -214,19 +154,21 @@ func (c *Canary) Start(ctx context.Context) error {
 
 	go RunKnockDetector(ctx, c.knockChan, c.events)
 
-	for _, address := range c.Addresses {
+	fmt.Printf("c.listenAddrs = %+v\n", c.listenAddrs)
+
+	for _, address := range c.listenAddrs {
 		full := tcpip.FullAddress{
 			NIC: 1,
 		}
 
 		if a, ok := address.(*net.TCPAddr); ok {
-			ip, netproto := ipAndNetworkProtocol(a.IP)
+			proto, addr := ipToAddressAndProto(a.IP)
 
-			full.Addr = tcpip.Address(ip)
+			full.Addr = addr
 			full.Port = uint16(a.Port)
 
 			//l, err := ListenTCP(c.stack, full, netproto)
-			l, err := gonet.ListenTCP(c.stack, full, netproto)
+			l, err := gonet.ListenTCP(c.stack, full, proto)
 			if err != nil {
 				log.Errorf("Error starting listener: %v", err)
 				continue
@@ -265,12 +207,12 @@ func (c *Canary) Start(ctx context.Context) error {
 				}
 			}()
 		} else if _, ok := address.(*net.UDPAddr); ok {
-			ip, netproto := ipAndNetworkProtocol(a.IP)
+			proto, addr := ipToAddressAndProto(a.IP)
 
-			full.Addr = tcpip.Address(ip)
+			full.Addr = addr
 			full.Port = uint16(a.Port)
 
-			l, err := gonet.DialUDP(c.stack, &full, nil, netproto)
+			l, err := gonet.DialUDP(c.stack, &full, nil, proto)
 			if err != nil {
 				log.Errorf("Error starting listener: %v", err)
 				continue
@@ -310,58 +252,12 @@ func (c *Canary) Start(ctx context.Context) error {
 	return nil
 }
 
-func Routes(link netlink.Link) ([]tcpip.Route, error) {
-	rs, err := netlink.RouteList(link, netlink.FAMILY_ALL)
-	if err != nil {
-		return nil, fmt.Errorf("error getting routes from %q: %v", link.Attrs().Name, err)
-	}
-
-	var (
-		subnet tcpip.Subnet
-		routes = make([]tcpip.Route, 0, len(rs))
-	)
-
-	for _, route := range rs {
-		if route.Dst == nil && route.Gw != nil { //default route.
-			if route.Gw.To4() == nil {
-				subnet, err = tcpip.NewSubnet(tcpip.Address(net.IPv6zero), tcpip.AddressMask(net.IPv6zero))
-			} else {
-				subnet, err = tcpip.NewSubnet(tcpip.Address(net.IPv4zero), tcpip.AddressMask(net.IPv4zero))
-			}
-		} else {
-			subnet, err = tcpip.NewSubnet(tcpip.Address(route.Dst.IP.Mask(route.Dst.Mask)), tcpip.AddressMask(route.Dst.Mask))
-		}
-		if err != nil {
-			return nil, err
-		}
-		routes = append(routes, tcpip.Route{
-			Destination: subnet,
-			NIC:         1,
-		})
-	}
-	return routes, nil
-}
-
 func htons(n uint16) uint16 {
 	var (
 		high = n >> 8
 		ret  = n<<8 + high
 	)
 	return ret
-}
-
-func ipAndNetworkProtocol(ip net.IP) (net.IP, tcpip.NetworkProtocolNumber) {
-	netip := ip.To16() // valid IP or nil
-	netproto := ipv4.ProtocolNumber
-
-	if netip != nil && netip.To4() == nil {
-		netproto = ipv6.ProtocolNumber
-	}
-	if netip == nil {
-		netip = net.IP{}
-	}
-
-	return netip, netproto
 }
 
 //fileDescriptor opens a raw socket and binds it to network interface with name 'link'
