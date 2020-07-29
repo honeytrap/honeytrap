@@ -1,6 +1,7 @@
 package nscanary
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -25,40 +26,50 @@ import (
 
 type LinkEndpointWrapper func(stack.LinkEndpoint) stack.LinkEndpoint
 
+type RestoreDeviceFunc func() error
+
 type setupStack struct {
-	s       *stack.Stack
-	iface   *net.Interface
-	addrs   []net.IP
-	args    *boot.CreateLinksAndRoutesArgs
-	wrapper LinkEndpointWrapper
+	s         *stack.Stack
+	ifaces    []*net.Interface
+	args      *boot.CreateLinksAndRoutesArgs
+	wrapper   LinkEndpointWrapper
+	restoreFn RestoreDeviceFunc
 }
 
-func SetupNetworkStack(s *stack.Stack, iface *net.Interface, addrs []net.IP, wrap LinkEndpointWrapper) (*stack.Stack, error) {
+func SetupNetworkStack(s *stack.Stack, iface []*net.Interface, wrap LinkEndpointWrapper) (*stack.Stack, RestoreDeviceFunc, error) {
+	if len(iface) == 0 {
+		return nil, nil, errors.New("no network interfaces to setup")
+	}
+
+	// Use defaults if no value given.
+	if s == nil {
+		s = newEmptyNetworkStack()
+	}
+
+	if wrap == nil {
+		// set a default wrap func.
+		wrap = func(ep stack.LinkEndpoint) stack.LinkEndpoint { return ep }
+	}
+
 	setup := setupStack{
 		s:       s,
-		iface:   iface,
-		addrs:   addrs,
+		ifaces:  iface,
 		wrapper: wrap,
 		args:    &boot.CreateLinksAndRoutesArgs{},
 	}
 
-	if setup.s == nil {
-		setup.s = newEmptyNetworkStack()
-	}
-
-	if setup.wrapper == nil {
-		// set a default wrap func.
-		setup.wrapper = func(ep stack.LinkEndpoint) stack.LinkEndpoint { return ep }
-	}
-
 	err := setup.CreateLinksAndRoutes()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+
+	if setup.restoreFn == nil {
+		return nil, nil, errors.New("restore network device not set")
 	}
 
 	//setup.s.SetSpoofing(1, true)
 
-	return setup.s, nil
+	return setup.s, setup.restoreFn, nil
 }
 
 func newEmptyNetworkStack() *stack.Stack {
@@ -90,65 +101,159 @@ func newEmptyNetworkStack() *stack.Stack {
 	return s
 }
 
-func (s setupStack) createInterfacesAndRoutes() error {
+func (s *setupStack) createInterfacesAndRoutes() error {
+	// Restore device addresses on listener exit.
+	// map[netlink.Link] = []*net.IPNet.String()
+	restoreMap := make(map[netlink.Link][]string)
 
-	// Collect addresses and routes from the interfaces.
+	// Restore Routes on the host when honeytrap exits.
+	restoreRoutes := make([]netlink.Route, 0, 10)
 
-	// Scrape the routes.
-	routes, defv4, defv6, err := routesForIface(*s.iface)
-	if err != nil {
-		return fmt.Errorf("getting routes for interface %q: %v", s.iface.Name, err)
+	defer func() {
+		log.Debug("Setting RestoreDeviceFunc")
+		restoreFn := func() error {
+			for link, addrs := range restoreMap {
+				for _, addr := range addrs {
+					if err := restoreAddress(link, addr); err != nil {
+						return err
+					}
+				}
+			}
+			for _, route := range restoreRoutes {
+				if err := netlink.RouteAdd(&route); err != nil {
+					log.Debugf("failed to add route: %v", err)
+				}
+			}
+			return nil
+		}
+		s.restoreFn = RestoreDeviceFunc(restoreFn)
+	}()
+
+	for _, iface := range s.ifaces {
+		if iface.Flags&net.FlagUp == 0 {
+			log.Infof("Skipping down interface: %+v", iface)
+			continue
+		}
+
+		// We skip loopback devices.
+		if iface.Flags&net.FlagLoopback != 0 {
+			log.Infof("Skipping loopback interface: %+v", iface)
+			continue
+		}
+
+		allAddrs, err := iface.Addrs()
+		if err != nil {
+			return fmt.Errorf("fetching interface addresses for %q: %v", iface.Name, err)
+		}
+		if multi, err := iface.MulticastAddrs(); err != nil {
+			log.Debugf("MulticastAddrs: %v", err)
+		} else {
+			log.Debugf("Multicast Addresses: %+v", multi)
+		}
+
+		var ipAddrs []*net.IPNet
+		for _, ifaddr := range allAddrs {
+			ipNet, ok := ifaddr.(*net.IPNet)
+			if !ok {
+				return fmt.Errorf("address is not IPNet: %+v", ifaddr)
+			}
+			ipAddrs = append(ipAddrs, ipNet)
+		}
+		if len(ipAddrs) == 0 {
+			log.Warningf("No usable IP addresses found for interface %q, skipping", iface.Name)
+			continue
+		}
+
+		// Scrape the routes before removing the address, since that
+		// will remove the routes as well.
+		routes, defv4, defv6, err := routesForIface(*iface)
+		if err != nil {
+			return fmt.Errorf("getting routes for interface %q: %v", iface.Name, err)
+		}
+		if defv4 != nil {
+			if !s.args.Defaultv4Gateway.Route.Empty() {
+				return fmt.Errorf("more than one default route found, interface: %v, route: %v, default route: %+v", iface.Name, defv4, s.args.Defaultv4Gateway)
+			}
+			s.args.Defaultv4Gateway.Route = *defv4
+			s.args.Defaultv4Gateway.Name = iface.Name
+		}
+
+		if defv6 != nil {
+			if !s.args.Defaultv6Gateway.Route.Empty() {
+				return fmt.Errorf("more than one default route found, interface: %v, route: %v, default route: %+v", iface.Name, defv6, s.args.Defaultv6Gateway)
+			}
+			s.args.Defaultv6Gateway.Route = *defv6
+			s.args.Defaultv6Gateway.Name = iface.Name
+		}
+
+		link := boot.FDBasedLink{
+			Name:        iface.Name,
+			MTU:         iface.MTU,
+			Routes:      routes,
+			NumChannels: 1,
+		}
+
+		// Get the link for the interface.
+		ifaceLink, err := netlink.LinkByName(iface.Name)
+		if err != nil {
+			return fmt.Errorf("getting link for interface %q: %v", iface.Name, err)
+		}
+		link.LinkAddress = ifaceLink.Attrs().HardwareAddr
+
+		log.Debugf("Setting up network channels")
+		// Create the socket for the device.
+		for i := 0; i < link.NumChannels; i++ {
+			log.Debugf("Creating Channel %d", i)
+			socketEntry, err := createSocket(iface, ifaceLink)
+			if err != nil {
+				return fmt.Errorf("failed to createSocket for %s : %v", iface.Name, err)
+			}
+			s.args.FilePayload.Files = append(s.args.FilePayload.Files, socketEntry.deviceFile)
+		}
+
+		// Collect all routes in the system to restore them later.
+		// Do this before the addresses get removed.
+		rs, err := netlink.RouteList(ifaceLink, netlink.FAMILY_ALL)
+		if err != nil {
+			return fmt.Errorf("failed to get routes: %v", err)
+		}
+
+		restoreRoutes = append(restoreRoutes, rs...)
+
+		// Collect the addresses for the interface, enable forwarding,
+		// and remove them from the host.
+		for _, addr := range ipAddrs {
+			link.Addresses = append(link.Addresses, addr.IP)
+
+			// Save addresses to restore.
+			restoreMap[ifaceLink] = append(restoreMap[ifaceLink], addr.String())
+
+			// Steal IP address from NIC.
+			if err := removeAddress(ifaceLink, addr.String()); err != nil {
+				return fmt.Errorf("removing address %v from device %q: %v", iface.Name, addr, err)
+			}
+		}
+
+		s.args.FDBasedLinks = append(s.args.FDBasedLinks, link)
 	}
-	if defv4 != nil {
-		s.args.Defaultv4Gateway.Route = *defv4
-		s.args.Defaultv4Gateway.Name = s.iface.Name
-	}
 
-	if defv6 != nil {
-		s.args.Defaultv6Gateway.Route = *defv6
-		s.args.Defaultv6Gateway.Name = s.iface.Name
-	}
-
-	link := boot.FDBasedLink{
-		Name:        s.iface.Name,
-		MTU:         s.iface.MTU,
-		Routes:      routes,
-		NumChannels: 1,
-	}
-
-	// Get the link for the interface.
-	ifaceLink, err := netlink.LinkByName(s.iface.Name)
-	if err != nil {
-		return fmt.Errorf("getting link for interface %q: %v", s.iface.Name, err)
-	}
-	link.LinkAddress = ifaceLink.Attrs().HardwareAddr
-
-	// Create the socket for the device.
-	socketEntry, err := createSocket(s.iface, ifaceLink)
-	if err != nil {
-		return fmt.Errorf("failed to createSocket for %s : %v", s.iface.Name, err)
-	}
-	s.args.FilePayload.Files = append(s.args.FilePayload.Files, socketEntry.deviceFile)
-
-	// Collect the addresses for the interface, enable forwarding,
-	// and remove them from the host.
-	link.Addresses = append(link.Addresses, s.addrs...)
-
-	// Steal IP address from NIC.
-	//if err := removeAddress(ifaceLink, addr.String()); err != nil {
-	//	return fmt.Errorf("removing address %v from device %q: %v", iface.Name, addr, err)
-	//}
-
-	s.args.FDBasedLinks = append(s.args.FDBasedLinks, link)
-
+	log.Debugf("Setting up network, config: %+v", s.args)
 	return nil
 }
 
 // CreateLinksAndRoutes creates links and routes in a network stack.  It should
 // only be called once.
-func (s setupStack) CreateLinksAndRoutes() error {
+func (s *setupStack) CreateLinksAndRoutes() error {
 	if err := s.createInterfacesAndRoutes(); err != nil {
 		return err
+	}
+
+	wantFDs := 0
+	for _, l := range s.args.FDBasedLinks {
+		wantFDs += l.NumChannels
+	}
+	if got := len(s.args.FilePayload.Files); got != wantFDs {
+		return fmt.Errorf("args.FilePayload.Files has %d FD's but we need %d entries based on FDBasedLinks", got, wantFDs)
 	}
 
 	var nicID tcpip.NICID
@@ -156,6 +261,9 @@ func (s setupStack) CreateLinksAndRoutes() error {
 
 	// Collect routes from all links.
 	var routes []tcpip.Route
+
+	// Loopback normally appear before other interfaces.
+	// Don't do loopback NIC.
 
 	fdOffset := 0
 	for _, link := range s.args.FDBasedLinks {
@@ -194,9 +302,10 @@ func (s setupStack) CreateLinksAndRoutes() error {
 		log.Infof("Enabling interface %q with id %d on addresses %+v (%v) w/ %d channels", link.Name, nicID, link.Addresses, mac, link.NumChannels)
 
 		// Enable support for AF_PACKET sockets to receive outgoing packets.
+		// Use wrapper on endpoint.
 		linkEP = packetsocket.New(s.wrapper(linkEP))
 
-		if err := s.createNICWithAddrs(nicID, link.Name, linkEP); err != nil {
+		if err := s.createNICWithAddrs(nicID, link.Name, linkEP, link.Addresses); err != nil {
 			return err
 		}
 
@@ -241,7 +350,7 @@ func (s setupStack) CreateLinksAndRoutes() error {
 
 // createNICWithAddrs creates a NIC in the network stack and adds the given
 // addresses.
-func (s setupStack) createNICWithAddrs(id tcpip.NICID, name string, ep stack.LinkEndpoint) error {
+func (s setupStack) createNICWithAddrs(id tcpip.NICID, name string, ep stack.LinkEndpoint, addrs []net.IP) error {
 	opts := stack.NICOptions{Name: name}
 	if err := s.s.CreateNICWithOptions(id, ep, opts); err != nil {
 		return fmt.Errorf("CreateNICWithOptions(%d, _, %+v) failed: %v", id, opts, err)
@@ -252,7 +361,7 @@ func (s setupStack) createNICWithAddrs(id tcpip.NICID, name string, ep stack.Lin
 		return fmt.Errorf("AddAddress(%v, %v, %v) failed: %v", id, arp.ProtocolNumber, arp.ProtocolAddress, err)
 	}
 
-	for _, addr := range s.addrs {
+	for _, addr := range addrs {
 		proto, tcpipAddr := ipToAddressAndProto(addr)
 		if err := s.s.AddAddress(id, proto, tcpipAddr); err != nil {
 			return fmt.Errorf("AddAddress(%v, %v, %v) failed: %v", id, proto, tcpipAddr, err)
@@ -272,6 +381,7 @@ func routesForIface(iface net.Interface) ([]boot.Route, *boot.Route, *boot.Route
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("getting routes from %q: %v", iface.Name, err)
 	}
+	log.Debugf("Netlink Routes: %+v", rs)
 
 	var defv4, defv6 *boot.Route
 	var routes []boot.Route
@@ -409,4 +519,14 @@ func removeAddress(source netlink.Link, ipAndMask string) error {
 		return err
 	}
 	return netlink.AddrDel(source, addr)
+}
+
+// restoreAddress restores IP address on network device. It's equivalent to:
+//   ip addr add <ipAndMask> dev <name>
+func restoreAddress(source netlink.Link, ipAndMask string) error {
+	addr, err := netlink.ParseAddr(ipAndMask)
+	if err != nil {
+		return err
+	}
+	return netlink.AddrAdd(source, addr)
 }
