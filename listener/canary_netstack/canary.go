@@ -17,6 +17,7 @@ package nscanary
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -30,8 +31,6 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
 	"gvisor.dev/gvisor/pkg/tcpip/link/tun"
-	"gvisor.dev/gvisor/pkg/tcpip/network/ipv4"
-	"gvisor.dev/gvisor/pkg/tcpip/network/ipv6"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 )
 
@@ -53,7 +52,7 @@ var (
 )
 
 type Config struct {
-	IfaceAddrs       []string `toml:"interface_addrs"`
+	//IfaceAddrs       []string `toml:"interface_addrs"`
 	Interfaces       []string `toml:"interfaces"`
 	ExcludeLogProtos []string `toml:"exclude_log_protos"`
 }
@@ -68,7 +67,8 @@ type Canary struct {
 	knockChan   chan KnockGrouper
 	tlsConf     TLS
 
-	stack *stack.Stack
+	stack            *stack.Stack
+	restoreInterface RestoreDeviceFunc
 }
 
 //AddAddress implements listener.AddAddresser
@@ -79,6 +79,7 @@ func (c *Canary) AddAddress(a net.Addr) {
 func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 	c := &Canary{
 		events:    pushers.MustDummy(),
+		nconn:     make(chan net.Conn),
 		knockChan: make(chan KnockGrouper),
 		tlsConf:   NewTLSConf("", ""),
 	}
@@ -89,54 +90,35 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 		}
 	}
 
-	// set log flags.
+	// Set event creation flags.
 	ExcludeLogProtos(c.ExcludeLogProtos)
 
-	if len(c.Interfaces) == 0 {
-		return nil, fmt.Errorf("no interface defined")
-	}
-
-	iface, err := net.InterfaceByName(c.Interfaces[0])
-	if err != nil {
-		return nil, err
-	}
-
-	if iface.Flags&net.FlagUp == 0 {
-		return nil, fmt.Errorf("interface is down: %+v", iface)
-	}
-
-	var addrs []net.IP
-	for _, addr := range c.IfaceAddrs {
-		if ip := net.ParseIP(addr); ip != nil {
-			addrs = append(addrs, ip)
+	ifaces := []*net.Interface{}
+	for _, name := range c.Interfaces {
+		iface, err := net.InterfaceByName(name)
+		if err != nil {
+			log.Errorf("can't use interface: %s, %v", name, err)
+			continue
 		}
+		ifaces = append(ifaces, iface)
+		log.Infof("using interface: %s", name)
 	}
 
+	// Create events on NIC traffic.
 	eventWrapper := func(lower stack.LinkEndpoint) stack.LinkEndpoint {
 		return WrapLinkEndpoint(lower, c.events, c.knockChan)
 	}
 
-	s, err := SetupNetworkStack(nil, iface, addrs, eventWrapper)
+	s, restoreFunc, err := SetupNetworkStack(nil, ifaces, eventWrapper)
 	if err != nil {
 		return nil, err
 	}
+	c.restoreInterface = restoreFunc
 
 	fmt.Printf("s.AllAdresses() = %+v\n", s.AllAddresses())
-	if main, err := s.GetMainNICAddress(1, ipv4.ProtocolNumber); err != nil {
-		fmt.Printf("err = %+v\n", err)
-	} else {
-		fmt.Printf("main = %+v\n", main)
-	}
-	if main, err := s.GetMainNICAddress(1, ipv6.ProtocolNumber); err != nil {
-		fmt.Printf("err = %+v\n", err)
-	} else {
-		fmt.Printf("main = %+v\n", main)
-	}
 	fmt.Printf("routes:  = %+v\n", s.GetRouteTable())
 
 	c.stack = s
-
-	log.Infof("canary started using network interface: %+v", iface)
 
 	return c, nil
 }
@@ -151,6 +133,19 @@ func (c *Canary) SetChannel(ch pushers.Channel) {
 }
 
 func (c *Canary) Start(ctx context.Context) error {
+	defer func() {
+		log.Debug("restoring network device(s)...")
+		err := c.restoreInterface()
+		if err != nil {
+			log.Debugf("restore network devices has error: %v", err)
+		} else {
+			log.Debug("restoring network devices successfull")
+		}
+	}()
+
+	if !c.stack.CheckNIC(1) {
+		return errors.New("check failed on NIC 1")
+	}
 
 	go RunKnockDetector(ctx, c.knockChan, c.events)
 
@@ -167,8 +162,8 @@ func (c *Canary) Start(ctx context.Context) error {
 			full.Addr = addr
 			full.Port = uint16(a.Port)
 
-			//l, err := ListenTCP(c.stack, full, netproto)
-			l, err := gonet.ListenTCP(c.stack, full, proto)
+			l, err := ListenTCP(c.stack, full, proto)
+			//l, err := gonet.ListenTCP(c.stack, full, proto)
 			if err != nil {
 				log.Errorf("Error starting listener: %v", err)
 				continue
@@ -176,18 +171,19 @@ func (c *Canary) Start(ctx context.Context) error {
 
 			log.Infof("Listener started: tcp/%s:%d", full.Addr.String(), full.Port)
 
-			isTLS := false
+			//isTLS := false
 
 			go func() {
 				for {
 					select {
 					case <-ctx.Done():
+						log.Debug("closing TCP listener")
 						return
 					default:
 					}
 
-					//conn, isTLS, err := l.Accept()
-					conn, err := l.Accept()
+					conn, isTLS, err := l.Accept()
+					//conn, err := l.Accept()
 					if err != nil {
 						log.Errorf("Error accepting connection: %s", err.Error())
 						continue
@@ -202,8 +198,11 @@ func (c *Canary) Start(ctx context.Context) error {
 						c.nconn <- tlsConn
 						continue
 					}
+					log.Debug("Accepted a connection")
 
 					c.nconn <- conn
+
+					log.Debug("connection is in channel")
 				}
 			}()
 		} else if _, ok := address.(*net.UDPAddr); ok {
