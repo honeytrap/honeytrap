@@ -75,6 +75,10 @@ func ListenTCP(s *stack.Stack, addr tcpip.FullAddress, network tcpip.NetworkProt
 // Accept is a copy of gonet.TCPListener.Accept with added TLS detection.
 // returns an extra boolean indicating if it is a TLS request.
 func (l *TCPListener) Accept() (net.Conn, bool, error) {
+
+	var signature [3]byte
+	var isTLS bool
+
 	n, wq, err := l.ep.Accept()
 
 	if err == tcpip.ErrWouldBlock {
@@ -88,6 +92,19 @@ func (l *TCPListener) Accept() (net.Conn, bool, error) {
 
 			if err != tcpip.ErrWouldBlock {
 				break
+			}
+
+			if err == nil {
+				vec := [][]byte{signature[:]}
+
+				_, _, err = n.Peek(vec)
+				if err != nil {
+					return nil, false, fmt.Errorf("failed to peek: %s", err.String())
+				}
+				fmt.Printf("vec = %+x\n", vec)
+				if signature[0] == 0x16 && signature[1] == 0x03 && signature[2] <= 0x03 {
+					isTLS = true
+				}
 			}
 
 			select {
@@ -105,15 +122,6 @@ func (l *TCPListener) Accept() (net.Conn, bool, error) {
 			Addr: l.Addr(),
 			Err:  errors.New(err.String()),
 		}
-	}
-
-	var signature [3]byte
-	var isTLS bool
-
-	vec := [][]byte{signature[:]}
-	_, _, _ = l.ep.Peek(vec)
-	if signature[0] == 0x16 && signature[1] == 0x03 && signature[2] <= 0x03 {
-		isTLS = true
 	}
 
 	return gonet.NewTCPConn(wq, n), isTLS, nil

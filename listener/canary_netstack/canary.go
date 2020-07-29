@@ -17,6 +17,7 @@ package nscanary
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -162,8 +163,8 @@ func (c *Canary) Start(ctx context.Context) error {
 			full.Addr = addr
 			full.Port = uint16(a.Port)
 
-			l, err := ListenTCP(c.stack, full, proto)
-			//l, err := gonet.ListenTCP(c.stack, full, proto)
+			//l, err := ListenTCP(c.stack, full, proto)
+			l, err := gonet.ListenTCP(c.stack, full, proto)
 			if err != nil {
 				log.Errorf("Error starting listener: %v", err)
 				continue
@@ -171,7 +172,7 @@ func (c *Canary) Start(ctx context.Context) error {
 
 			log.Infof("Listener started: tcp/%s:%d", full.Addr.String(), full.Port)
 
-			//isTLS := false
+			isTLS := false
 
 			go func() {
 				for {
@@ -182,19 +183,23 @@ func (c *Canary) Start(ctx context.Context) error {
 					default:
 					}
 
-					conn, isTLS, err := l.Accept()
-					//conn, err := l.Accept()
+					//conn, isTLS, err := l.Accept()
+					conn, err := l.Accept()
 					if err != nil {
 						log.Errorf("Error accepting connection: %s", err.Error())
 						continue
 					}
 
 					if isTLS {
+						log.Debug("TLS detected, try handshake")
+
 						tlsConn, err := c.tlsConf.Handshake(conn, c.events)
 						if err != nil {
 							log.Debugf("tls connection: %v", err)
 							continue
 						}
+						log.Debugf("tls connectionstate: %+v", tlsConn.(*tls.Conn).ConnectionState())
+
 						c.nconn <- tlsConn
 						continue
 					}

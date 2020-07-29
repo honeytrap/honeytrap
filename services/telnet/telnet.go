@@ -81,6 +81,7 @@ func (s *telnetService) Handle(ctx context.Context, conn net.Conn) error {
 	id := xid.New()
 
 	defer conn.Close()
+	log.Debug("Telnet handling started")
 
 	var connOptions event.Option = nil
 
