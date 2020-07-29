@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/honeytrap/honeytrap/event"
+	"github.com/honeytrap/honeytrap/pkg/peek"
 	"github.com/honeytrap/honeytrap/pushers"
 )
 
@@ -41,6 +42,12 @@ func NewTLSConf(certFile, keyFile string) TLS {
 			Certificates: []tls.Certificate{cert},
 		},
 	}
+}
+
+func (c TLS) MaybeTLS(conn net.Conn, event pushers.Channel) (net.Conn, error) {
+	pconn := peek.NewConn(conn)
+
+	return pconn, nil
 }
 
 // Handshake does a tls.Server handshake on conn and returns the resulting tls connection.

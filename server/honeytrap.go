@@ -29,6 +29,7 @@ import (
 
 	"github.com/honeytrap/honeytrap/cmd"
 	"github.com/honeytrap/honeytrap/config"
+	"github.com/honeytrap/honeytrap/pkg/peek"
 
 	"github.com/honeytrap/honeytrap/director"
 	_ "github.com/honeytrap/honeytrap/director/forward"
@@ -191,7 +192,7 @@ func (hc *Honeytrap) findService(conn net.Conn) (*ServiceMap, net.Conn, error) {
 
 	peekUninitialized := true
 	var tConn net.Conn
-	var pConn *peekConnection
+	var pConn *peek.Conn
 	var n int
 	buffer := make([]byte, 1024)
 	for _, service := range serviceCandidates {
@@ -204,7 +205,7 @@ func (hc *Honeytrap) findService(conn net.Conn) (*ServiceMap, net.Conn, error) {
 		if peekUninitialized {
 			// wrap connection in a connection with deadlines
 			tConn = TimeoutConn(conn, time.Second*30)
-			pConn = PeekConnection(tConn)
+			pConn = peek.NewConn(tConn)
 			log.Debug("Peeking connection %s => %s", conn.RemoteAddr(), conn.LocalAddr())
 			_n, err := pConn.Peek(buffer)
 			n = _n // avoid silly "variable not used" warning
