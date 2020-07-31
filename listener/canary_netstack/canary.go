@@ -7,17 +7,15 @@ package nscanary
 //  listener = "canary-netstack"
 //  interfaces = ["iface"]
 //
-//  # interface addresses to use, ipv4/ipv6.
-//  interface-addrs=["1.2.3.4", "ff80::1"]
-//
 //  # exclude_log_protos sets the used protos for logging (optional) (default: all)
 //  # recognized options for protos: ["ip4", "ip6", "arp", "udp", "tcp", "icmp"]
-//  exclude_log_protos = []
+//  exclude_log_protos = [] (default)
+//  # no_tls true: checks connection for tls and does tls handshake if so.
+//  no_tls=false (default)
 //
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -56,6 +54,9 @@ type Config struct {
 	//IfaceAddrs       []string `toml:"interface_addrs"`
 	Interfaces       []string `toml:"interfaces"`
 	ExcludeLogProtos []string `toml:"exclude_log_protos"`
+	NoTLS            bool     `toml:"no_tls"`
+	CertificateFile  string   `toml:"certificate_file"`
+	KeyFile          string   `toml:"key_file"`
 }
 
 type Canary struct {
@@ -82,13 +83,20 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 		events:    pushers.MustDummy(),
 		nconn:     make(chan net.Conn),
 		knockChan: make(chan KnockGrouper),
-		tlsConf:   NewTLSConf("", ""),
 	}
 
 	for _, opt := range options {
 		if err := opt(c); err != nil {
 			return nil, err
 		}
+	}
+
+	if c.CertificateFile == "" || c.KeyFile == "" {
+		c.NoTLS = true
+	}
+
+	if !c.NoTLS {
+		c.tlsConf = NewTLSConf(c.CertificateFile, c.KeyFile)
 	}
 
 	// Set event creation flags.
@@ -116,8 +124,7 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 	}
 	c.restoreInterface = restoreFunc
 
-	fmt.Printf("s.AllAdresses() = %+v\n", s.AllAddresses())
-	fmt.Printf("routes:  = %+v\n", s.GetRouteTable())
+	fmt.Printf("s.NICInfo() = %+v\n", s.NICInfo())
 
 	c.stack = s
 
@@ -140,7 +147,7 @@ func (c *Canary) Start(ctx context.Context) error {
 		if err != nil {
 			log.Debugf("restore network devices has error: %v", err)
 		} else {
-			log.Debug("restoring network devices successfull")
+			log.Debug("restoring network device(s) successfull")
 		}
 	}()
 
@@ -163,7 +170,6 @@ func (c *Canary) Start(ctx context.Context) error {
 			full.Addr = addr
 			full.Port = uint16(a.Port)
 
-			//l, err := ListenTCP(c.stack, full, proto)
 			l, err := gonet.ListenTCP(c.stack, full, proto)
 			if err != nil {
 				log.Errorf("Error starting listener: %v", err)
@@ -171,8 +177,6 @@ func (c *Canary) Start(ctx context.Context) error {
 			}
 
 			log.Infof("Listener started: tcp/%s:%d", full.Addr.String(), full.Port)
-
-			isTLS := false
 
 			go func() {
 				for {
@@ -183,26 +187,21 @@ func (c *Canary) Start(ctx context.Context) error {
 					default:
 					}
 
-					//conn, isTLS, err := l.Accept()
 					conn, err := l.Accept()
 					if err != nil {
 						log.Errorf("Error accepting connection: %s", err.Error())
 						continue
 					}
 
-					if isTLS {
-						log.Debug("TLS detected, try handshake")
-
-						tlsConn, err := c.tlsConf.Handshake(conn, c.events)
+					if !c.NoTLS {
+						mconn, err := c.tlsConf.MaybeTLS(conn, c.events)
 						if err != nil {
-							log.Debugf("tls connection: %v", err)
+							log.Errorf("failed maybe tls connection: %v", err)
 							continue
 						}
-						log.Debugf("tls connectionstate: %+v", tlsConn.(*tls.Conn).ConnectionState())
-
-						c.nconn <- tlsConn
-						continue
+						conn = mconn
 					}
+
 					log.Debug("Accepted a connection")
 
 					c.nconn <- conn
