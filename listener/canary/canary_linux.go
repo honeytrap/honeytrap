@@ -937,8 +937,8 @@ func (c *Canary) Accept() (net.Conn, error) {
 }
 
 // Close will close the canary
-func (c *Canary) Close() {
-	syscall.Close(c.epfd)
+func (c *Canary) Close() error {
+	return syscall.Close(c.epfd)
 }
 
 func updateTCPChecksum(iph *ipv4.Header, data []byte) {
@@ -1021,11 +1021,6 @@ func (c *Canary) transmit(fd int32) error {
 //Start will start Canary
 func (c *Canary) Start(ctx context.Context) error {
 	go c.knockDetector(ctx)
-
-	go func() {
-		<-ctx.Done()
-		c.Close()
-	}()
 
 	var (
 		events [MaxEpollEvents]syscall.EpollEvent

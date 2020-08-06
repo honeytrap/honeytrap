@@ -75,6 +75,10 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 	return &l, nil
 }
 
+func (l *tunListener) Close() error {
+	return nil
+}
+
 func (l *tunListener) Start(ctx context.Context) error {
 	config := water.Config{
 		DeviceType: water.TUN,

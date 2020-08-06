@@ -16,7 +16,6 @@ package nscanary
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -31,6 +30,9 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
 	"gvisor.dev/gvisor/pkg/tcpip/link/tun"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
+	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
+	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
+	"gvisor.dev/gvisor/pkg/waiter"
 )
 
 var log = logging.MustGetLogger("listeners/netstack-canary")
@@ -51,31 +53,31 @@ var (
 )
 
 type Config struct {
-	//IfaceAddrs       []string `toml:"interface_addrs"`
-	Interfaces       []string `toml:"interfaces"`
+	Addrs            []string `toml:"addresses"`
+	Interfaces       []string `toml:"interfaces"` // name of network interface (ip link)
 	ExcludeLogProtos []string `toml:"exclude_log_protos"`
 	NoTLS            bool     `toml:"no_tls"`
 	CertificateFile  string   `toml:"certificate_file"`
 	KeyFile          string   `toml:"key_file"`
+	Filter           []string `toml:"filter"` // format: cidr "1.2.3.4/24"
 }
 
 type Canary struct {
 	Config
 
-	listenAddrs []net.Addr
-	interfaces  []net.Interface
-	events      pushers.Channel
-	nconn       chan net.Conn
-	knockChan   chan KnockGrouper
-	tlsConf     TLS
+	serviceAddrs []net.Addr
+	events       pushers.Channel
+	nconn        chan net.Conn
+	knockChan    chan KnockGrouper
+	tlsConf      TLS
 
-	stack            *stack.Stack
-	restoreInterface RestoreDeviceFunc
+	stack          *stack.Stack
+	restoreDevices RestoreDeviceFunc
 }
 
 //AddAddress implements listener.AddAddresser
 func (c *Canary) AddAddress(a net.Addr) {
-	c.listenAddrs = append(c.listenAddrs, a)
+	c.serviceAddrs = append(c.serviceAddrs, a)
 }
 
 func New(options ...func(listener.Listener) error) (listener.Listener, error) {
@@ -102,29 +104,18 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 	// Set event creation flags.
 	ExcludeLogProtos(c.ExcludeLogProtos)
 
-	ifaces := []*net.Interface{}
-	for _, name := range c.Interfaces {
-		iface, err := net.InterfaceByName(name)
-		if err != nil {
-			log.Errorf("can't use interface: %s, %v", name, err)
-			continue
-		}
-		ifaces = append(ifaces, iface)
-		log.Infof("using interface: %s", name)
-	}
-
 	// Create events on NIC traffic.
 	eventWrapper := func(lower stack.LinkEndpoint) stack.LinkEndpoint {
 		return WrapLinkEndpoint(lower, c.events, c.knockChan)
 	}
 
-	s, restoreFunc, err := SetupNetworkStack(nil, ifaces, eventWrapper)
+	s, restoreFunc, err := SetupNetworkStack(nil, c.Interfaces, eventWrapper)
 	if err != nil {
 		return nil, err
 	}
-	c.restoreInterface = restoreFunc
+	c.restoreDevices = restoreFunc
 
-	fmt.Printf("s.NICInfo() = %+v\n", s.NICInfo())
+	log.Debugf("s.NICInfo() = %+v\n", s.NICInfo())
 
 	c.stack = s
 
@@ -140,117 +131,287 @@ func (c *Canary) SetChannel(ch pushers.Channel) {
 	c.events = ch
 }
 
+func (c *Canary) Close() error {
+	log.Debugf("s.NICInfo() = %+v\n", c.stack.NICInfo())
+
+	c.stack.Close()
+
+	// log.Debug("restoring network device(s)...")
+	// err := c.restoreDevices()
+	// if err != nil {
+	// 	return fmt.Errorf("restore network devices has error: %v", err)
+	// }
+
+	// log.Debug("restoring network device(s) successfull")
+	return nil
+}
+
 func (c *Canary) Start(ctx context.Context) error {
 	defer func() {
 		log.Debug("restoring network device(s)...")
-		err := c.restoreInterface()
+		err := c.restoreDevices()
 		if err != nil {
-			log.Debugf("restore network devices has error: %v", err)
-		} else {
-			log.Debug("restoring network device(s) successfull")
+			log.Errorf("restore network devices has error: %v", err)
 		}
-	}()
 
-	if !c.stack.CheckNIC(1) {
-		return errors.New("check failed on NIC 1")
-	}
+		log.Debug("restoring network device(s) successfull")
+	}()
 
 	go RunKnockDetector(ctx, c.knockChan, c.events)
 
-	fmt.Printf("c.listenAddrs = %+v\n", c.listenAddrs)
-
-	for _, address := range c.listenAddrs {
-		full := tcpip.FullAddress{
-			NIC: 1,
+	filterAddrs := []tcpip.Subnet{}
+	for _, s := range c.Filter {
+		_, net, err := net.ParseCIDR(s)
+		if err != nil {
+			log.Fatalf("Could not parse filter address: %s: %s", s, err.Error())
 		}
 
-		if a, ok := address.(*net.TCPAddr); ok {
-			proto, addr := ipToAddressAndProto(a.IP)
+		mask := tcpip.AddressMask([]byte{255, 255, 255, 255})
+		if net != nil {
+			mask = tcpip.AddressMask(net.Mask)
+		}
 
-			full.Addr = addr
-			full.Port = uint16(a.Port)
+		subnet, err := tcpip.NewSubnet(tcpip.Address(net.IP).To4(), mask)
+		if err != nil {
+			log.Fatalf("Could not create subnet: %s: %s", s, err.Error())
+		}
 
-			l, err := gonet.ListenTCP(c.stack, full, proto)
-			if err != nil {
-				log.Errorf("Error starting listener: %v", err)
-				continue
+		filterAddrs = append(filterAddrs, subnet)
+	}
+
+	canHandle := func(addr2 net.Addr) bool {
+		for _, addr := range c.serviceAddrs {
+			if ta, ok := addr.(*net.TCPAddr); ok {
+				ta2, ok := addr2.(*net.TCPAddr)
+				if !ok {
+					// compare apples with pears
+					continue
+				}
+
+				if ta.Port != ta2.Port {
+					continue
+				}
+
+				if ta.IP == nil {
+				} else if !ta.IP.Equal(ta2.IP) {
+					continue
+				}
+
+				return true
+			} else if ua, ok := addr.(*net.UDPAddr); ok {
+				ua2, ok := addr2.(*net.UDPAddr)
+				if !ok {
+					// compare apples with pears
+					continue
+				}
+				if ua.Port != ua2.Port {
+					continue
+				}
+
+				if ua.IP == nil {
+				} else if !ua.IP.Equal(ua2.IP) {
+					continue
+				}
+
+				return true
+			}
+		}
+		log.Debugf("no service defined for: %s", addr2.String())
+
+		return false
+	}
+
+	shouldFilter := func(id stack.TransportEndpointID) bool {
+		for _, addr := range filterAddrs {
+			// don't respond to filtered addresses
+			if addr.Contains(id.RemoteAddress) {
+				log.Debugf("filtered: %s", id.RemoteAddress)
+				return true
+			}
+		}
+
+		return false
+	}
+
+	tcpForwarder := tcp.NewForwarder(c.stack, 30000, 5000, func(r *tcp.ForwarderRequest) {
+		// got syn
+		// check for ports to ignore
+		id := r.ID()
+
+		if !canHandle(&net.TCPAddr{
+			IP:   net.IP(id.LocalAddress),
+			Port: int(id.LocalPort),
+		}) {
+			// catch all?
+			// not listening to
+			r.Complete(false)
+			return
+		}
+
+		if shouldFilter(id) {
+			// not listening to
+			r.Complete(false)
+			return
+		}
+
+		// should check here if port is being supported
+		// do we have a port mapping for this service?
+
+		// l.ch <- Accepter()
+		// accepter.Accept() -> will run CreateEndpoint
+
+		// perform handshake
+		var wq waiter.Queue
+
+		ep, err := r.CreateEndpoint(&wq)
+		if err != nil {
+			// handshake failed, cleanup
+			r.Complete(false)
+
+			log.Errorf("Error creating endpoint: %s", err)
+			return
+		}
+
+		r.Complete(false)
+
+		conn, terr := c.tlsConf.MaybeTLS(gonet.NewTCPConn(&wq, ep), c.events)
+		if terr != nil {
+			log.Errorf("maybe tls: %s", terr)
+			r.Complete(false)
+		}
+		c.nconn <- conn
+	})
+
+	c.stack.SetTransportProtocolHandler(tcp.ProtocolNumber, tcpForwarder.HandlePacket)
+
+	udpForwarder := NewUDPForwarder(c.stack, func(fr *UDPForwarderRequest) {
+		id := fr.ID()
+
+		if !canHandle(
+			&net.UDPAddr{
+				IP:   net.IP(id.LocalAddress),
+				Port: int(id.LocalPort),
+			}) {
+			return
+		}
+
+		if shouldFilter(id) {
+			// not listening to
+			return
+		}
+
+		c.nconn <- &listener.DummyUDPConn{
+			Buffer: fr.Payload(),
+			Laddr: &net.UDPAddr{
+				IP:   net.IP(id.LocalAddress),
+				Port: int(id.LocalPort),
+			},
+			Raddr: &net.UDPAddr{
+				IP:   net.IP(id.RemoteAddress),
+				Port: int(id.RemotePort),
+			},
+			Fn: fr.Write,
+		}
+
+	})
+
+	c.stack.SetTransportProtocolHandler(udp.ProtocolNumber, udpForwarder.HandlePacket)
+	/*
+
+		for _, address := range c.serviceAddrs {
+			full := tcpip.FullAddress{
+				NIC: 1,
 			}
 
-			log.Infof("Listener started: tcp/%s:%d", full.Addr.String(), full.Port)
+			if a, ok := address.(*net.TCPAddr); ok {
+				proto, addr := ipToAddressAndProto(a.IP)
 
-			go func() {
-				for {
+				full.Addr = addr
+				full.Port = uint16(a.Port)
+
+				l, err := gonet.ListenTCP(c.stack, full, proto)
+				if err != nil {
+					log.Errorf("Error starting listener: %v", err)
+					continue
+				}
+
+				log.Infof("Listener started: tcp/%s:%d", full.Addr.String(), full.Port)
+
+				go func() {
+					for {
+						select {
+						case <-ctx.Done():
+							log.Debug("closing TCP listener")
+							return
+						default:
+						}
+
+						conn, err := l.Accept()
+						if err != nil {
+							log.Errorf("Error accepting connection: %s", err.Error())
+							continue
+						}
+
+						if !c.NoTLS {
+							mconn, err := c.tlsConf.MaybeTLS(conn, c.events)
+							if err != nil {
+								log.Errorf("failed maybe tls connection: %v", err)
+								continue
+							}
+							conn = mconn
+						}
+
+						log.Debug("Accepted a connection")
+
+						c.nconn <- conn
+
+						log.Debug("connection is in channel")
+					}
+				}()
+			} else if _, ok := address.(*net.UDPAddr); ok {
+				proto, addr := ipToAddressAndProto(a.IP)
+
+				full.Addr = addr
+				full.Port = uint16(a.Port)
+
+				l, err := gonet.DialUDP(c.stack, &full, nil, proto)
+				if err != nil {
+					log.Errorf("Error starting listener: %v", err)
+					continue
+				}
+
+				ul := UDPConn{l}
+
+				log.Infof("Listener started: udp/%s", address)
+
+				go func() {
 					select {
 					case <-ctx.Done():
-						log.Debug("closing TCP listener")
 						return
 					default:
 					}
 
-					conn, err := l.Accept()
-					if err != nil {
-						log.Errorf("Error accepting connection: %s", err.Error())
-						continue
-					}
+					for {
+						var buf [65535]byte
 
-					if !c.NoTLS {
-						mconn, err := c.tlsConf.MaybeTLS(conn, c.events)
+						n, raddr, err := ul.ReadFromUDP(buf[:])
 						if err != nil {
-							log.Errorf("failed maybe tls connection: %v", err)
+							log.Error("Error reading udp:", err.Error())
 							continue
 						}
-						conn = mconn
+
+						//TODO (jerry): Not thread safe, need to copy buf.
+						c.nconn <- &listener.DummyUDPConn{
+							Buffer: buf[:n],
+							Laddr:  l.LocalAddr(),
+							Raddr:  raddr,
+							Fn:     ul.WriteToUDP,
+						}
 					}
-
-					log.Debug("Accepted a connection")
-
-					c.nconn <- conn
-
-					log.Debug("connection is in channel")
-				}
-			}()
-		} else if _, ok := address.(*net.UDPAddr); ok {
-			proto, addr := ipToAddressAndProto(a.IP)
-
-			full.Addr = addr
-			full.Port = uint16(a.Port)
-
-			l, err := gonet.DialUDP(c.stack, &full, nil, proto)
-			if err != nil {
-				log.Errorf("Error starting listener: %v", err)
-				continue
+				}()
 			}
-
-			ul := UDPConn{l}
-
-			log.Infof("Listener started: udp/%s", address)
-
-			go func() {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-				}
-
-				for {
-					var buf [65535]byte
-
-					n, raddr, err := ul.ReadFromUDP(buf[:])
-					if err != nil {
-						log.Error("Error reading udp:", err.Error())
-						continue
-					}
-
-					c.nconn <- &listener.DummyUDPConn{
-						Buffer: buf[:n],
-						Laddr:  l.LocalAddr(),
-						Raddr:  raddr,
-						Fn:     ul.WriteToUDP,
-					}
-				}
-			}()
 		}
-	}
+	*/
 
 	return nil
 }

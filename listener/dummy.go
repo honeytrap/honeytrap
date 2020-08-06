@@ -30,6 +30,10 @@ func Dummy(options ...func(Listener) error) (Listener, error) {
 type dummyListener struct {
 }
 
+func (l *dummyListener) Close() error {
+	return nil
+}
+
 func (l *dummyListener) Start(ctx context.Context) error {
 	return nil
 }

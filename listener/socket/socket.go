@@ -60,6 +60,10 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 	return &l, nil
 }
 
+func (sl *socketListener) Close() error {
+	return nil
+}
+
 func (sl *socketListener) Start(ctx context.Context) error {
 	for _, address := range sl.Addresses {
 		if _, ok := address.(*net.TCPAddr); ok {

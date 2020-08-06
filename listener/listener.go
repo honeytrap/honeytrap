@@ -45,5 +45,6 @@ func Range(fn func(string)) {
 
 type Listener interface {
 	Start(ctx context.Context) error
+	Close() error
 	Accept() (net.Conn, error)
 }

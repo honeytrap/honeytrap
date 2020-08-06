@@ -240,6 +240,10 @@ func (al *agentListener) serv(c *conn2) {
 	}
 }
 
+func (al *agentListener) Close() error {
+	return nil
+}
+
 // Start the listener
 func (al *agentListener) Start(ctx context.Context) error {
 	storage, err := Storage()

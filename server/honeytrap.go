@@ -660,6 +660,9 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			if err := l.Close(); err != nil {
+				log.Errorf("closing listener %s: %v", x.Type, err)
+			}
 			return
 		case conn := <-incoming:
 			go hc.handle(conn)
