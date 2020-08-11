@@ -268,12 +268,13 @@ func createNIC(nic *NIC, s *stack.Stack, wrapFn LinkEndpointWrapper) error {
 
 	mac := tcpip.LinkAddress(nic.iface.Attrs().HardwareAddr)
 
+	// linkEP, err := fdbased.New(&fdbased.Options{
 	linkEP, err := fdbased.New(&fdbased.Options{
 		FDs:                FDs,
 		MTU:                uint32(nic.iface.Attrs().MTU),
 		EthernetHeader:     true,
 		Address:            mac,
-		PacketDispatchMode: fdbased.PacketMMap,
+		PacketDispatchMode: fdbased.RecvMMsg,
 		GSOMaxSize:         0,
 		SoftwareGSOEnabled: false,
 		TXChecksumOffload:  false,

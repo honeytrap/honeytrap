@@ -15,9 +15,13 @@ package nscanary
 //
 
 import (
+	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
+	"io"
 	"net"
+	"os"
 	"strings"
 	"syscall"
 
@@ -26,7 +30,6 @@ import (
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/op/go-logging"
 	"golang.org/x/sys/unix"
-	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
 	"gvisor.dev/gvisor/pkg/tcpip/link/tun"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
@@ -53,13 +56,14 @@ var (
 )
 
 type Config struct {
-	Addrs            []string `toml:"addresses"`
-	Interfaces       []string `toml:"interfaces"` // name of network interface (ip link)
-	ExcludeLogProtos []string `toml:"exclude_log_protos"`
-	NoTLS            bool     `toml:"no_tls"`
-	CertificateFile  string   `toml:"certificate_file"`
-	KeyFile          string   `toml:"key_file"`
-	Filter           []string `toml:"filter"` // format: cidr "1.2.3.4/24"
+	BlockPorts         []string `toml:"block_ports"`
+	BlockSourceIP      []string `toml:"block_source_ip"`
+	BlockDestinationIP []string `toml:"block_destination_ip"`
+
+	Addrs           []string `toml:"addresses"`
+	Interfaces      []string `toml:"interfaces"` // name of network interface (ip link)
+	CertificateFile string   `toml:"certificate_file"`
+	KeyFile         string   `toml:"key_file"`
 }
 
 type Canary struct {
@@ -69,10 +73,11 @@ type Canary struct {
 	events       pushers.Channel
 	nconn        chan net.Conn
 	knockChan    chan KnockGrouper
-	tlsConf      TLS
 
 	stack          *stack.Stack
 	restoreDevices RestoreDeviceFunc
+
+	tls TLS
 }
 
 //AddAddress implements listener.AddAddresser
@@ -80,11 +85,16 @@ func (c *Canary) AddAddress(a net.Addr) {
 	c.serviceAddrs = append(c.serviceAddrs, a)
 }
 
+func (c *Canary) AddTLSConfig(port uint16, config *tls.Config) {
+	c.tls.AddConfig(port, config)
+}
+
 func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 	c := &Canary{
 		events:    pushers.MustDummy(),
 		nconn:     make(chan net.Conn),
 		knockChan: make(chan KnockGrouper),
+		tls:       make(TLS),
 	}
 
 	for _, opt := range options {
@@ -93,20 +103,17 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 		}
 	}
 
-	if c.CertificateFile == "" || c.KeyFile == "" {
-		c.NoTLS = true
+	o := SniffAndFilterOpts{
+		EventChan:          c.events,
+		KnockChan:          c.knockChan,
+		BlockPorts:         c.BlockPorts,
+		BlockSourceIP:      c.BlockSourceIP,
+		BlockDestinationIP: c.BlockDestinationIP,
 	}
-
-	if !c.NoTLS {
-		c.tlsConf = NewTLSConf(c.CertificateFile, c.KeyFile)
-	}
-
-	// Set event creation flags.
-	ExcludeLogProtos(c.ExcludeLogProtos)
 
 	// Create events on NIC traffic.
 	eventWrapper := func(lower stack.LinkEndpoint) stack.LinkEndpoint {
-		return WrapLinkEndpoint(lower, c.events, c.knockChan)
+		return WrapLinkEndpoint(lower, o)
 	}
 
 	s, restoreFunc, err := SetupNetworkStack(nil, c.Interfaces, eventWrapper)
@@ -118,6 +125,14 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 	log.Debugf("s.NICInfo() = %+v\n", s.NICInfo())
 
 	c.stack = s
+
+	// // set the default tls.Config
+	// if tconf, err := tlsconf(c.CertificateFile, c.KeyFile); err != nil {
+	// 	log.Debugf("No default TLS config set: %v", err)
+	// } else {
+	// 	c.tls = &TLS{}
+	// 	c.tls.AddConfig(0, tconf)
+	// }
 
 	return c, nil
 }
@@ -158,26 +173,6 @@ func (c *Canary) Start(ctx context.Context) error {
 	}()
 
 	go RunKnockDetector(ctx, c.knockChan, c.events)
-
-	filterAddrs := []tcpip.Subnet{}
-	for _, s := range c.Filter {
-		_, net, err := net.ParseCIDR(s)
-		if err != nil {
-			log.Fatalf("Could not parse filter address: %s: %s", s, err.Error())
-		}
-
-		mask := tcpip.AddressMask([]byte{255, 255, 255, 255})
-		if net != nil {
-			mask = tcpip.AddressMask(net.Mask)
-		}
-
-		subnet, err := tcpip.NewSubnet(tcpip.Address(net.IP).To4(), mask)
-		if err != nil {
-			log.Fatalf("Could not create subnet: %s: %s", s, err.Error())
-		}
-
-		filterAddrs = append(filterAddrs, subnet)
-	}
 
 	canHandle := func(addr2 net.Addr) bool {
 		for _, addr := range c.serviceAddrs {
@@ -221,44 +216,9 @@ func (c *Canary) Start(ctx context.Context) error {
 		return false
 	}
 
-	shouldFilter := func(id stack.TransportEndpointID) bool {
-		for _, addr := range filterAddrs {
-			// don't respond to filtered addresses
-			if addr.Contains(id.RemoteAddress) {
-				log.Debugf("filtered: %s", id.RemoteAddress)
-				return true
-			}
-		}
-
-		return false
-	}
-
 	tcpForwarder := tcp.NewForwarder(c.stack, 30000, 5000, func(r *tcp.ForwarderRequest) {
 		// got syn
-		// check for ports to ignore
 		id := r.ID()
-
-		if !canHandle(&net.TCPAddr{
-			IP:   net.IP(id.LocalAddress),
-			Port: int(id.LocalPort),
-		}) {
-			// catch all?
-			// not listening to
-			r.Complete(false)
-			return
-		}
-
-		if shouldFilter(id) {
-			// not listening to
-			r.Complete(false)
-			return
-		}
-
-		// should check here if port is being supported
-		// do we have a port mapping for this service?
-
-		// l.ch <- Accepter()
-		// accepter.Accept() -> will run CreateEndpoint
 
 		// perform handshake
 		var wq waiter.Queue
@@ -274,11 +234,19 @@ func (c *Canary) Start(ctx context.Context) error {
 
 		r.Complete(false)
 
-		conn, terr := c.tlsConf.MaybeTLS(gonet.NewTCPConn(&wq, ep), c.events)
+		conn, terr := c.tls.MaybeTLS(gonet.NewTCPConn(&wq, ep), id.LocalPort, c.events)
 		if terr != nil {
 			log.Errorf("maybe tls: %s", terr)
 			r.Complete(false)
 		}
+
+		// check for ports to ignore
+		if !canHandle(conn.LocalAddr()) {
+			conn.Close()
+			r.Complete(false)
+			return
+		}
+
 		c.nconn <- conn
 	})
 
@@ -292,11 +260,6 @@ func (c *Canary) Start(ctx context.Context) error {
 				IP:   net.IP(id.LocalAddress),
 				Port: int(id.LocalPort),
 			}) {
-			return
-		}
-
-		if shouldFilter(id) {
-			// not listening to
 			return
 		}
 
@@ -465,4 +428,31 @@ func fileDescriptor(link string, linkIndex int) (int, error) {
 		}
 	}
 	return fd, nil
+}
+
+func tlsconf(certFile, keyFile string) (*tls.Config, error) {
+	var pemCert, pemKey bytes.Buffer
+
+	file, err := os.Open(certFile)
+	if err != nil {
+		return nil, fmt.Errorf("open(%s): %v", certFile, err)
+	}
+	io.Copy(&pemCert, file)
+	file.Close()
+
+	file, err = os.Open(keyFile)
+	if err != nil {
+		return nil, fmt.Errorf("open(%s): %v", keyFile, err)
+	}
+	io.Copy(&pemKey, file)
+	file.Close()
+
+	cert, err := tls.X509KeyPair(pemCert.Bytes(), pemKey.Bytes())
+	if err != nil {
+		return nil, fmt.Errorf("failed setting TLS config: %v", err)
+	}
+
+	return &tls.Config{
+		Certificates: []tls.Certificate{cert},
+	}, nil
 }
