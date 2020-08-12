@@ -272,9 +272,11 @@ func Stack() Option {
 // Payload returns an option for setting the payload value.
 func Payload(data []byte) Option {
 	return func(m Event) {
-		m.Store("payload", string(data))
-		m.Store("payload-hex", hex.EncodeToString(data))
-		m.Store("payload-length", len(data))
+		if len(data) > 0 {
+			m.Store("payload", string(data))
+			m.Store("payload-hex", hex.EncodeToString(data))
+			m.Store("payload-length", len(data))
+		}
 	}
 }
 
