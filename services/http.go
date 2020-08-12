@@ -103,6 +103,8 @@ func Cookies(cookies []*http.Cookie) event.Option {
 }
 
 func (s *httpService) Handle(ctx context.Context, conn net.Conn) error {
+	defer conn.Close()
+
 	id := xid.New()
 
 	for {

@@ -23,8 +23,6 @@
 package nscanary
 
 import (
-	"fmt"
-
 	"github.com/honeytrap/honeytrap/pushers"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/buffer"
@@ -67,11 +65,9 @@ func WrapLinkEndpoint(lower stack.LinkEndpoint, opts SniffAndFilterOpts) stack.L
 // logs the packet before forwarding to the actual dispatcher.
 func (e *endpoint) DeliverNetworkPacket(remote, local tcpip.LinkAddress, protocol tcpip.NetworkProtocolNumber, pkt *stack.PacketBuffer) {
 	if e.dumpPacket("recv", nil, protocol, pkt) {
-		fmt.Println("handleRequest = true")
 		e.Endpoint.DeliverNetworkPacket(remote, local, protocol, pkt)
 		return
 	}
-	fmt.Println("handleRequest = false")
 }
 
 // dumpPacket logs the packets and returns a boolean if packet should be handled by netstack.

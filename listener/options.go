@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
 package listener
 
 import (
@@ -47,6 +48,19 @@ func WithChannel(channel pushers.Channel) func(Listener) error {
 	return func(d Listener) error {
 		if sc, ok := d.(SetChanneler); ok {
 			sc.SetChannel(channel)
+		}
+		return nil
+	}
+}
+
+type TLSConfigurer interface {
+	AddTLSConfig(port int, certFile, keyFile string)
+}
+
+func WithTLSConfig(port int, certFile, keyFile string) func(Listener) error {
+	return func(l Listener) error {
+		if tc, ok := l.(TLSConfigurer); ok {
+			tc.AddTLSConfig(port, certFile, keyFile)
 		}
 		return nil
 	}

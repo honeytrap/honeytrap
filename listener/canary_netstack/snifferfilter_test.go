@@ -53,7 +53,7 @@ func TestBlockIPFn(t *testing.T) {
 		{filter: []string{"1.2.3.4"}, addr: []byte{5, 6, 7, 8}, want: false},
 		{filter: []string{"1.2.3.4"}, addr: []byte{1, 2, 3, 4}, want: true},
 		{filter: []string{"1.2.3.4", "5.6.7.8"}, addr: []byte{5, 6, 7, 8}, want: true},
-		{filter: []string{"::ffff:c0a8:5909"}, addr: []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 192, 168, 89, 9}, want: true},
+		{filter: []string{"::ffff:c0a8:5909"}, addr: []byte{192, 168, 89, 9}, want: true},
 	}
 
 	for _, tc := range testcases {

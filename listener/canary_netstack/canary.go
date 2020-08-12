@@ -59,11 +59,7 @@ type Config struct {
 	BlockPorts         []string `toml:"block_ports"`
 	BlockSourceIP      []string `toml:"block_source_ip"`
 	BlockDestinationIP []string `toml:"block_destination_ip"`
-
-	Addrs           []string `toml:"addresses"`
-	Interfaces      []string `toml:"interfaces"` // name of network interface (ip link)
-	CertificateFile string   `toml:"certificate_file"`
-	KeyFile         string   `toml:"key_file"`
+	Interfaces         []string `toml:"interfaces"` // name of network interface (ip link)
 }
 
 type Canary struct {
@@ -85,8 +81,16 @@ func (c *Canary) AddAddress(a net.Addr) {
 	c.serviceAddrs = append(c.serviceAddrs, a)
 }
 
-func (c *Canary) AddTLSConfig(port uint16, config *tls.Config) {
-	c.tls.AddConfig(port, config)
+func (c *Canary) AddTLSConfig(port int, certFile, keyFile string) {
+	log.Debugf("Adding tls config, port: %d", port)
+
+	config, err := tlsconf(certFile, keyFile)
+	if err != nil {
+		log.Errorf("set tls config: %v", err)
+		return
+	}
+	c.tls.AddConfig(uint16(port), config)
+	log.Debugf("set tls config, port: %d", port)
 }
 
 func New(options ...func(listener.Listener) error) (listener.Listener, error) {
@@ -110,6 +114,8 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 		BlockSourceIP:      c.BlockSourceIP,
 		BlockDestinationIP: c.BlockDestinationIP,
 	}
+
+	log.Debugf("SniffAndFilterOpts: %+v", o)
 
 	// Create events on NIC traffic.
 	eventWrapper := func(lower stack.LinkEndpoint) stack.LinkEndpoint {
@@ -139,6 +145,7 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 
 func (c *Canary) Accept() (net.Conn, error) {
 	conn := <-c.nconn
+	log.Debug("received nconn in Accept")
 	return conn, nil
 }
 
@@ -173,6 +180,8 @@ func (c *Canary) Start(ctx context.Context) error {
 	}()
 
 	go RunKnockDetector(ctx, c.knockChan, c.events)
+
+	log.Debugf("service addresses: %v", c.serviceAddrs)
 
 	canHandle := func(addr2 net.Addr) bool {
 		for _, addr := range c.serviceAddrs {
@@ -217,8 +226,12 @@ func (c *Canary) Start(ctx context.Context) error {
 	}
 
 	tcpForwarder := tcp.NewForwarder(c.stack, 30000, 5000, func(r *tcp.ForwarderRequest) {
+		defer r.Complete(false)
+
 		// got syn
 		id := r.ID()
+
+		log.Debugf("forward request from: %v", id)
 
 		// perform handshake
 		var wq waiter.Queue
@@ -226,27 +239,24 @@ func (c *Canary) Start(ctx context.Context) error {
 		ep, err := r.CreateEndpoint(&wq)
 		if err != nil {
 			// handshake failed, cleanup
-			r.Complete(false)
-
-			log.Errorf("Error creating endpoint: %s", err)
+			log.Errorf("Error creating endpoint (port: %d): %s", id.LocalPort, err)
 			return
 		}
-
-		r.Complete(false)
 
 		conn, terr := c.tls.MaybeTLS(gonet.NewTCPConn(&wq, ep), id.LocalPort, c.events)
 		if terr != nil {
 			log.Errorf("maybe tls: %s", terr)
-			r.Complete(false)
+			return
 		}
 
 		// check for ports to ignore
 		if !canHandle(conn.LocalAddr()) {
+			ep.Close()
 			conn.Close()
-			r.Complete(false)
 			return
 		}
 
+		log.Debug("sending nconn<-conn")
 		c.nconn <- conn
 	})
 

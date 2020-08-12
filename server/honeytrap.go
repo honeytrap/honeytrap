@@ -11,6 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
+//Package server the honeytrap server.
 package server
 
 import (
@@ -149,7 +151,7 @@ func EventServiceStarted(service string) event.Event {
 func (hc *Honeytrap) PrepareRun() {
 }
 
-// Wraps a Servicer, adding some metadata
+// ServiceMap wraps a Servicer, adding some metadata
 type ServiceMap struct {
 	Service services.Servicer
 
@@ -185,7 +187,7 @@ func (hc *Honeytrap) findService(conn net.Conn) (*ServiceMap, net.Conn, error) {
 	}
 
 	if len(serviceCandidates) == 0 {
-		return nil, nil, fmt.Errorf("No service configured for the given port")
+		return nil, nil, fmt.Errorf("no service configured for the given port")
 	} else if len(serviceCandidates) == 1 {
 		return serviceCandidates[0], conn, nil
 	}
@@ -221,7 +223,7 @@ func (hc *Honeytrap) findService(conn net.Conn) (*ServiceMap, net.Conn, error) {
 	}
 	// There are some services for that port, but non can handle the connection.
 	// Let the caller deal with it.
-	return nil, nil, fmt.Errorf("No suitable service for the given port")
+	return nil, nil, fmt.Errorf("no suitable service for the given port")
 }
 
 func (hc *Honeytrap) heartbeat() {
@@ -241,7 +243,7 @@ func (hc *Honeytrap) heartbeat() {
 	}
 }
 
-// Addr, proto, port, error
+// ToAddr Addr, proto, port, error
 func ToAddr(input string) (net.Addr, string, int, error) {
 	parts := strings.Split(input, "/")
 
@@ -543,9 +545,11 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 	hc.ports = make(map[net.Addr][]*ServiceMap)
 	for _, s := range hc.config.Ports {
 		x := struct {
-			Port     string   `toml:"port"`
-			Ports    []string `toml:"ports"`
-			Services []string `toml:"services"`
+			Port           string   `toml:"port"`
+			Ports          []string `toml:"ports"`
+			Services       []string `toml:"services"`
+			TLSCertificate string   `toml:"tls_certificate"`
+			TLSKey         string   `toml:"tls_key"`
 		}{}
 
 		if err := hc.config.PrimitiveDecode(s, &x); err != nil {
@@ -572,7 +576,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 		}
 
 		for _, portStr := range ports {
-			addr, _, _, err := ToAddr(portStr)
+			addr, _, prt, err := ToAddr(portStr)
 			if err != nil {
 				log.Error("Error parsing port string: %s", err.Error())
 				continue
@@ -580,6 +584,12 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			if addr == nil {
 				log.Error("Failed to bind: addr is nil")
 				continue
+			}
+
+			if x.TLSCertificate != "" && x.TLSKey != "" {
+				if tc, ok := l.(listener.TLSConfigurer); ok {
+					tc.AddTLSConfig(prt, x.TLSCertificate, x.TLSKey)
+				}
 			}
 
 			// Get the services from their names
@@ -599,7 +609,7 @@ func (hc *Honeytrap) Run(ctx context.Context) {
 			}
 
 			found := false
-			for k, _ := range hc.ports {
+			for k := range hc.ports {
 				if !compareAddr(k, addr) {
 					continue
 				}

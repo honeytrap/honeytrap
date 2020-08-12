@@ -11,6 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
+//Package config is the honeytrap configuration, it is set by the server.
 package config
 
 import (
@@ -19,9 +21,10 @@ import (
 	"io"
 	"os"
 
+	"fmt"
+
 	"github.com/BurntSushi/toml"
 	"github.com/op/go-logging"
-	"fmt"
 )
 
 var log = logging.MustGetLogger("honeytrap:config")
@@ -53,7 +56,7 @@ type Config struct {
 	} `toml:"logging"`
 }
 
-// DefaultConfig defines the default Config to be used to set default values.
+// Default Config defines the default Config to be used to set default values.
 var Default = Config{}
 
 // Load attempts to load the giving toml configuration file.

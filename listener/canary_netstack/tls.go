@@ -27,12 +27,15 @@ func (t TLS) AddConfig(port uint16, c *tls.Config) {
 // MaybeTLS checks for a tls signature and does a tls handshake if it is tls.
 // return a tls.Conn or the given connection.
 func (t TLS) MaybeTLS(conn net.Conn, port uint16, events pushers.Channel) (net.Conn, error) {
+	log.Debugf("maybe tls, port: %d", port)
+
 	config := t[port]
 	if config == nil {
 		config = t[0]
 	}
 	if config == nil {
 		// tls not available.
+		log.Debugf("no tls config found for port: %d", port)
 		return conn, nil
 	}
 
@@ -48,7 +51,27 @@ func (t TLS) MaybeTLS(conn net.Conn, port uint16, events pushers.Channel) (net.C
 
 	if signature[0] == 0x16 && signature[1] == 0x03 && signature[2] <= 0x03 {
 		// tls signature found,
-		return NewTLSConn(pconn, config, events)
+		c, err := NewTLSConn(pconn, config, events)
+		if err != nil {
+			return nil, err
+		}
+		tconn := peek.NewConn(c)
+		buf := make([]byte, 65535)
+		n, err := tconn.Peek(buf)
+		if err != nil {
+			log.Debugf("Peek: %v", err)
+		}
+
+		events.Send(event.New(
+			CanaryOptions,
+			event.Category("tcp"),
+			event.Type("tls"),
+			event.SourceAddr(tconn.RemoteAddr()),
+			event.DestinationAddr(tconn.LocalAddr()),
+			event.Payload(buf[:n]),
+		))
+
+		return tconn, nil
 	}
 
 	return pconn, nil
@@ -88,20 +111,20 @@ func NewTLSConn(conn net.Conn, conf *tls.Config, events pushers.Channel) (*TLSCo
 	return c, nil
 }
 
-func (t *TLSConn) Read(p []byte) (int, error) {
-	buf := make([]byte, len(p))
-
-	n, err := t.Conn.Read(buf)
-
-	t.events.Send(event.New(
-		CanaryOptions,
-		event.Category("tls"),
-		event.Type("tls"),
-		event.SourceAddr(t.Conn.RemoteAddr()),
-		event.DestinationAddr(t.Conn.LocalAddr()),
-		event.Payload(buf[:n]),
-	))
-
-	copy(p, buf)
-	return n, err
-}
+// func (t *TLSConn) Read(p []byte) (int, error) {
+// 	buf := make([]byte, len(p))
+//
+// 	n, err := t.Conn.Read(buf)
+//
+// 	t.events.Send(event.New(
+// 		CanaryOptions,
+// 		event.Category("tls"),
+// 		event.Type("tls"),
+// 		event.SourceAddr(t.Conn.RemoteAddr()),
+// 		event.DestinationAddr(t.Conn.LocalAddr()),
+// 		event.Payload(buf[:n]),
+// 	))
+//
+// 	copy(p, buf)
+// 	return n, err
+// }

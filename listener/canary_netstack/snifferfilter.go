@@ -76,6 +76,7 @@ func BlockPortFn(block []string, proto string) func(uint16) bool {
 	return func(port uint16) bool {
 		for _, p := range ports {
 			if p == port {
+				log.Debugf("blocking port: %d", p)
 				return true
 			}
 		}
@@ -461,5 +462,6 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 		eoptions...,
 	))
 
+	fmt.Printf("handleRequest = %+v\n", handleRequest)
 	return handleRequest
 }
