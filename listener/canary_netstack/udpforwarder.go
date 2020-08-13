@@ -93,12 +93,12 @@ func (f *UDPForwarder) HandlePacket(r *stack.Route, id stack.TransportEndpointID
 // This function is expected to be passed as an argument to the
 // stack.SetTransportProtocolHandler function.
 func (f *UDPForwarder) HandlePacket(r *stack.Route, id stack.TransportEndpointID, pkt *stack.PacketBuffer) bool {
-	// Get the header then trim it from the view.
-	hdr := header.UDP(pkt.Data.ToView())
-	if int(hdr.Length()) > pkt.Data.Size() {
+	if pkt.Data.Size() <= header.UDPMinimumSize {
 		// Malformed packet.
 		return false
 	}
+	// Get the header then trim it from the view.
+	hdr := header.UDP(pkt.Data.ToView())
 
 	pkt.Data.TrimFront(header.UDPMinimumSize)
 
