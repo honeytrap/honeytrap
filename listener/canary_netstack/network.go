@@ -36,6 +36,8 @@ type NIC struct {
 	defv6 *netlink.Route // default ipv6 route to restore.
 }
 
+// SetupNetworkStack configure nics on the given interfaces and adds them to the stack.
+// when passing a nil stack, it will create one.
 func SetupNetworkStack(s *stack.Stack, interfaces []string, wrap LinkEndpointWrapper) (*stack.Stack, RestoreDeviceFunc, error) {
 
 	// Use defaults if no stack is given.
@@ -352,11 +354,13 @@ func createSocket(iface netlink.Link) (*socketEntry, error) {
 	const bufSize = 4 << 20 // 4MB.
 
 	if err := syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_RCVBUFFORCE, bufSize); err != nil {
-		return nil, fmt.Errorf("failed to increase socket rcv buffer to %d: %v", bufSize, err)
+		// continue with the default size.
+		log.Debugf("failed to increase socket rcv buffer to %d: %v", bufSize, err)
 	}
 
 	if err := syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_SNDBUFFORCE, bufSize); err != nil {
-		return nil, fmt.Errorf("failed to increase socket snd buffer to %d: %v", bufSize, err)
+		// continue with the default size.
+		log.Debugf("failed to increase socket snd buffer to %d: %v", bufSize, err)
 	}
 
 	return &socketEntry{deviceFile}, nil
