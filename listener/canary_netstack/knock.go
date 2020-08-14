@@ -225,7 +225,6 @@ func RunKnockDetector(ctx context.Context, c <-chan KnockGrouper, events pushers
 
 				events.Send(
 					event.New(
-						CanaryOptions,
 						EventCategoryPortscan,
 						event.ServiceStarted,
 						event.SourceHardwareAddr(k.SourceHardwareAddr),

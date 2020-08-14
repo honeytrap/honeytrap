@@ -7,10 +7,12 @@ import (
 	"strings"
 
 	"github.com/honeytrap/honeytrap/event"
+	"github.com/honeytrap/honeytrap/pkg/protonames"
 	"github.com/honeytrap/honeytrap/pushers"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/buffer"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
+	"gvisor.dev/gvisor/pkg/tcpip/network/fragmentation"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 )
 
@@ -24,6 +26,8 @@ type SniffAndFilter struct {
 	blockUDPPort       func(uint16) bool
 	blockSourceIP      func(tcpip.Address) bool
 	blockDestinationIP func(tcpip.Address) bool
+
+	fragmentation *fragmentation.Fragmentation
 }
 
 type SniffAndFilterOpts struct {
@@ -47,6 +51,7 @@ func NewSniffAndFilter(opts SniffAndFilterOpts) *SniffAndFilter {
 		blockUDPPort:       BlockPortFn(opts.BlockPorts, "udp"),
 		blockSourceIP:      BlockIPFn(opts.BlockSourceIP),
 		blockDestinationIP: BlockIPFn(opts.BlockDestinationIP),
+		fragmentation:      fragmentation.NewFragmentation(fragmentation.HighFragThreshold, fragmentation.LowFragThreshold, fragmentation.DefaultReassembleTimeout),
 	}
 }
 
@@ -131,7 +136,8 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 	)
 
 	eoptions := make([]event.Option, 0, 16)
-	eoptions = append(eoptions, CanaryOptions)
+	eoptions = append(eoptions, event.Custom("network-protocol-number", protocol))
+	eoptions = append(eoptions, event.Custom("network-protocol", protonames.NetworkName(int(protocol))))
 
 	// set the hardware addresses.
 	if len(pkt.LinkHeader) > 0 {
@@ -145,7 +151,6 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 		eoptions = append(eoptions,
 			event.DestinationHardwareAddr(net.HardwareAddr(destMAC)),
 			event.SourceHardwareAddr(net.HardwareAddr(srcMAC)),
-			event.Custom("network-protocol-number", protocol),
 		)
 	}
 
@@ -221,7 +226,6 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 		)
 
 		s.events.Send(event.New(
-			CanaryOptions,
 			event.Category("arp"),
 			event.DestinationHardwareAddr(net.HardwareAddr(hdr.HardwareAddressTarget())),
 			event.SourceHardwareAddr(net.HardwareAddr(hdr.HardwareAddressSender())),
@@ -237,14 +241,18 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 		))
 		return handleRequest
 	default:
-		eoptions = append(eoptions,
-			event.Message("unknown network protocol"),
-		)
+		eoptions = append(eoptions, EventCategoryUnknown)
+		eoptions = append(eoptions, event.Payload(vv.ToView()))
+		s.events.Send(event.New(
+			eoptions...,
+		))
+		return handleRequest
 	}
 
 	// Figure out the transport layer info.
 	eoptions = append(eoptions,
 		event.Custom("transport-protocol-number", transProto),
+		event.Custom("transport-protocol", protonames.TransportName(transProto)),
 	)
 	transName := "unknown"
 	srcPort := uint16(0)
@@ -288,7 +296,7 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 		//TODO (jerry): Add communty-id
 		eoptions = append(eoptions,
 			event.Category("icmp"),
-			event.Protocol("ICMPv4"),
+			event.Protocol("icmp4"),
 			event.Custom("icmp-type", icmpType),
 			event.Custom("icmp-code", hdr.Code()),
 			event.Message(line),
@@ -338,7 +346,7 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 		//TODO (jerry): Add communty-id
 		eoptions = append(eoptions,
 			event.Category("icmp"),
-			event.Protocol("ICMPv6"),
+			event.Protocol("icmp6"),
 			event.Custom("icmp-type", icmpType),
 			event.Custom("icmp-code", hdr.Code()),
 			event.Message(line),
@@ -371,7 +379,6 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 		//TODO (jerry): Add communty-id
 		eoptions = append(eoptions,
 			event.Category("udp"),
-			event.Protocol("UDP"),
 			event.SourcePort(hdr.SourcePort()),
 			event.DestinationPort(hdr.DestinationPort()),
 			event.Payload(hdr.Payload()),
@@ -429,7 +436,6 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 		//TODO (jerry): Add communty-id
 		eoptions = append(eoptions,
 			event.Category("tcp"),
-			event.Protocol("TCP"),
 			event.SourcePort(hdr.SourcePort()),
 			event.DestinationPort(hdr.DestinationPort()),
 			event.Payload(hdr.Payload()),
@@ -444,12 +450,8 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 		}
 
 	default:
-		s.events.Send(event.New(
-			CanaryOptions,
-			EventCategoryUnknown,
-			event.Message("unknown transport protocol"),
-			event.Payload(vv.ToView()),
-		))
+		eoptions = append(eoptions, EventCategoryUnknown)
+		eoptions = append(eoptions, event.Payload(vv.ToView()))
 	}
 
 	line := fmt.Sprintf("%s %s %s:%d -> %s:%d len:%d id:%04x %s", prefix, transName, src, srcPort, dst, dstPort, size, id, details)

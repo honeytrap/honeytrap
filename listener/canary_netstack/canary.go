@@ -30,7 +30,6 @@ import (
 	"github.com/honeytrap/honeytrap/pushers"
 	"github.com/op/go-logging"
 	"golang.org/x/sys/unix"
-	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
 	"gvisor.dev/gvisor/pkg/tcpip/link/tun"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
@@ -43,11 +42,6 @@ var log = logging.MustGetLogger("listeners/netstack-canary")
 var (
 	_                    = listener.Register("netstack-canary", New)
 	EventCategoryUnknown = event.Category("unknown")
-	SensorCanary         = event.Sensor("canary")
-
-	CanaryOptions = event.NewWith(
-		SensorCanary,
-	)
 
 	//IPv6loopback               = net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
 	//IPv6interfacelocalallnodes = net.IP{0xff, 0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01}
@@ -243,7 +237,7 @@ func (c *Canary) Start(ctx context.Context) error {
 			return
 		}
 
-		conn, terr := c.tls.MaybeTLS(gonet.NewTCPConn(&wq, ep), id.LocalPort, c.events)
+		conn, terr := c.tls._MaybeTLS(ep, id.LocalPort, c.events)
 		if terr != nil {
 			log.Errorf("maybe tls: %s", terr)
 			return

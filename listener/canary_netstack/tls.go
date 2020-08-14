@@ -8,6 +8,9 @@ import (
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pkg/peek"
 	"github.com/honeytrap/honeytrap/pushers"
+	"gvisor.dev/gvisor/pkg/tcpip"
+	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
+	"gvisor.dev/gvisor/pkg/waiter"
 )
 
 var tlsVersion = map[uint16]string{
@@ -63,7 +66,6 @@ func (t TLS) MaybeTLS(conn net.Conn, port uint16, events pushers.Channel) (net.C
 		}
 
 		events.Send(event.New(
-			CanaryOptions,
 			event.Category("tcp"),
 			event.Type("tls"),
 			event.SourceAddr(tconn.RemoteAddr()),
@@ -75,6 +77,63 @@ func (t TLS) MaybeTLS(conn net.Conn, port uint16, events pushers.Channel) (net.C
 	}
 
 	return pconn, nil
+}
+
+func (t TLS) _MaybeTLS(ep tcpip.Endpoint, port uint16, events pushers.Channel) (net.Conn, error) {
+	log.Debugf("maybe tls, port: %d", port)
+
+	// find the tls.Config for this port.
+	config := t[port]
+	if config == nil {
+		config = t[0]
+	}
+
+	var wq waiter.Queue
+
+	var signature [3]byte
+	buf := [][]byte{signature[:]}
+
+	ep.Peek(buf)
+
+	fmt.Printf("signature = %x\n", signature)
+
+	isTLS := signature[0] == 0x16 && signature[1] == 0x03 && signature[2] <= 0x03
+
+	conn := gonet.NewTCPConn(&wq, ep)
+
+	if isTLS {
+		if config == nil {
+			// tls not available.
+			log.Debugf("no tls config found for port: %d", port)
+			return conn, nil
+		}
+
+		c, eopt, err := _NewTLSConn(conn, config, events)
+		if err != nil {
+			return nil, err
+		}
+
+		// get the payload.
+		tconn := peek.NewConn(c)
+		buf := make([]byte, 65535)
+		n, err := tconn.Peek(buf)
+		if err != nil {
+			log.Debugf("Peek: %v", err)
+		}
+
+		events.Send(event.New(
+			event.Category("tcp"),
+			event.Type("tls"),
+			event.SourceAddr(tconn.RemoteAddr()),
+			event.DestinationAddr(tconn.LocalAddr()),
+			event.Payload(buf[:n]),
+			eopt,
+		))
+
+		return tconn, nil
+	}
+
+	return conn, nil
 }
 
 type TLSConn struct {
@@ -94,7 +153,6 @@ func NewTLSConn(conn net.Conn, conf *tls.Config, events pushers.Channel) (*TLSCo
 	state := tlsConn.ConnectionState()
 
 	events.Send(event.New(
-		CanaryOptions,
 		event.Category("tcp"),
 		event.Type("tls"),
 		event.SourceAddr(tlsConn.RemoteAddr()),
@@ -109,6 +167,27 @@ func NewTLSConn(conn net.Conn, conf *tls.Config, events pushers.Channel) (*TLSCo
 	}
 
 	return c, nil
+}
+
+func _NewTLSConn(conn net.Conn, conf *tls.Config, events pushers.Channel) (*TLSConn, event.Option, error) {
+	tlsConn := tls.Server(conn, conf)
+	if err := tlsConn.Handshake(); err != nil {
+		return nil, nil, err
+	}
+	//TODO (jerry): Send tls data (JA3??)
+	state := tlsConn.ConnectionState()
+
+	eopts := event.NewWith(
+		event.Custom("tls-version", tlsVersion[state.Version]),
+		event.Custom("tls-ciphersuite", tls.CipherSuiteName(state.CipherSuite)),
+	)
+
+	c := &TLSConn{
+		Conn:   tlsConn,
+		events: events,
+	}
+
+	return c, eopts, nil
 }
 
 // func (t *TLSConn) Read(p []byte) (int, error) {
