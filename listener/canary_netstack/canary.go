@@ -237,7 +237,7 @@ func (c *Canary) Start(ctx context.Context) error {
 			return
 		}
 
-		conn, terr := c.tls._MaybeTLS(ep, id.LocalPort, c.events)
+		conn, terr := c.tls.MaybeTLS(ep, &wq, id.LocalPort, c.events)
 		if terr != nil {
 			log.Errorf("maybe tls: %s", terr)
 			return
