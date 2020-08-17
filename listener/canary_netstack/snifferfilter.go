@@ -43,6 +43,9 @@ type SniffAndFilterOpts struct {
 }
 
 func NewSniffAndFilter(opts SniffAndFilterOpts) *SniffAndFilter {
+	log.Debugf("blocking ports: %v", opts.BlockPorts)
+	log.Debugf("blocking source-ips: %v", opts.BlockSourceIP)
+	log.Debugf("blocking destination-ips: %v", opts.BlockDestinationIP)
 
 	return &SniffAndFilter{
 		events:             opts.EventChan,
@@ -127,16 +130,16 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 	// false: let host handle it.
 	handleRequest := true
 
-	// Figure out the network layer info.
-	var (
-		transProto uint8
-		srcMAC     tcpip.LinkAddress
-		destMAC    tcpip.LinkAddress
-	)
+	srcMAC := tcpip.LinkAddress("unknown")
+	destMAC := tcpip.LinkAddress("unknown")
+	transProto := uint8(255) //unused transport protocol.
+	src := tcpip.Address("unknown")
+	dst := tcpip.Address("unknown")
+	id := 0
+	size := uint16(0)
 
+	// collect events.
 	eoptions := make([]event.Option, 0, 16)
-	eoptions = append(eoptions, event.Custom("network-protocol-number", protocol))
-	eoptions = append(eoptions, event.Custom("network-protocol", protonames.NetworkName(int(protocol))))
 
 	// set the hardware addresses.
 	if len(pkt.LinkHeader) > 0 {
@@ -147,16 +150,7 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 			return true
 		}
 		destMAC = eth.DestinationAddress()
-		eoptions = append(eoptions,
-			event.DestinationHardwareAddr(net.HardwareAddr(destMAC)),
-			event.SourceHardwareAddr(net.HardwareAddr(srcMAC)),
-		)
 	}
-
-	src := tcpip.Address("unknown")
-	dst := tcpip.Address("unknown")
-	id := 0
-	size := uint16(0)
 
 	// Create a clone of pkt, including any headers if present. Avoid allocating
 	// backing memory for the clone.
@@ -173,10 +167,20 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 			return handleRequest
 		}
 
+		src = h.SourceAddress()
+		dst = h.DestinationAddress()
+		if s.blockSourceIP(src) || s.blockDestinationIP(dst) {
+			// handleRequest = false
+			return false
+		}
+
+		log.Debugf("ip4: got packet, fragment: %v, fragment-offset: %d, payload-length: %d", h.More(), h.FragmentOffset(), h.PayloadLength())
+
 		if h.More() || h.FragmentOffset() != 0 {
 			if pkt.Data.Size()+len(pkt.TransportHeader) == 0 {
 				// Drop the packet as it's marked as a fragment but has
 				// no payload.
+				log.Debug("dropped ip4 packet: marked as fragment but no payload")
 				return handleRequest
 			}
 			// The packet is a fragment, let's try to reassemble it.
@@ -185,32 +189,28 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 			// combination of fragmentOffset and pkt.Data.size() causes a
 			// wrap around resulting in last being less than the offset.
 			if last < h.FragmentOffset() {
+				log.Debug("dropped ip4 packet: fragment offset incorrect")
 				return true
 			}
 			var ready bool
 			var err error
 			vv, ready, err = s.fragmentation.Process(hash.IPv4FragmentHash(h), h.FragmentOffset(), last, h.More(), vv)
 			if err != nil {
+				log.Debugf("process fragment: %v", err)
 				return handleRequest
 			}
 			if !ready {
+				log.Debugf("packet-id: %d not ready yet", h.ID())
 				return handleRequest
 			}
 		}
 
-		src = h.SourceAddress()
-		dst = h.DestinationAddress()
-		if s.blockSourceIP(src) || s.blockDestinationIP(dst) {
-			handleRequest = false
-		}
 		transProto = h.Protocol()
 		size = h.PayloadLength()
 		vv.TrimFront(int(h.HeaderLength()))
 		id = int(h.ID())
 		eoptions = append(eoptions,
 			event.Custom("ip-version", "4"),
-			event.Custom("source-ip", src.String()),
-			event.Custom("destination-ip", dst.String()),
 		)
 
 	case header.IPv6ProtocolNumber:
@@ -221,18 +221,18 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 		}
 		src = hdr.SourceAddress()
 		dst = hdr.DestinationAddress()
+
 		if s.blockSourceIP(src) || s.blockDestinationIP(dst) {
-			handleRequest = false
+			// handleRequest = false
+			return false
 		}
+
 		transProto = hdr.NextHeader()
 		size = hdr.PayloadLength()
 		vv.TrimFront(vv.Size() - int(size))
 
 		eoptions = append(eoptions,
 			event.Custom("ip-version", "6"),
-			event.Custom("source-ip", src.String()),
-			event.Custom("destination-ip", dst.String()),
-			event.Payload(hdr.Payload()),
 		)
 
 	case header.ARPProtocolNumber:
@@ -260,23 +260,18 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 		))
 		return handleRequest
 	default:
-		eoptions = append(eoptions, EventCategoryUnknown)
-		eoptions = append(eoptions, event.Payload(vv.ToView()))
-		s.events.Send(event.New(
-			eoptions...,
-		))
-		return handleRequest
+		eoptions = append(eoptions,
+			EventCategoryUnknown,
+			event.Payload(vv.ToView()),
+		)
 	}
 
 	// Figure out the transport layer info.
-	eoptions = append(eoptions,
-		event.Custom("transport-protocol-number", transProto),
-		event.Custom("transport-protocol", protonames.TransportName(transProto)),
-	)
 	transName := "unknown"
 	srcPort := uint16(0)
 	dstPort := uint16(0)
 	details := ""
+
 	switch tcpip.TransportProtocolNumber(transProto) {
 	case header.ICMPv4ProtocolNumber:
 		transName = "icmp"
@@ -309,8 +304,12 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 		case header.ICMPv4InfoReply:
 			icmpType = "info reply"
 		}
+
+		srcPort = hdr.SourcePort()
+		dstPort = hdr.DestinationPort()
+
 		line := fmt.Sprintf("%s %s %s -> %s %s len:%d id:%04x code:%d", prefix, transName, src, dst, icmpType, size, id, hdr.Code())
-		//TODO (jerry): Add communty-id
+
 		eoptions = append(eoptions,
 			event.Category("icmp"),
 			event.Protocol("icmp4"),
@@ -360,7 +359,10 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 			icmpType = "redirect message"
 		}
 		line := fmt.Sprintf("%s %s %s -> %s %s len:%d id:%04x code:%d", prefix, transName, src, dst, icmpType, size, id, hdr.Code())
-		//TODO (jerry): Add communty-id
+
+		srcPort = hdr.SourcePort()
+		dstPort = hdr.DestinationPort()
+
 		eoptions = append(eoptions,
 			event.Category("icmp"),
 			event.Protocol("icmp6"),
@@ -391,14 +393,16 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 		size -= header.UDPMinimumSize
 
 		if s.blockUDPPort(srcPort) || s.blockUDPPort(dstPort) {
-			handleRequest = false
+			// handleRequest = false
+			return false
 		}
-		//TODO (jerry): Add communty-id
+
+		line := fmt.Sprintf("%s %s %s:%d -> %s:%d len:%d id:%04x %s", prefix, transName, src, srcPort, dst, dstPort, size, id, details)
+
 		eoptions = append(eoptions,
 			event.Category("udp"),
-			event.SourcePort(srcPort),
-			event.DestinationPort(dstPort),
 			event.Payload(hdr.Payload()),
+			event.Message(line),
 		)
 
 		s.knockChan <- KnockUDPPort{
@@ -430,7 +434,8 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 		size -= uint16(offset)
 
 		if s.blockTCPPort(srcPort) || s.blockTCPPort(dstPort) {
-			handleRequest = false
+			// handleRequest = false
+			return false
 		}
 
 		// Initialize the TCP flags.
@@ -448,12 +453,12 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 			details += fmt.Sprintf(" options: %+v", hdr.ParsedOptions())
 		}
 
-		//TODO (jerry): Add communty-id
+		line := fmt.Sprintf("%s %s %s:%d -> %s:%d len:%d id:%04x %s", prefix, transName, src, srcPort, dst, dstPort, size, id, details)
+
 		eoptions = append(eoptions,
 			event.Category("tcp"),
-			event.SourcePort(srcPort),
-			event.DestinationPort(dstPort),
 			event.Payload(hdr.Payload()),
+			event.Message(line),
 		)
 
 		s.knockChan <- KnockTCPPort{
@@ -465,19 +470,24 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 		}
 
 	default:
-		eoptions = append(eoptions, EventCategoryUnknown)
-		eoptions = append(eoptions, event.Payload(vv.ToView()))
+		eoptions = append(eoptions,
+			EventCategoryUnknown,
+			event.Payload(vv.ToView()),
+		)
 	}
 
-	line := fmt.Sprintf("%s %s %s:%d -> %s:%d len:%d id:%04x %s", prefix, transName, src, srcPort, dst, dstPort, size, id, details)
-
 	eoptions = append(eoptions,
-		event.Message(line),
+		event.Custom("transport-protocol-number", transProto),
+		event.Custom("transport-protocol", protonames.TransportName(transProto)),
+		event.Custom("source-ip", src.String()),
+		event.Custom("destination-ip", dst.String()),
+		event.SourcePort(srcPort),
+		event.DestinationPort(dstPort),
+		event.DestinationHardwareAddr(net.HardwareAddr(destMAC)),
+		event.SourceHardwareAddr(net.HardwareAddr(srcMAC)),
 	)
 
-	s.events.Send(event.New(
-		eoptions...,
-	))
+	s.events.Send(event.New(eoptions...))
 
 	return handleRequest
 }
