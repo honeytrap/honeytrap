@@ -225,23 +225,28 @@ func (c *Canary) Start(ctx context.Context) error {
 		// got syn
 		id := r.ID()
 
-		log.Debugf("forward request from: %v", id)
-
 		// perform handshake
 		var wq waiter.Queue
+
+		log.Debugf("forwarder: CreateEndpoint: %v", id)
 
 		ep, err := r.CreateEndpoint(&wq)
 		if err != nil {
 			// handshake failed, cleanup
-			log.Errorf("Error creating endpoint (port: %d): %s", id.LocalPort, err)
+			log.Errorf("Error creating endpoint (%v): %s", id, err)
 			return
 		}
 
+		log.Debugf("forwarder: MaybeTLS: %v", id)
+
 		conn, terr := c.tls.MaybeTLS(ep, &wq, id.LocalPort, c.events)
 		if terr != nil {
-			log.Errorf("maybe tls: %s", terr)
+			ep.Close()
+			log.Errorf("maybe tls error: %s", terr)
 			return
 		}
+
+		log.Debugf("forwarder: canHandle: %v", id)
 
 		// check for ports to ignore
 		if !canHandle(conn.LocalAddr()) {
@@ -250,7 +255,7 @@ func (c *Canary) Start(ctx context.Context) error {
 			return
 		}
 
-		log.Debug("sending nconn<-conn")
+		log.Debug("forwader: sending nconn<-conn: %v", id)
 		c.nconn <- conn
 	})
 

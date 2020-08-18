@@ -2,6 +2,7 @@ package nscanary
 
 import (
 	"crypto/tls"
+	"fmt"
 	"net"
 
 	"github.com/honeytrap/honeytrap/event"
@@ -90,13 +91,33 @@ func (t TLS) MaybeTLS(ep tcpip.Endpoint, wq *waiter.Queue, port uint16, events p
 	var signature [3]byte
 	buf := [][]byte{signature[:]}
 
-	ep.Peek(buf)
+	waitEntry, notifyCh := waiter.NewChannelEntry(nil)
+
+	wq.EventRegister(&waitEntry, waiter.EventIn)
+
+	for {
+		n, _, err := ep.Peek(buf)
+		if err != nil {
+			if err == tcpip.ErrWouldBlock {
+				<-notifyCh
+				continue
+			}
+			return nil, fmt.Errorf("peek error: %s", err)
+		}
+		log.Debugf("peeked %d bytes", n)
+		break
+	}
+	wq.EventUnregister(&waitEntry)
+
+	log.Debugf("signature: %#x", signature)
 
 	isTLS := signature[0] == 0x16 && signature[1] == 0x03 && signature[2] <= 0x03
 
 	conn := gonet.NewTCPConn(wq, ep)
 
 	if isTLS {
+		log.Debugf("found tls signature on port: %d", port)
+
 		if config == nil {
 			// tls not available.
 			log.Debugf("no tls config found for port: %d", port)
@@ -167,7 +188,7 @@ type TLSConn struct {
 func NewTLSConn(conn net.Conn, conf *tls.Config, events pushers.Channel) (*TLSConn, event.Option, error) {
 	tlsConn := tls.Server(conn, conf)
 	if err := tlsConn.Handshake(); err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("tls handshake error: %v", err)
 	}
 	//TODO (jerry): Send tls data (JA3??)
 	state := tlsConn.ConnectionState()
