@@ -5,10 +5,12 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pkg/protonames"
 	"github.com/honeytrap/honeytrap/pushers"
+	"github.com/patrickmn/go-cache"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/buffer"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
@@ -29,6 +31,7 @@ type SniffAndFilter struct {
 	blockDestinationIP func(tcpip.Address) bool
 
 	fragmentation *fragmentation.Fragmentation
+	cache         *cache.Cache // cache addresses to block our own traffic.
 }
 
 type SniffAndFilterOpts struct {
@@ -39,13 +42,20 @@ type SniffAndFilterOpts struct {
 	BlockDestinationIP []string
 
 	// blocks events for outbound packets.
-	OurMAC tcpip.LinkAddress
+	OurMAC          tcpip.LinkAddress
+	CacheExpiration time.Duration
 }
 
 func NewSniffAndFilter(opts SniffAndFilterOpts) *SniffAndFilter {
 	log.Debugf("blocking ports: %v", opts.BlockPorts)
 	log.Debugf("blocking source-ips: %v", opts.BlockSourceIP)
 	log.Debugf("blocking destination-ips: %v", opts.BlockDestinationIP)
+
+	expire := 10 * time.Second
+
+	if opts.CacheExpiration != 0 {
+		expire = opts.CacheExpiration
+	}
 
 	return &SniffAndFilter{
 		events:             opts.EventChan,
@@ -56,6 +66,7 @@ func NewSniffAndFilter(opts SniffAndFilterOpts) *SniffAndFilter {
 		blockSourceIP:      BlockIPFn(opts.BlockSourceIP),
 		blockDestinationIP: BlockIPFn(opts.BlockDestinationIP),
 		fragmentation:      fragmentation.NewFragmentation(fragmentation.HighFragThreshold, fragmentation.LowFragThreshold, fragmentation.DefaultReassembleTimeout),
+		cache:              cache.New(expire, 3*expire),
 	}
 }
 
@@ -145,10 +156,6 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 	if len(pkt.LinkHeader) > 0 {
 		eth := header.Ethernet(pkt.LinkHeader)
 		srcMAC = eth.SourceAddress()
-		if srcMAC == s.ourMAC {
-			// skip logging if we are the source.
-			return true
-		}
 		destMAC = eth.DestinationAddress()
 	}
 
@@ -169,8 +176,8 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 
 		src = h.SourceAddress()
 		dst = h.DestinationAddress()
-		if s.blockSourceIP(src) || s.blockDestinationIP(dst) {
-			// handleRequest = false
+
+		if s.filter(srcMAC, src, dst) {
 			return false
 		}
 
@@ -216,14 +223,12 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 	case header.IPv6ProtocolNumber:
 		hdr := header.IPv6(vv.ToView())
 		if !hdr.IsValid(len(hdr)) {
-			//TODO (jerry): log invalid header??
 			return handleRequest
 		}
 		src = hdr.SourceAddress()
 		dst = hdr.DestinationAddress()
 
-		if s.blockSourceIP(src) || s.blockDestinationIP(dst) {
-			// handleRequest = false
+		if s.filter(srcMAC, src, dst) {
 			return false
 		}
 
@@ -241,6 +246,17 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 			log.Debug("Invalid ARP header")
 			return handleRequest
 		}
+
+		// filter our communication.
+		if tcpip.LinkAddress(hdr.HardwareAddressSender()) == s.ourMAC && hdr.Op() == header.ARPRequest {
+			s.cache.Set(string(hdr.ProtocolAddressTarget()), struct{}{}, 1*time.Second)
+			return true
+		}
+
+		if _, found := s.cache.Get(string(hdr.ProtocolAddressSender())); found {
+			return true
+		}
+
 		line := fmt.Sprintf(
 			"%s arp %s (%s) -> %s (%s) valid:%t",
 			prefix,
@@ -260,6 +276,10 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 		))
 		return handleRequest
 	default:
+		if srcMAC == s.ourMAC {
+			// skip logging if we are the source.
+			return true
+		}
 		eoptions = append(eoptions,
 			EventCategoryUnknown,
 			event.Payload(vv.ToView()),
@@ -489,5 +509,28 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 
 	s.events.Send(event.New(eoptions...))
 
+	log.Debugf("items in cache: %d", s.cache.ItemCount())
+
 	return handleRequest
+}
+
+// filter out connections initiated by us and blocked IPs (from config),
+// true if the filter is hit.
+func (s *SniffAndFilter) filter(srcMAC tcpip.LinkAddress, src, dst tcpip.Address) bool {
+	// skip logging if we are the source.
+	if srcMAC == s.ourMAC {
+		s.cache.SetDefault(string(dst), struct{}{})
+		return true
+	}
+
+	// do not handle if source address is our connection.
+	if _, found := s.cache.Get(string(src)); found {
+		return true
+	}
+
+	if s.blockSourceIP(src) || s.blockDestinationIP(dst) {
+		return true
+	}
+
+	return false
 }

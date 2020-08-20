@@ -41,6 +41,7 @@ require (
 	github.com/mimoo/disco v0.0.0-20180114190844-15dd4b8476c9
 	github.com/op/go-logging v0.0.0-20160211212156-b2cb9fa56473
 	github.com/oschwald/maxminddb-golang v1.3.0
+	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/pierrec/lz4 v0.0.0-20171218195038-2fcda4cb7018 // indirect
 	github.com/pierrec/xxHash v0.1.1 // indirect
 	github.com/pkg/profile v1.2.1
