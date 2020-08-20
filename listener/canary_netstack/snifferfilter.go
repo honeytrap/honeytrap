@@ -141,11 +141,11 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 	// false: let host handle it.
 	handleRequest := true
 
-	srcMAC := tcpip.LinkAddress("unknown")
-	destMAC := tcpip.LinkAddress("unknown")
+	srcMAC := tcpip.LinkAddress("")
+	destMAC := tcpip.LinkAddress("")
 	transProto := uint8(255) //unused transport protocol.
-	src := tcpip.Address("unknown")
-	dst := tcpip.Address("unknown")
+	src := tcpip.Address("")
+	dst := tcpip.Address("")
 	id := 0
 	size := uint16(0)
 
@@ -280,10 +280,6 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 			// skip logging if we are the source.
 			return true
 		}
-		eoptions = append(eoptions,
-			EventCategoryUnknown,
-			event.Payload(vv.ToView()),
-		)
 	}
 
 	// Figure out the transport layer info.
@@ -494,6 +490,22 @@ func (s *SniffAndFilter) logPacket(prefix string, protocol tcpip.NetworkProtocol
 			EventCategoryUnknown,
 			event.Payload(vv.ToView()),
 		)
+		if len(srcMAC) > 0 || len(destMAC) > 0 {
+			eoptions = append(eoptions,
+				event.DestinationHardwareAddr(net.HardwareAddr(destMAC)),
+				event.SourceHardwareAddr(net.HardwareAddr(srcMAC)),
+			)
+		}
+		if len(src) > 0 || len(dst) > 0 {
+			eoptions = append(eoptions,
+				event.Custom("source-ip", src.String()),
+				event.Custom("destination-ip", dst.String()),
+			)
+		}
+
+		s.events.Send(event.New(eoptions...))
+
+		return handleRequest
 	}
 
 	eoptions = append(eoptions,
