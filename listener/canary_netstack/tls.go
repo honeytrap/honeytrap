@@ -8,6 +8,7 @@ import (
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pkg/peek"
 	"github.com/honeytrap/honeytrap/pushers"
+	"github.com/open-ch/ja3"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
 	"gvisor.dev/gvisor/pkg/waiter"
@@ -27,58 +28,6 @@ func (t TLS) AddConfig(port uint16, c *tls.Config) {
 	t[port] = c
 }
 
-// MaybeTLS checks for a tls signature and does a tls handshake if it is tls.
-// return a tls.Conn or the given connection.
-// func (t TLS) MaybeTLS(conn net.Conn, port uint16, events pushers.Channel) (net.Conn, error) {
-// 	log.Debugf("maybe tls, port: %d", port)
-//
-// 	config := t[port]
-// 	if config == nil {
-// 		config = t[0]
-// 	}
-// 	if config == nil {
-// 		// tls not available.
-// 		log.Debugf("no tls config found for port: %d", port)
-// 		return conn, nil
-// 	}
-//
-// 	var signature [3]byte
-//
-// 	pconn := peek.NewConn(conn)
-// 	if _, err := pconn.Peek(signature[:]); err != nil {
-// 		pconn.Close()
-// 		return nil, err
-// 	}
-//
-// 	fmt.Printf("signature = %x\n", signature)
-//
-// 	if signature[0] == 0x16 && signature[1] == 0x03 && signature[2] <= 0x03 {
-// 		// tls signature found,
-// 		c, err := NewTLSConn(pconn, config, events)
-// 		if err != nil {
-// 			return nil, err
-// 		}
-// 		tconn := peek.NewConn(c)
-// 		buf := make([]byte, 65535)
-// 		n, err := tconn.Peek(buf)
-// 		if err != nil {
-// 			log.Debugf("Peek: %v", err)
-// 		}
-//
-// 		events.Send(event.New(
-// 			event.Category("tcp"),
-// 			event.Type("tls"),
-// 			event.SourceAddr(tconn.RemoteAddr()),
-// 			event.DestinationAddr(tconn.LocalAddr()),
-// 			event.Payload(buf[:n]),
-// 		))
-//
-// 		return tconn, nil
-// 	}
-//
-// 	return pconn, nil
-// }
-
 func (t TLS) MaybeTLS(ep tcpip.Endpoint, wq *waiter.Queue, port uint16, events pushers.Channel) (net.Conn, error) {
 	log.Debugf("maybe tls, port: %d", port)
 
@@ -88,15 +37,15 @@ func (t TLS) MaybeTLS(ep tcpip.Endpoint, wq *waiter.Queue, port uint16, events p
 		config = t[0]
 	}
 
-	var signature [3]byte
-	buf := [][]byte{signature[:]}
+	var hello [16 * 1024]byte // if tls this is the  client hello record.
+	var helloLen int
 
 	waitEntry, notifyCh := waiter.NewChannelEntry(nil)
 
 	wq.EventRegister(&waitEntry, waiter.EventIn)
 
 	for {
-		n, _, err := ep.Peek(buf)
+		n, _, err := ep.Peek([][]byte{hello[:]})
 		if err != nil {
 			if err == tcpip.ErrWouldBlock {
 				<-notifyCh
@@ -104,14 +53,22 @@ func (t TLS) MaybeTLS(ep tcpip.Endpoint, wq *waiter.Queue, port uint16, events p
 			}
 			return nil, fmt.Errorf("peek error: %s", err)
 		}
+		helloLen = int(n)
 		log.Debugf("peeked %d bytes", n)
 		break
 	}
 	wq.EventUnregister(&waitEntry)
 
-	log.Debugf("signature: %#x", signature)
+	var isTLS bool
 
-	isTLS := signature[0] == 0x16 && signature[1] == 0x03 && signature[2] <= 0x03
+	j, err := ja3.ComputeJA3FromSegment(hello[:helloLen])
+	if err != nil {
+		// If the packet is no Client Hello an error is thrown as soon as the parsing fails
+		// isTLS = false
+		log.Debugf("compute ja3: %v", err)
+	} else {
+		isTLS = true
+	}
 
 	conn := gonet.NewTCPConn(wq, ep)
 
@@ -129,7 +86,7 @@ func (t TLS) MaybeTLS(ep tcpip.Endpoint, wq *waiter.Queue, port uint16, events p
 			return nil, err
 		}
 
-		// get the payload.
+		// get the plaintext payload.
 		tconn := peek.NewConn(c)
 		buf := make([]byte, 65535)
 		n, err := tconn.Peek(buf)
@@ -143,6 +100,10 @@ func (t TLS) MaybeTLS(ep tcpip.Endpoint, wq *waiter.Queue, port uint16, events p
 			event.SourceAddr(tconn.RemoteAddr()),
 			event.DestinationAddr(tconn.LocalAddr()),
 			event.Payload(buf[:n]),
+			event.Custom("ja3.digest", j.GetJA3Hash()),
+			event.Custom("ja3.string", j.GetJA3String()),
+			event.Custom("tls.sni", j.GetSNI()),
+			event.Custom("tls.client.hello.payload", string(hello[:helloLen])),
 			eopt,
 		))
 
@@ -158,44 +119,18 @@ type TLSConn struct {
 	events pushers.Channel
 }
 
-// NewTLSConn sets up a tls connection which captures the payloads.
-// if the passed tls config is nil it will panic.
-// func NewTLSConn(conn net.Conn, conf *tls.Config, events pushers.Channel) (*TLSConn, error) {
-// 	tlsConn := tls.Server(conn, conf)
-// 	if err := tlsConn.Handshake(); err != nil {
-// 		return nil, err
-// 	}
-// 	//TODO (jerry): Send tls data (JA3??)
-// 	state := tlsConn.ConnectionState()
-//
-// 	events.Send(event.New(
-// 		event.Category("tcp"),
-// 		event.Type("tls"),
-// 		event.SourceAddr(tlsConn.RemoteAddr()),
-// 		event.DestinationAddr(tlsConn.LocalAddr()),
-// 		event.Custom("tls-version", tlsVersion[state.Version]),
-// 		event.Custom("tls-ciphersuite", tls.CipherSuiteName(state.CipherSuite)),
-// 	))
-//
-// 	c := &TLSConn{
-// 		Conn:   tlsConn,
-// 		events: events,
-// 	}
-//
-// 	return c, nil
-// }
-
 func NewTLSConn(conn net.Conn, conf *tls.Config, events pushers.Channel) (*TLSConn, event.Option, error) {
+
 	tlsConn := tls.Server(conn, conf)
 	if err := tlsConn.Handshake(); err != nil {
 		return nil, nil, fmt.Errorf("tls handshake error: %v", err)
 	}
-	//TODO (jerry): Send tls data (JA3??)
+
 	state := tlsConn.ConnectionState()
 
 	eopts := event.NewWith(
-		event.Custom("tls-version", tlsVersion[state.Version]),
-		event.Custom("tls-ciphersuite", tls.CipherSuiteName(state.CipherSuite)),
+		event.Custom("tls.version", tlsVersion[state.Version]),
+		event.Custom("tls.ciphersuite", tls.CipherSuiteName(state.CipherSuite)),
 	)
 
 	c := &TLSConn{
@@ -205,21 +140,3 @@ func NewTLSConn(conn net.Conn, conf *tls.Config, events pushers.Channel) (*TLSCo
 
 	return c, eopts, nil
 }
-
-// func (t *TLSConn) Read(p []byte) (int, error) {
-// 	buf := make([]byte, len(p))
-//
-// 	n, err := t.Conn.Read(buf)
-//
-// 	t.events.Send(event.New(
-// 		CanaryOptions,
-// 		event.Category("tls"),
-// 		event.Type("tls"),
-// 		event.SourceAddr(t.Conn.RemoteAddr()),
-// 		event.DestinationAddr(t.Conn.LocalAddr()),
-// 		event.Payload(buf[:n]),
-// 	))
-//
-// 	copy(p, buf)
-// 	return n, err
-// }

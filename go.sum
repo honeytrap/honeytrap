@@ -192,6 +192,8 @@ github.com/onsi/ginkgo v1.10.1/go.mod h1:lLunBs/Ym6LB5Z9jYTR76FiuTmxDTDusOGeTQH+
 github.com/onsi/gomega v1.7.0/go.mod h1:ex+gbHU/CVuBBDIJjb2X0qEXbFg53c61hWP/1CpauHY=
 github.com/op/go-logging v0.0.0-20160211212156-b2cb9fa56473 h1:J1QZwDXgZ4dJD2s19iqR9+U00OWM2kDzbf1O/fmvCWg=
 github.com/op/go-logging v0.0.0-20160211212156-b2cb9fa56473/go.mod h1:HzydrMdWErDVzsI23lYNej1Htcns9BCg93Dk0bBINWk=
+github.com/open-ch/ja3 v1.0.0 h1:7zHn2XQJ8XCADmyfGS101tOqPFhnHKWTb/6YXcg7l3o=
+github.com/open-ch/ja3 v1.0.0/go.mod h1:lTWgltvZDGQjIa/TjWTzfpCVa/eGP+szng2DWz9mAvk=
 github.com/opencontainers/go-digest v1.0.0-rc1/go.mod h1:cMLVZDEM3+U2I4VmLI6N8jQYUd2OVphdqWwCJHrFt2s=
 github.com/opencontainers/go-digest v1.0.0/go.mod h1:0JzlMkj0TRzQZfJkVvzbP0HBR3IKzErnv2BNG4W4MAM=
 github.com/opencontainers/image-spec v1.0.1/go.mod h1:BtxoFyWECRxE4U/7sNtV5W15zMzWCbyJoFRP3s7yZA0=
