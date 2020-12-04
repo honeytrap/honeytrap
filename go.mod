@@ -53,7 +53,6 @@ require (
 	github.com/songgao/water v0.0.0-20180221190335-75f112d19d5a
 	github.com/streadway/amqp v0.0.0-20180315184602-8e4aba63da9f
 	github.com/stretchr/testify v1.3.0 // indirect
-	github.com/vishvananda/netlink v1.1.0
 	github.com/yuin/gopher-lua v0.0.0-20190206043414-8bfc7677f583
 	golang.org/x/crypto v0.0.0-20200128174031-69ecbb4d6d5d
 	golang.org/x/sys v0.0.0-20200202164722-d101bd2416d5 // indirect
@@ -62,5 +61,4 @@ require (
 	gopkg.in/lxc/go-lxc.v2 v2.0.0-20190324192716-2f350e4a2980
 	gopkg.in/olivere/elastic.v5 v5.0.65
 	gopkg.in/urfave/cli.v1 v1.20.0
-	gvisor.dev/gvisor v0.0.0-20200131231121-3eb302470365
 )
