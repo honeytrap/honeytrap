@@ -58,8 +58,9 @@ import (
 	"github.com/honeytrap/honeytrap/listener"
 	_ "github.com/honeytrap/honeytrap/listener/agent"
 	_ "github.com/honeytrap/honeytrap/listener/canary"
-	_ "github.com/honeytrap/honeytrap/listener/netstack"
-	_ "github.com/honeytrap/honeytrap/listener/netstack-experimental"
+
+	//_ "github.com/honeytrap/honeytrap/listener/netstack"
+	//_ "github.com/honeytrap/honeytrap/listener/netstack-experimental"
 	_ "github.com/honeytrap/honeytrap/listener/socket"
 	_ "github.com/honeytrap/honeytrap/listener/tap"
 	_ "github.com/honeytrap/honeytrap/listener/tun"

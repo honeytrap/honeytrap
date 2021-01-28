@@ -1,5 +1,13 @@
 // +build linux
 
+//Package canary defines the canary listener
+//
+// config:
+// listener="canary"
+// interfaces=["interface"]
+// do_arp=true|false (default: false)
+//
+//
 // Copyright 2016-2019 DutchSec (https://dutchsec.com/)
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -95,6 +103,8 @@ type Canary struct {
 	rt RouteTable
 
 	Interfaces []string `toml:"interfaces"`
+
+	doARP bool `toml:"do_arp"`
 
 	ch chan net.Conn
 
@@ -548,17 +558,17 @@ func (c *Canary) handleTCP(eh *ethernet.Frame, iph *ipv4.Header, data []byte) er
 
 	// If the ACK is a duplicate
 	// (SEG.ACK < SND.UNA), it can be ignored.
-	if hdr.AckNum < state.SendUnacknowledged {
-	}
+	//if hdr.AckNum < state.SendUnacknowledged {
+	//}
 
 	// If the ACK acks
 	// something not yet sent (SEG.ACK > SND.NXT) then send an ACK,
 	// drop the segment, and return.
-	if hdr.AckNum > state.SendUnacknowledged {
-		// is this necessary?
-		// c.send(state, []byte{}, tcp.ACK)
-		// return nil
-	}
+	//if hdr.AckNum > state.SendUnacknowledged {
+	//    is this necessary?
+	//    c.send(state, []byte{}, tcp.ACK)
+	//    return nil
+	//}
 
 	// If SND.UNA < SEG.ACK =< SND.NXT, the send window should be
 	// updated.  If (SND.WL1 < SEG.SEQ or (SND.WL1 = SEG.SEQ and
@@ -850,12 +860,12 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 
 	rt, err := parseRouteTable("/proc/net/route")
 	if err != nil {
-		return nil, fmt.Errorf("Could not parse route table: %s", err.Error())
+		return nil, fmt.Errorf("could not parse route table: %s", err.Error())
 	}
 
 	ac, err := parseARPCache("/proc/net/arp")
 	if err != nil {
-		return nil, fmt.Errorf("Could not parse arp cache: %s", err.Error())
+		return nil, fmt.Errorf("could not parse arp cache: %s", err.Error())
 	}
 
 	epfd, err := syscall.EpollCreate1(0)
@@ -896,7 +906,7 @@ func New(options ...func(listener.Listener) error) (listener.Listener, error) {
 
 		fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(htons(syscall.ETH_P_ALL)))
 		if err != nil {
-			return nil, fmt.Errorf("Could not create socket: %s", err.Error())
+			return nil, fmt.Errorf("could not create socket: %s", err.Error())
 		}
 
 		if fd < 0 {
@@ -1008,7 +1018,7 @@ func (c *Canary) transmit(fd int32) error {
 	return nil
 }
 
-// Run will start Canary
+//Start will start Canary
 func (c *Canary) Start(ctx context.Context) error {
 	go c.knockDetector(ctx)
 
@@ -1048,7 +1058,7 @@ func (c *Canary) Start(ctx context.Context) error {
 					} else if n == 0 {
 						// no packets received
 					} else if eh, err := ethernet.Parse(buffer[:n]); err != nil {
-					} else if eh.Type == EthernetTypeARP {
+					} else if eh.Type == EthernetTypeARP && c.doARP {
 						data := make([]byte, len(eh.Payload))
 						copy(data, eh.Payload[:])
 						c.handleARP(data)
