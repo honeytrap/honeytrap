@@ -198,8 +198,8 @@ func (s *dockerService) Handle(ctx context.Context, conn net.Conn) error {
 			status = 204
 
 		} else if waitContainersPattern.MatchString(req.URL.Path) {
-			// wait forever to make it look like the container is up
-			time.Sleep(time.Duration(1<<63 - 1))
+			// wait a little while to make it look like the container is up
+			time.Sleep(time.Duration(2))
 
 		} else if attachContainersPattern.MatchString(req.URL.Path) {
 			status = 101
@@ -227,10 +227,8 @@ func (s *dockerService) Handle(ctx context.Context, conn net.Conn) error {
 				tag = "latest"
 			}
 
-			for _, line := range imageCreateResp(image, tag) {
-				if err := json.NewEncoder(&buff).Encode(line); err != nil {
-					return err
-				}
+			if err := json.NewEncoder(&buff).Encode(imageCreateResp(image, tag)[0]); err != nil {
+				return err
 			}
 
 			buff.WriteString("\n")
