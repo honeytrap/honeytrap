@@ -196,6 +196,7 @@ func loopState(c *conn) stateFn {
 		c.PrintfLine("250 Ok")
 		return mailFromState
 	} else if isCommand(line, "STARTTLS") {
+
 		c.PrintfLine("220 Ready to start TLS")
 
 		if c.server.tlsConfig == nil {
@@ -271,11 +272,7 @@ func helloState(c *conn) stateFn {
 		c.PrintfLine("250-Hello %s", domain)
 		c.PrintfLine("250-SIZE 35882577")
 		c.PrintfLine("250-8BITMIME")
-
-		if c.server.tlsConfig != nil {
-			c.PrintfLine("250-STARTTLS")
-		}
-
+		c.PrintfLine("250-STARTTLS")
 		c.PrintfLine("250-HELP")
 		c.PrintfLine("250-ENHANCEDSTATUSCODES")
 		c.PrintfLine("250-PIPELINING")

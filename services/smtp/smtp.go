@@ -13,12 +13,43 @@
 // limitations under the License.
 package smtp
 
+/*
+  config options:
+
+	[service.smtp]
+	type="smtp"
+	host="smtp.mailer.org"
+	name="HT SMTP-E v2.3.0.1b"
+	banner-fmt='{{.Host}} {{.Name}} - Ready'
+
+	# Standard smtp server port
+	[[port]]
+	port="tcp/25"
+	services=["smtp"]
+
+	# Standard smtp client port
+	[[port]]
+	port="tcp/587"
+	services=["smtp"]
+
+	[service.smtps]
+	type="smtp"
+	name="SMTPS"
+	banner-fmt='{{.Host}} {{.Name}} ready'
+
+	# Standard smtps port (Can only connect with tls)
+	[[port]]
+	port="tcp/465"
+	services=["smtps"]
+*/
+
 import (
+	"bufio"
 	"context"
-	"errors"
+	"crypto/tls"
+	"fmt"
 	"net"
 	"strings"
-	"time"
 
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
@@ -26,8 +57,6 @@ import (
 	"github.com/honeytrap/honeytrap/services/bannerfmt"
 	logging "github.com/op/go-logging"
 )
-
-const readDeadline = 5 // connection deadline in minutes
 
 var (
 	_   = services.Register("smtp", SMTP)
@@ -113,14 +142,62 @@ func (s *Service) SetChannel(c pushers.Channel) {
 	s.ch = c
 }
 
-func (s *Service) Handle(ctx context.Context, conn net.Conn) error {
-	defer conn.Close()
+type bufferedConn struct {
+	r *bufio.Reader
 
-	if err := conn.SetReadDeadline(time.Now().Add(time.Minute * readDeadline)); err != nil {
-		return errors.New("Can't set ReadDeadline on connection")
+	net.Conn
+}
+
+func (b bufferedConn) Peek(n int) ([]byte, error) {
+	return b.r.Peek(n)
+}
+
+func (b bufferedConn) Read(p []byte) (int, error) {
+	return b.r.Read(p)
+}
+
+func smtpConn(c net.Conn, srv *Server) (net.Conn, error) {
+	sconn := bufferedConn{
+		bufio.NewReader(c),
+		c,
 	}
 
+	// Peek first 3 bytes for tls handshake
+	buf, err := sconn.Peek(3)
+	if err != nil {
+		log.Debug(err.Error())
+		return nil, err
+	}
+
+	// validate header byte 0 [record type], 1 [version major], 2 [version minor]
+	if len(buf) == 3 && buf[0] == 0x16 && buf[1] == 0x03 && buf[2] <= 0x03 {
+
+		// Most likely tls
+		tlsconn := tls.Server(sconn, srv.tlsConfig)
+		if err := tlsconn.Handshake(); err != nil {
+			return nil, fmt.Errorf("TLS detected, but handshake errors: %s", err.Error())
+		}
+
+		return tlsconn, nil
+	}
+
+	return sconn, nil
+}
+
+func (s *Service) Handle(ctx context.Context, conn net.Conn) error {
+
+	// Check for tls
+	sc, err := smtpConn(conn, s.srv)
+	if err != nil {
+		return err
+	}
+
+	return s.handle(ctx, sc)
+}
+
+func (s *Service) handle(ctx context.Context, conn net.Conn) error {
 	rcvLine := make(chan string)
+	done := make(chan struct{})
 
 	// Wait for a message and send it into the eventbus
 	go func() {
@@ -160,6 +237,10 @@ func (s *Service) Handle(ctx context.Context, conn net.Conn) error {
 					event.DestinationAddr(conn.LocalAddr()),
 					event.Custom("smtp.line", line),
 				))
+			case <-ctx.Done():
+				return
+			case <-done:
+				return
 			}
 		}
 	}()
@@ -168,5 +249,9 @@ func (s *Service) Handle(ctx context.Context, conn net.Conn) error {
 	c := s.srv.newConn(conn, rcvLine)
 	// Start server loop
 	c.serve()
+
+	// close go routine
+	done <- struct{}{}
+
 	return nil
 }

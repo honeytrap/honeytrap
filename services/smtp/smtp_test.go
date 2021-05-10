@@ -14,6 +14,8 @@
 package smtp
 
 import (
+	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/smtp"
@@ -32,14 +34,122 @@ const (
 )
 
 func TestMain(m *testing.M) {
-	storage.SetDataDir("")
+	storage.SetDataDir(os.TempDir())
 	os.Exit(m.Run())
 }
 
 func TestSMTP(t *testing.T) {
 	//Create a pipe
 	client, server := net.Pipe()
-	defer client.Close()
+
+	//Create Servicer
+	s := SMTP().(*Service)
+
+	// Create channel
+	dc, _ := pushers.Dummy()
+	s.SetChannel(dc)
+
+	done := make(chan bool)
+
+	go func() {
+		ctx := context.Background()
+		err := s.handle(ctx, server)
+		if err != nil {
+			t.Errorf("Handling error: %s", err.Error())
+		}
+		done <- true
+	}()
+
+	//Create smtp client
+	smtpClient, err := smtp.NewClient(client, hostname)
+	if err != nil {
+		t.Error(err)
+	}
+
+	// check connection
+	err = smtpClient.Noop()
+	if err != nil {
+		t.Errorf("Can not create client: %s", err.Error())
+	}
+
+	// Set the sender and recipient first
+	err = smtpClient.Mail(sender)
+	if err != nil {
+		t.Error(err)
+	}
+	err = smtpClient.Rcpt(recipient)
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Send the email body.
+	wc, err := smtpClient.Data()
+	if err != nil {
+		t.Error(err)
+	}
+	_, err = fmt.Fprintf(wc, body)
+	if err != nil {
+		t.Error(err)
+	}
+	err = wc.Close()
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Send the QUIT command and close the connection.
+	err = smtpClient.Quit()
+	if err != nil {
+		t.Errorf("QUIT Error: %s", err.Error())
+	}
+
+	<-done
+}
+
+func TestStartTLS(t *testing.T) {
+	//Create a pipe
+	client, server := net.Pipe()
+
+	//Create Servicer
+	s := SMTP().(*Service)
+
+	// Create channel
+	dc, _ := pushers.Dummy()
+	s.SetChannel(dc)
+
+	done := make(chan bool)
+
+	go func() {
+		ctx := context.Background()
+		err := s.handle(ctx, server)
+		if err != nil {
+			t.Errorf("Handling error: %s", err.Error())
+		}
+		done <- true
+	}()
+
+	//Create smtp client
+	smtpClient, err := smtp.NewClient(client, hostname)
+	if err != nil {
+		t.Error(err)
+	}
+
+	err = smtpClient.StartTLS(&tls.Config{InsecureSkipVerify: true})
+	if err != nil {
+		t.Errorf("No StartTLS: %s", err.Error())
+	}
+
+	if state, ok := smtpClient.TLSConnectionState(); !ok {
+		t.Errorf("TLS Connection state %v", state)
+	}
+
+	err = smtpClient.Close()
+
+	<-done
+}
+
+func TestSmtpConn(t *testing.T) {
+	//Create a pipe
+	client, server := net.Pipe()
 	defer server.Close()
 
 	//Create Servicer
@@ -49,64 +159,29 @@ func TestSMTP(t *testing.T) {
 	dc, _ := pushers.Dummy()
 	s.SetChannel(dc)
 
-	// Handle the connection
-	go func(conn net.Conn) {
-		if err := s.Handle(nil, conn); err != nil {
-			t.Fatal(err)
+	done := make(chan bool)
+
+	go func() {
+		ctx := context.Background()
+		err := s.Handle(ctx, server)
+		if err != nil {
+			t.Errorf("Handling error: %s", err.Error())
 		}
-	}(server)
+		done <- true
+	}()
+
+	tconn := tls.Client(client, &tls.Config{InsecureSkipVerify: true})
+	defer tconn.Close()
 
 	//Create smtp client
-	smtpClient, err := smtp.NewClient(client, hostname)
+	smtpClient, err := smtp.NewClient(tconn, hostname)
 	if err != nil {
 		t.Error(err)
 	}
 
-	//Send data client->server
-
-	//Is TLS available?
-	conf := s.srv.tlsConfig
-	if conf == nil {
-		t.Error("TLS config is not set")
+	if err := smtpClient.Close(); err != nil {
+		t.Errorf("Can not close tls client: %s", err.Error())
 	}
 
-	err = smtpClient.StartTLS(conf)
-	if err != nil {
-		t.Error(err)
-	}
-
-	// Set the sender and recipient first
-	err = smtpClient.Mail(sender)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = smtpClient.Rcpt(recipient)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Send the email body.
-	wc, err := smtpClient.Data()
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = fmt.Fprintf(wc, body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = wc.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	/*
-		//BUG: reading/writing from closed pipe, only in testing
-			// Send the QUIT command and close the connection.
-			err = smtpClient.Quit()
-			if err != nil {
-				t.Error(err)
-			}
-	*/
-	// Check if data is received.
-	// with file channel?
+	<-done
 }

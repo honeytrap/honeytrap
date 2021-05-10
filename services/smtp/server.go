@@ -56,8 +56,7 @@ func (mux *ServeMux) Serve(msg Message) error {
 }
 
 type Server struct {
-	Banner string
-
+	Banner  string
 	Handler Handler
 
 	tlsConfig *tls.Config
