@@ -42,6 +42,7 @@ import (
 
 	"github.com/honeytrap/honeytrap/services"
 	_ "github.com/honeytrap/honeytrap/services/bannerfmt"
+	_ "github.com/honeytrap/honeytrap/services/docker"
 	_ "github.com/honeytrap/honeytrap/services/elasticsearch"
 	_ "github.com/honeytrap/honeytrap/services/eos"
 	_ "github.com/honeytrap/honeytrap/services/ethereum"
