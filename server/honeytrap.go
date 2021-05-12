@@ -50,6 +50,7 @@ import (
 	_ "github.com/honeytrap/honeytrap/services/ipp"
 	_ "github.com/honeytrap/honeytrap/services/ldap"
 	_ "github.com/honeytrap/honeytrap/services/redis"
+	_ "github.com/honeytrap/honeytrap/services/sip"
 	_ "github.com/honeytrap/honeytrap/services/smtp"
 	_ "github.com/honeytrap/honeytrap/services/snmp"
 	_ "github.com/honeytrap/honeytrap/services/ssh"
