@@ -14,6 +14,7 @@
 package listener
 
 import (
+	"io"
 	"net"
 	"time"
 )
@@ -28,6 +29,9 @@ type DummyUDPConn struct {
 }
 
 func (dc *DummyUDPConn) Read(b []byte) (int, error) {
+	if len(dc.Buffer) == 0 {
+		return 0, io.EOF
+	}
 	n := copy(b, dc.Buffer)
 	dc.Buffer = dc.Buffer[n:]
 	return n, nil
