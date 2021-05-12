@@ -1,0 +1,41 @@
+The cefsyslog pusher is used to direct logged events toward an instance that accepts the CEF format.
+
+To use this pusher add the following to the config.
+---
+[channel.cefsyslog]
+type="cefsyslog"
+address="localhost:514"
+protocol="udp"
+heartbeat="False"
+---
+
+The pushers looks for a mappings.toml file in the cwd.
+This file specifies the honeytrap keys and the corresponding CEF keys.
+An example can be found below:
+---
+[cef-mappings]
+[[service]]
+name="ssh"
+type="password-authentication"
+[[service.mapping]]
+ceffield="duser"
+logfield="ssh.username"
+[[service.mapping]]
+ceffield="cs1"
+logfield="ssh.password"
+[[service.static]]
+ceffield="cs1Label"
+logfield="ssh.password"
+[[service.static]]
+ceffield="always3"
+logfield="on"
+[[service]]
+name="ftp"
+type="password_auth"
+[[service.mapping]]
+ceffield="foofoo"
+logfield="barbar"
+[[service.mapping]]
+ceffield="foobar"
+logfield="barfoo"
+---
