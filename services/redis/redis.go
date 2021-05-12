@@ -27,6 +27,18 @@ import (
 	"github.com/op/go-logging"
 )
 
+/*
+
+[service.redis]
+type="redis"
+version="2.8.4"
+
+[[port]]
+port="tcp/6379"
+services=["redis"]
+
+*/
+
 var log = logging.MustGetLogger("services/redis")
 
 var (
@@ -129,7 +141,6 @@ func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
 	defer conn.Close()
 
 	scanner := bufio.NewScanner(conn)
-
 	for {
 		datum, err := parseRedisData(scanner)
 		if err != nil {
@@ -149,30 +160,37 @@ func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
 			break
 		}
 		items := datum.Content.([]interface{})
-		firstItem := items[0].(redisDatum)
-		command, success := firstItem.ToString()
-		if !success {
-			log.Error("Expected a command string, got something else (type=%q)", firstItem.DataType)
-			break
+
+		payload := []byte{}
+		cmd := ""
+		for i := 0; i < len(items); i++ {
+			Item := items[i].(redisDatum)
+			command, success := Item.ToString()
+			if !success {
+				log.Error("Expected a command string, got something else (type=%q)", Item.DataType)
+				break
+			}
+			if i == 0 {
+				cmd = command
+			}
+			payload = append(payload, command+" "...)
 		}
-		answer, closeConn := s.REDISHandler(command, items[1:])
+
+		answer := s.REDISHandler(cmd, items[1:])
 
 		s.ch.Send(event.New(
 			services.EventOptions,
 			event.Category("redis"),
-			event.Type("redis-command"),
+			event.Type(cmd),
 			event.SourceAddr(conn.RemoteAddr()),
 			event.DestinationAddr(conn.LocalAddr()),
-			event.Custom("redis.command", command),
+			event.Custom("redis.command", cmd),
+			event.Payload(payload),
 		))
-
-		if closeConn {
-			break
-		}
 		_, err = conn.Write([]byte(answer))
 		if err != nil {
-			log.Error("error writing response: %s", err.Error())
-			break
+			log.Error("Error writing response: %s", err.Error())
+			return err
 		}
 	}
 

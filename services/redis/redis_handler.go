@@ -21,12 +21,12 @@ import (
 /* args is an array of interface{} because it could be either a redisDatum or
  * an elementary datatype (int, string, etc.)
  */
-func (s *redisService) REDISHandler(command string, args []interface{}) (string, bool) {
+func (s *redisService) REDISHandler(command string, args []interface{}) string {
 	// Convert the command to lowercase
 	command = strings.ToLower(command)
 	fn, ok := mapCmds[command]
 	if !ok {
-		return fmt.Sprintf(errorMsg("unknown"), command), false
+		return fmt.Sprintf(errorMsg("unknown"), command)
 	}
 	return fn(s, args)
 }
