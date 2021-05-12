@@ -15,6 +15,7 @@ package smtp
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/smtp"
 	"os"
@@ -32,8 +33,15 @@ const (
 )
 
 func TestMain(m *testing.M) {
-	storage.SetDataDir("")
-	os.Exit(m.Run())
+	temp_dir, err := ioutil.TempDir("", "")
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	storage.SetDataDir(temp_dir)
+	exit_code := m.Run()
+	os.RemoveAll(temp_dir)
+	os.Exit(exit_code)
 }
 
 func TestSMTP(t *testing.T) {
