@@ -15,14 +15,20 @@ package smtp
 
 import (
 	"bytes"
+	"crypto/md5"
 	"crypto/sha1"
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net"
 	"net/textproto"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/honeytrap/honeytrap/event"
+	"github.com/honeytrap/honeytrap/services"
 )
 
 const (
@@ -38,6 +44,8 @@ type conn struct {
 	server *Server
 	rcv    chan string
 	i      int
+	authed bool
+	evnt   chan event.Event
 }
 
 func (c *conn) newMessage() *Message {
@@ -50,6 +58,10 @@ func (c *conn) newMessage() *Message {
 
 func (c *conn) RemoteAddr() net.Addr {
 	return c.rwc.RemoteAddr()
+}
+
+func (c *conn) LocalAddr() net.Addr {
+	return c.rwc.LocalAddr()
 }
 
 type stateFn func(c *conn) stateFn
@@ -98,6 +110,171 @@ func outOfSequenceState() stateFn {
 	return func(c *conn) stateFn {
 		c.PrintfLine("503 command out of sequence")
 		return nil
+	}
+}
+
+func authPlainState(msg string) stateFn {
+	if msg == "" {
+		return func(c *conn) stateFn {
+			c.PrintfLine("334 ")
+			msg, err := c.ReadLine()
+			if err != nil {
+				log.Error("[authPlainState] error: %s", err.Error())
+				return authErrState
+			}
+			return authPlainState(msg)
+		}
+	}
+
+	upb, err := base64.StdEncoding.DecodeString(msg)
+	if err != nil {
+		log.Error("[authPlainState] error: %s", err.Error())
+		return authErrState
+	}
+
+	var up []string
+	for _, bs := range bytes.Split(upb, []byte{0}) {
+		up = append(up, string(bs))
+	}
+	if len(up) < 3 {
+		return authErrState
+	}
+
+	return func(c *conn) stateFn {
+		c.evnt <- event.New(
+			services.EventOptions,
+			event.Category("smtp"),
+			event.Type("input"),
+			event.SourceAddr(c.RemoteAddr()),
+			event.DestinationAddr(c.LocalAddr()),
+			event.Custom("smtp.auth-protocol", "plain"),
+			event.Custom("smtp.user", up[1]),
+			event.Custom("smtp.password", up[2]),
+		)
+		return authSuccesState
+	}
+}
+
+func authLoginState(msg string) stateFn {
+	if msg == "" {
+		return func(c *conn) stateFn {
+			c.PrintfLine("334 VXNlcm5hbWU6")
+			u64, err := c.ReadLine()
+			if err != nil {
+				return authErrState
+			}
+			return authLoginState(u64)
+		}
+	}
+	return func(c *conn) stateFn {
+		u, err := base64.StdEncoding.DecodeString(msg)
+		if err != nil {
+			return authErrState
+		}
+
+		c.PrintfLine("334 UGFzc3dvcmQ6")
+		p64, err := c.ReadLine()
+		if err != nil {
+			return authErrState
+		}
+
+		p, err := base64.StdEncoding.DecodeString(p64)
+		if err != nil {
+			return authErrState
+		}
+
+		c.evnt <- event.New(
+			services.EventOptions,
+			event.Category("smtp"),
+			event.Type("input"),
+			event.SourceAddr(c.RemoteAddr()),
+			event.DestinationAddr(c.LocalAddr()),
+			event.Custom("smtp.auth-protocol", "login"),
+			event.Custom("smtp.user", string(u)),
+			event.Custom("smtp.password", string(p)),
+		)
+		return authSuccesState
+	}
+}
+
+func authCramMD5State() stateFn {
+	return func(c *conn) stateFn {
+		challenge := md5.New()
+		challenge.Write([]byte(time.Now().Format(time.RFC3339)))
+
+		cMsg := base64.StdEncoding.EncodeToString(challenge.Sum(nil))
+		c.PrintfLine("334 %s", cMsg)
+
+		line, err := c.ReadLine()
+		if err != nil {
+			return authErrState
+		}
+
+		msg, err := base64.StdEncoding.DecodeString(line)
+		if err != nil {
+			return authErrState
+		}
+
+		parts := bytes.Split(msg, []byte(" "))
+		if len(parts) < 2 {
+			return authErrState
+		}
+
+		c.evnt <- event.New(
+			services.EventOptions,
+			event.Category("smtp"),
+			event.Type("input"),
+			event.SourceAddr(c.RemoteAddr()),
+			event.DestinationAddr(c.LocalAddr()),
+			event.Custom("smtp.auth-protocol", "cram-md5"),
+			event.Custom("smtp.user", string(parts[0])),
+			event.Custom("smtp.secret", string(parts[1])),
+		)
+		return authSuccesState
+	}
+}
+
+func authErrState(c *conn) stateFn {
+	c.PrintfLine("454 4.7.0 Temporary authentication failure")
+	return loopState
+}
+
+func authSuccesState(c *conn) stateFn {
+	c.PrintfLine("235 2.7.0 Authentication Succeeded")
+	c.authed = true
+	return loopState
+}
+
+func alreadyAuthedState(c *conn) stateFn {
+	c.PrintfLine("503 You are already authenticated")
+	return loopState
+}
+
+func authState(msg string) stateFn {
+	return func(c *conn) stateFn {
+		if c.authed {
+			return alreadyAuthedState
+		}
+		ps := strings.Split(msg, " ")
+		if len(ps) < 2 {
+			return unrecognizedState
+		}
+		switch strings.ToUpper(ps[1]) {
+		case "PLAIN":
+			if len(ps) < 3 {
+				return authPlainState("")
+			}
+			return authPlainState(ps[2])
+		case "LOGIN":
+			if len(ps) < 3 {
+				return authLoginState("")
+			}
+			return authLoginState(ps[2])
+		case "CRAM-MD5":
+			return authCramMD5State()
+		default:
+			return unrecognizedState
+		}
 	}
 }
 
@@ -212,6 +389,11 @@ func loopState(c *conn) stateFn {
 
 		c.Text = textproto.NewConn(tlsConn)
 		return helloState
+	} else if isCommand(line, "AUTH") {
+		if c.authed {
+			return outOfSequenceState()
+		}
+		return authState(line)
 	} else if isCommand(line, "RSET") {
 		c.msg = c.newMessage()
 		c.PrintfLine("250 Ok")
@@ -280,6 +462,7 @@ func helloState(c *conn) stateFn {
 		c.PrintfLine("250-ENHANCEDSTATUSCODES")
 		c.PrintfLine("250-PIPELINING")
 		c.PrintfLine("250-CHUNKING")
+		c.PrintfLine("250-AUTH PLAIN LOGIN CRAM-MD5")
 		c.PrintfLine("250 SMTPUTF8")
 		return loopState
 	} else if isCommand(line, "HELP") {
