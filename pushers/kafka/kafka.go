@@ -68,8 +68,9 @@ func New(options ...func(pushers.Channel) error) (pushers.Channel, error) {
 func (hc Backend) run() {
 	defer hc.producer.AsyncClose()
 
-	for doc := range <-hc.ch {
-		data, err := json.Marshal(doc)
+	for {
+		data := <-hc.ch
+		marshalledData, err := json.Marshal(data)
 		if err != nil {
 			log.Errorf("Error marshaling event: %s", err.Error())
 			continue
@@ -78,7 +79,13 @@ func (hc Backend) run() {
 		hc.producer.Input() <- &sarama.ProducerMessage{
 			Topic: hc.Topic,
 			Key:   nil,
-			Value: sarama.ByteEncoder(data),
+			Value: sarama.ByteEncoder(marshalledData),
+		}
+
+		select {
+		case <-hc.producer.Successes():
+		case msg := <-hc.producer.Errors():
+			log.Errorf("Error producing event to kafka: %s", msg)
 		}
 	}
 }
