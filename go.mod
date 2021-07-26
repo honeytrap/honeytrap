@@ -36,7 +36,7 @@ require (
 	github.com/mailru/easyjson v0.0.0-20171120080333-32fa128f234d // indirect
 	github.com/mattn/go-colorable v0.0.9 // indirect
 	github.com/mattn/go-isatty v0.0.3
-	github.com/miekg/dns v1.0.4
+	github.com/miekg/dns v1.1.25
 	github.com/mimoo/StrobeGo v0.0.0-20171206114618-43f0c284a7f9 // indirect
 	github.com/mimoo/disco v0.0.0-20180114190844-15dd4b8476c9
 	github.com/op/go-logging v0.0.0-20160211212156-b2cb9fa56473
