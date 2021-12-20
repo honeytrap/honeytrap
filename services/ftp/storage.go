@@ -26,21 +26,23 @@ import (
 	"github.com/honeytrap/honeytrap/storage"
 )
 
-func getStorage() (*ftpStorage, error) {
+// Storage sets the FTP storage
+func Storage() (*Store, error) {
 	s, err := storage.Namespace("ftp")
 	if err != nil {
 		return nil, err
 	}
-	return &ftpStorage{
+
+	return &Store{
 		s,
 	}, nil
 }
 
-type ftpStorage struct {
+type Store struct {
 	storage.Storage
 }
 
-func (s *ftpStorage) FileSystem() (base, serviceroot string) {
+func (s *Store) FileSystem() (base, serviceroot string) {
 	b, err := s.Get("base")
 	if err != nil {
 		return "", ""
@@ -57,7 +59,7 @@ func (s *ftpStorage) FileSystem() (base, serviceroot string) {
 }
 
 //Returns a TLS Certificate
-func (s *ftpStorage) Certificate() (*tls.Certificate, error) {
+func (s *Store) Certificate() (*tls.Certificate, error) {
 
 	keyname := "pemkey"
 	certname := "pemcert"

@@ -18,13 +18,13 @@ import (
 	"os"
 )
 
-// For each client that connects to the server, a new FTPDriver is required.
+// DriverFactory - For each client that connects to the server, a new FTPDriver is required.
 // Create an implementation if this interface and provide it to FTPServer.
 type DriverFactory interface {
 	NewDriver() (Driver, error)
 }
 
-// You will create an implementation of this interface that speaks to your
+// Driver - You will create an implementation of this interface that speaks to your
 // chosen persistence layer. graval will create a new instance of your
 // driver for each client that connects and delegate to it as required.
 type Driver interface {

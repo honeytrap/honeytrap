@@ -19,6 +19,7 @@ import (
 	"strings"
 )
 
+// Command interface for FTP commands
 type Command interface {
 	IsExtend() bool
 	RequireParam() bool
@@ -986,9 +987,9 @@ func (cmd commandStor) Execute(conn *Conn, param string) {
 		conn.appendData = false
 	}()
 
-	bytes, err := conn.driver.PutFile(param, conn.dataConn, conn.appendData)
+	nbytes, err := conn.driver.PutFile(param, conn.dataConn, conn.appendData)
 	if err == nil {
-		msg := "OK, received " + strconv.Itoa(int(bytes)) + " bytes"
+		msg := fmt.Sprintf("OK, received %d bytes", int(nbytes))
 		conn.writeMessage(226, msg)
 	} else {
 		conn.writeMessage(450, fmt.Sprintln("error during transfer:", err))

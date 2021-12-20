@@ -13,18 +13,19 @@
 // limitations under the License.
 package ftp
 
+// Auth interface for authentication
 type Auth interface {
 	CheckPasswd(string, string) (bool, error)
 }
 
-type User struct {
-	users map[string]string
-}
+// User is a map[username]password
+type User map[string]string
 
-func (u *User) CheckPasswd(name, password string) (bool, error) {
+// CheckPasswd authenticate a user
+func (u User) CheckPasswd(name, password string) (bool, error) {
 	login := false
 
-	if pw, ok := u.users[name]; ok && pw == password {
+	if pw, ok := u[name]; ok && pw == password {
 		login = true
 	}
 

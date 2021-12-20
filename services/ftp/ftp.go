@@ -30,9 +30,10 @@ var (
 	log = logging.MustGetLogger("services/ftp")
 )
 
+// FTP setup the FTP service
 func FTP(options ...services.ServicerFunc) services.Servicer {
 
-	store, err := getStorage()
+	store, err := Storage()
 	if err != nil {
 		log.Errorf("FTP: Could not initialize storage. %s", err.Error())
 	}
@@ -51,12 +52,14 @@ func FTP(options ...services.ServicerFunc) services.Servicer {
 		o(s)
 	}
 
+	ftpusers := make(User)
+
+	for _, u := range s.Users {
+		ftpusers[u[0]] = u[1]
+	}
+
 	opts := &ServerOpts{
-		Auth: &User{
-			users: map[string]string{
-				"anonymous": "anonymous",
-			},
-		},
+		Auth:           ftpusers,
 		Name:           s.ServerName,
 		WelcomeMessage: s.Banner,
 		PassivePorts:   s.PsvPortRange,
@@ -87,12 +90,16 @@ func FTP(options ...services.ServicerFunc) services.Servicer {
 	return s
 }
 
+// Opts are the options neccesary for runnung the server
+// They can be set in config file
 type Opts struct {
 	Banner string `toml:"banner"`
 
 	PsvPortRange string `toml:"passive-port-range"`
 
 	ServerName string `toml:"name"`
+
+	Users [][]string `toml:"users"`
 }
 
 type ftpService struct {
