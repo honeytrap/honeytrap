@@ -46,7 +46,7 @@ func (ftp *Fs) Stat(path string) (os.FileInfo, error) {
 
 func (ftp *Fs) ChangeDir(path string) error {
 
-	return ftp.ChangeDir(path)
+	return ftp.Htfs.ChangeDir(path)
 }
 
 func (ftp *Fs) ListDir(path string) []os.FileInfo {
@@ -74,7 +74,7 @@ func (ftp *Fs) DeleteDir(path string) error {
 	}
 
 	if !info.IsDir() {
-		return errors.New("FtpFs: not a directory")
+		return errors.New("Fs: not a directory")
 	}
 
 	return os.Remove(p)

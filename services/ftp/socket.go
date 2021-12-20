@@ -21,7 +21,7 @@ import (
 	"sync"
 )
 
-// A data socket is used to send non-control data between the client and
+// DataSocket is used to send non-control data between the client and
 // server.
 type DataSocket interface {
 	Host() string
