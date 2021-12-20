@@ -83,3 +83,17 @@ func (e Event) Get(s string) string {
 		return v
 	}
 }
+
+// GetDate retrieves a giving value for a kay has time.Time
+func (e Event) GetDate(s string) time.Time {
+	if v, ok := e.sm.Load(s); !ok {
+		return time.Time{}
+	} else {
+		switch v.(type) {
+		case time.Time:
+			return v.(time.Time)
+		default:
+			return time.Time{}
+		}
+	}
+}

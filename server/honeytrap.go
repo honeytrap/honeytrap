@@ -83,6 +83,7 @@ import (
 	_ "github.com/honeytrap/honeytrap/pushers/raven"
 	_ "github.com/honeytrap/honeytrap/pushers/slack"
 	_ "github.com/honeytrap/honeytrap/pushers/splunk"
+	_ "github.com/honeytrap/honeytrap/pushers/cefsyslog"
 
 	"github.com/op/go-logging"
 )
