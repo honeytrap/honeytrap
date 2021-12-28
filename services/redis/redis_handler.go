@@ -22,9 +22,27 @@ import (
  * an elementary datatype (int, string, etc.)
  */
 func (s *redisService) REDISHandler(command string, args []interface{}) (string, bool) {
-	// Convert the command to lowercase
+
 	command = strings.ToLower(command)
 	fn, ok := mapCmds[command]
+
+	if !s.Auth {
+		if !ok {
+			return fmt.Sprintf(errorMsg("unknown"), command), false
+		}
+		return fn(s, args)
+	}
+
+	if !s.Logged {
+		if !ok {
+			return fmt.Sprintf(errorMsg("unknown"), command), false
+		}
+		if command != "auth" {
+			return errorMsg("noauth"), false
+		}
+		return fn(s, args)
+	}
+
 	if !ok {
 		return fmt.Sprintf(errorMsg("unknown"), command), false
 	}

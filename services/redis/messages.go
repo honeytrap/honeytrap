@@ -50,9 +50,9 @@ uptime_in_days:0
 hz:10
 lru_clock:5820570
 executable:/data/redis-server
-config_file:
+config_file:%s
 
-`, s.Version, s.Os)
+`, s.Version, s.Os, s.ConfigFile)
 }
 
 func (s *redisService) infoClientsMsg() string {
@@ -194,8 +194,32 @@ func errorMsg(errType string) string {
 	switch errType {
 	case "syntax":
 		return "-ERR syntax error\r\n"
-	default:
+	case "noauth":
+		return "-NOAUTH Authentication required.\r\n"
+	case "invalidpass":
+		return "-ERR invalid password\r\n"
+	case "wgnumber":
+		return "-ERR wrong number of arguments for '%s' command\r\n"
+	case "noneed":
+		return "-ERR Client sent AUTH, but no password is set\r\n"
+	case "unknown":
 		return "-ERR unknown command '%s'\r\n"
+	default:
+		log.Errorf("Unknown basic error")
+		return ""
+	}
+}
+
+func errorConfig(errType string) string {
+	switch errType {
+	case "config":
+		return "-ERR CONFIG subcommand must be one of GET, SET, RESETSTAT, REWRITE\r\n"
+	case "wgnumber":
+		return "-ERR wrong number of arguments for CONFIG %s\r\n"
+	default:
+		log.Errorf("Unknown config error")
+		return ""
+
 	}
 }
 

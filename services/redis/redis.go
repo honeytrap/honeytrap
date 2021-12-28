@@ -36,8 +36,12 @@ var (
 func REDIS(options ...services.ServicerFunc) services.Servicer {
 	s := &redisService{
 		redisServiceConfig: redisServiceConfig{
-			Version: "4.0.6",
-			Os:      "Linux 4.9.49-moby x86_64",
+			Version:    "4.0.6",
+			Os:         "Linux 4.9.49-moby x86_64",
+			Auth:       false,
+			Password:   "example",
+			Logged:     false,
+			ConfigFile: "/etc/redis/redis.conf",
 		},
 	}
 	for _, o := range options {
@@ -50,6 +54,13 @@ type redisServiceConfig struct {
 	Version string `toml:"version"`
 
 	Os string `toml:"os"`
+
+	Auth bool `toml:"auth"`
+	//delay int `toml:"delay"`
+
+	Password   string `toml:"password"`
+	Logged     bool
+	ConfigFile string `toml:"config-file"`
 }
 
 type redisService struct {
@@ -106,7 +117,7 @@ func parseRedisData(scanner *bufio.Scanner) (redisDatum, error) {
 			items = append(items, item)
 		}
 		return redisDatum{DataType: dataType, Content: items}, nil
-	} else if dataType == 0x2b { // 0x2a = '+', introduces a simple string
+	} else if dataType == 0x2b { // 0x2b = '+', introduces a simple string
 		return redisDatum{DataType: dataType, Content: cmd[1:]}, nil
 	} else if dataType == 0x24 { // 0x24 = '$', introduces a bulk string
 		// Read (and ignore) string length
@@ -126,6 +137,8 @@ func parseRedisData(scanner *bufio.Scanner) (redisDatum, error) {
 }
 
 func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
+
+	s.Logged = false
 	defer conn.Close()
 
 	scanner := bufio.NewScanner(conn)
