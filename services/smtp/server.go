@@ -17,6 +17,8 @@ import (
 	"crypto/tls"
 	"net"
 	"sync"
+
+	"github.com/honeytrap/honeytrap/event"
 )
 
 type Handler interface {
@@ -47,6 +49,9 @@ var DefaultServeMux = NewServeMux()
 func NewServeMux() *ServeMux { return &ServeMux{m: make([]HandlerFunc, 0)} }
 
 func (mux *ServeMux) Serve(msg Message) error {
+	mux.mu.RLock()
+	defer mux.mu.RUnlock()
+
 	for _, h := range mux.m {
 		if err := h(msg); err != nil {
 			return err
@@ -63,12 +68,13 @@ type Server struct {
 	tlsConfig *tls.Config
 }
 
-func (s *Server) newConn(rwc net.Conn, recv chan string) *conn {
+func (s *Server) newConn(rwc net.Conn, recv chan string, evnt chan event.Event) *conn {
 	c := &conn{
 		server: s,
 		rwc:    rwc,
 		rcv:    recv,
 		i:      0,
+		evnt:   evnt,
 	}
 
 	c.msg = c.newMessage()
