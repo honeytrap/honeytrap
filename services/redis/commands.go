@@ -13,16 +13,14 @@
 // limitations under the License.
 package redis
 
-type cmd func(*redisService, []interface{}) (string, bool)
+type cmd func(*redisService, []interface{}) string
 
 var mapCmds = map[string]cmd{
 	"info": (*redisService).infoCmd,
 	// ...
 }
 
-type infoSection func(*redisService) string
-
-var mapInfoCmds = map[string]infoSection{
+var mapInfoCmds = map[string]func(*redisService) string{
 	"server":      (*redisService).infoServerMsg,
 	"clients":     (*redisService).infoClientsMsg,
 	"memory":      (*redisService).infoMemoryMsg,
@@ -34,28 +32,29 @@ var mapInfoCmds = map[string]infoSection{
 	"keyspace":    (*redisService).infoKeyspaceMsg,
 }
 
-func (s *redisService) infoCmd(args []interface{}) (string, bool) {
+func (s *redisService) infoCmd(args []interface{}) string {
 	switch len(args) {
 	case 0:
-		return bulkString(s.infoSectionsMsg(), true), false
+		return bulkString(s.infoSectionsMsg(), true)
 	case 1:
 		_word := args[0].(redisDatum)
 		word, success := _word.ToString()
 		if !success {
-			return "Expected string argument, got something else", false
+			return "Expected string argument, got something else"
 		}
 		fn, ok := mapInfoCmds[word]
 		if ok {
-			return bulkString(fn(s), true), false
+
+			return bulkString(fn(s), true)
 		}
 		if word == "default" {
-			return bulkString(s.infoSectionsMsg(), true), false
+			return bulkString(s.infoSectionsMsg(), true)
 		}
 		if word == "all" {
-			return bulkString(s.allSectionsMsg(), true), false
+			return bulkString(s.allSectionsMsg(), true)
 		}
-		return bulkString("", false), false
+		return bulkString("", false)
 	default:
-		return errorMsg("syntax"), false
+		return errorMsg("syntax")
 	}
 }
