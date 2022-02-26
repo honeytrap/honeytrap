@@ -23,8 +23,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mattn/go-isatty"
-
 	"github.com/fatih/color"
 
 	"github.com/honeytrap/honeytrap/cmd"
@@ -49,6 +47,7 @@ import (
 	_ "github.com/honeytrap/honeytrap/services/ftp"
 	_ "github.com/honeytrap/honeytrap/services/ipp"
 	_ "github.com/honeytrap/honeytrap/services/ldap"
+	_ "github.com/honeytrap/honeytrap/services/rdp"
 	_ "github.com/honeytrap/honeytrap/services/redis"
 	_ "github.com/honeytrap/honeytrap/services/smtp"
 	_ "github.com/honeytrap/honeytrap/services/snmp"
@@ -83,8 +82,6 @@ import (
 	_ "github.com/honeytrap/honeytrap/pushers/raven"
 	_ "github.com/honeytrap/honeytrap/pushers/slack"
 	_ "github.com/honeytrap/honeytrap/pushers/splunk"
-
-	"github.com/op/go-logging"
 )
 
 var log = logging.MustGetLogger("honeytrap/server")
