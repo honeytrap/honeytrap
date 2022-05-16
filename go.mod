@@ -28,7 +28,7 @@ require (
 	github.com/golang/protobuf v1.3.1
 	github.com/golang/snappy v0.0.0-20170215233205-553a64147049 // indirect
 	github.com/google/gopacket v1.1.14
-	github.com/gorilla/websocket v1.2.0
+	github.com/gorilla/websocket v1.4.1
 	github.com/honeytrap/honeytrap-web v0.0.0-20180212153621-02944754979e
 	github.com/honeytrap/protocol v0.0.0-20190410072324-219b95413db0
 	github.com/klauspost/compress v1.9.8 // indirect
