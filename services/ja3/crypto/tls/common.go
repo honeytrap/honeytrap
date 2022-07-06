@@ -304,6 +304,10 @@ func (c *ClientHelloInfo) JA3() string {
 
 	vals := []string{}
 	for _, v := range c.CipherSuites {
+		if _, ok := greaseTable[v]; ok {
+			continue
+		}
+
 		vals = append(vals, fmt.Sprintf("%d", v))
 	}
 
@@ -322,6 +326,9 @@ func (c *ClientHelloInfo) JA3() string {
 
 	vals = []string{}
 	for _, v := range c.SupportedCurves {
+		if _, ok := greaseTable[uint16(v)]; ok {
+			continue
+		}
 		vals = append(vals, fmt.Sprintf("%d", v))
 	}
 
