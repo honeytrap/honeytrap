@@ -178,7 +178,7 @@ func (a ICMPv4TypeCode) String() string {
 	typeStr := strInfo.typeStr
 	if strInfo.codeStr == nil && c == 0 {
 		// The ICMPv4 type does not make use of the code field
-		return fmt.Sprintf("%s", strInfo.typeStr)
+		return strInfo.typeStr
 	}
 	if strInfo.codeStr == nil && c != 0 {
 		// The ICMPv4 type does not make use of the code field, but it is present anyway

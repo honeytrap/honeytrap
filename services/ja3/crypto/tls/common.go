@@ -332,7 +332,7 @@ func (c *ClientHelloInfo) JA3() string {
 		vals = append(vals, fmt.Sprintf("%d", v))
 	}
 
-	s += fmt.Sprintf("%s", strings.Join(vals, "-"))
+	s += strings.Join(vals, "-")
 
 	return s
 }

@@ -140,7 +140,7 @@ func (hc Backend) MakeAuthHeader() (string, error) {
 
 	nonceStr := base64.StdEncoding.EncodeToString(nonce)
 
-	key := append(nonce, fmt.Sprintf("%s", hc.UserID)...)
+	key := append(nonce, hc.UserID...)
 
 	message, err := base64.StdEncoding.DecodeString(hc.APIKey)
 	if err != nil {
