@@ -419,7 +419,7 @@ func (c *Canary) DecodeSMBIP(conn net.Conn) error {
 			0x11: "SMB2/SetInfo",
 			0x12: "SMB2/Break",
 		}[opcode]; ok {
-			options = append(options, event.Custom("smb.opcode", fmt.Sprintf("%s", v)))
+			options = append(options, event.Custom("smb.opcode", v))
 		}
 	}
 	// add specific detections, reflection attack detection etc
