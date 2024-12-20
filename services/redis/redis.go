@@ -14,12 +14,12 @@
 package redis
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"net"
 	"strconv"
-
-	"bufio"
+	"time"
 
 	"github.com/honeytrap/honeytrap/event"
 	"github.com/honeytrap/honeytrap/pushers"
@@ -48,13 +48,11 @@ func REDIS(options ...services.ServicerFunc) services.Servicer {
 
 type redisServiceConfig struct {
 	Version string `toml:"version"`
-
-	Os string `toml:"os"`
+	Os      string `toml:"os"`
 }
 
 type redisService struct {
 	redisServiceConfig
-
 	ch pushers.Channel
 }
 
@@ -106,7 +104,7 @@ func parseRedisData(scanner *bufio.Scanner) (redisDatum, error) {
 			items = append(items, item)
 		}
 		return redisDatum{DataType: dataType, Content: items}, nil
-	} else if dataType == 0x2b { // 0x2a = '+', introduces a simple string
+	} else if dataType == 0x2b { // 0x2b = '+', introduces a simple string
 		return redisDatum{DataType: dataType, Content: cmd[1:]}, nil
 	} else if dataType == 0x24 { // 0x24 = '$', introduces a bulk string
 		// Read (and ignore) string length
@@ -131,6 +129,7 @@ func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
 	scanner := bufio.NewScanner(conn)
 
 	for {
+		startTime := time.Now() // Start execution time
 		datum, err := parseRedisData(scanner)
 		if err != nil {
 			if err.Error() != "eof" {
@@ -139,15 +138,17 @@ func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
 			break
 		}
 
-		// Dirty hack to ignore "empty" packets (\r\n with no Redis content)
+		// Ignore empty packets
 		if datum.DataType == 0x00 {
 			continue
 		}
-		// Redis commands are sent as an array of strings, so expect that
+
+		// Check if the received data is an array
 		if datum.DataType != 0x2a {
 			log.Error("Expected array, got data type %q", datum.DataType)
 			break
 		}
+
 		items := datum.Content.([]interface{})
 		firstItem := items[0].(redisDatum)
 		command, success := firstItem.ToString()
@@ -155,7 +156,24 @@ func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
 			log.Error("Expected a command string, got something else (type=%q)", firstItem.DataType)
 			break
 		}
+
+		// Capture the complete arguments
+		args := make([]string, len(items)-1)
+		for i, item := range items[1:] {
+			if d, ok := item.(redisDatum); ok {
+				arg, _ := d.ToString()
+				args[i] = arg
+			}
+		}
+
+		// Log the received command
+		log.Infof("Received command: %s, with arguments: %v", command, args)
+
+		// Execute the command
 		answer, closeConn := s.REDISHandler(command, items[1:])
+
+		// Log the execution result
+		log.Infof("Executed command: %s, result: %s, duration: %s", command, answer, time.Since(startTime))
 
 		s.ch.Send(event.New(
 			services.EventOptions,
@@ -169,6 +187,7 @@ func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
 		if closeConn {
 			break
 		}
+
 		_, err = conn.Write([]byte(answer))
 		if err != nil {
 			log.Error("error writing response: %s", err.Error())
@@ -177,5 +196,4 @@ func (s *redisService) Handle(ctx context.Context, conn net.Conn) error {
 	}
 
 	return nil
-
 }
